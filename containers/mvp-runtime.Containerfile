@@ -63,8 +63,10 @@ RUN set -eux; \
     test -z "$(awk -F: '$3 == 65532 || $3 == 65533 { print $3 }' /etc/passwd /etc/group)"; \
     ! getent passwd 10001; \
     ! getent group 10001; \
-    groupadd --gid 10001 dark-factory; \
-    useradd --uid 10001 --gid 10001 --create-home --home-dir /home/dark-factory --shell /bin/bash dark-factory; \
+    test -x /usr/sbin/groupadd; \
+    test -x /usr/sbin/useradd; \
+    /usr/sbin/groupadd --gid 10001 dark-factory; \
+    /usr/sbin/useradd --uid 10001 --gid 10001 --create-home --home-dir /home/dark-factory --shell /bin/bash dark-factory; \
     test -x /usr/local/bin/python3; \
     ln -sfn /usr/local/bin/python3 /usr/bin/python3; \
     install -d -o 10001 -g 10001 -m 0755 \
