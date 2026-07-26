@@ -78,7 +78,14 @@ jobs:
 
       - name: Format the cloud working copy
         shell: bash
-        run: pnpm format
+        run: |
+          set -euo pipefail
+          pnpm guard:cloud
+          pnpm exec biome check --write \
+            --formatter-enabled=true \
+            --linter-enabled=false \
+            --assist-enabled=true \
+            .
 
       - name: Capture the review patch
         shell: bash

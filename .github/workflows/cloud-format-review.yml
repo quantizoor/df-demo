@@ -6,6 +6,9 @@ on:
       - codex/dark-factory-mvp
     paths:
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - biome.json
+      - .github/workflows/cloud-format-review.yml
 
 permissions:
   contents: read
@@ -66,7 +69,14 @@ jobs:
 
       - name: Produce deterministic formatting changes
         shell: bash
-        run: pnpm format
+        run: |
+          set -euo pipefail
+          pnpm guard:cloud
+          pnpm exec biome check --write \
+            --formatter-enabled=true \
+            --linter-enabled=false \
+            --assist-enabled=true \
+            .
 
       - name: Admit formatter-owned source changes only
         shell: bash
