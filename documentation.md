@@ -7011,7 +7011,8 @@ The following are deferred and are not first-loop blockers:
 - crash-perfect recovery and exhaustive replay/handoff transactions;
 - twelve-task and shadow/certification gates;
 - providers other than Daytona EU;
-- custom image publication, SBOM, and provenance workflows;
+- the full production role-image publication lifecycle; the secret-free
+  combined MVP image preparation in ADR-0093 is the narrow exception;
 - dashboards, PR automation, and automated publication;
 - long-campaign alpha/privacy spending and other sequential statistics;
 - the full 89-task/five-trial and official leaderboard path; and
@@ -7019,9 +7020,10 @@ The following are deferred and are not first-loop blockers:
   immutable pins and role isolation.
 
 After essential source work is complete, implementation stops before any
-credential or paid/test use. Work resumes only after the operator configures
-the protected GitHub Daytona secret; Daytona EU target, volume, and immutable
-image references; role-scoped Foundry and private-Git secret names; existing
+credential or paid/test use. Work resumes only after the operator prepares or
+anonymously verifies the public combined image; configures the protected GitHub
+Daytona secret; Daytona EU target and volume references; role-scoped Foundry
+and private-Git secret names; existing
 Foundry URL and deployment aliases; private Pi source permissions; cloud-only
 benchmark/Harbor pin discovery authorization; and a one-iteration cost cap,
 then explicitly says `resume`. No secret value is requested in chat.
@@ -7323,4 +7325,171 @@ or benchmark task was run on the Mac while making this decision.
 - `tests/mvp/evaluator-runtime-node.test.ts`
 - `vitest.config.ts`
 - `PLAN.md` §0.5
+- `TODO.md` `MVP-ESSENTIAL`
+
+## ADR-0092 — Fit the outer MVP roles within Daytona Tier 2
+
+**Date:** 2026-07-26
+
+**Status:** accepted for the essentials-only MVP; source-ready and
+cloud-unverified
+
+**Owners:** operator and Dark Factory implementation
+
+### Context
+
+The first source cut requested `4` vCPU, `8 GiB` memory, and `30 GiB` disk for
+the optimizer, plus `8` vCPU, `16 GiB` memory, and `100 GiB` disk for the
+evaluator. The operator's Daytona Tier 2 organization reports aggregate limits
+of `100` vCPU, `200 GiB` memory, and `300 GiB` storage, but limits each non-GPU
+container sandbox to `4` vCPU, `8 GiB` memory, and `10 GiB` disk. Daytona would
+therefore reject both outer sandbox requests before any staged verification
+could run. Aggregate sufficiency remains unproven until the hidden inventory
+attests the resource needs of up to five concurrent child task sandboxes.
+
+The evaluator uses the persistent volume for private durable state but creates
+one temporary isolated Pi build tree at a time on the sandbox filesystem. The
+smaller disk may be sufficient for the immutable image, controller bundle,
+checkout, dependencies, tests, and compiled runtime, but source review alone
+cannot prove that fit.
+
+### Decision
+
+1. Request `4` vCPU, `8 GiB` memory, and `10 GiB` disk for both the optimizer
+   and evaluator outer sandboxes.
+2. Include both exact outer profiles in the canonical cloud configuration,
+   configuration hash, provider-attested specification, and task-free launch
+   receipt so a resource change invalidates environment identity. Version the
+   extended launch receipt as `dark-factory.mvp-cloud-launch.v2`.
+3. Do not change Harbor child-task resources, timeouts, verifier isolation, or
+   the evaluation environment pinned for candidate/champion comparison.
+4. Require the private eligibility inventory to attest that every selected
+   task's official child-sandbox resource request fits the current Daytona
+   limits without reduction.
+5. Add exact configuration, specification, SDK-boundary, and receipt tests for
+   both roles.
+6. Require the no-model cloud smoke to measure the immutable image, controller
+   staging, and one-at-a-time Pi build working set under the 10 GiB ceiling.
+7. Treat disk or memory exhaustion as a readiness block before paid evaluation.
+   Do not compensate by weakening tests, build isolation, or benchmark task
+   resources.
+
+### Consequences
+
+The two trusted outer sandboxes can be admitted by the operator's reported
+current Daytona Tier 2 non-GPU limits without using a GPU class or requesting
+a quota increase. This is an operator-specific limit observation, not a
+universal Daytona tier contract. The evaluator has substantially less
+temporary workspace and half the previous CPU and memory request, so build
+time may increase and the first cloud smoke may prove the profile too small.
+If that happens, the prototype must stop for an explicit resource or
+architecture decision.
+
+No project install, formatter, build, test, model, Harbor, Pi, or benchmark
+command ran locally while making this change.
+
+### Evidence
+
+- `src/mvp/cloud-orchestrator.ts`
+- `src/mvp/cloud-config.ts`
+- `src/mvp/daytona-runtime.ts`
+- `tests/mvp/cloud-config.test.ts`
+- `tests/mvp/cloud-orchestrator.test.ts`
+- `tests/mvp/daytona-runtime.test.ts`
+- `PLAN.md` §0.3
+- `TODO.md` `MVP-ESSENTIAL`
+- `CLOUD_DELIVERY.md` `Essentials-only MVP fast path`
+
+## ADR-0093 — Prepare one combined MVP runtime image in cloud
+
+**Date:** 2026-07-26
+
+**Status:** accepted for the essentials-only MVP; source-ready and
+cloud-unverified
+
+**Owners:** operator and Dark Factory implementation
+
+### Context
+
+The MVP launcher has one `DF_MVP_DAYTONA_IMAGE` input and uses it for both the
+optimizer and evaluator outer sandboxes. The retained production Containerfiles
+instead publish separate role images, use UID/GID `65532` as their default
+identity, and do not put Claude Code, Harbor, and Bun in one image. They cannot
+be reused for the MVP: `65532` and `65533` are the evaluator's isolated
+candidate/champion build identities and must have no pre-existing owner,
+service, or process.
+
+No independently reviewed public image has yet been identified that satisfies
+the exact hard-coded paths, Linux x64 glibc ABI, root override, unprivileged
+optimizer, and reserved-identity requirements. Building such an image on the
+Mac would violate the cloud-only boundary. A minimal GitHub-hosted preparation
+path is therefore required before Daytona verification can resume.
+
+### Decision
+
+1. Add the workflow `.github/workflows/publish-mvp-runtime-image.yml`, named
+   `publish-mvp-runtime-image`. It may be dispatched from `main` only with an
+   exact source commit and confirmation `PUBLISH-MVP:<commit>`.
+2. Read base-image, Buildx, BuildKit, Node, Claude Code, Harbor, Bun, Python,
+   and system-package pins only from reviewed
+   `containers/mvp-runtime-pins.json`. The dispatch accepts no operator-supplied
+   mutable image or tool version.
+3. Use protected environment `dark-factory-image-publish` with a required
+   reviewer and no secrets or environment variables. The workflow receives no
+   Daytona, Foundry, Git, model, benchmark, or paid credential.
+4. Build one Linux/amd64 glibc image with default UID/GID `10001`. Daytona uses
+   that default for the optimizer and explicitly overrides the evaluator to
+   root. Reserve `65532:65532` and `65533:65533` exclusively for the two
+   untrusted build arms.
+5. Require Node 24 at `/usr/bin/node`, the fixed system paths in
+   `CLOUD_DELIVERY.md`, Claude Code 2.1.217 at `/usr/local/bin/claude`, Harbor
+   0.20.0 at `/usr/local/bin/harbor`, and Bun at `/usr/local/bin/bun`. Keep
+   binaries and dependency trees root-owned and non-writable by unprivileged
+   identities; bake no secret or project state.
+6. Publish
+   `ghcr.io/<repository>-dark-factory-mvp-runtime:<commit>-<run>-<attempt>` and
+   emit artifact `dark-factory-mvp-runtime-<commit>` containing
+   `image-output/mvp-runtime.json` and its adjacent SHA-256. The receipt binds
+   source/workflow identity, Containerfile and pin digests, tagged and immutable
+   references, manifest digest, base/builder pins, platform/ABI/size, exact
+   executable versions, paths and hashes, identity checks, SBOM/provenance, and
+   the offline smoke result.
+7. Treat the receipt as review material, not pullability proof. After review,
+   an operator makes that exact GHCR package public. A clean unauthenticated
+   cloud client must then resolve or pull the immutable reference and observe
+   the same digest.
+8. Store only the full verified
+   `ghcr.io/...@sha256:<digest>` reference as the ordinary GitHub repository
+   variable `DF_MVP_DAYTONA_IMAGE`. Do not store it as a secret, use a tag, or
+   add registry credentials to Daytona.
+
+This is a narrow MVP exception to the deferred production role-image pipeline.
+It does not launch Daytona, start a model, fetch private Pi, run Harbor or
+Terminal-Bench, or authorize paid evaluation.
+
+### Consequences
+
+Both outer roles can consume one auditable image without reusing a reserved
+build identity or relying on a mutable/private registry reference. Image
+publication remains free of runtime secrets and paid workloads, and anonymous
+digest verification proves Daytona can fetch the exact public object.
+
+The image receipt does not prove the remaining runtime boundary. After
+publication, work is still blocked on evaluator-private runtime-pin and hidden
+catalog bootstrap, the no-model synthetic smoke, the bounded private-Git,
+Foundry/Claude, Harbor, nested-Daytona, and Pi connectivity smoke, and explicit
+authorization for the one paid iteration. The 10 GiB outer-disk fit also
+remains cloud-unverified.
+
+No project install, formatter, build, test, image build, model, Harbor, Pi, or
+benchmark command ran locally while making this decision.
+
+### Evidence
+
+- `.github/workflows/publish-mvp-runtime-image.yml`
+- `containers/mvp-runtime.Containerfile`
+- `containers/mvp-runtime-pins.json`
+- `.env.example`
+- `CLOUD_DELIVERY.md` `Essentials-only MVP fast path`
+- `PLAN.md` §0.3–0.8
 - `TODO.md` `MVP-ESSENTIAL`

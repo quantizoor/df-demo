@@ -105,6 +105,15 @@ labels have precise meanings:
 - [x] **SOURCE-READY / CLOUD-UNVERIFIED:** add one-iteration bounds, optimizer
   turn/cost/time limits, five-trial evaluator concurrency, worker timeouts, and
   verified outer-sandbox teardown.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** cap both outer Daytona roles at the
+  operator's current Tier 2 non-GPU per-sandbox profile of 4 vCPU, 8 GiB
+  memory, and 10 GiB disk without changing the separately pinned official task
+  resources.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** add a secret-free GitHub-hosted
+  `publish-mvp-runtime-image` path for the one combined Linux/amd64 image
+  consumed by both MVP outer roles. Pin its build inputs in source, use default
+  UID/GID `10001`, reserve `65532` and `65533`, verify the exact executable
+  paths, and emit a checksum-adjacent immutable image receipt.
 
 ### C. Cloud verification
 
@@ -113,12 +122,30 @@ labels have precise meanings:
 - [ ] **CLOUD-UNVERIFIED:** run formatting, lint, strict typecheck, Vitest,
   coverage, build, schema/contract tests, privacy tests, and secret scanning in
   cloud CI and retain the commit-bound receipt.
+- [ ] **CLOUD-UNVERIFIED:** after the exact preparation source reaches `main`,
+  dispatch `publish-mvp-runtime-image` with the exact commit and
+  `PUBLISH-MVP:<commit>` confirmation. Review
+  `dark-factory-mvp-runtime-<commit>/image-output/mvp-runtime.json` and its
+  adjacent SHA-256 before accepting the immutable reference.
+- [ ] **CLOUD-UNVERIFIED:** make the reviewed GHCR MVP runtime package public,
+  then resolve or pull its exact `ghcr.io/...@sha256:<digest>` reference from a
+  clean unauthenticated cloud context. Require the manifest digest to equal the
+  receipt and store the full reference as normal repository variable
+  `DF_MVP_DAYTONA_IMAGE`.
 - [ ] **CLOUD-UNVERIFIED:** run a no-model synthetic end-to-end iteration and
   verify panel continuity, cache refresh, promotion guard, strict artifacts,
   sandbox teardown, exact candidate/runtime binding, unprivileged build
   identities, and trusted artifact handoff. This is mandatory because the
   executable cloud/process adapters are explicitly outside the unit-coverage
   percentage.
+- [ ] **CLOUD-UNVERIFIED:** prove the immutable image, controller bundle, and
+  one-at-a-time isolated Pi build trees fit the 10 GiB outer-sandbox disk
+  ceiling. Fail readiness without starting paid evaluation if either role
+  exhausts disk or memory.
+- [ ] **CLOUD-UNVERIFIED:** include each hidden task's official child-sandbox
+  CPU, memory, and disk request in private eligibility attestation and reject
+  tasks that exceed the current Daytona limits; never reduce official benchmark
+  resources to make a task fit.
 - [ ] **CLOUD-UNVERIFIED:** verify private Pi fetch/build and Claude/Foundry
   connectivity inside the correct isolated EU sandboxes without logging a
   credential.
@@ -142,6 +169,10 @@ labels have precise meanings:
 - [ ] **OPERATOR INPUT:** store `DAYTONA_API_KEY` as a protected GitHub
   environment secret in `dark-factory-mvp-paid`, with a required reviewer; do
   not paste it into chat.
+- [ ] **OPERATOR INPUT:** if no compliant shared image already exists, create
+  the protected GitHub environment `dark-factory-image-publish`, add a required
+  reviewer, and add no secrets or variables. Approve only the cloud-hosted
+  combined-image publication described above.
 - [ ] **OPERATOR INPUT:** provide non-secret references for the Daytona API,
   exact EU target, persistent volume/subpath, and immutable public Linux x64
   glibc image.
@@ -150,9 +181,10 @@ labels have precise meanings:
   key, and pre-encoded private Pi HTTPS Basic access, with the host
   restrictions in `CLOUD_DELIVERY.md`.
 - [ ] **OPERATOR INPUT:** ensure the immutable image contains the exact
-  hard-coded system executables, Claude Code 2.1.217, pinned Harbor 0.20.0 and
-  Bun paths/digests, and reserves UID/GID `65532` and `65533` with no
-  pre-existing processes or owned services.
+  hard-coded system executables, Claude Code 2.1.217 at
+  `/usr/local/bin/claude`, Harbor 0.20.0 at `/usr/local/bin/harbor`, Bun at
+  `/usr/local/bin/bun`, default UID/GID `10001`, and reserved UID/GID `65532`
+  and `65533` with no pre-existing processes or owned services.
 - [ ] **OPERATOR INPUT:** provide the existing Foundry Anthropic-compatible
   base URL and exact optimizer/evaluated deployment aliases. No Azure
   provisioning or deployment work is requested.
@@ -162,6 +194,10 @@ labels have precise meanings:
   discovery and hidden inventory creation; the private runtime pin must prove
   at least five exact direct-Daytona, Linux x64 glibc task revisions with
   separate verifier mode at every step.
+- [ ] **OPERATOR INPUT:** after image publication, separately authorize the
+  evaluator-private runtime-pin/catalog bootstrap, no-model synthetic smoke,
+  and bounded connectivity smoke. The image receipt is not evidence for these
+  remaining gates.
 - [ ] **OPERATOR INPUT:** approve the first-run maximum iteration count and cost
   cap; start with one iteration.
 - [ ] **OPERATOR INPUT:** explicitly say `resume` after all protected values are
@@ -177,8 +213,9 @@ labels have precise meanings:
   shadow certification, and active-versus-certified champions.
 - [ ] **DEFERRED / NOT A BLOCKER:** E2B, Modal, or any provider beyond Daytona
   EU.
-- [ ] **DEFERRED / NOT A BLOCKER:** custom image publication, SBOM, and
-  provenance pipelines.
+- [ ] **DEFERRED / NOT A BLOCKER:** the full production role-image publication
+  and lifecycle pipeline. The secret-free combined-image workflow required by
+  the MVP's single `DF_MVP_DAYTONA_IMAGE` input is the narrow exception.
 - [ ] **DEFERRED / NOT A BLOCKER:** dashboards, pull-request automation, and
   automated result publication.
 - [ ] **DEFERRED / NOT A BLOCKER:** long-campaign alpha spending,

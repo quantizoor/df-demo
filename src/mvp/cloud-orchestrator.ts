@@ -69,8 +69,8 @@ export interface MvpCloudLaunchIdentity {
 }
 
 interface MvpCloudReceiptBase {
-  readonly schemaVersion: 1;
-  readonly domain: "dark-factory.mvp-cloud-launch.v1";
+  readonly schemaVersion: 2;
+  readonly domain: "dark-factory.mvp-cloud-launch.v2";
   readonly campaignId: string;
   readonly configurationHash: string;
   readonly sourceCommit: string;
@@ -85,6 +85,10 @@ interface MvpCloudReceiptBase {
     readonly taskCount: 5;
     readonly repetitions: 3;
     readonly matchedTrialCount: 30;
+  };
+  readonly outerSandboxResources: {
+    readonly optimizer: MvpRoleSandboxSpec["resources"];
+    readonly evaluator: MvpRoleSandboxSpec["resources"];
   };
   readonly isolation: {
     readonly policy: "distinct-provider-enforced-volume-subpaths-v1";
@@ -394,10 +398,12 @@ export function roleSpecification(
     configurationHash: configuration.configurationHash,
     target: configuration.daytona.target,
     image: configuration.daytona.image,
-    resources:
-      role === "optimizer"
-        ? { cpu: 4, memoryGiB: 8, diskGiB: 30 }
-        : { cpu: 8, memoryGiB: 16, diskGiB: 100 },
+    // Keep both trusted outer roles within the operator's current Daytona
+    // non-GPU per-sandbox ceiling. Official task resources remain
+    // independently pinned and apply only to Harbor's direct children.
+    resources: {
+      ...configuration.daytona.outerSandboxResources[role],
+    },
     ttlMinutes: WORKER_TTL_MINUTES,
     networkAllowDomains: [
       ...new Set([
@@ -591,8 +597,8 @@ function receiptBase(
     );
   }
   return {
-    schemaVersion: 1,
-    domain: "dark-factory.mvp-cloud-launch.v1",
+    schemaVersion: 2,
+    domain: "dark-factory.mvp-cloud-launch.v2",
     campaignId: configuration.campaignId,
     configurationHash: configuration.configurationHash,
     sourceCommit: identity.sourceCommit,
@@ -604,6 +610,10 @@ function receiptBase(
     controllerBundleSha256,
     maximumIterations: 1,
     protocol: structuredClone(configuration.protocol),
+    outerSandboxResources: {
+      optimizer: structuredClone(optimizerSpec.resources),
+      evaluator: structuredClone(evaluatorSpec.resources),
+    },
     isolation: {
       policy: "distinct-provider-enforced-volume-subpaths-v1",
       volumeBoundaryHash: volumeBoundaryHash(

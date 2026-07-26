@@ -133,6 +133,11 @@ describe("MVP Daytona runtime", () => {
 
     expect(created[0]).toMatchObject({
       image: config.daytona.image,
+      resources: {
+        cpu: 4,
+        memory: 8,
+        disk: 10,
+      },
       ephemeral: true,
       autoDeleteInterval: 0,
       public: false,
@@ -203,7 +208,41 @@ describe("MVP Daytona runtime", () => {
 
     await runtime.create(roleSpecification(config, "evaluator"));
 
-    expect(created[0]?.user).toBe("root");
+    expect(created[0]).toMatchObject({
+      user: "root",
+      resources: {
+        cpu: 4,
+        memory: 8,
+        disk: 10,
+      },
+    });
     expect(roleSpecification(config, "optimizer").user).toBeUndefined();
   });
+
+  it.each([
+    ["cpu", { cpu: 3, memoryGiB: 8, diskGiB: 10 }],
+    ["memory", { cpu: 4, memoryGiB: 7, diskGiB: 10 }],
+    ["disk", { cpu: 4, memoryGiB: 8, diskGiB: 11 }],
+  ] as const)(
+    "rejects a role specification outside the configuration-bound %s profile",
+    async (_resource, resources) => {
+      const config = configuration();
+      const runtime = new DaytonaMvpCloudRuntime(config, {
+        sdkFactory: {
+          createClient: async () => {
+            throw new Error("invalid resources reached the provider");
+          },
+        },
+        environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+      });
+      const specification = roleSpecification(config, "evaluator");
+
+      await expect(
+        runtime.create({
+          ...specification,
+          resources,
+        }),
+      ).rejects.toThrow("The Daytona role specification is invalid.");
+    },
+  );
 });

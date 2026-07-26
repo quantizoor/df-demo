@@ -541,6 +541,8 @@ function assertSandboxSpecification(
   const environmentEntries = Object.entries(
     specification.environment,
   );
+  const expectedResources =
+    configuration.daytona.outerSandboxResources[specification.role];
   if (
     !SAFE_ID.test(specification.requestId) ||
     (specification.role === "evaluator"
@@ -564,6 +566,10 @@ function assertSandboxSpecification(
     specification.resources.memoryGiB < 1 ||
     !Number.isSafeInteger(specification.resources.diskGiB) ||
     specification.resources.diskGiB < 10 ||
+    specification.resources.cpu !== expectedResources.cpu ||
+    specification.resources.memoryGiB !==
+      expectedResources.memoryGiB ||
+    specification.resources.diskGiB !== expectedResources.diskGiB ||
     !Number.isSafeInteger(specification.ttlMinutes) ||
     specification.ttlMinutes < 5 ||
     specification.ttlMinutes > 300 ||

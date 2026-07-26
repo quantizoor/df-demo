@@ -202,7 +202,23 @@ describe("MVP cloud orchestration", () => {
       now: () => new Date("2026-07-26T10:00:00.000Z"),
     });
 
-    expect(receipt.status).toBe("actual-iteration-completed");
+    expect(receipt).toMatchObject({
+      schemaVersion: 2,
+      domain: "dark-factory.mvp-cloud-launch.v2",
+      status: "actual-iteration-completed",
+    });
+    expect(receipt.outerSandboxResources).toEqual({
+      optimizer: {
+        cpu: 4,
+        memoryGiB: 8,
+        diskGiB: 10,
+      },
+      evaluator: {
+        cpu: 4,
+        memoryGiB: 8,
+        diskGiB: 10,
+      },
+    });
     expect(runtime.operations).toEqual([
       "stage:optimizer",
       "stage:evaluator",
@@ -211,6 +227,20 @@ describe("MVP cloud orchestration", () => {
       "evaluate",
     ]);
     expect(runtime.destroyed).toEqual(["evaluator", "optimizer"]);
+    expect(
+      roleSpecification(configuration(), "optimizer").resources,
+    ).toEqual({
+      cpu: 4,
+      memoryGiB: 8,
+      diskGiB: 10,
+    });
+    expect(
+      roleSpecification(configuration(), "evaluator").resources,
+    ).toEqual({
+      cpu: 4,
+      memoryGiB: 8,
+      diskGiB: 10,
+    });
     expect(runtime.specifications[0]?.volume.subpath).not.toBe(
       runtime.specifications[1]?.volume.subpath,
     );

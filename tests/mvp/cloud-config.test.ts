@@ -41,6 +41,18 @@ describe("MVP cloud configuration", () => {
     expect(readiness.configuration).toMatchObject({
       daytona: {
         harborApiSecretSource: "DF_DAYTONA_NESTED",
+        outerSandboxResources: {
+          optimizer: {
+            cpu: 4,
+            memoryGiB: 8,
+            diskGiB: 10,
+          },
+          evaluator: {
+            cpu: 4,
+            memoryGiB: 8,
+            diskGiB: 10,
+          },
+        },
       },
       foundry: {
         optimizerDeployment: "optimizer-opus-5-deployment",

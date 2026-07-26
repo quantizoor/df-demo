@@ -136,6 +136,20 @@ optimization loop.
   explicit EU target. No project install, package-manager command, formatter,
   build, test, Claude session, Pi run, Harbor process, grader, or benchmark task
   runs on the Mac.
+- Outer optimizer and evaluator sandboxes each request `4` vCPU, `8 GiB`
+  memory, and `10 GiB` disk so the first loop fits the operator's current
+  Daytona Tier 2 non-GPU per-sandbox limits. This does not change the separately
+  pinned official task resources used by Harbor child sandboxes. The cloud
+  smoke must prove that the optimizer and evaluator runtime—including one
+  isolated Pi build tree at a time—fits this smaller outer profile; insufficient
+  space is a readiness block, not permission to alter benchmark resources.
+- Image: both MVP outer roles use one public Linux x64 glibc image pinned by
+  digest. If no reviewed compatible image exists, a reviewer-protected,
+  secret-free GitHub-hosted workflow builds the MVP-only combined image with
+  default UID/GID `10001`, evaluator root override, reserved build identities
+  `65532` and `65533`, and the exact executable paths in `CLOUD_DELIVERY.md`.
+  This narrow exception does not activate the deferred production role-image
+  pipeline.
 - Secrets: the GitHub-hosted launcher receives only the Daytona bootstrap
   secret. Foundry and private-Git values are resolved by name from protected
   cloud secret stores directly into the sandbox that needs them. A plaintext
@@ -218,6 +232,10 @@ The remaining essentials are deployment proof, not more local source work:
 - push the reviewed branch, generate/review the dependency lock in cloud CI,
   and pass cloud formatting, lint, typecheck, unit/contract/coverage/privacy
   tests, build, and secret scanning;
+- if no compliant image already exists, publish the combined MVP runtime image
+  from the exact reviewed `main` commit, review its receipt, make its GHCR
+  package public, anonymously verify the digest, and record the full immutable
+  reference as repository variable `DF_MVP_DAYTONA_IMAGE`;
 - provide or verify the immutable Daytona image and create the evaluator-private
   Harbor/Bun/dataset/adapter/runtime pin plus hidden weighted inventory, with at
   least five direct-Daytona and all-step separate-verifier-compatible tasks;
@@ -240,7 +258,9 @@ prerequisite for the first loop:
 - twelve-task validation gates, shadow gates, certification champions, and
   feedback-dark shadow pools;
 - sandbox providers other than the single Daytona EU path;
-- custom role-image publication and its SBOM/provenance pipeline;
+- the full production role-image publication and lifecycle pipeline; only the
+  minimal secret-free combined-image preparation required by the single MVP
+  `DF_MVP_DAYTONA_IMAGE` input is in scope;
 - dashboards, pull-request automation, and automated publication;
 - long-campaign alpha spending, privacy-budget machinery, winner's-curse
   correction, and other sequential statistical programs;
@@ -258,20 +278,23 @@ The first MVP is ready to test only when all of the following are true:
 
 1. cloud CI has produced a reviewed dependency lock and a passing source
    quality receipt;
-2. a GitHub-hosted entrypoint can create and tear down isolated Daytona
+2. the shared MVP image is public, anonymously pullable by its reviewed digest,
+   and contains the exact tool paths and `10001`/`65532`/`65533` identity
+   contract;
+3. a GitHub-hosted entrypoint can create and tear down isolated Daytona
    sandboxes in the selected EU target;
-3. the optimizer sandbox can clone the exact champion, run Claude Code against
+4. the optimizer sandbox can clone the exact champion, run Claude Code against
    the existing Opus 5 deployment, create one bounded candidate, and return no
    task-bearing data;
-4. the evaluator can build the exact candidate/champion, run Harbor with Pi
+5. the evaluator can build the exact candidate/champion, run Harbor with Pi
    using the existing Opus 4.8 deployment at `high`, and return 30 matched
    observations for a cold-cache five-by-three race;
-5. the sanitizer releases only schema-valid task-free cards;
-6. experiment JSON and full-environment cache state survive in the protected
+6. the sanitizer releases only schema-valid task-free cards;
+7. experiment JSON and full-environment cache state survive in the protected
    cloud volume;
-7. rejection/inconclusive reuses the sealed panel and promotion rotates it;
-8. a synthetic campaign passes; and
-9. one budget-approved real iteration completes with an auditable
+8. rejection/inconclusive reuses the sealed panel and promotion rotates it;
+9. a synthetic campaign passes; and
+10. one budget-approved real iteration completes with an auditable
    promote/reject/inconclusive result.
 
 ### 0.8 Stop/resume prerequisites
@@ -282,6 +305,12 @@ resume cloud verification, the operator must:
 
 - make the pushed MVP branch and its GitHub Actions results accessible for
   review;
+- if no compliant image already exists, create the reviewer-protected
+  `dark-factory-image-publish` GitHub environment with no secrets, merge the
+  exact reviewed preparation source to `main`, dispatch
+  `publish-mvp-runtime-image`, review its receipt, make the GHCR package public,
+  anonymously verify the digest, and store the full immutable reference as the
+  normal repository variable `DF_MVP_DAYTONA_IMAGE`;
 - store `DAYTONA_API_KEY` in the protected GitHub environment, never in chat;
 - provide the existing Daytona API URL, exact EU target, persistent volume
   identifier/subpath, and an immutable public sandbox image reference whose
@@ -301,6 +330,9 @@ resume cloud verification, the operator must:
   direct-Daytona, Linux x64 glibc, all-step separate-verifier-compatible task
   revisions; if fewer exist, the first run blocks rather than weakening grader
   isolation;
+- authorize the still-separate evaluator-private runtime-pin/catalog bootstrap,
+  no-model synthetic smoke, and bounded connectivity smoke; publishing the
+  image completes none of those gates;
 - approve the first-run budget and iteration cap—one iteration is recommended
   before any continuation; and
 - explicitly tell the implementer to **resume** after the protected values are

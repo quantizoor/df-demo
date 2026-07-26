@@ -11,9 +11,11 @@ This section is the delivery authority for the first runnable prototype and
 implements [PLAN §0](./PLAN.md#0-essentials-only-mvp-authority). The larger
 production delivery design below is retained for future reference. KMS/HSM
 signing, crash-perfect recovery, twelve-task/shadow programs, extra providers,
-custom image publication, dashboards/PR automation, long-campaign statistics,
-the full 89-task run, and exhaustive supply-chain hardening are deferred and
-must not block this path.
+the full production role-image publication pipeline, dashboards/PR automation,
+long-campaign statistics, the full 89-task run, and exhaustive supply-chain
+hardening are deferred and must not block this path. The minimal combined image
+preparation below is an MVP-only exception because both current outer roles
+consume the single `DF_MVP_DAYTONA_IMAGE` reference.
 
 Nothing is executed on the Mac. Source is pushed to the MVP branch, free
 quality checks run on a GitHub-hosted runner, and all Claude Code, Pi, Harbor,
@@ -89,6 +91,12 @@ configuration:
   `registry/name@sha256:<digest>` reference. Its evaluator runtime must expose
   the reviewed Harbor 0.20.0 and Bun executables at absolute paths; the private
   runtime pin records both file SHA-256 values;
+- both outer roles use the operator's current Daytona Tier 2 non-GPU
+  per-sandbox profile of `4` vCPU, `8 GiB` memory, and `10 GiB` disk. Harbor
+  child sandboxes retain their separately pinned official task resources. The
+  mandatory cloud smoke must prove the immutable image, controller bundle, and
+  one isolated Pi build tree at a time fit the outer profile; exhaustion blocks
+  before paid evaluation;
 - `DF_DAYTONA_VOLUME_ID` and `DF_DAYTONA_VOLUME_SUBPATH`;
 - the five Foundry values listed above;
 - `DF_PI_GITHUB_OWNER`, `DF_PI_GITHUB_REPOSITORY`, `DF_PI_BRANCH`,
@@ -137,23 +145,79 @@ Harbor 0.20.0 cannot attach Daytona Secrets to compose/Docker-in-Docker tasks.
 The first MVP therefore fails closed unless every selected exact task revision
 appears in the evaluator-private eligibility inventory as a direct Daytona
 task with Linux x64 glibc runtime compatibility and Harbor's separate-verifier
-mode. The separate verifier, not a guessed `/tests` path, is the primary proof
-that Pi cannot observe grader material. This limits initial coverage and may
-bias the prototype pool; it is not a claim about Pi or about the official
-evaluation set.
+mode. The same private eligibility check must attest that each task's official
+child-sandbox CPU, memory, and disk request fits the operator's current Daytona
+limits; benchmark resources are never reduced to admit a task. The separate
+verifier, not a guessed `/tests` path, is the primary proof that Pi cannot
+observe grader material. This limits initial coverage and may bias the
+prototype pool; it is not a claim about Pi or about the official evaluation
+set.
 
 The immutable Linux x64 glibc image contract is exact. It must contain:
 
-- `/usr/bin/node`, `/usr/bin/env`, `/usr/bin/git`, `/usr/bin/npm`,
+- Node 24 at `/usr/bin/node`, plus `/usr/bin/env`, `/usr/bin/git`, `/usr/bin/npm`,
   `/usr/bin/tar`, `/usr/bin/sha256sum`, `/usr/bin/mkdir`, `/usr/bin/chown`,
   `/usr/bin/pkill`, and `/usr/bin/pgrep`;
+- a POSIX shell at `/bin/sh`, `/bin/false`, `/dev/null`, `/usr/bin/gzip`,
+  `/usr/bin/python3`, `/etc/ssl/certs/ca-certificates.crt`, and a
+  GNU-compatible `/usr/bin/tar`;
 - Claude Code 2.1.217 at `/usr/local/bin/claude`;
-- the Harbor 0.20.0 and Bun executables at the absolute paths recorded in the
-  private runtime pin, with matching SHA-256 values; and
+- Harbor 0.20.0 at `/usr/local/bin/harbor` and Bun at
+  `/usr/local/bin/bun`; the private runtime pin records both exact paths and
+  matching SHA-256 values;
+- default unprivileged UID/GID `10001`, with writable `/workspace` and no
+  pre-existing `/tmp/df-mvp-controller`; and
 - unused, dedicated UID/GID pairs `65532` and `65533`. They must own no
   pre-existing service and have no unrelated process, because the trusted
   evaluator kills and verifies every process for the relevant build identity
   before importing an artifact.
+
+The combined image is only for the essentials-only MVP. Its default
+`10001:10001` identity runs the optimizer; Daytona overrides the evaluator to
+`root`, which then switches only candidate/champion builds to reserved
+`65532:65532` and `65533:65533`. Binaries and their dependency trees must be
+root-owned and non-writable by all three unprivileged identities. The image
+must contain no credential or project state and must idle until Daytona invokes
+an explicit bounded command.
+
+### Cloud-only preparation of the shared MVP image
+
+If an independently reviewed image already satisfies the contract above, use
+its anonymously verified digest. Otherwise prepare the image only after the
+reviewed source and dependency lock have been pushed, cloud quality checks have
+passed, and the exact image-preparation commit is on `main`:
+
+1. Create the protected GitHub environment `dark-factory-image-publish` and
+   add a required reviewer. Add **no secret and no environment variable** to
+   it; image preparation receives no Daytona, Foundry, Git, model, benchmark,
+   or paid credential.
+2. From `main`, manually dispatch `publish-mvp-runtime-image` in
+   `.github/workflows/publish-mvp-runtime-image.yml` for the exact reviewed
+   `source_commit` and confirmation `PUBLISH-MVP:<source_commit>`. All base,
+   builder, tool, and package values come from reviewed
+   `containers/mvp-runtime-pins.json`; there are no mutable operator-supplied
+   version inputs.
+3. Download artifact `dark-factory-mvp-runtime-<source_commit>` and verify the
+   adjacent checksum for `image-output/mvp-runtime.json`. Review its
+   Linux/amd64 platform, source/workflow identity, Containerfile and pin
+   digests, exact tool versions/paths/hashes, default `10001:10001` identity,
+   free reserved identities, SBOM/provenance markers, offline smoke result, and
+   `ghcr.io/...@sha256:<digest>` immutable reference.
+4. In the GHCR package settings, change that exact package's visibility to
+   **public**. Do not add registry credentials to Daytona as a workaround for
+   a private package.
+5. From a clean unauthenticated cloud context, resolve or pull the immutable
+   reference and verify that its reported manifest digest exactly matches the
+   reviewed receipt. A successful authenticated pull is not this proof.
+6. Store the full anonymously verified
+   `ghcr.io/...@sha256:<digest>` reference as the normal GitHub repository
+   variable `DF_MVP_DAYTONA_IMAGE`. It is not a secret; never store a mutable
+   tag or only the bare digest.
+
+This workflow builds and publishes an image; it does not launch Daytona, run a
+model, fetch private Pi, execute Harbor, inspect Terminal-Bench, or authorize a
+paid iteration. Do not run Docker, install packages, or execute the image on
+the Mac.
 
 ### MVP verification order
 
@@ -162,8 +226,11 @@ The immutable Linux x64 glibc image contract is exact. It must contain:
    formatting there, then run lint, strict typecheck, Vitest/coverage, build,
    schema/privacy tests, and secret scanning. A workflow file is not proof; a
    passing commit-bound receipt is.
-3. Configure only the runtime references and protected secrets listed above.
-4. In cloud, resolve and pin the exact Harbor and Terminal-Bench 2.1 inputs,
+3. Prepare or verify the shared public MVP image through the cloud-only
+   procedure above, then configure only the runtime references and protected
+   secrets listed above.
+4. In the evaluator-private cloud boundary, create the runtime pin and hidden
+   inventory: resolve and pin the exact Harbor and Terminal-Bench 2.1 inputs,
    the Harbor and Bun executable paths/digests, the Pi adapter digest, the
    Linux x64 glibc runtime ABI, and initialize the hidden weighted catalog.
    No task name, prompt, grader, or raw discovery output may be downloaded or
@@ -190,6 +257,10 @@ all items below and explicitly says `resume`:
 
 - make the pushed branch and its GitHub Actions results available for review;
 - place `DAYTONA_API_KEY` in the protected GitHub environment;
+- create reviewer-protected, secret-free `dark-factory-image-publish`, publish
+  the combined MVP image from `main` if no compliant image exists, make the
+  reviewed GHCR package public, anonymously verify its digest, and store its
+  full immutable reference in repository variable `DF_MVP_DAYTONA_IMAGE`;
 - supply the Daytona API URL, exact EU target, persistent volume/subpath, and
   immutable public image reference, including the absolute Harbor 0.20.0 and
   Bun executable paths that will be digest-pinned in the evaluator-private

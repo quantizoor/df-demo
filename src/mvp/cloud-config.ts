@@ -13,6 +13,10 @@ export interface MvpCloudConfiguration {
     readonly volumeSubpath: string;
     readonly apiKeyEnvironmentName: "DAYTONA_API_KEY";
     readonly harborApiSecretSource: string;
+    readonly outerSandboxResources: {
+      readonly optimizer: MvpOuterSandboxResources;
+      readonly evaluator: MvpOuterSandboxResources;
+    };
   };
   readonly foundry: {
     readonly baseUrl: string;
@@ -42,6 +46,12 @@ export interface MvpCloudConfiguration {
   readonly configurationHash: string;
 }
 
+export interface MvpOuterSandboxResources {
+  readonly cpu: 4;
+  readonly memoryGiB: 8;
+  readonly diskGiB: 10;
+}
+
 export interface MvpCloudConfigurationReadiness {
   readonly ready: boolean;
   readonly missing: readonly string[];
@@ -64,6 +74,11 @@ const SHA1 = /^[a-f0-9]{40}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const IMMUTABLE_IMAGE =
   /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const MVP_OUTER_SANDBOX_RESOURCES = {
+  cpu: 4,
+  memoryGiB: 8,
+  diskGiB: 10,
+} as const satisfies MvpOuterSandboxResources;
 
 const REQUIRED = [
   "DF_MVP_CAMPAIGN_ID",
@@ -390,6 +405,10 @@ export function inspectMvpCloudEnvironment(
       volumeSubpath,
       apiKeyEnvironmentName: "DAYTONA_API_KEY",
       harborApiSecretSource,
+      outerSandboxResources: {
+        optimizer: { ...MVP_OUTER_SANDBOX_RESOURCES },
+        evaluator: { ...MVP_OUTER_SANDBOX_RESOURCES },
+      },
     },
     foundry: {
       baseUrl: foundryBaseUrl
