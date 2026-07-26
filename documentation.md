@@ -7188,6 +7188,14 @@ is an explicit prototype limitation and possible coverage bias, not evidence
 about Pi quality. The official evaluation set remains external and unknown to
 the optimization loop.
 
+The evaluator-private bootstrap binds Harbor revision `6` to its returned
+`sha256:` dataset reference, canonicalizes the exact package-task references
+and declared dataset-level files, and requires the same manifest through a
+digest lookup and a post-download refetch. The complete downloaded tree has a
+separate deterministic digest. Revision 6 declares no dataset-level files, so
+Harbor 0.20.0 does not download a `dataset.toml`; the bootstrap neither
+requires nor invents one.
+
 ### Alternatives
 
 - Load optimizer/evaluator runtime modules supplied beside the controller.

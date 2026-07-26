@@ -22,7 +22,7 @@ import platform
 import re
 import stat
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 DATASET_NAME = "terminal-bench/terminal-bench-2-1"
@@ -81,10 +81,9 @@ def assert_cloud_boundary() -> None:
         raise DiscoveryError("Evaluator-private cloud boundary is unavailable")
 
 
-def inventory_tree(root: Path) -> tuple[str, str]:
+def inventory_tree(root: Path) -> str:
     root = root.resolve(strict=True)
     entries: list[dict[str, Any]] = []
-    dataset_manifests: list[Path] = []
     total_bytes = 0
     for directory, directory_names, file_names in os.walk(root, followlinks=False):
         directory_names.sort(key=os.fsencode)
@@ -119,19 +118,125 @@ def inventory_tree(root: Path) -> tuple[str, str]:
                     "sha256": hash_file(resolved),
                 }
             )
-            if name == "dataset.toml":
-                dataset_manifests.append(resolved)
     entries.sort(key=lambda item: os.fsencode(item["path"]))
-    if len(dataset_manifests) != 1:
-        raise DiscoveryError("Exact dataset manifest is unavailable")
-    content_digest = digest_json(
+    return digest_json(
         {
             "schemaVersion": 1,
             "domain": "dark-factory.mvp-private-dataset-content-manifest.v1",
             "entries": entries,
         }
     )
-    return content_digest, hash_file(dataset_manifests[0])
+
+
+def package_task_membership(task_ids: Any) -> list[dict[str, str]]:
+    tasks: list[dict[str, str]] = []
+    seen_names: set[str] = set()
+    seen_revisions: set[str] = set()
+    for task_id in task_ids:
+        name = f"{getattr(task_id, 'org', '')}/{getattr(task_id, 'name', '')}"
+        ref = getattr(task_id, "ref", None)
+        revision_digest = (
+            ref.removeprefix("sha256:") if isinstance(ref, str) else ""
+        )
+        if (
+            not SAFE_TASK_NAME.fullmatch(name)
+            or ref != f"sha256:{revision_digest}"
+            or not SHA256.fullmatch(revision_digest)
+            or name in seen_names
+            or revision_digest in seen_revisions
+        ):
+            raise DiscoveryError("Package dataset task membership is invalid")
+        seen_names.add(name)
+        seen_revisions.add(revision_digest)
+        tasks.append({"name": name, "ref": ref})
+    tasks.sort(key=lambda item: (item["name"], item["ref"]))
+    return tasks
+
+
+def package_file_membership(file_infos: Any) -> list[dict[str, str]]:
+    files: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for file_info in file_infos:
+        path = getattr(file_info, "path", None)
+        content_hash = getattr(file_info, "content_hash", None)
+        parsed = PurePosixPath(path) if isinstance(path, str) else None
+        if (
+            parsed is None
+            or not path
+            or parsed.is_absolute()
+            or parsed.as_posix() != path
+            or any(part in {"", ".", ".."} for part in parsed.parts)
+            or "\\" in path
+            or path in seen_paths
+            or not isinstance(content_hash, str)
+            or not SHA256.fullmatch(content_hash)
+        ):
+            raise DiscoveryError("Package dataset file membership is invalid")
+        seen_paths.add(path)
+        files.append({"path": path, "ref": f"sha256:{content_hash}"})
+    files.sort(key=lambda item: (item["path"], item["ref"]))
+    return files
+
+
+def package_dataset_manifest(metadata: Any, dataset_hash: str) -> dict[str, Any]:
+    if (
+        metadata.name != DATASET_NAME
+        or metadata.version != f"sha256:{dataset_hash}"
+        or metadata.dataset_version_content_hash != dataset_hash
+        or not SHA256.fullmatch(dataset_hash)
+        or len(metadata.task_ids) != EXPECTED_TASK_COUNT
+    ):
+        raise DiscoveryError("Package dataset metadata is invalid")
+
+    tasks = package_task_membership(metadata.task_ids)
+    files = package_file_membership(metadata.files)
+    return {
+        "schemaVersion": 1,
+        "domain": "dark-factory.mvp-private-package-dataset-manifest.v1",
+        "datasetName": metadata.name,
+        "datasetRef": f"sha256:{dataset_hash}",
+        "tasks": tasks,
+        "files": files,
+    }
+
+
+def immutable_package_dataset_reference(dataset_hash: str) -> str:
+    if not SHA256.fullmatch(dataset_hash):
+        raise DiscoveryError("Package dataset digest is invalid")
+    return f"{DATASET_NAME}@sha256:{dataset_hash}"
+
+
+async def download_immutable_package_dataset(
+    client: Any, dataset_hash: str, output_dir: Path
+) -> Any:
+    return await client.download_dataset(
+        immutable_package_dataset_reference(dataset_hash),
+        overwrite=False,
+        output_dir=output_dir,
+        export=False,
+    )
+
+
+def assert_downloaded_task_paths(items: Any, root: Path) -> None:
+    root = root.resolve(strict=True)
+    seen_paths: set[Path] = set()
+    for item in items:
+        task_id = item.id
+        revision_digest = task_id.ref.removeprefix("sha256:")
+        expected = root / task_id.org / task_id.name / revision_digest
+        candidate = Path(item.downloaded_path)
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (FileNotFoundError, RuntimeError) as error:
+            raise DiscoveryError("Downloaded task path is unavailable") from error
+        if (
+            not candidate.is_absolute()
+            or resolved != expected
+            or not resolved.is_dir()
+            or resolved in seen_paths
+        ):
+            raise DiscoveryError("Downloaded task path escaped its exact package location")
+        seen_paths.add(resolved)
 
 
 def resource_profile(environment: Any) -> dict[str, int] | None:
@@ -523,10 +628,21 @@ async def discover(arguments: argparse.Namespace) -> dict[str, Any]:
     )
     if (
         metadata.name != DATASET_NAME
+        or metadata.version != f"sha256:{dataset_hash}"
         or not SHA256.fullmatch(dataset_hash)
         or len(metadata.task_ids) != EXPECTED_TASK_COUNT
+        or any(not isinstance(task_id, PackageTaskId) for task_id in metadata.task_ids)
     ):
         raise DiscoveryError("Terminal-Bench registry revision is not the expected immutable set")
+    registry_manifest = package_dataset_manifest(metadata, dataset_hash)
+    dataset_manifest_sha256 = digest_json(registry_manifest)
+    immutable_reference = immutable_package_dataset_reference(dataset_hash)
+    digest_metadata = await client.get_dataset_metadata(immutable_reference)
+    if (
+        any(not isinstance(task_id, PackageTaskId) for task_id in digest_metadata.task_ids)
+        or package_dataset_manifest(digest_metadata, dataset_hash) != registry_manifest
+    ):
+        raise DiscoveryError("Terminal-Bench registry revision is not digest-addressable")
     dataset_revision = f"terminal-bench-2.1-r6-{dataset_hash[:12]}"
     bootstrap_root = Path(arguments.output).parent
     bootstrap_root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -536,15 +652,22 @@ async def discover(arguments: argparse.Namespace) -> dict[str, Any]:
         prefix=".dataset-download-", dir=bootstrap_root
     ) as temp:
         dataset_root = Path(temp) / "dataset"
-        items = await client.download_dataset(
-            DATASET_REFERENCE,
-            overwrite=False,
-            output_dir=dataset_root,
-            export=False,
+        items = await download_immutable_package_dataset(
+            client,
+            dataset_hash,
+            dataset_root,
         )
         if len(items) != EXPECTED_TASK_COUNT:
             raise DiscoveryError("Downloaded dataset cardinality changed")
-        dataset_content_sha256, dataset_manifest_sha256 = inventory_tree(dataset_root)
+        if any(not isinstance(item.id, PackageTaskId) for item in items):
+            raise DiscoveryError("Downloaded dataset contains a non-package task reference")
+        if package_task_membership(item.id for item in items) != registry_manifest["tasks"]:
+            raise DiscoveryError("Downloaded dataset membership changed")
+        assert_downloaded_task_paths(items, dataset_root)
+        refreshed_metadata = await client.get_dataset_metadata(DATASET_REFERENCE)
+        if package_dataset_manifest(refreshed_metadata, dataset_hash) != registry_manifest:
+            raise DiscoveryError("Package dataset metadata changed during download")
+        dataset_content_sha256 = inventory_tree(dataset_root)
         candidates: list[dict[str, Any]] = []
         seen_revisions: set[str] = set()
         seen_names: set[str] = set()

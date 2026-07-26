@@ -382,6 +382,15 @@ receipt may leave the evaluator/broker trust zone; neither the normalized
 bundle, its object references, nor the private registry volume may be copied
 to the Mac or optimizer.
 
+For the evaluator-private MVP bootstrap, the manifest hash is the canonical,
+domain-separated digest of Harbor's returned dataset name, content-addressed
+dataset reference, sorted exact package-task references, and sorted declared
+dataset-level files. The bootstrap resolves both registry revision `6` and
+the returned `sha256:` reference and requires the manifests to match before
+and after download. It separately hashes the complete downloaded file tree.
+Revision 6 currently declares no dataset-level files, so the bootstrap must
+not require or synthesize a `dataset.toml`.
+
 Live catalog bootstrap therefore still requires operator-reviewed values or
 cloud capabilities for:
 
