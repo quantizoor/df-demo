@@ -914,8 +914,10 @@ jobs:
               test("^sha256:[a-f0-9]{64}$")) and
             .smoke.status == "passed"
           ' image-output/mvp-runtime.json >/dev/null
-          sha256sum image-output/mvp-runtime.json \
-            > image-output/mvp-runtime.json.sha256
+          (
+            cd image-output
+            sha256sum mvp-runtime.json > mvp-runtime.json.sha256
+          )
 
           {
             printf '### Combined MVP runtime image\n\n'
