@@ -427,7 +427,7 @@ describe("durable optimization input factory", () => {
               preparation.experimentNumber === 2
                 ? "d".repeat(64)
                 : "e".repeat(64),
-          }),
+          })),
       });
     const firstContext = context(2, {
       allocationStateHash: "2".repeat(64),
