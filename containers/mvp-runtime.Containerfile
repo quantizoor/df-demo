@@ -83,11 +83,12 @@ RUN set -eux; \
     sha256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["node"]["archiveSha256"])' "${pins}")"; \
     curl --fail --silent --show-error --location "${url}" --output /tmp/node.tar.xz; \
     echo "${sha256}  /tmp/node.tar.xz" | sha256sum --check --strict; \
-    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
+    tar --no-same-owner -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
     rm /tmp/node.tar.xz; \
     ln -sfn /usr/local/bin/node /usr/bin/node; \
     ln -sfn /usr/local/bin/npm /usr/bin/npm; \
     ln -sfn /usr/local/bin/corepack /usr/bin/corepack; \
+    test "$(stat -Lc '%u:%g' /usr/local/bin/node)" = "0:0"; \
     test "$(node --version)" = "v${version}"; \
     test "$(npm --version)" = "${npm_version}"
 
