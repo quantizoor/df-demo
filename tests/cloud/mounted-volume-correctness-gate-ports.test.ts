@@ -26,12 +26,13 @@ import {
   TRUSTED_GIT_SOURCE_BUNDLE_REF,
   type TrustedGitSourceSnapshotReceipt,
 } from "../../src/harness/git-source.js";
-import type {
-  AccountedCorrectnessGateReceipt,
-  CorrectnessGateOperation,
-  CorrectnessGateRecord,
-  TrustedCandidateSourceIndexReceipt,
-  TrustedCloudIntegrityScanReceipt,
+import {
+  trustedCloudIntegrityScanAttestationHash,
+  type AccountedCorrectnessGateReceipt,
+  type CorrectnessGateOperation,
+  type CorrectnessGateRecord,
+  type TrustedCandidateSourceIndexReceipt,
+  type TrustedCloudIntegrityScanReceipt,
 } from "../../src/orchestrator/correctness-gate.js";
 import {
   canonicalHash,
@@ -177,9 +178,14 @@ function sourceAuthority() {
   };
 }
 
-function rejectedScan(): TrustedCloudIntegrityScanReceipt {
-  const draft = {
-    schemaVersion: 1 as const,
+function rejectedScan(
+  passed = false,
+): TrustedCloudIntegrityScanReceipt {
+  const draft: Omit<
+    TrustedCloudIntegrityScanReceipt,
+    "scanId" | "scanAttestationHash" | "signature"
+  > = {
+    schemaVersion: 2,
     sensitivity:
       "release-safe-candidate-integrity-scan" as const,
     experimentId: "001-durable-source-index",
@@ -194,14 +200,22 @@ function rejectedScan(): TrustedCloudIntegrityScanReceipt {
     candidateDocumentHash: "4".repeat(64),
     diffSha256: "5".repeat(64),
     changedFilesHash: "6".repeat(64),
+    candidateBundleSha256: "7".repeat(64),
+    evidenceManifestSha256: "8".repeat(64),
+    evidenceDiffSha256: "5".repeat(64),
+    observedChangedFilesHash: "6".repeat(64),
+    lineCountsHash: "9".repeat(64),
+    fileModesHash: "a".repeat(64),
+    fragmentCatalogHash: "b".repeat(64),
+    workerSha256: "c".repeat(64),
+    executionReceiptHash: "d".repeat(64),
     integrityPolicyHash: "7".repeat(64),
-    passed: false,
-    violationCodes: ["PROTECTED_PATH"] as const,
+    passed,
+    violationCodes: passed ? [] : ["PROTECTED_PATH"],
     containsTaskIdentifiers: false as const,
     scannedAt: "2026-07-26T10:01:00.000Z",
-    scanAttestationHash: "8".repeat(64),
   };
-  return {
+  const identified = {
     ...draft,
     scanId: `scan-${canonicalHash({
       experimentId: draft.experimentId,
@@ -215,8 +229,25 @@ function rejectedScan(): TrustedCloudIntegrityScanReceipt {
       candidateDocumentHash: draft.candidateDocumentHash,
       diffSha256: draft.diffSha256,
       changedFilesHash: draft.changedFilesHash,
+      candidateBundleSha256: draft.candidateBundleSha256,
+      integrityWorkerSha256: draft.workerSha256,
+      fragmentCatalogHash: draft.fragmentCatalogHash,
       integrityPolicyHash: draft.integrityPolicyHash,
     }).slice(0, 48)}`,
+  };
+  const unsigned = {
+    ...identified,
+    scanAttestationHash:
+      trustedCloudIntegrityScanAttestationHash(identified),
+  };
+  return {
+    ...unsigned,
+    signature: createEd25519Signature(
+      unsigned,
+      keyPair.privateKey,
+      TRUSTED_KEY_ID,
+      "2026-07-26T10:01:01.000Z",
+    ),
   };
 }
 
@@ -285,11 +316,7 @@ function rejectedRecord(
 }
 
 function passingScan(): TrustedCloudIntegrityScanReceipt {
-  return {
-    ...rejectedScan(),
-    passed: true,
-    violationCodes: [],
-  };
+  return rejectedScan(true);
 }
 
 function signedBuild(): TrustedCandidateRuntimeBuildReceipt {
@@ -686,6 +713,7 @@ describe("mounted-volume correctness-gate production ports", () => {
     );
     const records = new MountedVolumeCorrectnessGateRecordStore({
       durableState: stateOptions(root),
+      integrityScanVerifier: verifier(),
       candidateBuildVerifier: verifier(),
       gitPublicationVerifier: verifier(),
       gitSourceVerifier: verifier(),
@@ -702,6 +730,7 @@ describe("mounted-volume correctness-gate production ports", () => {
     );
     const records = new MountedVolumeCorrectnessGateRecordStore({
       durableState: stateOptions(root),
+      integrityScanVerifier: verifier(),
       candidateBuildVerifier: verifier(),
       gitPublicationVerifier: verifier(),
       gitSourceVerifier: verifier(),
@@ -742,6 +771,7 @@ describe("mounted-volume correctness-gate production ports", () => {
       );
       const records = new MountedVolumeCorrectnessGateRecordStore({
         durableState: stateOptions(root),
+        integrityScanVerifier: verifier(),
         candidateBuildVerifier: verifier(),
         gitPublicationVerifier: verifier(),
         gitSourceVerifier: verifier(),
@@ -775,6 +805,7 @@ describe("mounted-volume correctness-gate production ports", () => {
             "c".repeat(64),
             "d".repeat(48),
           ),
+          integrityScanVerifier: verifier(),
           candidateBuildVerifier: verifier(),
           gitPublicationVerifier: verifier(),
           gitSourceVerifier: verifier(),
@@ -790,6 +821,7 @@ describe("mounted-volume correctness-gate production ports", () => {
     );
     const records = new MountedVolumeCorrectnessGateRecordStore({
       durableState: stateOptions(root),
+      integrityScanVerifier: verifier(),
       candidateBuildVerifier: verifier(),
       gitPublicationVerifier: verifier(),
       gitSourceVerifier: verifier(),

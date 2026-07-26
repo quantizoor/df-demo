@@ -7,6 +7,7 @@ import {
 import {
   DurableOneUseRequestLedger,
   emptyOneUseLedgerState,
+  hashOneUseClaimRecoveryAuthorization,
   type AtomicOneUseLedgerStore,
   type BrokerFailureCode,
   type OneUseClaim,
@@ -37,6 +38,12 @@ import {
 } from "../../src/evaluator/behavioral-preparation-store.js";
 import type { TrustedPrivateBehavioralPreparation } from "../../src/evaluator/deriver.js";
 import { resultEnvelopeBehavioralSourceCommitmentHash } from "../../src/evaluator/release-lineage.js";
+import {
+  assertPostDestructionReleaseRecoveryTransition,
+  sealPostDestructionReleaseRecoveryRecord,
+  type TrustedPostDestructionReleaseRecoveryRecord,
+  type TrustedPostDestructionReleaseRecoveryStore,
+} from "../../src/evaluator/release-recovery-store.js";
 import { createOnlineErrorBudget } from "../../src/evaluation/statistics.js";
 import {
   createTrustedOnlineErrorBudgetReservation,
@@ -334,6 +341,10 @@ class FakeLedger implements OneUseRequestLedger {
     return Promise.resolve(current);
   }
 
+  recoverInFlight(): Promise<OneUseClaim> {
+    return Promise.resolve(this.claimResult);
+  }
+
   bindDispositionAttestation(): Promise<boolean> {
     return Promise.resolve(true);
   }
@@ -417,6 +428,85 @@ class AtomicMemoryStore implements AtomicOneUseLedgerStore {
     const transaction = operation(this.state);
     this.state = transaction.next;
     return Promise.resolve(transaction.result);
+  }
+}
+
+class MemoryReleaseRecoveryStore
+  implements TrustedPostDestructionReleaseRecoveryStore
+{
+  readonly boundary = "test-only-in-memory" as const;
+
+  constructor(
+    public record: TrustedPostDestructionReleaseRecoveryRecord,
+  ) {}
+
+  create(
+    record: TrustedPostDestructionReleaseRecoveryRecord,
+  ) {
+    if (record.recordHash !== this.record.recordHash) {
+      return Promise.reject(new Error("conflicting create"));
+    }
+    return Promise.resolve({
+      status: "already-created" as const,
+      requestHash: record.requestHash,
+      protocolHash: record.protocolHash,
+      revision: record.revision,
+      recordHash: record.recordHash,
+    });
+  }
+
+  resolve(input: {
+    readonly requestHash: string;
+    readonly protocolHash: string;
+  }) {
+    if (
+      input.requestHash !== this.record.requestHash ||
+      input.protocolHash !== this.record.protocolHash
+    ) {
+      return Promise.resolve({
+        status: "missing" as const,
+        requestHash: input.requestHash,
+        protocolHash: input.protocolHash,
+      });
+    }
+    return Promise.resolve({
+      status: "found" as const,
+      requestHash: input.requestHash,
+      protocolHash: input.protocolHash,
+      record: this.record,
+    });
+  }
+
+  advance(input: {
+    readonly requestHash: string;
+    readonly protocolHash: string;
+    readonly priorRecordHash: string;
+    readonly next: TrustedPostDestructionReleaseRecoveryRecord;
+  }) {
+    if (this.record.recordHash === input.next.recordHash) {
+      return Promise.resolve({
+        status: "already-advanced" as const,
+        requestHash: input.requestHash,
+        protocolHash: input.protocolHash,
+        revision: input.next.revision,
+        recordHash: input.next.recordHash,
+      });
+    }
+    if (this.record.recordHash !== input.priorRecordHash) {
+      return Promise.reject(new Error("stale transition"));
+    }
+    assertPostDestructionReleaseRecoveryTransition(
+      this.record,
+      input.next,
+    );
+    this.record = input.next;
+    return Promise.resolve({
+      status: "advanced" as const,
+      requestHash: input.requestHash,
+      protocolHash: input.protocolHash,
+      revision: input.next.revision,
+      recordHash: input.next.recordHash,
+    });
   }
 }
 
@@ -782,6 +872,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     const broker = new TrustedEvaluationBroker({
       ledger: new DurableOneUseRequestLedger({
         store: new AtomicMemoryStore(),
+        controllerInstanceIdHash: "d".repeat(64),
         claimTokenFactory: () => "claim-001",
       }),
       panels: { allocateAndConsume: () => Promise.resolve(panel()) },
@@ -1099,7 +1190,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     expect(ledger.consumed).toBeUndefined();
   });
 
-  it("burns the request and clears private preparation when finalization fails", async () => {
+  it("burns the request and clears private preparation when finalization is known not committed", async () => {
     const ledger = new FakeLedger();
     const preparationStore =
       new FakeBehavioralPreparationStore();
@@ -1113,7 +1204,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       behavioralPreparationStore: preparationStore,
       behavioralReleaseProducer: {
         finalize: () =>
-          Promise.reject(new Error("atomic transaction failed")),
+          Promise.reject(
+            new TrustedBehavioralReleaseProducerError(
+              "known-not-committed",
+            ),
+          ),
         orphan: () => Promise.reject(new Error("must not orphan")),
       },
       custodian: {
@@ -1138,6 +1233,53 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     });
     expect(preparationStore.state).toBe("consumed");
     expect(ledger.consumed).toBe("release-validation-failed");
+  });
+
+  it("preserves one-use state when finalization fails without an explicit non-commit proof", async () => {
+    const ledger = new FakeLedger();
+    const preparationStore =
+      new FakeBehavioralPreparationStore();
+    const consume = vi.spyOn(preparationStore, "consume");
+    const issue = vi.fn(() =>
+      Promise.reject(new Error("must not issue")),
+    );
+    const broker = new TrustedEvaluationBroker({
+      ledger,
+      panels: {
+        allocateAndConsume: () => Promise.resolve(panel()),
+      },
+      runner: { run: () => Promise.resolve(rawRun()) },
+      deriver: { derive: () => Promise.resolve(aggregate()) },
+      behavioralPreparationStore: preparationStore,
+      behavioralReleaseProducer: {
+        finalize: () =>
+          Promise.reject(
+            new Error("finalization acknowledgement unavailable"),
+          ),
+        orphan: () =>
+          Promise.reject(new Error("must not orphan")),
+      },
+      custodian: {
+        destroy: (run) =>
+          Promise.resolve(destructionReceipt(run.manifest)),
+      },
+      onlineErrorAuthority: onlineErrorAuthority(),
+      issuer: { issue },
+      verifier: { verify: () => Promise.resolve(true) },
+      agent: agent(),
+      retentionPolicy,
+      destructionReceiptVerifier,
+    });
+
+    await expect(
+      broker.evaluate(request()),
+    ).rejects.toMatchObject({
+      code: "release-validation-failed",
+    });
+    expect(issue).not.toHaveBeenCalled();
+    expect(consume).not.toHaveBeenCalled();
+    expect(preparationStore.state).toBe("prepared");
+    expect(ledger.consumed).toBeUndefined();
   });
 
   it("preserves the request when private preparation cleanup is not durably acknowledged", async () => {
@@ -1318,6 +1460,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     const broker = new TrustedEvaluationBroker({
       ledger: new DurableOneUseRequestLedger({
         store: new AtomicMemoryStore(),
+        controllerInstanceIdHash: "d".repeat(64),
         claimTokenFactory: () => "claim-001",
       }),
       panels: { allocateAndConsume: () => Promise.resolve(panel()) },
@@ -1429,6 +1572,145 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     });
     expect(issue).not.toHaveBeenCalled();
     expect(ledger.consumed).toBe("raw-destruction-failed");
+  });
+
+  it("resumes an exact post-destruction checkpoint after provider-attested predecessor termination without rerunning tasks", async () => {
+    const evaluationRequest = request();
+    const requestHash =
+      hashEvaluationRequest(evaluationRequest);
+    const ledgerStore = new AtomicMemoryStore();
+    const predecessor = new DurableOneUseRequestLedger({
+      store: ledgerStore,
+      controllerInstanceIdHash: "3".repeat(64),
+      claimTokenFactory: () => "claim-predecessor",
+    });
+    await predecessor.claim(
+      evaluationRequest.requestId,
+      requestHash,
+    );
+    await predecessor.bindDispositionAttestation(
+      "claim-predecessor",
+      requestHash,
+      panel().dispositionAttestationHash,
+    );
+    const raw = rawRun();
+    const recovery = new MemoryReleaseRecoveryStore(
+      sealPostDestructionReleaseRecoveryRecord({
+        schemaVersion: 1,
+        sensitivity:
+          "trusted-private-post-destruction-release-recovery",
+        requestId: evaluationRequest.requestId,
+        requestHash,
+        protocolHash: evaluationRequest.protocolHash,
+        dispositionAttestationHash:
+          panel().dispositionAttestationHash,
+        retentionPolicyHash: retentionPolicy.policyHash,
+        rawManifest: raw.manifest,
+        destructionReceipt: destructionReceipt(
+          raw.manifest,
+        ),
+        aggregate: aggregate(),
+        behavioral: { status: "none" },
+        status: "open",
+        envelope: null,
+        envelopeHash: null,
+        failureCode: null,
+        revision: 1,
+      }),
+    );
+    const successor = new DurableOneUseRequestLedger({
+      store: ledgerStore,
+      controllerInstanceIdHash: "4".repeat(64),
+      claimTokenFactory: () => "claim-successor",
+      recoveryAuthority: {
+        boundary:
+          "trusted-cloud-provider-termination-authority",
+        authorize: (observation) => {
+          const unsigned = {
+            schemaVersion: 1 as const,
+            domain:
+              "dark-factory.one-use-claim-recovery-authorization.v1" as const,
+            authorizationId: "provider-stop-001",
+            requestId: observation.requestId,
+            requestHash: observation.requestHash,
+            recoveryRecordHash:
+              observation.recoveryRecordHash,
+            dispositionAttestationHash:
+              observation.dispositionAttestationHash,
+            priorClaimTokenHash:
+              observation.priorClaimTokenHash,
+            priorOwnerInstanceIdHash:
+              observation.priorOwnerInstanceIdHash,
+            priorClaimEpoch: observation.priorClaimEpoch,
+            successorOwnerInstanceIdHash:
+              observation.successorOwnerInstanceIdHash,
+            observationHash: observation.observationHash,
+            providerTerminationAttestationHash:
+              "5".repeat(64),
+            authorityAttestationHash: "6".repeat(64),
+            authorizedAt: "2026-07-01T00:10:30.000Z",
+            signerKeyId: "provider-termination-key",
+          };
+          return Promise.resolve({
+            ...unsigned,
+            authorizationHash:
+              hashOneUseClaimRecoveryAuthorization(
+                unsigned,
+              ),
+          });
+        },
+      },
+    });
+    const { privateKey, publicKey } =
+      generateKeyPairSync("ed25519");
+    const allocate = vi.fn(() =>
+      Promise.reject(new Error("must not allocate")),
+    );
+    const run = vi.fn(() =>
+      Promise.reject(new Error("must not run")),
+    );
+    const derive = vi.fn(() =>
+      Promise.reject(new Error("must not derive")),
+    );
+    const destroy = vi.fn(() =>
+      Promise.reject(new Error("must not destroy")),
+    );
+    const broker = new TrustedEvaluationBroker({
+      ledger: successor,
+      panels: { allocateAndConsume: allocate },
+      runner: { run },
+      deriver: { derive },
+      releaseRecoveryStore: recovery,
+      custodian: { destroy },
+      onlineErrorAuthority: onlineErrorAuthority(),
+      issuer: new Ed25519ResultEnvelopeIssuer({
+        privateKey,
+        keyId: "evaluator-key-1",
+        now: () =>
+          new Date("2026-07-01T00:11:00.000Z"),
+      }),
+      verifier: new Ed25519ResultEnvelopeVerifier({
+        getVerificationKey: () =>
+          Promise.resolve(publicKey),
+      }),
+      agent: agent(),
+      retentionPolicy,
+      destructionReceiptVerifier,
+    });
+
+    await expect(
+      broker.evaluate(evaluationRequest),
+    ).resolves.toMatchObject({
+      oneUseRequest: {
+        requestId: evaluationRequest.requestId,
+        requestHash,
+      },
+    });
+    expect(allocate).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    expect(derive).not.toHaveBeenCalled();
+    expect(destroy).not.toHaveBeenCalled();
+    expect(recovery.record.status).toBe("completed");
   });
 
   it("rejects replay mutation before allocating any hidden panel", async () => {

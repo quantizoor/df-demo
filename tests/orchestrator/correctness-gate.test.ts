@@ -1,7 +1,9 @@
+import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import type { ExperimentIdentity } from "../../src/domain/models.js";
+import { createEd25519Signature } from "../../src/evidence/signatures.js";
 import type {
   TrustedCandidateRuntimeBuildReceipt,
 } from "../../src/harness/candidate-build-runner.js";
@@ -17,6 +19,7 @@ import type {
 } from "../../src/optimizer/cloud-session.js";
 import {
   ProductionCorrectnessGateRunner,
+  trustedCloudIntegrityScanAttestationHash,
   type AccountedCorrectnessGateReceipt,
   type CorrectnessGateOperation,
   type CorrectnessGateRecord,
@@ -49,6 +52,8 @@ const DIFF_SHA256 = "6".repeat(64);
 const BUNDLE_SHA256 = "7".repeat(64);
 const STATE_SHA256 = "8".repeat(64);
 const INTEGRITY_POLICY_HASH = "9".repeat(64);
+const INTEGRITY_WORKER_SHA256 = "0".repeat(64);
+const FRAGMENT_CATALOG_HASH = "1".repeat(64);
 const BUILD_POLICY_HASH = "a".repeat(64);
 const REGISTRATION_ID = "b".repeat(64);
 const ORIGIN_REPOSITORY_HASH = "c".repeat(64);
@@ -56,6 +61,8 @@ const PROTOCOL_HASH = "d".repeat(64);
 const IMAGE_DIGEST = `sha256:${"e".repeat(64)}`;
 const IMAGE_REFERENCE = `ghcr.io/parallaxai/gate@${IMAGE_DIGEST}`;
 const EXPERIMENT_ID = "001-improve-recovery";
+const integrityKeys = generateKeyPairSync("ed25519");
+const INTEGRITY_KEY_ID = "integrity-scan-key";
 
 const experiment: ExperimentIdentity = {
   number: 1,
@@ -259,8 +266,11 @@ function scanReceipt(
   const hypothesisDocumentHash = canonicalHash(hypothesis);
   const candidateDocumentHash = canonicalHash(candidate);
   const changedFilesHash = canonicalHash(candidate.changedFiles);
-  return {
-    schemaVersion: 1,
+  const attested: Omit<
+    TrustedCloudIntegrityScanReceipt,
+    "scanAttestationHash" | "signature"
+  > = {
+    schemaVersion: 2,
     sensitivity: "release-safe-candidate-integrity-scan",
     scanId: `scan-${canonicalHash({
       experimentId: EXPERIMENT_ID,
@@ -274,6 +284,9 @@ function scanReceipt(
       candidateDocumentHash,
       diffSha256: proposal.candidateDiff.sha256,
       changedFilesHash,
+      candidateBundleSha256: proposal.candidateBundle.sha256,
+      integrityWorkerSha256: INTEGRITY_WORKER_SHA256,
+      fragmentCatalogHash: FRAGMENT_CATALOG_HASH,
       integrityPolicyHash: INTEGRITY_POLICY_HASH,
     }).slice(0, 48)}`,
     experimentId: EXPERIMENT_ID,
@@ -288,12 +301,34 @@ function scanReceipt(
     candidateDocumentHash,
     diffSha256: proposal.candidateDiff.sha256,
     changedFilesHash,
+    candidateBundleSha256: proposal.candidateBundle.sha256,
+    evidenceManifestSha256: "2".repeat(64),
+    evidenceDiffSha256: proposal.candidateDiff.sha256,
+    observedChangedFilesHash: changedFilesHash,
+    lineCountsHash: "3".repeat(64),
+    fileModesHash: "4".repeat(64),
+    fragmentCatalogHash: FRAGMENT_CATALOG_HASH,
+    workerSha256: INTEGRITY_WORKER_SHA256,
+    executionReceiptHash: "5".repeat(64),
     integrityPolicyHash: INTEGRITY_POLICY_HASH,
     passed,
     violationCodes: passed ? [] : ["PROTECTED_PATH"],
     containsTaskIdentifiers: false,
     scannedAt: "2026-07-26T10:01:00.000Z",
-    scanAttestationHash: "6".repeat(64),
+  };
+  const unsigned = {
+    ...attested,
+    scanAttestationHash:
+      trustedCloudIntegrityScanAttestationHash(attested),
+  };
+  return {
+    ...unsigned,
+    signature: createEd25519Signature(
+      unsigned,
+      integrityKeys.privateKey,
+      INTEGRITY_KEY_ID,
+      "2026-07-26T10:01:01.000Z",
+    ),
   };
 }
 
@@ -576,7 +611,13 @@ function gateHarness(input: {
         publisher,
         snapshotter,
         sourceIndex,
+        integrityReceiptVerifier: {
+          trustedKeyId: INTEGRITY_KEY_ID,
+          publicKey: integrityKeys.publicKey,
+        },
         integrityPolicyHash: INTEGRITY_POLICY_HASH,
+        integrityWorkerSha256: INTEGRITY_WORKER_SHA256,
+        fragmentCatalogHash: FRAGMENT_CATALOG_HASH,
         buildPolicyHash: BUILD_POLICY_HASH,
       }),
       records,
@@ -647,7 +688,13 @@ function gateHarness(input: {
       publisher,
       snapshotter,
       sourceIndex,
+      integrityReceiptVerifier: {
+        trustedKeyId: INTEGRITY_KEY_ID,
+        publicKey: integrityKeys.publicKey,
+      },
       integrityPolicyHash: INTEGRITY_POLICY_HASH,
+      integrityWorkerSha256: INTEGRITY_WORKER_SHA256,
+      fragmentCatalogHash: FRAGMENT_CATALOG_HASH,
       buildPolicyHash: BUILD_POLICY_HASH,
     }),
     records,
@@ -736,6 +783,19 @@ describe("production correctness gate", () => {
           ...receipt,
           taskId: "hidden-task-id",
         }) as TrustedCloudIntegrityScanReceipt,
+    });
+    await expect(run(harness)).rejects.toMatchObject({
+      code: "INTEGRITY_SCAN_FAILED",
+    });
+    expect(harness.builder.build).not.toHaveBeenCalled();
+  });
+
+  it("rejects a content-tampered scan signed for different bytes", async () => {
+    const harness = gateHarness({
+      scanMutation: (receipt) => ({
+        ...receipt,
+        evidenceManifestSha256: "0".repeat(64),
+      }),
     });
     await expect(run(harness)).rejects.toMatchObject({
       code: "INTEGRITY_SCAN_FAILED",

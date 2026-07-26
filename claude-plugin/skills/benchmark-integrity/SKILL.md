@@ -20,7 +20,9 @@ Require one general causal mechanism, a small mutation, predictions frozen befor
 selection, cloud checks, a clean integrity scan, fresh matched validation, and explicit
 rollback conditions.
 
-If protected information appears, stop editing, do not quote or summarize it, call no further
-evidence tool except `df_report_contamination`, report only its fixed source/detection
-categories, and choose `stopped-without-using-content`. Never attempt to repair or delete
-trusted evaluator data yourself.
+If protected information appears, stop editing and do not quote, summarize, encode, or use it.
+In the essentials-only MVP there is no evidence or contamination-reporting tool: make no
+task-derived change and let the trusted wrapper reject an empty or invalid candidate. In the
+full protocol, call no further evidence tool except `df_report_contamination`, report only
+its fixed source/detection categories, and choose `stopped-without-using-content`. Never
+attempt to repair or delete trusted evaluator data yourself.

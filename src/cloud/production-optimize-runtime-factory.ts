@@ -62,6 +62,7 @@ import {
   type ProductionOptimizationCompletionMaterialOptions,
 } from "../orchestrator/production-completion-material.js";
 import type {
+  ProductionOptimizeLifecycleRegistrar,
   ProductionOptimizeRuntimeAssembly,
   ProductionOptimizeRuntimeFactoryInput,
   TrustedProductionOptimizeCloseable,
@@ -118,6 +119,10 @@ import {
   MountedVolumeCloudOptimizerSessionRecordStore,
   type MountedVolumeDurableStateOptions,
 } from "./mounted-volume-state.js";
+import {
+  ProductionMountedVolumeTrustedEvaluator,
+  type ProductionTrustedEvaluationDependencies,
+} from "./production-trusted-evaluator.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_STORE_ID =
@@ -133,6 +138,7 @@ const FACTORY_OPTION_KEYS = [
   "journal",
   "optimizer",
   "correctness",
+  "evaluator",
   "broker",
   "operationalBindings",
   "now",
@@ -169,7 +175,22 @@ const GROUP_KEYS = {
     "publisher",
     "snapshotter",
     "integrityPolicyHash",
+    "integrityWorkerSha256",
+    "fragmentCatalogHash",
     "buildPolicyHash",
+  ],
+  evaluator: [
+    "runner",
+    "retentionPolicy",
+    "destructionReceiptVerifier",
+    "agent",
+    "stores",
+    "raw",
+    "policyProvider",
+    "hiddenOutcomeSigning",
+    "resultEnvelopeSigning",
+    "behavioralReleaseSigning",
+    "initialPrivacyState",
   ],
   broker: [
     "configuration",
@@ -286,6 +307,8 @@ export interface ProductionRuntimeCorrectnessDependencies {
   readonly publisher: ProductionCorrectnessGateOptions["publisher"];
   readonly snapshotter: ProductionCorrectnessGateOptions["snapshotter"];
   readonly integrityPolicyHash: string;
+  readonly integrityWorkerSha256: string;
+  readonly fragmentCatalogHash: string;
   readonly buildPolicyHash: string;
 }
 
@@ -298,7 +321,7 @@ export interface ProductionRuntimeBrokerDependencies {
   >;
   readonly release: Omit<
     ArtifactBackedEvaluationReleaseBundleServiceOptions,
-    "now"
+    "service" | "now"
   >;
   readonly signatureVerifier:
     TrustedAdaptiveReleaseSignatureVerifier;
@@ -329,6 +352,7 @@ export interface ProductionTrustedCloudRuntimeFactoryOptions {
   readonly optimizer: ProductionRuntimeOptimizerDependencies;
   readonly correctness:
     ProductionRuntimeCorrectnessDependencies;
+  readonly evaluator: ProductionTrustedEvaluationDependencies;
   readonly broker: ProductionRuntimeBrokerDependencies;
   readonly operationalBindings:
     ProductionRuntimeOperationalBindings;
@@ -896,8 +920,19 @@ function captureSourceVerifier(
 function captureCorrectness(
   value: ProductionRuntimeCorrectnessDependencies,
 ): ProductionRuntimeCorrectnessDependencies {
+  assertHash(value.integrityPolicyHash);
+  assertHash(value.integrityWorkerSha256);
+  assertHash(value.fragmentCatalogHash);
+  assertHash(value.buildPolicyHash);
   return Object.freeze({
     recordStore: Object.freeze({
+      integrityScanVerifier: Object.freeze({
+        trustedKeyId:
+          value.recordStore.integrityScanVerifier.trustedKeyId,
+        publicKey: capturePublicKey(
+          value.recordStore.integrityScanVerifier.publicKey,
+        ),
+      }),
       candidateBuildVerifier: captureBuildVerifier(
         value.recordStore.candidateBuildVerifier,
       ),
@@ -944,6 +979,8 @@ function captureCorrectness(
       ),
     }),
     integrityPolicyHash: value.integrityPolicyHash,
+    integrityWorkerSha256: value.integrityWorkerSha256,
+    fragmentCatalogHash: value.fragmentCatalogHash,
     buildPolicyHash: value.buildPolicyHash,
   });
 }
@@ -952,6 +989,23 @@ function captureBroker(
   value: ProductionRuntimeBrokerDependencies,
 ): ProductionRuntimeBrokerDependencies {
   const release = value.release;
+  assertExactKeys(release, [
+    "source",
+    "reader",
+    "signatureVerifier",
+    ...(release.maximumArtifactBytes === undefined
+      ? []
+      : ["maximumArtifactBytes"] as const),
+    ...(release.maximumTotalBytes === undefined
+      ? []
+      : ["maximumTotalBytes"] as const),
+    ...(release.maximumReplayRecords === undefined
+      ? []
+      : ["maximumReplayRecords"] as const),
+    ...(release.maximumClockSkewMs === undefined
+      ? []
+      : ["maximumClockSkewMs"] as const),
+  ]);
   return Object.freeze({
     configuration: Object.freeze({
       source: Object.freeze({
@@ -986,13 +1040,6 @@ function captureBroker(
         value.harness.originRepositoryHash,
     }),
     release: Object.freeze({
-      service: Object.freeze({
-        boundary: release.service.boundary,
-        evaluate: captureMethod(
-          release.service,
-          release.service.evaluate,
-        ),
-      }),
       source: Object.freeze({
         boundary: release.source.boundary,
         locate: captureMethod(
@@ -1061,6 +1108,7 @@ interface CapturedFactoryOptions {
   readonly optimizer: ProductionRuntimeOptimizerDependencies;
   readonly correctness:
     ProductionRuntimeCorrectnessDependencies;
+  readonly evaluator: ProductionMountedVolumeTrustedEvaluator;
   readonly broker: ProductionRuntimeBrokerDependencies;
   readonly operationalBindings:
     ProductionRuntimeOperationalBindings;
@@ -1120,6 +1168,9 @@ function captureOptions(
       journal: captureJournal(options.journal),
       optimizer: captureOptimizer(options.optimizer),
       correctness: captureCorrectness(options.correctness),
+      evaluator: new ProductionMountedVolumeTrustedEvaluator(
+        options.evaluator,
+      ),
       broker: captureBroker(options.broker),
       operationalBindings: Object.freeze(
         operationalBindings,
@@ -1459,6 +1510,31 @@ class ConstructionLifecycle {
           )
         : async (): Promise<void> => {};
     this.add(lifecycleId, close);
+  }
+
+  public registrar(): ProductionOptimizeLifecycleRegistrar {
+    return Object.freeze({
+      boundary:
+        "production-optimize-composition-owner" as const,
+      register: (
+        closeable: TrustedProductionOptimizeCloseable,
+      ): void => {
+        if (
+          closeable === null ||
+          typeof closeable !== "object" ||
+          closeable.boundary !==
+            "trusted-cloud-production-optimize-lifecycle" ||
+          typeof closeable.lifecycleId !== "string" ||
+          typeof closeable.close !== "function"
+        ) {
+          fail();
+        }
+        this.add(
+          closeable.lifecycleId,
+          captureMethod(closeable, closeable.close),
+        );
+      },
+    });
   }
 
   public async cleanup(): Promise<void> {
@@ -2001,8 +2077,14 @@ export class ProductionTrustedCloudRuntimeFactory
         publisher: options.correctness.publisher,
         snapshotter: options.correctness.snapshotter,
         sourceIndex,
+        integrityReceiptVerifier:
+          options.correctness.recordStore.integrityScanVerifier,
         integrityPolicyHash:
           options.correctness.integrityPolicyHash,
+        integrityWorkerSha256:
+          options.correctness.integrityWorkerSha256,
+        fragmentCatalogHash:
+          options.correctness.fragmentCatalogHash,
         buildPolicyHash: options.correctness.buildPolicyHash,
       });
 
@@ -2039,9 +2121,20 @@ export class ProductionTrustedCloudRuntimeFactory
         new LeaseStoreTrustedRepairDiscoveryResolver(
           brokerLeases,
         );
+      const trustedEvaluator =
+        await options.evaluator.create({
+          durableState: options.durableState,
+          lifecycle: lifecycle.registrar(),
+          releaseSource: options.broker.release.source,
+          releaseReader: options.broker.release.reader,
+          now: options.now,
+        });
       const evaluator =
         new ArtifactBackedEvaluationReleaseBundleService({
           ...options.broker.release,
+          service: trustedEvaluator.service,
+          source: trustedEvaluator.releaseSource,
+          reader: trustedEvaluator.releaseReader,
           now: options.now,
         });
       const broker = new ProductionBlindBroker({

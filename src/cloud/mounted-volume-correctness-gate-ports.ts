@@ -19,16 +19,18 @@ import {
   INTEGRITY_VIOLATION_CODES,
   type IntegrityViolationCode,
 } from "../integrity/candidate-scanner.js";
-import type {
-  AccountedCorrectnessGateReceipt,
-  CorrectnessGateOperation,
-  CorrectnessGateOperationAccounting,
-  CorrectnessGateRecord,
-  CorrectnessGateRecordStore,
-  TrustedCandidateBuildRejectionReceipt,
-  TrustedCandidateSourceIndexPort,
-  TrustedCandidateSourceIndexReceipt,
-  TrustedCloudIntegrityScanReceipt,
+import {
+  trustedCloudIntegrityScanAttestationHash,
+  type AccountedCorrectnessGateReceipt,
+  type CorrectnessGateOperation,
+  type CorrectnessGateOperationAccounting,
+  type CorrectnessGateRecord,
+  type CorrectnessGateRecordStore,
+  type TrustedCandidateBuildRejectionReceipt,
+  type TrustedCandidateSourceIndexPort,
+  type TrustedCandidateSourceIndexReceipt,
+  type TrustedCloudIntegrityScanReceipt,
+  type TrustedCloudIntegrityScanReceiptVerifier,
 } from "../orchestrator/correctness-gate.js";
 import {
   canonicalHash,
@@ -614,6 +616,9 @@ function expectedScanId(
     candidateDocumentHash: receipt.candidateDocumentHash,
     diffSha256: receipt.diffSha256,
     changedFilesHash: receipt.changedFilesHash,
+    candidateBundleSha256: receipt.candidateBundleSha256,
+    integrityWorkerSha256: receipt.workerSha256,
+    fragmentCatalogHash: receipt.fragmentCatalogHash,
     integrityPolicyHash: receipt.integrityPolicyHash,
   }).slice(0, 48)}`;
 }
@@ -621,6 +626,7 @@ function expectedScanId(
 function assertScanReceipt(
   value: unknown,
   experiment: ExperimentIdentity,
+  verifier: TrustedCloudIntegrityScanReceiptVerifier,
 ): asserts value is TrustedCloudIntegrityScanReceipt {
   assertExactKeys(
     value,
@@ -640,12 +646,22 @@ function assertScanReceipt(
       "candidateDocumentHash",
       "diffSha256",
       "changedFilesHash",
+      "candidateBundleSha256",
+      "evidenceManifestSha256",
+      "evidenceDiffSha256",
+      "observedChangedFilesHash",
+      "lineCountsHash",
+      "fileModesHash",
+      "fragmentCatalogHash",
+      "workerSha256",
+      "executionReceiptHash",
       "integrityPolicyHash",
       "passed",
       "violationCodes",
       "containsTaskIdentifiers",
       "scannedAt",
       "scanAttestationHash",
+      "signature",
     ],
     "Stored integrity scan receipt",
   );
@@ -654,7 +670,7 @@ function assertScanReceipt(
     INTEGRITY_VIOLATION_CODES,
   );
   if (
-    receipt.schemaVersion !== 1 ||
+    receipt.schemaVersion !== 2 ||
     receipt.sensitivity !==
       "release-safe-candidate-integrity-scan" ||
     receipt.scanId !== expectedScanId(receipt) ||
@@ -674,6 +690,15 @@ function assertScanReceipt(
     !SHA256.test(receipt.candidateDocumentHash) ||
     !SHA256.test(receipt.diffSha256) ||
     !SHA256.test(receipt.changedFilesHash) ||
+    !SHA256.test(receipt.candidateBundleSha256) ||
+    !SHA256.test(receipt.evidenceManifestSha256) ||
+    !SHA256.test(receipt.evidenceDiffSha256) ||
+    !SHA256.test(receipt.observedChangedFilesHash) ||
+    !SHA256.test(receipt.lineCountsHash) ||
+    !SHA256.test(receipt.fileModesHash) ||
+    !SHA256.test(receipt.fragmentCatalogHash) ||
+    !SHA256.test(receipt.workerSha256) ||
+    !SHA256.test(receipt.executionReceiptHash) ||
     !SHA256.test(receipt.integrityPolicyHash) ||
     typeof receipt.passed !== "boolean" ||
     !Array.isArray(receipt.violationCodes) ||
@@ -684,12 +709,22 @@ function assertScanReceipt(
       return previous !== undefined && previous.localeCompare(code) >= 0;
     }) ||
     receipt.passed !== (receipt.violationCodes.length === 0) ||
+    (receipt.passed &&
+      (receipt.evidenceDiffSha256 !== receipt.diffSha256 ||
+        receipt.observedChangedFilesHash !==
+          receipt.changedFilesHash)) ||
     receipt.containsTaskIdentifiers !== false ||
     !isCanonicalTimestamp(receipt.scannedAt) ||
-    !SHA256.test(receipt.scanAttestationHash)
+    receipt.scanAttestationHash !==
+      trustedCloudIntegrityScanAttestationHash(receipt)
   ) {
     fail("Stored integrity scan payload is malformed.");
   }
+  assertSignedDocument(
+    receipt as unknown as Readonly<Record<string, unknown>>,
+    verifier,
+    receipt.scannedAt,
+  );
 }
 
 function assertBuildRejection(
@@ -889,6 +924,7 @@ function assertSourceIndexReceipt(
 }
 
 interface CorrectnessGateReceiptVerifiers {
+  readonly integrityScan: TrustedCloudIntegrityScanReceiptVerifier;
   readonly candidateBuild: TrustedCandidateBuildReceiptVerifier;
   readonly gitPublication: TrustedGitPublicationReceiptVerifier;
   readonly gitSource: TrustedGitSourceReceiptVerifier;
@@ -965,7 +1001,11 @@ function assertCorrectnessGateRecord(
     record.integrityScan,
     "integrity-scan",
     (receipt): asserts receipt is TrustedCloudIntegrityScanReceipt =>
-      assertScanReceipt(receipt, record.experiment),
+      assertScanReceipt(
+        receipt,
+        record.experiment,
+        verifiers.integrityScan,
+      ),
   );
   const scan = record.integrityScan.receipt;
   const operationAccounting: CorrectnessGateOperationAccounting[] = [
@@ -1206,6 +1246,7 @@ function assertCorrectnessGateRecordState(
 
 export interface MountedVolumeCorrectnessGateRecordStoreOptions {
   readonly durableState: MountedVolumeDurableStateOptions;
+  readonly integrityScanVerifier: TrustedCloudIntegrityScanReceiptVerifier;
   readonly candidateBuildVerifier: TrustedCandidateBuildReceiptVerifier;
   readonly gitPublicationVerifier: TrustedGitPublicationReceiptVerifier;
   readonly gitSourceVerifier: TrustedGitSourceReceiptVerifier;
@@ -1231,6 +1272,9 @@ export class MountedVolumeCorrectnessGateRecordStore
       "dark-factory.correctness-gate-record-store-scope.v1",
     );
     const verifiers: CorrectnessGateReceiptVerifiers = {
+      integrityScan: captureVerifier(
+        options.integrityScanVerifier,
+      ),
       candidateBuild: captureVerifier(
         options.candidateBuildVerifier,
       ),

@@ -24,7 +24,11 @@ legitimately requires an allowed harness change.
 
 Use strict, erasable TypeScript. Avoid `any`, dynamic imports, large literals, lookup tables,
 environment fingerprinting, and uncontrolled network access. Never run Pi or its tests on the
-Mac. Submit focused check requests through Dark Factory; it runs Pi checks and builds in a
-cloud sandbox. Stage only a small diff whose changed files and expected effects match the
-frozen hypothesis.
+Mac.
 
+In the essentials-only MVP, do not call commands, tests, package managers, cloud-check tools,
+or unavailable `df_*` tools. Use only the permitted read/edit tools, make one small diff
+matching the frozen hypothesis, and return exactly the three-field JSON required by the
+optimizer prompt. The trusted wrapper validates, commits, publishes, builds, and evaluates
+the change after Claude exits. In the full protocol, submit focused check requests through
+Dark Factory and stage only a small matching diff.

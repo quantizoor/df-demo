@@ -7,7 +7,9 @@ description: Retrieve the minimum privacy-safe aggregate Dark Factory evidence n
 
 Prefer the narrowest permitted tool:
 
-1. `df_get_campaign_context` for lineage, champion, budget, and allowed next action.
+1. `df_get_campaign_context` for lineage, champion, non-capacity budget bands, and allowed
+   next action. Exact validation-panel, holdout, shadow-slice, and other capacity state is
+   operator-only and must not appear in this response.
 2. `df_get_latest_diagnostic_brief` once for the released cross-task cards.
 3. `df_get_current_result` once, and only in the post-evaluation analysis phase.
 4. `df_get_component_history` only for the Pi component you are considering.

@@ -108,7 +108,10 @@ function agent() {
   });
 }
 
-function setup(taskResolver?: TrustedHiddenTaskResolver) {
+function setup(
+  taskResolver?: TrustedHiddenTaskResolver,
+  modelApiAllowedHosts: readonly string[] = ["api.openai.com"],
+) {
   const published = new Map<string, Readonly<Record<string, unknown>>>();
   const publisher: TrustedCanonicalJsonPublisher = {
     publish: (input) => {
@@ -159,13 +162,93 @@ function setup(taskResolver?: TrustedHiddenTaskResolver) {
       remoteUploadRoot: "/workspace/evaluator/",
       remoteOutputRoot: "/trusted/results/",
       environmentType: "daytona",
-      modelApiAllowedHosts: ["api.openai.com"],
+      modelApiAllowedHosts,
       piEntrypoint: "packages/coding-agent/dist/pi",
     }),
   };
 }
 
 describe("trusted Harbor job builder", () => {
+  it("derives the sole evaluated-model host from the Foundry resource", async () => {
+    const hiddenPanel = panel("repair");
+    const schedule = createTrustedMatchedArmSchedule(
+      hiddenPanel,
+      candidate,
+      champion,
+    );
+    const foundryAgent = createPiHarborAgentSpec({
+      adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
+      adapterSha256: pin.piHarborAdapterSha256,
+      provider: "microsoft-foundry",
+      modelId: "df-opus48-eval",
+      modelFamily: "claude-opus-4-8",
+      foundryResourceName: "df-eu-prod",
+      thinkingLevel: "high",
+      enabledTools: ["write", "read", "bash", "edit"],
+      credentialEnvironmentNames: ["ANTHROPIC_FOUNDRY_API_KEY"],
+      timeoutMs: 3_600_000,
+    });
+    const { builder, published } = setup(
+      undefined,
+      ["df-eu-prod.services.ai.azure.com"],
+    );
+    await builder.build({
+      sensitivity: "hidden-harbor-build-request",
+      pin,
+      panel: hiddenPanel,
+      schedule,
+      agent: foundryAgent,
+      isolationPolicy: HARBOR_AGENT_ISOLATION_POLICY,
+    });
+    const config = [...published.values()][0]!;
+    const configuredAgent = (
+      config["agents"] as Array<Record<string, unknown>>
+    )[0]!;
+    expect(configuredAgent["extra_allowed_hosts"]).toEqual([
+      "df-eu-prod.services.ai.azure.com",
+    ]);
+    expect(configuredAgent["kwargs"]).toMatchObject({
+      foundry_resource_name: "df-eu-prod",
+      model_family: "claude-opus-4-8",
+      credential_environment_names: [
+        "ANTHROPIC_FOUNDRY_API_KEY",
+      ],
+    });
+  });
+
+  it("rejects a Foundry job with an unrelated model host", async () => {
+    const hiddenPanel = panel("repair");
+    const schedule = createTrustedMatchedArmSchedule(
+      hiddenPanel,
+      candidate,
+      champion,
+    );
+    const { builder } = setup(undefined, ["api.anthropic.com"]);
+    await expect(
+      builder.build({
+        sensitivity: "hidden-harbor-build-request",
+        pin,
+        panel: hiddenPanel,
+        schedule,
+        agent: createPiHarborAgentSpec({
+          adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
+          adapterSha256: pin.piHarborAdapterSha256,
+          provider: "microsoft-foundry",
+          modelId: "df-opus48-eval",
+          modelFamily: "claude-opus-4-8",
+          foundryResourceName: "df-eu-prod",
+          thinkingLevel: "high",
+          enabledTools: ["read", "write", "bash"],
+          credentialEnvironmentNames: [
+            "ANTHROPIC_FOUNDRY_API_KEY",
+          ],
+          timeoutMs: 3_600_000,
+        }),
+        isolationPolicy: HARBOR_AGENT_ISOLATION_POLICY,
+      }),
+    ).rejects.toThrow("exact derived API host");
+  });
+
   it("builds two serial, retry-free AB/BA jobs without returning hidden task names", async () => {
     const hiddenPanel = panel("validation");
     const schedule = createTrustedMatchedArmSchedule(

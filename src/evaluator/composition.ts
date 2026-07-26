@@ -201,6 +201,8 @@ export async function createTrustedEvaluationService(
         "trusted-cloud" ||
       typeof options.stores.ledger.claim !== "function" ||
       typeof options.stores.ledger.inspect !== "function" ||
+      typeof options.stores.ledger.recoverInFlight !==
+        "function" ||
       typeof options.stores.ledger.bindDispositionAttestation !==
         "function" ||
       typeof options.stores.ledger.complete !== "function" ||

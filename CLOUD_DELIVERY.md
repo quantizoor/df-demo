@@ -5,6 +5,217 @@ controller-launch path. The files in this guide are authored on the Mac, but
 every executable step runs on a GitHub-hosted runner or inside a pinned Daytona
 sandbox.
 
+## Essentials-only MVP fast path
+
+This section is the delivery authority for the first runnable prototype and
+implements [PLAN §0](./PLAN.md#0-essentials-only-mvp-authority). The larger
+production delivery design below is retained for future reference. KMS/HSM
+signing, crash-perfect recovery, twelve-task/shadow programs, extra providers,
+custom image publication, dashboards/PR automation, long-campaign statistics,
+the full 89-task run, and exhaustive supply-chain hardening are deferred and
+must not block this path.
+
+Nothing is executed on the Mac. Source is pushed to the MVP branch, free
+quality checks run on a GitHub-hosted runner, and all Claude Code, Pi, Harbor,
+grader, and benchmark execution happens in isolated Daytona sandboxes on an EU
+target.
+
+### MVP cloud roles
+
+The GitHub-hosted job is the trusted launcher and receipt collector. It must
+not receive the Foundry API key or private-Pi credential. Its sole plaintext
+bootstrap secret is `DAYTONA_API_KEY`.
+
+The launcher creates disjoint Daytona roles:
+
+- the optimizer sandbox receives the Pi source bundle, task-free optimizer
+  input, the existing Opus 5 deployment alias, and a role-scoped reference to
+  the Foundry key;
+- the evaluator/controller sandbox receives the hidden catalog, Harbor,
+  Terminal-Bench task material, champion/candidate source, the existing Opus
+  4.8 deployment alias, and its role-scoped Foundry-key reference;
+- only the trusted controller/evaluator mounts hidden selection, raw
+  diagnostics, cache, and experiment-private state; and
+- no task catalog, task prompt, grader, raw trace, private volume path, or Git
+  credential is mounted or copied into the optimizer.
+
+The optimizer uses the image's default unprivileged user. The evaluator is
+explicitly created and provider-attested as `root` only so its trusted
+controller can create a root-owned mode-`0700` private tree, switch
+candidate/champion builds to two isolated unprivileged identities, terminate
+all remaining processes for those identities, and securely import the build
+artifacts. Pi and source-controlled build commands do not run as root.
+
+The evaluated Pi task sandbox receives one selected task prompt transiently
+and never the grader. The sanitizer runs inside the trusted boundary and
+exports only strict generic diagnostic cards. A release receipt contains no
+task identity or per-task outcome.
+
+### Existing Foundry bindings only
+
+Dark Factory does not deploy or configure Azure. The operator already owns the
+deployments and API key. The MVP accepts only:
+
+- `DF_FOUNDRY_BASE_URL`: the existing Anthropic-compatible Foundry base URL,
+  ending in `.services.ai.azure.com/anthropic`;
+- `DF_OPTIMIZER_DEPLOYMENT`: the exact existing alias for public family
+  `claude-opus-5`;
+- `DF_EVALUATED_DEPLOYMENT`: the exact existing alias for public family
+  `claude-opus-4-8`, evaluated at `high`;
+- `DF_OPTIMIZER_SECRET_SOURCE`: the name of the protected Daytona secret
+  containing the existing key for the optimizer role; and
+- `DF_EVALUATED_SECRET_SOURCE`: the name of the protected Daytona secret
+  containing the existing key for the evaluator role.
+
+Both deployment aliases use one fail-closed grammar at every boundary:
+1–128 lowercase ASCII characters, written as alphanumeric segments separated
+by a single `.`, `_`, or `-`. Uppercase, whitespace, `/`, `@`, `:`, leading or
+trailing separators, and adjacent separators are rejected. A representative
+valid alias is `team.opus_4-blue`.
+
+The two source names may refer to separately governed copies of the same
+existing key. They are names, never plaintext values. Do not put an API key in
+GitHub variables, repository files, workflow logs, artifacts, or chat.
+
+### Minimal runtime references
+
+The cloud-only MVP parser currently expects the following non-secret
+configuration:
+
+- `DF_MVP_CAMPAIGN_ID` and `DF_MVP_MAX_ITERATIONS` (use `1` for the first live
+  run);
+- `DAYTONA_API_URL` and an exact EU `DAYTONA_TARGET`;
+- `DF_MVP_DAYTONA_IMAGE` as an immutable
+  `registry/name@sha256:<digest>` reference. Its evaluator runtime must expose
+  the reviewed Harbor 0.20.0 and Bun executables at absolute paths; the private
+  runtime pin records both file SHA-256 values;
+- `DF_DAYTONA_VOLUME_ID` and `DF_DAYTONA_VOLUME_SUBPATH`;
+- the five Foundry values listed above;
+- `DF_PI_GITHUB_OWNER`, `DF_PI_GITHUB_REPOSITORY`, `DF_PI_BRANCH`,
+  `DF_PI_BASELINE_COMMIT`, `DF_PI_BASELINE_TREE`, and
+  `DF_PI_PACKAGE_LOCK_SHA256`; and
+- `DF_GITHUB_SECRET_SOURCE`, the protected Daytona secret name used by the
+  trusted Git wrapper for private clone and candidate-ref publication.
+
+Cloud execution also sets `GITHUB_ACTIONS=true`,
+`RUNNER_ENVIRONMENT=github-hosted`, and `DF_CLOUD_EXECUTION=1`. The parser
+requires these markers and refuses a non-EU target, mutable image, public
+Anthropic host, malformed source pin, or missing reference. It does not return
+the Daytona key or any Foundry/Git secret value.
+
+The protected secret values themselves are:
+
+1. `DAYTONA_API_KEY` in the protected GitHub environment, used only by the
+   launcher; and
+2. optimizer and evaluator Foundry API-key copies in protected Daytona
+   organization secrets, each restricted to the exact
+   `<resource>.services.ai.azure.com` host;
+3. a separate evaluator-only Daytona API key in the organization Secret named
+   by `DF_HARBOR_DAYTONA_SECRET_SOURCE`, restricted to
+   `app.daytona.io`, so Harbor can create and delete its child task sandboxes;
+   and
+4. a fine-grained private-Pi GitHub token stored in the organization Secret
+   named by `DF_GITHUB_SECRET_SOURCE` as the Base64 encoding of
+   `x-access-token:<token>`. It needs read access to the pinned Pi repository
+   and permission to publish the bounded candidate refs, and is restricted to
+   `github.com` and `api.github.com`.
+
+The MVP Git wrapper uses the final value only as an HTTPS
+`Authorization: Basic` header. Do not store a raw token, an `ssh://` URL, an
+SSH deploy key, or the literal `Basic ` prefix in that secret. Claude Code and
+Pi never receive the Git authorization placeholder.
+
+The evaluator Foundry secret has two uses without copying its value: the outer
+evaluator receives its own placeholder for the diagnostic classifier, while
+Harbor passes the same organization Secret *name* in
+`environment.kwargs.secrets`. Daytona then issues a distinct
+`ANTHROPIC_FOUNDRY_API_KEY` placeholder directly inside each child task
+sandbox. The Pi adapter must inherit that child variable and must never replace
+it with the outer evaluator's placeholder.
+
+Harbor 0.20.0 cannot attach Daytona Secrets to compose/Docker-in-Docker tasks.
+The first MVP therefore fails closed unless every selected exact task revision
+appears in the evaluator-private eligibility inventory as a direct Daytona
+task with Linux x64 glibc runtime compatibility and Harbor's separate-verifier
+mode. The separate verifier, not a guessed `/tests` path, is the primary proof
+that Pi cannot observe grader material. This limits initial coverage and may
+bias the prototype pool; it is not a claim about Pi or about the official
+evaluation set.
+
+The immutable Linux x64 glibc image contract is exact. It must contain:
+
+- `/usr/bin/node`, `/usr/bin/env`, `/usr/bin/git`, `/usr/bin/npm`,
+  `/usr/bin/tar`, `/usr/bin/sha256sum`, `/usr/bin/mkdir`, `/usr/bin/chown`,
+  `/usr/bin/pkill`, and `/usr/bin/pgrep`;
+- Claude Code 2.1.217 at `/usr/local/bin/claude`;
+- the Harbor 0.20.0 and Bun executables at the absolute paths recorded in the
+  private runtime pin, with matching SHA-256 values; and
+- unused, dedicated UID/GID pairs `65532` and `65533`. They must own no
+  pre-existing service and have no unrelated process, because the trusted
+  evaluator kills and verifies every process for the relevant build identity
+  before importing an artifact.
+
+### MVP verification order
+
+1. Push the complete source-only MVP branch.
+2. In GitHub-hosted CI, generate/review the dependency lock if absent, apply
+   formatting there, then run lint, strict typecheck, Vitest/coverage, build,
+   schema/privacy tests, and secret scanning. A workflow file is not proof; a
+   passing commit-bound receipt is.
+3. Configure only the runtime references and protected secrets listed above.
+4. In cloud, resolve and pin the exact Harbor and Terminal-Bench 2.1 inputs,
+   the Harbor and Bun executable paths/digests, the Pi adapter digest, the
+   Linux x64 glibc runtime ABI, and initialize the hidden weighted catalog.
+   No task name, prompt, grader, or raw discovery output may be downloaded or
+   uploaded as a release artifact.
+5. Run a no-model synthetic iteration to prove five-by-three panel creation,
+   cache behavior, fresh-promotion enforcement, same-panel continuation after
+   non-promotion, strict JSON storage, and sandbox teardown.
+6. Run a bounded connectivity smoke for private Pi, Claude Code, the two
+   existing Foundry deployments, Harbor, and evaluator sandbox nesting. Delete
+   task-bearing smoke output inside the evaluator boundary.
+7. With an operator-approved one-iteration cost cap, run the real five-task,
+   three-repetition matched race. A cold-cache race produces 30 trials; Harbor
+   may schedule up to five trials concurrently, while each Pi agent remains a
+   single run.
+8. Review the release-safe decision and private cloud evidence. Continue only
+   after the operator explicitly authorizes another iteration.
+
+### Mandatory stop before testing
+
+After source completion, the implementer must stop. It must not configure
+credentials, start paid models, fetch private Pi into an execution sandbox, run
+Harbor, or touch hidden benchmark material until the operator has completed
+all items below and explicitly says `resume`:
+
+- make the pushed branch and its GitHub Actions results available for review;
+- place `DAYTONA_API_KEY` in the protected GitHub environment;
+- supply the Daytona API URL, exact EU target, persistent volume/subpath, and
+  immutable public image reference, including the absolute Harbor 0.20.0 and
+  Bun executable paths that will be digest-pinned in the evaluator-private
+  runtime pin and every exact system executable/reserved identity in the image
+  contract above;
+- create or identify Daytona organization Secret names for the existing
+  Foundry key in both outer roles, the evaluator-only nested Daytona key, and
+  the pre-encoded private-Pi HTTPS Basic credential; apply the exact host
+  restrictions described above;
+- supply the existing Foundry base URL and exact Opus 5/Opus 4.8 deployment
+  aliases;
+- confirm private Pi source pins and the cloud credential's fetch/candidate-ref
+  permissions;
+- authorize cloud-only Harbor/Terminal-Bench pin discovery and creation of the
+  evaluator-private direct-sandbox eligibility inventory;
+- choose the first-run cost cap and maximum of one iteration; and
+- explicitly say `resume`.
+
+Do not paste API keys, SSH private keys, tokens, graders, task prompts, or task
+identities into chat. The deferred production items are not prerequisites for
+resuming this MVP.
+
+> **Legacy delivery note:** all sections below describe the earlier
+> production-grade route. Use them only after an explicit post-MVP scope
+> expansion. Where they conflict with this fast path, this section wins.
+
 ## Delivery order
 
 1. Review and merge the delivery workflows and role Containerfiles.
@@ -21,9 +232,16 @@ sandbox.
    generate its own lock.
 3. Download the immutable artifact, verify its adjacent SHA-256 file, review
    the full lockfile, and add only `pnpm-lock.yaml` to that same branch in a
-   normal pull request. The bootstrap workflow never commits, pushes, opens a
+   new commit. The bootstrap workflow never commits, pushes, opens a
    pull request, receives a repository write token, or runs a package script.
-4. Let `cloud-quality-gates` pass on the lockfile pull request and on `main`.
+   Pushing that reviewed lock commit automatically runs
+   `cloud-format-and-quality-review-artifact`: GitHub installs from the frozen
+   lock, applies Biome in its runner, then runs lint, typecheck, coverage tests,
+   and the build. It uploads a source-commit-bound patch and receipt but has no
+   repository write permission.
+4. Verify the patch checksum and receipt, review and apply only the formatter
+   patch to the same branch, and open the pull request. Let
+   `cloud-quality-gates` pass on the pull request and again on `main`.
 5. From `main`, dispatch
    `discover-terminal-bench-pin-review-artifact` with the exact main commit,
    exact registry revision, exact Harbor semantic version, and its
@@ -205,6 +423,17 @@ the disposable control sandbox. That bootstrap credential is not an evaluated
 model, optimizer, Git, or KMS credential, and it is never forwarded into the
 offline sandbox.
 
+The preflight workflow is bound to a separate GitHub environment named
+`dark-factory-preflight`. Protect it with reviewers and store
+`DAYTONA_API_KEY` there; a repository- or organization-scoped credential is
+not the intended production configuration.
+
+Every immutable control/build/evaluator image reference must be pullable by
+Daytona. Either give the corresponding GHCR packages deliberately reviewed
+public visibility or configure provider-side private-registry access before
+dispatch. The workflow does not pass a registry token through the evaluated
+sandbox.
+
 ## Protected paid environment
 
 Create a GitHub environment named `dark-factory-paid`, protect it with required
@@ -225,10 +454,11 @@ Required identity and image variables:
 - `DF_OPTIMIZER_IMAGE_REFERENCE`, `DF_OPTIMIZER_IMAGE_DIGEST`
 - `DF_BUILD_IMAGE_REFERENCE`, `DF_BUILD_IMAGE_DIGEST`
 - `DF_EVALUATOR_IMAGE_REFERENCE`, `DF_EVALUATOR_IMAGE_DIGEST`
-- `DF_OPTIMIZER_MODEL`, `DF_OPTIMIZER_EFFORT`,
+- `DF_FOUNDRY_RESOURCE_NAME`, `DF_OPTIMIZER_MODEL`,
+  `DF_OPTIMIZER_DEPLOYMENT_NAME`, `DF_OPTIMIZER_EFFORT`,
   `DF_CLAUDE_CODE_VERSION`
 - `DF_EVALUATED_PROVIDER`, `DF_EVALUATED_MODEL`,
-  `DF_EVALUATED_REASONING`
+  `DF_EVALUATED_DEPLOYMENT_NAME`, `DF_EVALUATED_REASONING`
 - `DF_PI_GITHUB_OWNER`, `DF_PI_GITHUB_REPOSITORY`, `DF_PI_BRANCH`
 - `DF_PI_BASELINE_COMMIT`, `DF_PI_BASELINE_TREE`,
   `DF_PI_PACKAGE_LOCK_SHA256`, `DF_PI_CODING_AGENT_VERSION`
@@ -370,6 +600,15 @@ nine ports are frozen method-captured objects, their bindings are in the sole
 exported canonical order, and every binding implementation is reference-equal
 to the corresponding role component.
 
+The candidate-integrity binding specifically requires the immutable
+`scripts/candidate-integrity-worker.mjs` artifact, a deny-all x86_64 evidence
+sandbox, the verifying artifact bridge, a sealed non-enumerable
+task-fragment-hash catalog, a purpose-specific Ed25519 signing authority and
+public verifier, and a trusted accounting authority. Its configured worker,
+catalog, and v2 scanner-policy hashes must exactly match the values frozen into
+the correctness runtime. No optimizer-visible artifact backend or provider
+secret may be reused for the hidden catalog.
+
 The factory and adversarial source tests are authored. They are not execution
 evidence. Typecheck, tests, real volume acquisition/close behavior, provider
 attestation, and end-to-end owner wiring must run in approved cloud CI before
@@ -386,14 +625,20 @@ must type two independent bindings:
 The protected environment approval is a third human gate. The workflow checks
 all three bindings before the Daytona credential is exposed to any bootstrap
 step. It first runs the live provider/mounted-volume probe and the deterministic
-synthetic walk-forward campaign. Only if both succeed does it call:
+synthetic walk-forward campaign. Only if both succeed does it run the paid
+optimize bootstrap:
 
 `dist/cloud/control-bootstrap-cli.js optimize <campaign_id>`
 
-The credential exists only in that step. Checkout, dependency installation,
-quality checks, build, and receipt upload cannot read it. The uploaded receipt
-contains hashes and lifecycle metadata, not controller stdout or task-bearing
-evidence.
+The Daytona credential is injected only into the three explicit
+controller-bootstrap steps—probe, synthetic, and optimize—and is absent from
+checkout, dependency installation, quality checks, build, and receipt upload.
+Probe and synthetic use it only to create and destroy their disposable
+controller sandboxes; the staged command configuration prevents the offline
+synthetic command from forwarding it into that sandbox. Only optimize receives
+the separately reviewed paid model, private-Git, benchmark, budget,
+composition, and signing configuration. Uploaded receipts contain hashes and
+lifecycle metadata, not controller stdout or task-bearing evidence.
 
 ## Fail-closed properties and residual gates
 

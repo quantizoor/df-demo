@@ -15,7 +15,11 @@ export interface ClaudeCodeLaunchOptions {
   readonly campaignId: string;
   readonly experimentNumber: number;
   readonly phase: "proposal" | "analysis";
+  /** Exact existing Microsoft Foundry deployment name passed to Claude Code. */
   readonly model: string;
+  /** Public model identity pinned by the campaign protocol. */
+  readonly modelFamily: "claude-opus-5";
+  readonly foundryResourceName: string;
   readonly effort: ClaudeEffort;
   readonly maximumBudgetUsd: number;
   readonly maximumTurns: number;
@@ -42,6 +46,8 @@ export interface ClaudeCodeSessionSummary {
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
+const SAFE_FOUNDRY_RESOURCE =
+  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const PROPOSAL_TOOLS = [
   "Read",
   "Edit",
@@ -128,6 +134,17 @@ export function createClaudeCodeLaunchSpec(
   if (!SAFE_MODEL.test(options.model)) {
     throw new ClaudeCodeSpecificationError("Claude optimizer model must be an exact safe ID.");
   }
+  if (
+    options.modelFamily !== "claude-opus-5" ||
+    !SAFE_FOUNDRY_RESOURCE.test(options.foundryResourceName) ||
+    options.secretReferences.length !== 1 ||
+    options.secretReferences[0]?.targetEnvironmentName !==
+      "ANTHROPIC_FOUNDRY_API_KEY"
+  ) {
+    throw new ClaudeCodeSpecificationError(
+      "Claude optimizer must use the pinned Microsoft Foundry Opus 5 binding.",
+    );
+  }
   if (!Number.isSafeInteger(options.experimentNumber) || options.experimentNumber < 1) {
     throw new ClaudeCodeSpecificationError("Experiment number must be a positive integer.");
   }
@@ -188,6 +205,10 @@ export function createClaudeCodeLaunchSpec(
         DF_PLUGIN_DATA_ROOT: options.pluginDataRoot,
         CLAUDE_CONFIG_DIR: `${options.pluginDataRoot}/claude-config`,
         CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1",
+        CLAUDE_CODE_USE_FOUNDRY: "1",
+        ANTHROPIC_FOUNDRY_RESOURCE: options.foundryResourceName,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: options.model,
+        DF_OPTIMIZER_MODEL_ID: options.modelFamily,
         DISABLE_TELEMETRY: "1",
       },
       secretReferences: options.secretReferences,

@@ -35,6 +35,8 @@ export interface BootstrapConfiguration {
   };
   readonly optimizer: {
     readonly model: string;
+    readonly deploymentName: string;
+    readonly foundryResourceName: string;
     readonly effort: "low" | "medium" | "high" | "xhigh" | "max";
     readonly claudeCodeVersion: string;
     readonly secretReference: SecretReference;
@@ -42,7 +44,9 @@ export interface BootstrapConfiguration {
   readonly evaluated: {
     readonly provider: string;
     readonly model: string;
+    readonly deploymentName: string;
     readonly reasoning: string;
+    readonly foundryResourceName: string;
     readonly secretReferences: readonly SecretReference[];
   };
   readonly githubSecretReference: SecretReference;
@@ -86,9 +90,10 @@ const EXACT_SEMVER =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const OPTIMIZER_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const OPTIMIZER_SECRET_TARGETS = new Set([
-  "ANTHROPIC_API_KEY",
-  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_FOUNDRY_API_KEY",
 ]);
+const SAFE_FOUNDRY_RESOURCE =
+  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
 const BASE_REQUIRED = [
   "DF_CLOUD_PROVIDER",
@@ -96,12 +101,15 @@ const BASE_REQUIRED = [
   "DF_TRUSTED_CONTROL_PLANE",
   "DF_TRUSTED_VOLUME_ROOT",
   "DF_OPTIMIZER_MODEL",
+  "DF_OPTIMIZER_DEPLOYMENT_NAME",
+  "DF_FOUNDRY_RESOURCE_NAME",
   "DF_OPTIMIZER_EFFORT",
   "DF_CLAUDE_CODE_VERSION",
   "DF_OPTIMIZER_SECRET_SOURCE",
   "DF_OPTIMIZER_SECRET_TARGET",
   "DF_EVALUATED_PROVIDER",
   "DF_EVALUATED_MODEL",
+  "DF_EVALUATED_DEPLOYMENT_NAME",
   "DF_EVALUATED_REASONING",
   "DF_EVALUATED_SECRET_BINDINGS_JSON",
   "DF_GITHUB_SECRET_SOURCE",
@@ -372,14 +380,28 @@ export function inspectBootstrapEnvironment(
   }
 
   const optimizerModel = present(environment, "DF_OPTIMIZER_MODEL");
+  const optimizerDeploymentName = present(
+    environment,
+    "DF_OPTIMIZER_DEPLOYMENT_NAME",
+  );
+  const foundryResourceName = present(
+    environment,
+    "DF_FOUNDRY_RESOURCE_NAME",
+  );
   const evaluatedProvider = present(environment, "DF_EVALUATED_PROVIDER");
   const evaluatedModel = present(environment, "DF_EVALUATED_MODEL");
+  const evaluatedDeploymentName = present(
+    environment,
+    "DF_EVALUATED_DEPLOYMENT_NAME",
+  );
   const evaluatedReasoning = present(environment, "DF_EVALUATED_REASONING");
   const claudeCodeVersion = present(environment, "DF_CLAUDE_CODE_VERSION");
   for (const [name, value] of [
     ["DF_OPTIMIZER_MODEL", optimizerModel],
+    ["DF_OPTIMIZER_DEPLOYMENT_NAME", optimizerDeploymentName],
     ["DF_EVALUATED_PROVIDER", evaluatedProvider],
     ["DF_EVALUATED_MODEL", evaluatedModel],
+    ["DF_EVALUATED_DEPLOYMENT_NAME", evaluatedDeploymentName],
     ["DF_EVALUATED_REASONING", evaluatedReasoning],
   ] as const) {
     if (value !== null && !SAFE_IDENTIFIER.test(value)) invalid.push(name);
@@ -388,17 +410,51 @@ export function inspectBootstrapEnvironment(
     invalid.push("DF_CLAUDE_CODE_VERSION");
   }
   if (
+    foundryResourceName !== null &&
+    !SAFE_FOUNDRY_RESOURCE.test(foundryResourceName)
+  ) {
+    invalid.push("DF_FOUNDRY_RESOURCE_NAME");
+  }
+  if (optimizerModel !== null && optimizerModel !== "claude-opus-5") {
+    invalid.push("DF_OPTIMIZER_MODEL");
+  }
+  if (effortValue !== null && effortValue !== "high") {
+    invalid.push("DF_OPTIMIZER_EFFORT");
+  }
+  if (
+    evaluatedProvider !== null &&
+    evaluatedProvider !== "microsoft-foundry"
+  ) {
+    invalid.push("DF_EVALUATED_PROVIDER");
+  }
+  if (
+    evaluatedModel !== null &&
+    evaluatedModel !== "claude-opus-4-8"
+  ) {
+    invalid.push("DF_EVALUATED_MODEL");
+  }
+  if (
+    evaluatedReasoning !== null &&
+    evaluatedReasoning !== "high"
+  ) {
+    invalid.push("DF_EVALUATED_REASONING");
+  }
+  if (
     evaluatedProvider !== null &&
     evaluatedModel !== null &&
+    evaluatedDeploymentName !== null &&
     evaluatedReasoning !== null &&
-    evaluatedSecrets !== null
+    evaluatedSecrets !== null &&
+    foundryResourceName !== null
   ) {
     try {
       createPiHarborAgentSpec({
         adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
         adapterSha256: "0".repeat(64),
         provider: evaluatedProvider,
-        modelId: evaluatedModel,
+        modelId: evaluatedDeploymentName,
+        modelFamily: evaluatedModel,
+        foundryResourceName,
         thinkingLevel: evaluatedReasoning as
           | "off"
           | "minimal"
@@ -417,6 +473,7 @@ export function inspectBootstrapEnvironment(
       invalid.push(
         "DF_EVALUATED_PROVIDER",
         "DF_EVALUATED_MODEL",
+        "DF_EVALUATED_DEPLOYMENT_NAME",
         "DF_EVALUATED_REASONING",
         "DF_EVALUATED_SECRET_BINDINGS_JSON",
       );
@@ -541,8 +598,11 @@ export function inspectBootstrapEnvironment(
     harborSecrets === null ||
     githubSecret === null ||
     optimizerModel === null ||
+    optimizerDeploymentName === null ||
+    foundryResourceName === null ||
     evaluatedProvider === null ||
     evaluatedModel === null ||
+    evaluatedDeploymentName === null ||
     evaluatedReasoning === null ||
     claudeCodeVersion === null ||
     terminalBench === null ||
@@ -581,6 +641,8 @@ export function inspectBootstrapEnvironment(
       },
       optimizer: {
         model: optimizerModel,
+        deploymentName: optimizerDeploymentName,
+        foundryResourceName,
         effort,
         claudeCodeVersion,
         secretReference: optimizerSecret,
@@ -588,7 +650,9 @@ export function inspectBootstrapEnvironment(
       evaluated: {
         provider: evaluatedProvider,
         model: evaluatedModel,
+        deploymentName: evaluatedDeploymentName,
         reasoning: evaluatedReasoning,
+        foundryResourceName,
         secretReferences: evaluatedSecrets,
       },
       githubSecretReference: githubSecret,
@@ -622,6 +686,7 @@ export function redactEnvironmentForDiagnostics(
     "OPENAI_API_KEY",
     "AZURE_OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
+    "ANTHROPIC_FOUNDRY_API_KEY",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "DF_GITHUB_TOKEN",
   ];

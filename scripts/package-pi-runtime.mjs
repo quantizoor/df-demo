@@ -283,7 +283,8 @@ try {
       outputPath,
       "--directory",
       stagingRoot,
-      ".",
+      "runtime-manifest.json",
+      "packages",
     ],
     {
       encoding: "utf8",

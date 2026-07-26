@@ -288,6 +288,14 @@ function createAgentConfig(
       enabled_tools: agent.enabledTools,
       credential_environment_names:
         agent.credentialEnvironmentNames,
+      ...(agent.evaluatedModel.foundryResourceName === undefined
+        ? {}
+        : {
+            foundry_resource_name:
+              agent.evaluatedModel.foundryResourceName,
+            model_family:
+              agent.evaluatedModel.modelFamily!,
+          }),
     },
   };
 }
@@ -421,6 +429,20 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
       throw new TrustedHarborJobBuildError(
         "Harbor build request violates its immutable pin or isolation policy.",
       );
+    }
+    if (request.agent.evaluatedModel.provider === "microsoft-foundry") {
+      const resource =
+        request.agent.evaluatedModel.foundryResourceName;
+      if (
+        resource === undefined ||
+        this.#options.modelApiAllowedHosts.length !== 1 ||
+        this.#options.modelApiAllowedHosts[0] !==
+          `${resource}.services.ai.azure.com`
+      ) {
+        throw new TrustedHarborJobBuildError(
+          "Microsoft Foundry evaluation requires its exact derived API host.",
+        );
+      }
     }
     assertScheduleMatchesPanel(request.panel, request.schedule);
 

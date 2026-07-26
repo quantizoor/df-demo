@@ -20,18 +20,21 @@ function completeEnvironment(): NodeJS.ProcessEnv {
     DF_BUILD_IMAGE_DIGEST: imageDigest,
     DF_EVALUATOR_IMAGE_REFERENCE: `ghcr.io/parallaxai/df-evaluator@${imageDigest}`,
     DF_EVALUATOR_IMAGE_DIGEST: imageDigest,
-    DF_OPTIMIZER_MODEL: "claude-opus-exact",
+    DF_FOUNDRY_RESOURCE_NAME: "df-eu-prod",
+    DF_OPTIMIZER_MODEL: "claude-opus-5",
+    DF_OPTIMIZER_DEPLOYMENT_NAME: "df-opus5-prod",
     DF_OPTIMIZER_EFFORT: "high",
     DF_CLAUDE_CODE_VERSION: "2.1.217",
-    DF_OPTIMIZER_SECRET_SOURCE: "DF_ANTHROPIC_OPTIMIZER_SECRET",
-    DF_OPTIMIZER_SECRET_TARGET: "ANTHROPIC_API_KEY",
-    DF_EVALUATED_PROVIDER: "openai",
-    DF_EVALUATED_MODEL: "gpt-5.6",
+    DF_OPTIMIZER_SECRET_SOURCE: "DF_FOUNDRY_OPTIMIZER_SECRET",
+    DF_OPTIMIZER_SECRET_TARGET: "ANTHROPIC_FOUNDRY_API_KEY",
+    DF_EVALUATED_PROVIDER: "microsoft-foundry",
+    DF_EVALUATED_MODEL: "claude-opus-4-8",
+    DF_EVALUATED_DEPLOYMENT_NAME: "df-opus48-eval",
     DF_EVALUATED_REASONING: "high",
     DF_EVALUATED_SECRET_BINDINGS_JSON: JSON.stringify([
       {
-        sourceEnvironmentName: "DF_OPENAI_MODEL_SECRET",
-        targetEnvironmentName: "OPENAI_API_KEY",
+        sourceEnvironmentName: "DF_FOUNDRY_EVALUATED_SECRET",
+        targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
       },
     ]),
     DF_GITHUB_SECRET_SOURCE: "DF_GITHUB_PRIVATE_REPO_SECRET",
@@ -67,6 +70,7 @@ describe("bootstrap environment", () => {
     const readiness = inspectBootstrapEnvironment({});
     expect(readiness.ready).toBe(false);
     expect(readiness.missing).toContain("DF_CLOUD_PROVIDER");
+    expect(readiness.missing).toContain("DF_FOUNDRY_RESOURCE_NAME");
     expect(readiness.missing).toContain("DF_EVALUATED_MODEL");
     expect(readiness.missing).toContain("DF_BUDGET_USD");
   });
@@ -78,12 +82,16 @@ describe("bootstrap environment", () => {
       cloudProvider: "daytona",
       cloudCredentialVariable: "DAYTONA_API_KEY",
       optimizer: {
-        model: "claude-opus-exact",
+        model: "claude-opus-5",
+        deploymentName: "df-opus5-prod",
+        foundryResourceName: "df-eu-prod",
         effort: "high",
       },
       evaluated: {
-        provider: "openai",
-        model: "gpt-5.6",
+        provider: "microsoft-foundry",
+        model: "claude-opus-4-8",
+        deploymentName: "df-opus48-eval",
+        foundryResourceName: "df-eu-prod",
       },
       terminalBench: {
         benchmark: "terminal-bench-2.1",
@@ -116,6 +124,23 @@ describe("bootstrap environment", () => {
     );
   });
 
+  it("rejects an endpoint in place of a resource and any model drift", () => {
+    const readiness = inspectBootstrapEnvironment({
+      ...completeEnvironment(),
+      DF_FOUNDRY_RESOURCE_NAME:
+        "https://df-eu-prod.services.ai.azure.com",
+      DF_OPTIMIZER_MODEL: "claude-opus-4-8",
+      DF_EVALUATED_REASONING: "xhigh",
+    });
+    expect(readiness.invalid).toEqual(
+      expect.arrayContaining([
+        "DF_FOUNDRY_RESOURCE_NAME",
+        "DF_OPTIMIZER_MODEL",
+        "DF_EVALUATED_REASONING",
+      ]),
+    );
+  });
+
   it("rejects an online error budget above the calibrated maximum", () => {
     const readiness = inspectBootstrapEnvironment({
       ...completeEnvironment(),
@@ -131,7 +156,7 @@ describe("bootstrap environment", () => {
       DF_HARBOR_SECRET_BINDINGS_JSON: JSON.stringify([
         {
           sourceEnvironmentName: "DF_WRONG_SECRET",
-          targetEnvironmentName: "OPENAI_API_KEY",
+          targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
         },
       ]),
     });

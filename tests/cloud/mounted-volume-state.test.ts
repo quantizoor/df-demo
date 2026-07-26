@@ -52,6 +52,10 @@ function inFlightRecord(index: number): OneUseLedgerRecord {
     claimToken: `claim-${index}`,
     status: "in-flight",
     dispositionAttestationHash: null,
+    ownerInstanceIdHash: "f".repeat(64),
+    claimEpoch: 1,
+    recoveryRecordHash: null,
+    recoveryAuthorizationHash: null,
     envelope: null,
     failureCode: null,
   };
@@ -68,6 +72,8 @@ function appendRecord(
       [`request-${index}`]: inFlightRecord(index),
     },
     usedDispositionAttestations: state.usedDispositionAttestations,
+    usedRecoveryAuthorizations:
+      state.usedRecoveryAuthorizations,
   };
 }
 

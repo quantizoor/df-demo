@@ -1,5 +1,8 @@
+import type { KeyLike } from "node:crypto";
+
 import type { TrustedCloudArtifactRef } from "../cloud/types.js";
 import type { ExperimentIdentity } from "../domain/models.js";
+import { verifyEd25519Signature } from "../evidence/signatures.js";
 import type { TrustedCandidateRuntimeBuildReceipt } from "../harness/candidate-build-runner.js";
 import type { TrustedGitPublicationReceipt } from "../harness/git-publication.js";
 import {
@@ -20,6 +23,7 @@ import {
   computeContentHash,
   withContentHash,
 } from "../schemas/canonical.js";
+import type { Signature } from "../schemas/primitives.js";
 import type {
   CorrectnessGateRunner,
   FrozenCandidate,
@@ -111,7 +115,7 @@ export interface AccountedCorrectnessGateReceipt<Receipt> {
  * fragments, source lines, paths, task IDs, and grader data are forbidden.
  */
 export interface TrustedCloudIntegrityScanReceipt {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly sensitivity: "release-safe-candidate-integrity-scan";
   readonly scanId: string;
   readonly experimentId: string;
@@ -126,12 +130,22 @@ export interface TrustedCloudIntegrityScanReceipt {
   readonly candidateDocumentHash: string;
   readonly diffSha256: string;
   readonly changedFilesHash: string;
+  readonly candidateBundleSha256: string;
+  readonly evidenceManifestSha256: string;
+  readonly evidenceDiffSha256: string;
+  readonly observedChangedFilesHash: string;
+  readonly lineCountsHash: string;
+  readonly fileModesHash: string;
+  readonly fragmentCatalogHash: string;
+  readonly workerSha256: string;
+  readonly executionReceiptHash: string;
   readonly integrityPolicyHash: string;
   readonly passed: boolean;
   readonly violationCodes: readonly IntegrityViolationCode[];
   readonly containsTaskIdentifiers: false;
   readonly scannedAt: string;
   readonly scanAttestationHash: string;
+  readonly signature: Signature;
 }
 
 export interface TrustedCloudIntegrityScanInput {
@@ -145,8 +159,14 @@ export interface TrustedCloudIntegrityScanInput {
   readonly hypothesisDocumentHash: string;
   readonly candidateDocumentHash: string;
   readonly changedFiles: readonly string[];
+  readonly candidateBundle: TrustedCloudArtifactRef;
   readonly candidateDiff: TrustedCloudArtifactRef;
   readonly integrityPolicyHash: string;
+}
+
+export interface TrustedCloudIntegrityScanReceiptVerifier {
+  readonly trustedKeyId: string;
+  readonly publicKey: KeyLike;
 }
 
 export interface TrustedCloudIntegrityScanPort {
@@ -335,7 +355,10 @@ export interface ProductionCorrectnessGateOptions {
   readonly publisher: TrustedNonForceGitPublicationPort;
   readonly snapshotter: TrustedCandidateSourceSnapshotPort;
   readonly sourceIndex: TrustedCandidateSourceIndexPort;
+  readonly integrityReceiptVerifier: TrustedCloudIntegrityScanReceiptVerifier;
   readonly integrityPolicyHash: string;
+  readonly integrityWorkerSha256: string;
+  readonly fragmentCatalogHash: string;
   readonly buildPolicyHash: string;
 }
 
@@ -710,6 +733,8 @@ function expectedScanId(
   binding: ProposalBinding,
   experiment: ExperimentIdentity,
   integrityPolicyHash: string,
+  integrityWorkerSha256: string,
+  fragmentCatalogHash: string,
 ): string {
   return `scan-${canonicalHash({
     experimentId: binding.experimentId,
@@ -723,8 +748,31 @@ function expectedScanId(
     candidateDocumentHash: binding.candidateDocumentHash,
     diffSha256: binding.result.candidateDiff.sha256,
     changedFilesHash: binding.changedFilesHash,
+    candidateBundleSha256: binding.result.candidateBundle.sha256,
+    integrityWorkerSha256,
+    fragmentCatalogHash,
     integrityPolicyHash,
   }).slice(0, 48)}`;
+}
+
+export function trustedCloudIntegrityScanAttestationHash(
+  receipt:
+    | TrustedCloudIntegrityScanReceipt
+    | Omit<
+        TrustedCloudIntegrityScanReceipt,
+        "scanAttestationHash" | "signature"
+      >,
+): string {
+  const record = receipt as unknown as Readonly<
+    Record<string, unknown>
+  >;
+  const attested: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== "scanAttestationHash" && key !== "signature") {
+      attested[key] = value;
+    }
+  }
+  return canonicalHash(attested);
 }
 
 function assertSignature(value: unknown): void {
@@ -757,6 +805,9 @@ function assertIntegrityScanReceipt(
   binding: ProposalBinding,
   experiment: ExperimentIdentity,
   integrityPolicyHash: string,
+  integrityWorkerSha256: string,
+  fragmentCatalogHash: string,
+  verifier: TrustedCloudIntegrityScanReceiptVerifier,
 ): asserts value is TrustedCloudIntegrityScanReceipt {
   assertExactKeys(value, [
     "schemaVersion",
@@ -774,23 +825,39 @@ function assertIntegrityScanReceipt(
     "candidateDocumentHash",
     "diffSha256",
     "changedFilesHash",
+    "candidateBundleSha256",
+    "evidenceManifestSha256",
+    "evidenceDiffSha256",
+    "observedChangedFilesHash",
+    "lineCountsHash",
+    "fileModesHash",
+    "fragmentCatalogHash",
+    "workerSha256",
+    "executionReceiptHash",
     "integrityPolicyHash",
     "passed",
     "violationCodes",
     "containsTaskIdentifiers",
     "scannedAt",
     "scanAttestationHash",
+    "signature",
   ]);
   const receipt = value as unknown as TrustedCloudIntegrityScanReceipt;
   const violationCodes = new Set<IntegrityViolationCode>(
     INTEGRITY_VIOLATION_CODES,
   );
   if (
-    receipt.schemaVersion !== 1 ||
+    receipt.schemaVersion !== 2 ||
     receipt.sensitivity !==
       "release-safe-candidate-integrity-scan" ||
     receipt.scanId !==
-      expectedScanId(binding, experiment, integrityPolicyHash) ||
+      expectedScanId(
+        binding,
+        experiment,
+        integrityPolicyHash,
+        integrityWorkerSha256,
+        fragmentCatalogHash,
+      ) ||
     receipt.experimentId !== binding.experimentId ||
     receipt.protocolHash !== experiment.protocolHash ||
     receipt.sourceCommit !== binding.result.setup.sourceCommit ||
@@ -805,6 +872,16 @@ function assertIntegrityScanReceipt(
     receipt.candidateDocumentHash !== binding.candidateDocumentHash ||
     receipt.diffSha256 !== binding.result.candidateDiff.sha256 ||
     receipt.changedFilesHash !== binding.changedFilesHash ||
+    receipt.candidateBundleSha256 !==
+      binding.result.candidateBundle.sha256 ||
+    !SHA256.test(receipt.evidenceManifestSha256) ||
+    !SHA256.test(receipt.evidenceDiffSha256) ||
+    !SHA256.test(receipt.observedChangedFilesHash) ||
+    !SHA256.test(receipt.lineCountsHash) ||
+    !SHA256.test(receipt.fileModesHash) ||
+    receipt.fragmentCatalogHash !== fragmentCatalogHash ||
+    receipt.workerSha256 !== integrityWorkerSha256 ||
+    !SHA256.test(receipt.executionReceiptHash) ||
     receipt.integrityPolicyHash !== integrityPolicyHash ||
     typeof receipt.passed !== "boolean" ||
     !Array.isArray(receipt.violationCodes) ||
@@ -819,9 +896,26 @@ function assertIntegrityScanReceipt(
       },
     ) ||
     receipt.passed !== (receipt.violationCodes.length === 0) ||
+    (receipt.passed &&
+      (receipt.evidenceDiffSha256 !== receipt.diffSha256 ||
+        receipt.observedChangedFilesHash !==
+          receipt.changedFilesHash)) ||
     receipt.containsTaskIdentifiers !== false ||
     !isCanonicalTimestamp(receipt.scannedAt) ||
-    !SHA256.test(receipt.scanAttestationHash)
+    receipt.scanAttestationHash !==
+      trustedCloudIntegrityScanAttestationHash(receipt)
+  ) {
+    throw new ProductionCorrectnessGateError("INTEGRITY_SCAN_FAILED");
+  }
+  assertSignature(receipt.signature);
+  if (
+    receipt.signature.keyId !== verifier.trustedKeyId ||
+    Date.parse(receipt.signature.signedAt) <
+      Date.parse(receipt.scannedAt) ||
+    !verifyEd25519Signature(
+      receipt as unknown as Readonly<Record<string, unknown>>,
+      verifier.publicKey,
+    )
   ) {
     throw new ProductionCorrectnessGateError("INTEGRITY_SCAN_FAILED");
   }
@@ -1408,6 +1502,9 @@ function assertRecord(
     readonly experiment: ExperimentIdentity;
     readonly binding: ProposalBinding;
     readonly integrityPolicyHash: string;
+    readonly integrityWorkerSha256: string;
+    readonly fragmentCatalogHash: string;
+    readonly integrityReceiptVerifier: TrustedCloudIntegrityScanReceiptVerifier;
     readonly buildPolicyHash: string;
   },
 ): asserts value is CorrectnessGateRecord {
@@ -1446,6 +1543,9 @@ function assertRecord(
         input.binding,
         input.experiment,
         input.integrityPolicyHash,
+        input.integrityWorkerSha256,
+        input.fragmentCatalogHash,
+        input.integrityReceiptVerifier,
       ),
   );
   const scan = record.integrityScan;
@@ -1582,7 +1682,12 @@ export class ProductionCorrectnessGateRunner
       options.snapshotter.boundary !== "trusted-cloud" ||
       options.sourceIndex.boundary !== "trusted-cloud" ||
       options.sourceIndex.durability !== "linearizable" ||
+      !SAFE_ID.test(
+        options.integrityReceiptVerifier.trustedKeyId,
+      ) ||
       !SHA256.test(options.integrityPolicyHash) ||
+      !SHA256.test(options.integrityWorkerSha256) ||
+      !SHA256.test(options.fragmentCatalogHash) ||
       !SHA256.test(options.buildPolicyHash)
     ) {
       throw new ProductionCorrectnessGateError(
@@ -1625,6 +1730,11 @@ export class ProductionCorrectnessGateRunner
       experiment,
       binding,
       integrityPolicyHash: this.#options.integrityPolicyHash,
+      integrityWorkerSha256:
+        this.#options.integrityWorkerSha256,
+      fragmentCatalogHash: this.#options.fragmentCatalogHash,
+      integrityReceiptVerifier:
+        this.#options.integrityReceiptVerifier,
       buildPolicyHash: this.#options.buildPolicyHash,
     };
     let existing: CorrectnessGateRecord | null;
@@ -1670,6 +1780,7 @@ export class ProductionCorrectnessGateRunner
           hypothesisDocumentHash: binding.hypothesisDocumentHash,
           candidateDocumentHash: binding.candidateDocumentHash,
           changedFiles: cloneJson(candidate.changedFiles),
+          candidateBundle: cloneJson(proposal.candidateBundle),
           candidateDiff: cloneJson(proposal.candidateDiff),
           integrityPolicyHash: this.#options.integrityPolicyHash,
         }),
@@ -1683,6 +1794,9 @@ export class ProductionCorrectnessGateRunner
             binding,
             experiment,
             this.#options.integrityPolicyHash,
+            this.#options.integrityWorkerSha256,
+            this.#options.fragmentCatalogHash,
+            this.#options.integrityReceiptVerifier,
           ),
       );
     } catch (error) {

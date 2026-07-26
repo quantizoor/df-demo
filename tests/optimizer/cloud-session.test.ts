@@ -33,7 +33,8 @@ const CANDIDATE_COMMIT = "3".repeat(40);
 const CANDIDATE_TREE = "4".repeat(40);
 const LOCK = "5".repeat(64);
 const ORIGIN = "https://github.com/parallaxai/df-pi-tbench.git";
-const MODEL = "claude-opus-4-1";
+const MODEL = "df-opus5-prod";
+const FOUNDRY_RESOURCE = "df-eu-prod";
 const IMAGE_DIGEST = `sha256:${"a".repeat(64)}`;
 const IMAGE_REFERENCE = `ghcr.io/parallaxai/optimizer@${IMAGE_DIGEST}`;
 const workerPath = fileURLToPath(
@@ -408,7 +409,10 @@ function setupFixture(): {
         memoryMiB: 8192,
         diskMiB: 32_000,
       },
-      networkAllowDomains: ["github.com", "api.anthropic.com"],
+      networkAllowDomains: [
+        "github.com",
+        `${FOUNDRY_RESOURCE}.services.ai.azure.com`,
+      ],
       lifetimeMs: 3_600_000,
     },
     workerArtifact: artifact(
@@ -427,6 +431,8 @@ function setupFixture(): {
     claude: {
       claudeExecutable: "/usr/local/bin/claude",
       model: MODEL,
+      modelFamily: "claude-opus-5",
+      foundryResourceName: FOUNDRY_RESOURCE,
       effort: "high",
       maximumBudgetUsd: 5,
       maximumTurns: 20,
@@ -434,8 +440,8 @@ function setupFixture(): {
     },
     optimizerSecretReferences: [
       {
-        sourceEnvironmentName: "DF_ANTHROPIC_API_KEY",
-        targetEnvironmentName: "ANTHROPIC_API_KEY",
+        sourceEnvironmentName: "DF_FOUNDRY_OPTIMIZER_SECRET",
+        targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
       },
     ],
   });
@@ -483,8 +489,8 @@ describe("cloud-only Claude optimizer session", () => {
     ]);
     expect(provider.commands[1]?.secretReferences).toEqual([
       {
-        sourceEnvironmentName: "DF_ANTHROPIC_API_KEY",
-        targetEnvironmentName: "ANTHROPIC_API_KEY",
+        sourceEnvironmentName: "DF_FOUNDRY_OPTIMIZER_SECRET",
+        targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
       },
     ]);
     expect(provider.commands[2]?.secretReferences).toEqual([]);
@@ -497,8 +503,8 @@ describe("cloud-only Claude optimizer session", () => {
     ) as RemoteCommandSpec;
     expect(nested.secretReferences).toEqual([
       {
-        sourceEnvironmentName: "DF_ANTHROPIC_API_KEY",
-        targetEnvironmentName: "ANTHROPIC_API_KEY",
+        sourceEnvironmentName: "DF_FOUNDRY_OPTIMIZER_SECRET",
+        targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
       },
     ]);
     expect(nested.arguments.join(" ")).toContain(
@@ -663,7 +669,7 @@ describe("cloud-only Claude optimizer session", () => {
       command.secretReferences.map(
         (reference) => reference.targetEnvironmentName,
       )
-    )).toEqual([[], ["ANTHROPIC_API_KEY"], []]);
+    )).toEqual([[], ["ANTHROPIC_FOUNDRY_API_KEY"], []]);
     expect(
       provider.uploads.some(
         (upload) =>

@@ -1,0 +1,123 @@
+name: cloud-format-and-quality-review-artifact
+
+on:
+  push:
+    branches:
+      - codex/dark-factory-mvp
+    paths:
+      - pnpm-lock.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dark-factory-format-review-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  format-and-verify:
+    if: github.ref == 'refs/heads/codex/dark-factory-mvp'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      DF_CLOUD_EXECUTION: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DF_REQUESTED_SOURCE_COMMIT: ${{ github.sha }}
+      DF_REQUESTED_SOURCE_REF: ${{ github.ref }}
+    steps:
+      - name: Verify cloud-hosted immutable source request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          [[ "$DF_REQUESTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$DF_REQUESTED_SOURCE_REF" = \
+            "refs/heads/codex/dark-factory-mvp"
+
+      - name: Checkout exact branch tip without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require exact source and reviewed dependency lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DF_REQUESTED_SOURCE_COMMIT"
+          test -s pnpm-lock.yaml
+          test "$(git status --porcelain=v1 --untracked-files=no)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Install from the reviewed lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          test "$(pnpm --version)" = "11.9.0"
+          pnpm install --frozen-lockfile
+
+      - name: Produce deterministic formatting changes
+        shell: bash
+        run: pnpm format
+
+      - name: Admit formatter-owned source changes only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- package.json pnpm-lock.yaml
+          git diff --check
+          unexpected="$(
+            git diff --name-only |
+              grep -Ev '\.(cjs|css|js|json|jsx|mjs|ts|tsx)$' || true
+          )"
+          test -z "$unexpected"
+
+      - name: Verify formatted source
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm check
+          pnpm build
+
+      - name: Seal review artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cloud-format-output
+          git diff --binary > cloud-format-output/source-format.patch
+          patch_sha256="$(
+            sha256sum cloud-format-output/source-format.patch |
+              cut -d ' ' -f 1
+          )"
+          jq -cS -n \
+            --arg sourceCommit "$DF_REQUESTED_SOURCE_COMMIT" \
+            --arg sourceRef "$DF_REQUESTED_SOURCE_REF" \
+            --arg patchSha256 "$patch_sha256" \
+            '{
+              schemaVersion: 1,
+              domain: "dark-factory.cloud-format-review.v1",
+              sourceCommit: $sourceCommit,
+              sourceRef: $sourceRef,
+              patchSha256: $patchSha256,
+              quality: "passed",
+              build: "passed"
+            }' > cloud-format-output/receipt.json
+          sha256sum cloud-format-output/receipt.json \
+            > cloud-format-output/receipt.json.sha256
+
+      - name: Upload immutable review artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cloud-format-review-${{ github.sha }}
+          path: cloud-format-output/
+          if-no-files-found: error
+          retention-days: 14

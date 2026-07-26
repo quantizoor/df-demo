@@ -12,7 +12,8 @@
   "bin": {
     "df": "./dist/cli.js",
     "df-cloud-bootstrap": "./dist/cloud/control-bootstrap-cli.js",
-    "df-cloud-control": "./dist/cloud/control-plane.js"
+    "df-cloud-control": "./dist/cloud/control-plane.js",
+    "df-mvp-cloud": "./dist/mvp/cloud-cli.js"
   },
   "exports": {
     ".": "./dist/index.js"

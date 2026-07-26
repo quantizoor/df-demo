@@ -39,8 +39,8 @@ function plan(): TrustedHarbor020DecodingPlan {
     protocolHash: PROTOCOL_SHA256,
     environmentFingerprintHash: ENVIRONMENT_SHA256,
     evaluatedModel: {
-      provider: "anthropic",
-      modelId: "claude-sonnet",
+      provider: "microsoft-foundry",
+      modelId: "df-opus48-eval",
     },
     invocations: [
       {
@@ -118,18 +118,25 @@ function trialResult() {
       agent: {
         name: "dark-factory-candidate",
         import_path: "dark_factory_pi:DarkFactoryPi",
-        model_name: "anthropic/claude-sonnet",
+        model_name: "microsoft-foundry/df-opus48-eval",
         resume_trajectory: false,
         load_trajectory: null,
         skills: [],
         mcp_servers: [],
+        extra_allowed_hosts: [
+          "df-eu-prod.services.ai.azure.com",
+        ],
         kwargs: {
           runtime_archive_path: "/trusted/candidate.tar",
           runtime_sha256: HARNESS_SHA256,
           pi_entrypoint: "bin/pi",
           thinking: "high",
           enabled_tools: ["read", "bash"],
-          credential_environment_names: ["ANTHROPIC_API_KEY"],
+          credential_environment_names: [
+            "ANTHROPIC_FOUNDRY_API_KEY",
+          ],
+          foundry_resource_name: "df-eu-prod",
+          model_family: "claude-opus-4-8",
         },
       },
     },
@@ -137,8 +144,8 @@ function trialResult() {
       name: "dark-factory-pi",
       version: "1.2.3",
       model_info: {
-        name: "claude-sonnet",
-        provider: "anthropic",
+        name: "df-opus48-eval",
+        provider: "microsoft-foundry",
       },
     },
     agent_result: {
@@ -239,7 +246,7 @@ function documents() {
           agent: {
             name: "dark-factory-pi",
             version: HARNESS_SHA256,
-            model_name: "anthropic/claude-sonnet",
+            model_name: "microsoft-foundry/df-opus48-eval",
             extra: {
               runtime_sha256: HARNESS_SHA256,
             },
@@ -255,7 +262,7 @@ function documents() {
               step_id: 2,
               timestamp: "2026-01-01T00:00:02.000Z",
               source: "agent",
-              model_name: "claude-sonnet",
+              model_name: "df-opus48-eval",
               reasoning_effort: "high",
               message: "secret task-specific answer",
               metrics: {
@@ -356,6 +363,15 @@ describe("StrictHarbor020RawArtifactDecoder", () => {
       decode((docs) => {
         docs.harbor.invocations[0]!.trials[0]!.result.task_name =
           "terminal-bench/another-task";
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a Foundry endpoint not derived from the sealed resource", async () => {
+    await expect(
+      decode((docs) => {
+        docs.harbor.invocations[0]!.trials[0]!.result.config.agent
+          .extra_allowed_hosts = ["api.anthropic.com"];
       }),
     ).rejects.toThrow();
   });

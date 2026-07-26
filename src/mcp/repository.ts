@@ -71,13 +71,13 @@ interface ReleasedCampaignContext {
   readonly nextExperiment: number;
   readonly allowedNextActions: readonly string[];
   readonly budgetBands: Readonly<Record<string, string>>;
-  readonly freshValidationPanelsRemaining: number;
-  readonly shadowSlicesRemaining: number;
 }
 
 const SAFE_IDENTIFIER = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
+const OPERATOR_ONLY_CAPACITY_BAND =
+  /(?:capacity|holdout|panel|shadow|slice|validation)/u;
 const ALLOWED_ACTIONS = new Set([
   "get-diagnostic-brief",
   "submit-hypothesis",
@@ -271,8 +271,6 @@ function parseCampaignContext(
     "nextExperiment",
     "allowedNextActions",
     "budgetBands",
-    "freshValidationPanelsRemaining",
-    "shadowSlicesRemaining",
   ];
   if (
     !isRecord(value) ||
@@ -290,10 +288,6 @@ function parseCampaignContext(
     (value.activeExperiment as number) < 0 ||
     !Number.isSafeInteger(value.nextExperiment) ||
     (value.nextExperiment as number) < 1 ||
-    !Number.isSafeInteger(value.freshValidationPanelsRemaining) ||
-    (value.freshValidationPanelsRemaining as number) < 0 ||
-    !Number.isSafeInteger(value.shadowSlicesRemaining) ||
-    (value.shadowSlicesRemaining as number) < 0 ||
     !Array.isArray(value.allowedNextActions) ||
     value.allowedNextActions.some(
       (action) => typeof action !== "string" || !ALLOWED_ACTIONS.has(action),
@@ -316,6 +310,7 @@ function parseCampaignContext(
     budgetBands.some(
       ([key, band]) =>
         !SAFE_IDENTIFIER.test(key) ||
+        OPERATOR_ONLY_CAPACITY_BAND.test(key) ||
         typeof band !== "string" ||
         !/^(?:none|low|medium|high|critical|exhausted|unknown)$/u.test(band),
     )

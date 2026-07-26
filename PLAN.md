@@ -1,5 +1,320 @@
 # Dark Factory MVP Plan
 
+## 0. Essentials-only MVP authority
+
+This section is the authoritative scope for the first runnable Dark Factory
+prototype. It supersedes any conflicting MVP language in the older production
+design retained in §§1–14. Those sections remain useful design research, but
+their larger promotion program, signing fabric, recovery machinery, image
+publication, and full-benchmark workflow are **future backlog, not blockers**
+for the first optimization loop.
+
+The MVP has one purpose: test whether a blind, cloud-only optimization loop can
+produce a credible improvement to the private Pi harness without exposing
+Terminal-Bench tasks or graders to Claude Code.
+
+### 0.1 The exact loop
+
+The loop is deliberately small and understandable:
+
+1. **Bootstrap one champion.** The initial champion is the exact reviewed
+   commit from the private `parallaxai/df-pi-tbench` fork. The trusted cloud
+   controller records its commit, tree, lockfile digest, evaluated-model
+   binding, benchmark revision, Harbor version, sandbox image, resources, and
+   network policy. Changing any of those values creates a different evaluation
+   environment and invalidates cache comparability.
+2. **Ask Claude Code for one candidate before selecting tasks.** Claude Code
+   runs in a separate optimizer sandbox using the public model family
+   `claude-opus-5` and the operator's existing Microsoft Foundry deployment
+   alias. On the first iteration it sees only the Pi source. On later
+   iterations it sees the Pi source plus the previous release-safe outcome and
+   task-free diagnostic cards. It never sees task names, task IDs, task
+   prompts, panel membership, graders, raw traces, per-task outcomes, private
+   cache state, or private Git credentials.
+3. **Choose or retain one hidden panel.** After the candidate is frozen, the
+   trusted broker selects exactly five hidden tasks. Selection is deterministic
+   and failure-weighted, not pseudorandom: previous failures, initial-baseline
+   failures, comparable public leaderboard failures, uncertainty, and
+   underexposure increase weight; repeated selection and cost reduce it. Four
+   positions come from the weighted core and one position is an easy canary.
+   The canary remains capable of detecting broad regressions and crude reward
+   hacking. Task handles are irreversible broker-private digests.
+4. **Run a matched race.** The candidate and champion use the same five tasks,
+   the same three repetitions per task, and the same full environment. A fully
+   fresh comparison is therefore `5 tasks × 3 repetitions × 2 arms = 30`
+   trials. The five tasks, task ordering, prompts, grader material, and raw
+   results stay inside the trusted evaluator boundary. The evaluated Pi process
+   necessarily receives one task prompt transiently so it can do the task, but
+   it never receives the grader and no task material returns to the optimizer.
+5. **Use the champion cache only as a screening economy.** A cached champion
+   result is valid only when the hidden task revision, champion commit,
+   repetition, benchmark and grader versions, evaluated model deployment and
+   effort, sampling/context settings, cloud provider and EU region, image,
+   architecture, resources, network policy, harness configuration, and all
+   additional settings match. A cache hit may avoid a champion trial while
+   screening an obvious rejection or inconclusive candidate. It can never, by
+   itself, promote. If a cache-assisted screen looks positive, every cached
+   champion cell needed by the comparison is rerun; promotion requires all 15
+   candidate cells and all 15 champion cells to be fresh.
+6. **Decide on matched task clusters.** Repetitions are aggregated within each
+   task before the five task-level deltas are compared. A candidate becomes
+   champion only when the predeclared minimum aggregate improvement and
+   confidence rule pass on complete, infrastructure-valid, fresh matched
+   evidence. Otherwise the outcome is `reject` or `inconclusive`; an
+   infrastructure failure is never converted into a task failure.
+7. **Sanitize useful failure information.** A trusted intermediate sanitizer
+   may inspect private evaluator diagnostics, including why a tool action
+   failed or why a general tool class was unsuitable. It releases only a
+   closed-vocabulary card such as `shell / invalid-arguments /
+   validate-tool-arguments` or `search / wrong-tool-class /
+   choose-capability-first`, with coarse support and confidence bands. It
+   removes arbitrary tool names, commands, paths, URLs, task literals, task
+   identities, grader text, per-task outcomes, long hashes, and free-form
+   messages. Deterministic schema and forbidden-literal checks reject the whole
+   brief if it escapes that vocabulary.
+8. **Persist one numbered experiment.** Each iteration is stored under a short
+   numbered name such as `001-change-system-prompt`. Release-safe JSON contains
+   the manifest, optimizer input, hypothesis, diagnostic brief, aggregate
+   decision, and next state. A `private/` subdirectory, mounted only in trusted
+   controller/evaluator sandboxes, contains the hidden selection, cell
+   observations, raw diagnostic references, and cache accounting. Every file
+   is strict-schema validated and the directory is published atomically.
+9. **Advance without consuming tasks.** On `promote`, the candidate becomes
+   champion and the next iteration selects a newly weighted panel. On `reject`
+   or `inconclusive`, the champion and the exact sealed five-task panel stay in
+   place so the next hypothesis is measured against the same repair target.
+   The five tasks are never removed from the task pool; after a later promotion
+   they remain eligible for selection again. Selection history and
+   underexposure weighting prevent the system from becoming a fixed five-task
+   optimizer.
+10. **Feed back only the release-safe result.** The next Claude session receives
+    the new champion revision, the prior disposition, and the sanitized cards.
+    It receives no hidden selection or score vector. The loop then repeats.
+
+This structure makes different candidates comparable because a decision is
+always candidate-versus-champion on the same cells, not candidate A's raw score
+on one subset versus candidate B's raw score on another. The cache saves known
+champion work while the fresh-promotion rule prevents a stale or easier panel
+from manufacturing a winner.
+
+### 0.2 Trust boundaries
+
+The minimum viable deployment has four one-way roles:
+
+- **Claude optimizer:** Pi source in, one candidate out. It receives only
+  task-free release-safe feedback and has no task catalog, Harbor, grader,
+  evaluator storage, or private-Git credential.
+- **Trusted controller/broker:** owns opaque task profiles, sealed panel
+  continuity, the full-environment cache, experiment state, and promotion
+  decisions. It selects tasks only after candidate creation.
+- **Trusted evaluator/sanitizer:** transiently resolves hidden task material,
+  runs Harbor and Pi in isolated sandboxes, retains private traces, and emits
+  only the strict diagnostic vocabulary and aggregate decision.
+- **Operator:** supplies protected runtime references, authorizes cost, reviews
+  cloud receipts, and explicitly decides when to resume. The operator does not
+  copy secrets or task-bearing artifacts into this repository or chat.
+
+No component outside the evaluator/broker boundary learns the actual hidden
+tasks that will be used. Dark Factory's optimizer-facing surface therefore has
+no idea what specific tasks are being optimized or ultimately tested. An
+official Terminal-Bench evaluation remains external and unknown to the
+optimization loop.
+
+### 0.3 Model, authentication, and cloud execution
+
+- Claude Code optimizer public family: `claude-opus-5`.
+- Evaluated Pi public family: `claude-opus-4-8`.
+- Evaluated reasoning effort: `high`, matching the intended leaderboard
+  configuration.
+- Authentication: the operator's **existing** Microsoft Foundry deployments
+  and API key. Deployment aliases are runtime inputs and need not equal public
+  model-family names.
+- Azure scope: runtime endpoint/deployment/key binding only. Dark Factory does
+  not deploy, provision, resize, discover capacity for, or otherwise configure
+  Azure resources.
+- Execution: GitHub-hosted orchestration plus isolated Daytona sandboxes in an
+  explicit EU target. No project install, package-manager command, formatter,
+  build, test, Claude session, Pi run, Harbor process, grader, or benchmark task
+  runs on the Mac.
+- Secrets: the GitHub-hosted launcher receives only the Daytona bootstrap
+  secret. Foundry and private-Git values are resolved by name from protected
+  cloud secret stores directly into the sandbox that needs them. A plaintext
+  key is never a configuration artifact or a chat input.
+
+### 0.4 Anti-overfitting and reward-hacking controls in the MVP
+
+The following are essential, not optional hardening:
+
+- candidate creation happens before hidden panel selection;
+- the optimizer never receives task identities, prompts, graders, raw traces,
+  per-task scores, or arbitrary sanitizer prose;
+- selection favors historically difficult/failing tasks but always includes an
+  easy canary and an underexposure term;
+- tasks remain eligible after use, while consecutive-selection penalties stop
+  one fixed subset from dominating forever;
+- candidate and champion are compared on identical cells and an identical
+  environment;
+- repetitions are clustered by task so three noisy repeats are not treated as
+  fifteen independent tasks;
+- a cached result can screen but never be the sole basis for promotion;
+- promotion requires fresh evidence and a minimum effect, not merely a higher
+  raw score;
+- environment drift invalidates cache entries and matched comparison;
+- infrastructure failures produce invalid/inconclusive evidence, not negative
+  benchmark evidence;
+- only generic, closed-vocabulary behavior failures reach Claude;
+- full-benchmark and official leaderboard execution are outside the adaptive
+  loop and require a separate future authorization.
+
+### 0.5 Source status at the MVP cut
+
+The repository currently has **source-ready but cloud-unverified** MVP cores:
+
+- strict contracts and JSON schemas for hidden tasks, evaluations, diagnostics,
+  decisions, experiment state, and private/public storage;
+- deterministic failure-weighted five-task selection with one easy canary;
+- construction of three matched cells per task;
+- full-environment champion cache keys and cache-hit verification;
+- matched task-cluster decision logic with a fresh-evidence promotion guard;
+- mounted-volume campaign, sealed-panel, hidden-catalog, experiment, and
+  champion-cache persistence for normal iteration boundaries;
+- a Foundry-backed intermediate diagnostic classifier plus fail-closed
+  closed-vocabulary diagnostic validation;
+- a bounded Claude Code 2.1.217 optimizer worker using Opus 5 at `high`,
+  MVP-specific task-blind skills, restricted tools/paths, exact champion
+  checkout, bounded-diff validation, and credential-isolated candidate-ref
+  publication;
+- a concrete trusted evaluator that verifies exact candidate/champion Git
+  lineage, builds under separate unprivileged identities, emits a
+  self-contained Linux x64 glibc Bun Pi runtime, and runs a strict Harbor
+  0.20.0 five-by-three matched plan;
+- fail-closed task eligibility requiring at least five exact direct-Daytona
+  Terminal-Bench 2.1 revisions with separately isolated verifiers at every
+  step;
+- a one-provider Daytona cloud launcher that creates isolated optimizer and
+  root-controller evaluator roles, disjoint volume subpaths, nested
+  task-sandbox secrets, immutable image/EU constraints, five-trial
+  concurrency, bounded commands, and verified teardown;
+- an external Pi/Harbor Foundry binding fixed to Opus 4.8 at `high`, where
+  child Daytona sandboxes receive their own provider-issued secret
+  placeholder and Pi cannot receive grader material;
+- an atomic numbered experiment-directory writer; and
+- a cloud-only configuration parser, entrypoint, role workers, and protected
+  GitHub workflows that fix the public model families, accept existing
+  deployment aliases, require an EU Daytona target, and exclude plaintext keys
+  and task-bearing output from their release receipts.
+
+Vitest specifications for these cores have been authored. They have **not**
+been executed on the Mac and are not passing evidence until a GitHub-hosted
+cloud quality run completes. The 90% global unit-coverage gate explicitly
+excludes only executable cloud/process boundary adapters whose meaningful
+behavior requires Daytona, Harbor, OS identity switching, or provider-issued
+secret placeholders. Their acceptance gate is the mandatory no-model
+synthetic plus bounded connectivity smoke; this exception is documented and
+must not be mistaken for runtime proof.
+
+The remaining essentials are deployment proof, not more local source work:
+
+- push the reviewed branch, generate/review the dependency lock in cloud CI,
+  and pass cloud formatting, lint, typecheck, unit/contract/coverage/privacy
+  tests, build, and secret scanning;
+- provide or verify the immutable Daytona image and create the evaluator-private
+  Harbor/Bun/dataset/adapter/runtime pin plus hidden weighted inventory, with at
+  least five direct-Daytona and all-step separate-verifier-compatible tasks;
+- pass a no-model synthetic campaign and bounded private-Git, Claude/Foundry,
+  Harbor, nested-Daytona, and Pi connectivity smokes; and
+- run one budget-approved real matched iteration and, only if the fresh rule
+  promotes it, confirm that the candidate improved on its champion.
+
+Source existence is not runtime proof. Until those steps pass, the MVP is
+`source-complete / cloud-unverified`, not runnable or improvement-proven.
+
+### 0.6 Explicitly deferred work
+
+The following work is intentionally **safe to defer for the MVP** and is not a
+prerequisite for the first loop:
+
+- KMS/HSM-backed signing and the larger Ed25519 authority fabric;
+- crash-perfect recovery, distributed transaction journals, and exhaustive
+  handoff/replay recovery;
+- twelve-task validation gates, shadow gates, certification champions, and
+  feedback-dark shadow pools;
+- sandbox providers other than the single Daytona EU path;
+- custom role-image publication and its SBOM/provenance pipeline;
+- dashboards, pull-request automation, and automated publication;
+- long-campaign alpha spending, privacy-budget machinery, winner's-curse
+  correction, and other sequential statistical programs;
+- the full 89-task/five-trial benchmark and official leaderboard workflow; and
+- exhaustive supply-chain and production-composition hardening beyond the
+  minimum immutable pins and isolation required for a credible prototype.
+
+Do not implement or configure these items merely because they appear in the
+older sections below. They can be reconsidered only after the MVP has completed
+at least one real cloud iteration and the operator explicitly expands scope.
+
+### 0.7 First-runnable acceptance boundary
+
+The first MVP is ready to test only when all of the following are true:
+
+1. cloud CI has produced a reviewed dependency lock and a passing source
+   quality receipt;
+2. a GitHub-hosted entrypoint can create and tear down isolated Daytona
+   sandboxes in the selected EU target;
+3. the optimizer sandbox can clone the exact champion, run Claude Code against
+   the existing Opus 5 deployment, create one bounded candidate, and return no
+   task-bearing data;
+4. the evaluator can build the exact candidate/champion, run Harbor with Pi
+   using the existing Opus 4.8 deployment at `high`, and return 30 matched
+   observations for a cold-cache five-by-three race;
+5. the sanitizer releases only schema-valid task-free cards;
+6. experiment JSON and full-environment cache state survive in the protected
+   cloud volume;
+7. rejection/inconclusive reuses the sealed panel and promotion rotates it;
+8. a synthetic campaign passes; and
+9. one budget-approved real iteration completes with an auditable
+   promote/reject/inconclusive result.
+
+### 0.8 Stop/resume prerequisites
+
+After the essentials-only source implementation is finished, work stops before
+credentials, paid models, Harbor, Pi, or Terminal-Bench are exercised. To
+resume cloud verification, the operator must:
+
+- make the pushed MVP branch and its GitHub Actions results accessible for
+  review;
+- store `DAYTONA_API_KEY` in the protected GitHub environment, never in chat;
+- provide the existing Daytona API URL, exact EU target, persistent volume
+  identifier/subpath, and an immutable public sandbox image reference whose
+  Linux x64 glibc runtime satisfies the exact executable and reserved-UID
+  contract in `CLOUD_DELIVERY.md`;
+- create or identify protected Daytona secret names for the existing Foundry
+  API key in the optimizer and evaluator sandboxes, the evaluator's nested
+  Daytona API key, and authenticated HTTPS access to the private Pi fork; the
+  secret values stay in the provider, not chat;
+- provide the existing Foundry Anthropic-compatible base URL and the two exact
+  deployment aliases for Opus 5 and Opus 4.8;
+- confirm the pinned private Pi owner/repository/branch/commit/tree/lock digest
+  and allow the cloud worker to fetch it and publish candidate refs without
+  exposing credentials to Claude;
+- authorize cloud-only discovery of the exact Terminal-Bench 2.1 and Harbor
+  pins and creation of a hidden inventory with at least five exact
+  direct-Daytona, Linux x64 glibc, all-step separate-verifier-compatible task
+  revisions; if fewer exist, the first run blocks rather than weakening grader
+  isolation;
+- approve the first-run budget and iteration cap—one iteration is recommended
+  before any continuation; and
+- explicitly tell the implementer to **resume** after the protected values are
+  in place.
+
+No API key, private SSH key, token, or task material should be pasted into this
+conversation. Deferred items in §0.6 are not part of this resume checklist.
+
+> **Legacy scope note:** §§1–14 below preserve the earlier production-grade
+> architecture and research. Where they mention twelve-task validation,
+> shadows, multi-provider fallback, signing authorities, long-campaign
+> statistics, image publication, or a full 89-task workflow, those requirements
+> are deferred by §0.6 and do not override this MVP cut.
+
 ## 1. Purpose and success criteria
 
 Dark Factory is a TypeScript control plane, authored and triggered from the
@@ -459,7 +774,7 @@ byte length, byte SHA-256, strict schema, semantic content hash, protocol,
 experiment, and lineage. Result, cache, and behavioral-release signatures use
 an injected purpose- and rotation-aware verifier; diagnostics are returned
 only as an all-present or all-absent set. The final bundle must pass the
-task-safe local-persistence scan before it can reach the controller. Captured
+task-safe release-persistence scan before it can reach the controller. Captured
 methods, pre-await snapshots, replay comparison, and defensive output copies
 make dependency/caller mutation and nondeterministic completed replays fail
 closed. Network transport remains a later deployment adapter rather than a
@@ -520,6 +835,30 @@ committed result. Repair and shadow never create a preparation and can never
 invoke diagnostic finalization. An ambiguous behavioral-release commit retains
 the durable prepared state for protected exact reconciliation; it is not
 destructively taken or discarded.
+
+Immediately after the raw-destruction receipt verifies, the broker durably
+writes an exact evaluator-private post-destruction recovery record before it
+may finalize diagnostics or issue a result. The record binds request and
+protocol hashes, the one-use disposition attestation, retention policy, raw
+manifest and signed destruction receipt, the complete task-free canonical
+aggregate, behavioral preparation/finalization/orphan state, and any exact
+issued result envelope. Its append-only result transitions are `open ->
+result-issued -> completed` or `open/result-issued -> failed`; behavioral
+state can only move `prepared -> finalized -> abandoned` or `prepared ->
+consumed`. There is no enumeration or delete operation.
+
+An in-flight request is never restarted. A successor first resolves that
+record by exact request/protocol hash, then asks a trusted provider-termination
+authority to authorize takeover of the exact prior claim owner, claim epoch,
+disposition, and recovery-record hash. The ledger atomically fences the old
+claim token, rotates it to the successor, and records the one-use
+authorization. Recovery continues only from the checkpointed destruction
+receipt and aggregate: it cannot allocate a panel, invoke Harbor, decode raw
+artifacts, or rerun a task. A lost result-completion acknowledgement is
+reconciled against the exact checkpointed envelope. An orphaned finalization
+is made terminal in both private stores before the one-use claim can be
+consumed. Missing, conflicting, unavailable, or changed evidence preserves
+the claim and fails closed.
 
 The concrete mounted-volume implementation deliberately embeds the hidden
 privacy ledger and all four release-safe documents in one strictly validated,
@@ -817,13 +1156,16 @@ fallback. The campaign-purpose KMS keyring and all other rotation-aware
 public-key authorities remain separate injected operator bindings so storage
 cannot appoint its own verification keys.
 
-The requirement to keep logs, traces, hypotheses, and experiments locally is
-implemented as **complete local retention of every release-safe artifact**:
-control-plane event traces, hypotheses, patches, aggregate behavioral evidence,
-decisions, costs, and attestations. Raw evaluator/agent trajectories cannot
-also be local without violating the task-blindness boundary, so they remain
-ephemeral trusted-cloud audit material. The signed derivation hashes make the
-local aggregate evidence auditable without copying the sensitive source.
+The requirement to keep logs, traces, hypotheses, and experiments together is
+implemented as **complete durable retention of every release-safe artifact on
+the governed cloud campaign volume**: control-plane event traces, hypotheses,
+patches, aggregate behavioral evidence, decisions, costs, and attestations. An
+optional workstation copy is a read-only mirror, never a runtime input or
+authoritative store. Raw evaluator/agent trajectories cannot enter either the
+release-safe campaign prefix or that mirror without violating the
+task-blindness boundary, so they remain short-lived trusted-evaluator audit
+material. Signed derivation hashes make the mirrored aggregate evidence
+auditable without copying its sensitive source.
 
 Each experiment contains:
 
@@ -845,10 +1187,10 @@ events.jsonl
 ```
 
 Per-trial tasks, handles, outcomes, metrics, and trajectories remain in the
-trusted broker's audit store. The local experiment directory deliberately
-contains no `trials/` directory: individual rows make task reconstruction,
-cross-experiment joins, and differencing attacks easier even after literal
-redaction.
+trusted broker's audit store. Governed release-safe experiment directories and
+their optional read-only workstation mirrors deliberately contain no `trials/`
+directory: individual rows make task reconstruction, cross-experiment joins,
+and differencing attacks easier even after literal redaction.
 
 ### 6.1 `experiment.json`
 
@@ -888,7 +1230,7 @@ identities, instructions, selection weights, exposure counts, cooldowns, panel
 roles, and pool membership remain exclusively in the cloud broker vault and
 are never returned to Dark Factory.
 
-### 6.5 Trusted trial records and normalized local evidence
+### 6.5 Trusted trial records and normalized release-safe evidence
 
 Inside the trusted evaluator only, an audit record stores a one-use opaque
 trial handle, arm, repetition, task assignment, timestamps, environment
@@ -909,7 +1251,8 @@ an extracted tree is written to the workstation.
 The evaluator derives a strict `NormalizedGraderOutcome` and allowlisted
 behavioral feature rows, signs their source hashes, aggregates them, then
 destroys or quarantines the raw artifacts according to the frozen retention
-policy. Neither raw nor "sanitized" ATIF is valid local experiment evidence.
+policy. Neither raw nor "sanitized" ATIF is valid governed release-safe
+experiment evidence or workstation-mirror content.
 
 `behavioral-evidence.json` stores only release-safe aggregate counts,
 distributions, effect sizes, uncertainty, suppression metadata, and policy
@@ -968,9 +1311,10 @@ captures lifecycle transitions, evidence queries, tool requests, task-agnostic
 aggregate evaluator milestones and arm counts, publication attempts, and
 operator actions. It contains no per-trial handle, metric, task, or feature row.
 
-A local SQLite index supports fast evidence queries. It is derived entirely
-from validated JSON, contains no exclusive information, and is rebuilt by a
-CLI command.
+A disposable cloud-side SQLite index supports fast evidence queries. It is
+derived entirely from validated governed-volume JSON, contains no exclusive
+information, and is rebuilt only by a cloud controller command. It is neither
+queried nor rebuilt by a Mac process.
 
 ## 7. Walk-forward blind evaluation and economy
 
@@ -1037,7 +1381,8 @@ receive priority over impossible or broken tasks.
 
 Dark Factory receives no task list, name, persistent pseudonym, instruction,
 mapping, or selection score. One-use trial handles exist only to join the
-trusted evaluator audit within one experiment and are not returned locally.
+trusted evaluator audit within one experiment and are not returned to the
+controller, optimizer, release-safe campaign prefix, or workstation mirror.
 
 ### 7.1 Walk-forward repair and fresh validation
 
@@ -1378,10 +1723,11 @@ At lineage initialization, the broker permanently reserves two disjoint,
 twelve-task shadow slices (24 tasks total) before allocating validation
 capacity. Shadow tasks never appear in discovery, repair, validation, baseline
 feedback, or cards. The reservation count may be reported; identities and
-composition remain hidden. With an 89-task benchmark, this leaves at most five
-complete twelve-task fresh validation panels (and five spare tasks) before any
-other eligibility loss. The status UI must display this finite panel budget
-before a campaign begins.
+composition remain hidden. Capacity is reported only on operator status and
+feedback surfaces, never through optimizer campaign context or evidence. With
+an 89-task benchmark, this leaves at most five complete twelve-task fresh
+validation panels (and five spare tasks) before any other eligibility loss.
+The status UI must display this finite panel budget before a campaign begins.
 
 Every third active-champion promotion, and before any external release, consume
 one unused shadow slice in a separately sealed feedback-dark race: twelve fresh
@@ -1460,7 +1806,8 @@ The trusted evidence firewall runs these stages in order:
 3. **Drop literals before persistence.** Commands and arguments, paths,
    filenames, file contents, stdout/stderr, URLs, package and service names,
    environment variables, unique constants, task IDs, stable pseudonyms, and
-   grader messages are neither returned nor placed in the local store.
+   grader messages are neither returned nor placed in the governed release-safe
+   store or optional workstation mirror.
 4. **Compute evidence statistically.** The deterministic engine aggregates by
    approved broad cohort, compares success/failure and candidate/champion,
    reports effect size and uncertainty, controls for runtime/budget, and treats
@@ -1511,6 +1858,21 @@ Reject candidates containing:
 
 Also:
 
+- Derive the authoritative changed-path list, unified diff, line counts, and
+  before/after modes from the exact candidate Git bundle, source commit/tree,
+  candidate commit/tree, and single-parent relationship in a deny-all cloud
+  sandbox. Optimizer-declared paths and diff bytes are comparison inputs only;
+  they are never the scan authority.
+- Load the protected-fragment hashes through a non-enumerable trusted
+  evaluator source. Neither those hashes nor raw paths, diff lines, mode
+  records, task material, or scanner evidence may enter the optimizer
+  artifact namespace.
+- Bind the candidate bundle, derived evidence manifest/diff, observed and
+  declared path hashes, line-count hash, mode hash, hidden fragment-catalog
+  hash, frozen scanner policy, worker digest, and cloud execution receipt into
+  an Ed25519-signed schema-v2 scan receipt. The correctness gate and durable
+  record store independently verify the pinned public key and all content
+  bindings; a merely hash-shaped attestation is insufficient.
 - Keep mutations small and prefer one causal harness change per experiment.
 - Require cross-task justification.
 - Freeze predictions before evaluation.
@@ -1559,6 +1921,11 @@ Create a project-local Claude Code plugin.
 - `df_get_latest_diagnostic_brief`
 - `df_get_component_history`
 - `df_get_regressions`
+
+Campaign context contains only task-agnostic lineage, champion identity,
+allowed actions, and non-capacity budget bands. Exact validation-panel,
+holdout, shadow-slice, and other capacity state is operator-only. The parser
+rejects both the old exact counters and capacity-themed budget-band keys.
 
 ### 9.3 Submission/request MCP tools
 
@@ -1794,23 +2161,32 @@ fenced optimization-coordination ports; production completion material;
 mounted journal state, artifact assembler, seal authority, interruption
 attestor, and evidence store; cloud-only Claude session, artifact-backed
 optimizer resolver, and durable session records; correctness runner, durable
-records, and commit-keyed source index; and the blind broker, durable lease
-store, content-hash-only evaluator release service, and durable diagnostic
-publisher. Each backing store is registered immediately. A registration or
-later constructor failure closes the partial stack through idempotent
-close-once wrappers, while the owner may safely perform its normal final
-drain. The nine returned method-captured implementations and their port
-bindings are frozen, canonical-order, and reference-equal. The trusted runtime
-guard and reviewed mounted-volume semantics are checked before construction.
-See `documentation.md` ADR-0072.
+records, and commit-keyed source index; and a fixed trusted evaluator adapter.
+That adapter reconstructs the mounted private behavioral-preparation and
+privacy/artifact transactions, immediately registers both with the same
+composition lifecycle, calls `createTrustedEvaluationService`, and supplies
+the result only to the blind broker's content-hash-only release service.
+Committed behavioral artifacts are read directly through a non-enumerating
+store overlay; cache artifacts continue through the governed immutable
+artifact source. Neither the service, store, release reader, nor task-bearing
+inputs become an optimizer runtime port. The factory also constructs the
+durable blind-broker lease store and diagnostic publisher. Each backing store
+is registered immediately. A registration or later constructor failure closes
+the partial stack through idempotent close-once wrappers, while the owner may
+safely perform its normal final drain. The nine returned method-captured
+implementations and their port bindings are frozen, canonical-order, and
+reference-equal. The trusted runtime guard and reviewed mounted-volume
+semantics are checked before construction. See `documentation.md` ADR-0072
+and ADR-0085.
 
 Deployment still supplies real provider/KMS/artifact authorities rather than
 test fallbacks: campaign transition/decision/control verifiers, optimization
 diagnostic/resume/interruption authorities, completion accounting/ledger/seal
 authorities, journal policy/provenance/task-exclusion/leak-scan authorities,
 the cloud provider and optimizer artifact/key registries, correctness
-scan/build/publication/snapshot and receipt authorities, evaluator service and
-release artifact/key authorities, broker configuration and source keyrings,
+scan/build/publication/snapshot and receipt authorities, trusted evaluator
+runner/raw/policy/catalog/ledger/KMS capabilities and cache-release
+artifact/key authorities, broker configuration and source keyrings,
 the independent factory dependency attestation, and the exact policy,
 provider-readiness, and volume-semantics commitments.
 
@@ -1929,7 +2305,9 @@ Use six separate, explicit cloud delivery paths:
    provenance; and
 6. a main-commit-bound, protected-environment paid workflow whose typed
    authorization binds campaign and control-image digest before it exposes the
-   Daytona bootstrap credential to the single controller-launch step.
+   Daytona bootstrap credential only to the explicit probe, synthetic, and
+   optimize controller-bootstrap steps. Only optimize receives the separately
+   governed paid configuration.
 
 No delivery workflow selects a model, provider credential, benchmark pin,
 budget, or mutable image tag on the operator's behalf. Image publication never
@@ -1952,7 +2330,8 @@ separation, and authorization policy.
 - Validate positive and adversarial failure-card fixtures.
 - Validate Harbor/ATIF adapters against pinned examples.
 - Prove raw ATIF, raw grader output, per-task normalized rows, task keys, and
-  stable panel handles cannot validate as local experiment evidence.
+  stable panel handles cannot validate as governed release-safe experiment
+  evidence.
 - Prove every released aggregate traces to a signed
   `NormalizedGraderOutcome` derivation without exposing its row.
 - Prove `additionalProperties: false` is enforced.
@@ -2191,8 +2570,9 @@ Docker or local execution adapter.
   operator commands run in cloud sandboxes or cloud CI. The Mac is limited to
   source editing, read-only Pi inspection, cloud triggering, and display of an
   optional read-only release-safe evidence mirror.
-- Only privacy-thresholded aggregate results and attestations are retained
-  locally; no raw or sanitized ATIF or grader payload is local evidence.
+- Only privacy-thresholded aggregate results and attestations may enter the
+  optional read-only workstation mirror; no raw or sanitized ATIF or grader
+  payload is release-safe or mirrored evidence.
 - Research experiments may continue indefinitely, but positive promotion and
   certification pause when their genuinely fresh holdout budget is exhausted.
   The official full run is always policy- and human-gated.

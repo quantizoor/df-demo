@@ -26,6 +26,9 @@ from harbor.models.trajectories import Trajectory
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _RELATIVE_PATH = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
 _TOOL = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+_FOUNDRY_RESOURCE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+)
 _THINKING = {"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 _MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024
 _MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024
@@ -60,6 +63,7 @@ _PROVIDER_CREDENTIALS = {
         "ANTHROPIC_OAUTH_TOKEN",
         "ANTHROPIC_API_KEY",
     ),
+    "microsoft-foundry": ("ANTHROPIC_FOUNDRY_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
     "azure-openai-responses": (
         "AZURE_OPENAI_API_KEY",
@@ -103,6 +107,7 @@ _PROVIDER_AUTHENTICATION = {
         "ANTHROPIC_OAUTH_TOKEN",
         "ANTHROPIC_API_KEY",
     ),
+    "microsoft-foundry": ("ANTHROPIC_FOUNDRY_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
     "azure-openai-responses": ("AZURE_OPENAI_API_KEY",),
     "github-copilot": ("COPILOT_GITHUB_TOKEN",),
@@ -137,6 +142,64 @@ def _sha256_file(path: Path) -> str:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _microsoft_foundry_models_json(
+    resource_name: str, deployment_name: str, model_family: str
+) -> str:
+    """Return Pi's credential-blind, endpoint-derived Foundry model config."""
+    if (
+        not _FOUNDRY_RESOURCE.fullmatch(resource_name)
+        or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}",
+            deployment_name,
+        )
+        or model_family != "claude-opus-4-8"
+    ):
+        raise RuntimeError("Microsoft Foundry deployment identity is invalid")
+    return json.dumps(
+        {
+            "providers": {
+                "microsoft-foundry": {
+                    "name": "Microsoft Foundry",
+                    "baseUrl": (
+                        f"https://{resource_name}.services.ai.azure.com/anthropic"
+                    ),
+                    "api": "anthropic-messages",
+                    "apiKey": "$ANTHROPIC_FOUNDRY_API_KEY",
+                    "models": [
+                        {
+                            "id": deployment_name,
+                            "name": "Claude Opus 4.8",
+                            "reasoning": True,
+                            "input": ["text", "image"],
+                            "contextWindow": 1_000_000,
+                            "maxTokens": 128_000,
+                            "cost": {
+                                "input": 5,
+                                "output": 25,
+                                "cacheRead": 0.5,
+                                "cacheWrite": 6.25,
+                            },
+                            "thinkingLevelMap": {
+                                "low": "low",
+                                "medium": "medium",
+                                "high": "high",
+                                "xhigh": "xhigh",
+                                "max": "max",
+                            },
+                            "compat": {
+                                "forceAdaptiveThinking": True,
+                            },
+                        }
+                    ],
+                }
+            }
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
 
 def _safe_member(member: tarfile.TarInfo) -> bool:
@@ -775,6 +838,8 @@ class DarkFactoryPi(BaseInstalledAgent):
         thinking: str,
         enabled_tools: list[str],
         credential_environment_names: list[str],
+        foundry_resource_name: str | None = None,
+        model_family: str | None = None,
         **kwargs,
     ):
         archive = Path(runtime_archive_path)
@@ -793,6 +858,17 @@ class DarkFactoryPi(BaseInstalledAgent):
             )
             or len(set(credential_environment_names))
             != len(credential_environment_names)
+            or (
+                foundry_resource_name is not None
+                and not _FOUNDRY_RESOURCE.fullmatch(foundry_resource_name)
+            )
+            or (
+                model_family is not None
+                and not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}",
+                    model_family,
+                )
+            )
         ):
             raise ValueError("Dark Factory Pi adapter configuration is malformed")
         self._runtime_archive_path = archive
@@ -803,6 +879,8 @@ class DarkFactoryPi(BaseInstalledAgent):
         self._credential_environment_names = sorted(
             credential_environment_names
         )
+        self._foundry_resource_name = foundry_resource_name
+        self._model_family = model_family
         super().__init__(*args, **kwargs)
 
     @staticmethod
@@ -839,11 +917,48 @@ class DarkFactoryPi(BaseInstalledAgent):
                 raise RuntimeError("Pi runtime archive is missing a sealed entrypoint")
             await environment.upload_dir(extracted, "/opt/pi")
 
+        if not self.model_name or "/" not in self.model_name:
+            raise ValueError("Model name must be provider/model")
+        provider, model = self.model_name.split("/", 1)
+        if provider == "microsoft-foundry":
+            if (
+                self._foundry_resource_name is None
+                or self._model_family != "claude-opus-4-8"
+            ):
+                raise RuntimeError(
+                    "Microsoft Foundry resource was not bound"
+                )
+            models_json = _microsoft_foundry_models_json(
+                self._foundry_resource_name,
+                model,
+                self._model_family,
+            )
+            foundry_setup = (
+                "install -d -o root -g root -m 0755 "
+                "/installed-agent/foundry-config; "
+                f"printf '%s\\n' {shlex.quote(models_json)} > "
+                "/installed-agent/foundry-config/models.json; "
+                "chown root:root "
+                "/installed-agent/foundry-config/models.json; "
+                "chmod 0644 "
+                "/installed-agent/foundry-config/models.json; "
+            )
+        else:
+            if (
+                self._foundry_resource_name is not None
+                or self._model_family is not None
+            ):
+                raise RuntimeError(
+                    "Foundry resource was attached to another provider"
+                )
+            foundry_setup = ""
+
         await self.exec_as_root(
             environment,
             command=(
                 "set -euo pipefail; "
                 "install -d -m 0755 /installed-agent/empty-config; "
+                f"{foundry_setup}"
                 f"chmod 0755 {shlex.quote(f'/opt/pi/{self._pi_entrypoint}')}; "
                 f"{shlex.quote(f'/opt/pi/{self._pi_entrypoint}')} --version"
             ),
@@ -869,13 +984,32 @@ class DarkFactoryPi(BaseInstalledAgent):
             raise ValueError(
                 "Pi provider credential environment grant is invalid"
             )
+        if (
+            provider == "microsoft-foundry"
+            and (
+                self._foundry_resource_name is None
+                or self._model_family != "claude-opus-4-8"
+                or self._thinking != "high"
+            )
+        ):
+            raise RuntimeError(
+                "Microsoft Foundry evaluated model binding changed"
+            )
 
-        environment_values = {
-            key: value
-            for key in self._credential_environment_names
-            if (value := os.environ.get(key))
-        }
-        if not any(
+        # Daytona secret placeholders are scoped to the sandbox where they were
+        # issued. Harbor attaches the evaluated Foundry secret directly to each
+        # task sandbox, so copying the evaluator sandbox's placeholder here would
+        # replace it with a credential that cannot be resolved in the child.
+        environment_values = (
+            {}
+            if provider == "microsoft-foundry"
+            else {
+                key: value
+                for key in self._credential_environment_names
+                if (value := os.environ.get(key))
+            }
+        )
+        if provider != "microsoft-foundry" and not any(
             key in environment_values
             for key in _PROVIDER_AUTHENTICATION[provider]
         ):
@@ -885,7 +1019,11 @@ class DarkFactoryPi(BaseInstalledAgent):
         environment_values.update(
             {
                 "NO_COLOR": "1",
-                "PI_CODING_AGENT_DIR": "/installed-agent/empty-config",
+                "PI_CODING_AGENT_DIR": (
+                    "/installed-agent/foundry-config"
+                    if provider == "microsoft-foundry"
+                    else "/installed-agent/empty-config"
+                ),
                 "PI_OFFLINE": "1",
                 "PI_SKIP_VERSION_CHECK": "1",
                 "PI_TELEMETRY": "0",
@@ -894,8 +1032,16 @@ class DarkFactoryPi(BaseInstalledAgent):
         pi = shlex.quote(f"/opt/pi/{self._pi_entrypoint}")
         tools = shlex.quote(",".join(self._enabled_tools))
         output = shlex.quote(f"/logs/agent/{self._OUTPUT_FILENAME}")
+        credential_check = (
+            '[ -n "${ANTHROPIC_FOUNDRY_API_KEY:-}" ] || { '
+            'echo "Pi provider authentication was not injected." >&2; '
+            "exit 87; }; "
+            if provider == "microsoft-foundry"
+            else ""
+        )
         command = (
             "set -euo pipefail; "
+            f"{credential_check}"
             "for protected_path in /tests /solution; do "
             '[ ! -e "$protected_path" ] || { '
             'echo "Protected verifier material was visible during the agent phase." >&2; '

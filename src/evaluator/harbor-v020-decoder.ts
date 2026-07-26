@@ -649,6 +649,9 @@ function validateAgentConfig(
     "thinking",
     "enabled_tools",
     "credential_environment_names",
+    ...(model.provider === "microsoft-foundry"
+      ? ["foundry_resource_name", "model_family"]
+      : []),
   ]);
   const expectedModel = `${model.provider}/${model.modelId}`;
   if (
@@ -662,6 +665,23 @@ function validateAgentConfig(
       config["load_trajectory"] !== null
   ) {
     fail();
+  }
+  if (model.provider === "microsoft-foundry") {
+    const resource = kwargs["foundry_resource_name"];
+    const allowedHosts = config["extra_allowed_hosts"];
+    if (
+      typeof resource !== "string" ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(resource) ||
+      !Array.isArray(allowedHosts) ||
+      allowedHosts.length !== 1 ||
+      allowedHosts[0] !== `${resource}.services.ai.azure.com` ||
+      kwargs["model_family"] !== "claude-opus-4-8" ||
+      kwargs["thinking"] !== "high" ||
+      JSON.stringify(kwargs["credential_environment_names"]) !==
+        JSON.stringify(["ANTHROPIC_FOUNDRY_API_KEY"])
+    ) {
+      fail();
+    }
   }
   stringValue(kwargs["runtime_archive_path"], 8_192);
   stringValue(kwargs["pi_entrypoint"], 512);

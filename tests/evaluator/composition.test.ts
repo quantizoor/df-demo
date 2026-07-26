@@ -192,6 +192,7 @@ function options(): TrustedEvaluationServiceCompositionOptions {
       ledger: {
         claim: unavailable,
         inspect: unavailable,
+        recoverInFlight: unavailable,
         bindDispositionAttestation: unavailable,
         complete: unavailable,
         consumeFailure: unavailable,

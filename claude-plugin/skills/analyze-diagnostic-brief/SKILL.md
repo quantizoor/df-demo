@@ -5,8 +5,14 @@ description: Analyze a sealed Dark Factory diagnostic brief containing privacy-t
 
 # Analyze a diagnostic brief
 
-Validate the source experiment, protocol hash, policy versions, one-use release ID, and
-aggregate-evidence hash before using a brief.
+First identify the active protocol:
+
+- In the essentials-only MVP, the optimizer input contains the brief directly. Validate
+  `schemaVersion`, the exact `closed-vocabulary-task-free-v1` policy, and all four false
+  privacy flags. There are deliberately no release IDs, hashes, card IDs, task counts, or
+  query tools. Treat a missing or invalid field as unusable feedback.
+- In the full Dark Factory protocol, validate the source experiment, protocol hash, policy
+  versions, one-use release ID, and aggregate-evidence hash before using a brief.
 
 For each card:
 
@@ -19,7 +25,7 @@ For each card:
 6. State what fresh evidence would falsify the mechanism.
 
 Do not reconstruct contributing tasks, calculate hidden counts from bands, compare overlapping
-briefs to difference out a cohort, or translate a generic finding into an environment-specific
-recipe. A card suggests a research hypothesis; it does not prescribe the correct action for a
-particular task.
-
+briefs to difference out a cohort, or translate a generic finding into an
+environment-specific recipe. Do not invent metadata that the active protocol does not
+provide. A card suggests a research hypothesis; it does not prescribe the correct action for
+a particular task.

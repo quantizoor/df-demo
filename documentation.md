@@ -572,7 +572,7 @@ code requires 100% branch coverage and replay-resistance tests.
 - Date: 2026-07-25
 - Status: accepted
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0082 (optimizer-visibility scope only)
 - Related plan: `PLAN.md` §11
 
 ### Context
@@ -5787,16 +5787,33 @@ Add a separate `cloud-control-preflight` workflow for `probe`, `synthetic`, and
 pre-composition `status`. It does not use the protected paid environment and
 has no paid authorization or bootstrap descriptor. The GitHub runner receives
 only its Daytona bootstrap credential. The offline Daytona sandbox receives
-no secret and no network.
+no secret and no network. Bind this job to a distinct
+`dark-factory-preflight` GitHub environment so its bootstrap credential can be
+reviewer-protected independently of paid optimization. Runtime image
+references must be deliberately public or supported by provider-side
+private-registry configuration; a registry credential is never forwarded
+through the evaluated sandbox merely to make a private image pull work.
 
-Change the lockfile review workflow to run from the reviewed workflow
-definition on `main` while checking out an exact `refs/heads/...` repository
-branch tip whose SHA must match the typed input. The job has read-only
-repository permission, persists no checkout credential, rejects `.npmrc`,
-pnpm hook files, and workspace manifests, disables lifecycle scripts, refuses
-an existing lock, and uploads only the new lock and checksum. This permits the
+Make the one-time lockfile review workflow run automatically on the exact
+`codex/dark-factory-mvp` bootstrap branch, with a second manual mode available
+from `main` once the workflow has itself been reviewed. Manual mode checks out
+an exact `refs/heads/...` tip whose SHA must match the typed input; push mode
+binds directly to `github.ref` and `github.sha`. Both modes have read-only
+repository permission, persist no checkout credential, reject `.npmrc`, pnpm
+hook files, and workspace manifests, disable lifecycle scripts, refuse an
+existing lock, and upload only the new lock and checksum. This permits the
 lock to join the same implementation pull request without executing project
 code or granting write authority.
+
+After the reviewed lock is committed to the exact bootstrap branch, a second
+read-only push workflow performs the source mutation that is forbidden on the
+Mac: it installs only from the frozen lock, applies Biome, runs lint,
+typecheck, coverage tests, and the distributable build, then uploads the
+binary-safe formatter patch plus a source-commit-bound checksum receipt. It
+has no write credential and rejects formatter changes to the package manifest,
+lock, or non-source formats. A human or controlling agent must verify and
+apply the patch in a later commit before opening the normal quality-gated pull
+request.
 
 Add `discover-terminal-bench-pin.mjs` and a main-only no-secret workflow. The
 workflow installs one exact Harbor semantic version in ephemeral GitHub-hosted
@@ -5845,7 +5862,9 @@ credentials and without weakening the optimize gate. A pre-composition status
 receipt distinguishes “the control path works but production is unbound” from
 a failed command. Provider creation still requires the GitHub-side Daytona
 credential, and a live probe still needs its nested provider credential;
-neither fact is hidden.
+neither fact is hidden. The preflight environment and image visibility/pull
+configuration must be created by the operator before dispatch; naming them in
+source does not prove their protections or provider availability.
 
 The lock and pin workflows remove configuration cycles but do not constitute
 execution evidence until dispatched. Pin discovery validates the downloaded
@@ -5878,6 +5897,7 @@ the Mac while authoring this decision.
 - `src/cloud/control-plane.ts`
 - `scripts/discover-terminal-bench-pin.mjs`
 - `.github/workflows/bootstrap-lockfile.yml`
+- `.github/workflows/cloud-format-review.yml`
 - `.github/workflows/discover-terminal-bench-pin.yml`
 - `.github/workflows/cloud-preflight.yml`
 - `tests/cloud/control-bootstrap.test.ts`
@@ -6065,9 +6085,10 @@ authorization, and content hashes. State transitions retry one identical
 operation after an ambiguous acknowledgement. The store can register
 immediately with an injected production lifecycle owner and requires
 provider-attested predecessor termination before an unclean successor may
-recover the writer fence. No concrete evaluator bootstrap instantiates it yet,
-so production must make that lifecycle argument mandatory at its call site;
-the optional constructor form exists only for isolated source tests.
+recover the writer fence. At the time of this decision no concrete evaluator
+bootstrap instantiated it. ADR-0085 now makes the lifecycle argument mandatory
+at the production runtime call site; the optional constructor form remains
+only for isolated source tests.
 
 The canonical deriver now commits an eligible validation preparation before
 returning its release-safe aggregate and verifies the exact durability
@@ -6479,6 +6500,10 @@ by the optimizer byte gate. Those artifacts omit panel roles, exposure
 history, stable panel handles, task identities, task lists, grader content,
 and operator-only capacity fields. Stage selection and champion decisions
 remain controller-owned; the optimizer has no tool for either action.
+The optimizer campaign-context parser therefore omits the former exact
+fresh-validation-panel and shadow-slice counters and rejects
+capacity/holdout/panel/shadow/slice/validation budget-band keys rather than
+turning them into a second, coarsened capacity channel.
 
 ### Alternatives
 
@@ -6504,8 +6529,10 @@ lineage, query, and byte-inspection controls; renaming or copying
 - `FEEDBACK.md`
 - `README.md`
 - `src/mcp/server.ts`
+- `src/mcp/repository.ts`
 - `src/optimizer/artifact-backed-resolver.ts`
 - `src/optimizer/release-artifact-safety.ts`
+- `tests/mcp/repository.test.ts`
 
 ## ADR-0083 — Reject opaque candidate mutations before source release
 
@@ -6537,6 +6564,20 @@ approved Pi mutation roots and only with an explicit text/source extension
 allowlist. Every changed extensionless, binary, or unapproved format receives
 `OPAQUE_BINARY_CHANGE`. A Git diff containing `GIT binary patch` or a
 `Binary files ... differ` marker independently receives the same violation.
+Git link and submodule modes (`120000` and `160000`) are rejected whether
+introduced by a mode-change line or retained on an `index` line. The scanner
+also derives changed paths and line counts from the supplied unified diff and
+requires exact agreement with unique, normalized caller metadata; ambiguous
+headers, negative counts, duplicate paths, or concealed paths fail with
+`DIFF_METADATA_MISMATCH`.
+
+Literal inspection is aggregate rather than line-local only. Adjacent encoded
+chunks are reassembled, short printable hexadecimal and Base64 values are
+decoded for protected-fragment and benchmark-reference checks, and protected
+phrases reconstructed across adjacent literals are rejected. Hexadecimal is
+classified before Base64 because its alphabet is a subset of Base64. These
+controls do not reveal protected fragments: comparison remains against the
+trusted set of one-way fragment hashes.
 The existing mutation-size, protected-path, encoded-payload, benchmark
 fragment, environment-routing, network, and solution-reference controls still
 apply.
@@ -6571,3 +6612,715 @@ still run in protected cloud CI before production.
 - `src/optimizer/artifact-backed-resolver.ts`
 - `PLAN.md`
 - `TODO.md`
+
+## ADR-0087 — Resume one-use evaluations only from an exact post-destruction checkpoint
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3 and §7.1
+
+### Context
+
+The one-use ledger preserved an interrupted request as `in-flight`, and the
+broker could reconcile a lost `complete` acknowledgement within the same call.
+After a controller crash, however, a successor had neither an authorized way
+to rotate the prior claim token nor a durable copy of the post-destruction
+aggregate, release lifecycle, and exact issued envelope. Treating the request
+as new would rerun hidden tasks; treating every in-flight record as failed
+could orphan a release already referenced by a committed result.
+
+### Decision
+
+Add a provider-termination-authorized claim-recovery protocol to the durable
+one-use ledger. Every claim records its controller-instance commitment and
+monotonic epoch. Recovery binds the request, disposition attestation, prior
+claim-token hash, prior/successor controller commitments, claim epoch, and the
+exact recovery-record hash. A trusted cloud authority must return a
+content-bound authorization containing a provider termination-attestation
+commitment. The ledger validates that binding, prevents authorization replay,
+atomically rotates the claim token, and fences the predecessor. A missing,
+changed, self-referential, or unavailable authorization fails closed.
+
+Add an exact-query, evaluator-private post-destruction recovery store. After a
+signed destruction receipt verifies, the broker stores the raw manifest and
+receipt, canonical task-free aggregate, disposition, retention lineage,
+behavioral lifecycle, and later the exact result envelope. Record hashes and
+append-only revisions permit behavioral `none`, `prepared -> consumed`, or
+`prepared -> finalized -> abandoned`; and result `open -> result-issued ->
+completed` or a nonterminal state to `failed` after cleanup is durable.
+
+The broker resolves this record before claim takeover. A resumed call never
+allocates a panel, invokes the runner, derives from raw artifacts, or destroys
+raw material again. It revalidates the destruction signature, reconciles
+preparation finalization or abandonment, issues or verifies the exact
+envelope, and inspects ambiguous ledger completion before orphaning anything.
+A permanently orphaned release can never transition to a completed result.
+Unknown release commitment, cleanup, record transition, or completion state
+preserves the in-flight claim.
+
+### Consequences
+
+The recovery algorithm does not grant the optimizer access to the private
+checkpoint or provider evidence. The mounted implementation inherits the
+existing single-writer fence and provider-attested lock-recovery boundary and
+exposes no enumeration method.
+
+This source change does not implement or claim a concrete Daytona termination
+attestor. The selected provider adapter must verify its own termination
+evidence and supply the trusted authorization; the mounted recovery store must
+also be lifecycle-registered by the concrete evaluator bootstrap. Protected
+cloud tests must still demonstrate real provider termination, volume handoff,
+lost acknowledgements, and predecessor fencing. No project code or tests were
+executed on the Mac.
+
+### Evidence
+
+- `src/broker/ledger.ts`
+- `src/broker/service.ts`
+- `src/evaluator/release-recovery-store.ts`
+- `src/cloud/mounted-volume-release-recovery-store.ts`
+- `tests/broker/one-use-ledger.test.ts`
+- `tests/broker/trusted-broker.test.ts`
+- `tests/cloud/mounted-volume-state.test.ts`
+- `PLAN.md`
+- `TODO.md`
+
+## ADR-0088 — Derive and sign candidate integrity from immutable Git evidence
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: the hash-shaped candidate scan attestation in ADR-0083
+- Superseded by: none
+- Related plan: `PLAN.md` §4, §8.1, §8.3, §12
+
+### Context
+
+The correctness gate previously passed optimizer-declared changed paths and a
+downloaded optimizer diff to an abstract integrity port. Its release-safe
+receipt carried `scanAttestationHash`, but the gate only checked that this was
+64 hexadecimal characters. There was no production port, no signature
+verification, and no proof that paths, counts, modes, and diff bytes came from
+the candidate commit rather than the optimizer's description of it.
+
+The protected-fragment set creates a second boundary problem. It must take part
+in the authoritative scan, but exposing its hashes through an optimizer-visible
+artifact, query API, or signer request would enlarge the benchmark leakage
+surface.
+
+### Decision
+
+Candidate integrity now has three distinct trusted roles:
+
+1. A deny-all x86_64 cloud evidence runner uploads the exact candidate Git
+   bundle and a content-addressed worker. The worker reconstructs the bundle in
+   a temporary bare repository, proves the exact source commit/tree, exact
+   candidate commit/tree, and a single direct parent, then derives the
+   no-renames unified diff, changed paths, added/deleted counts, and before/after
+   modes. It emits only the derived diff and a canonical content-hashed
+   manifest.
+2. A verifying artifact reader and a non-enumerable evaluator fragment source
+   feed those bytes and a sorted, sealed hash catalog directly to
+   `scanCandidate`. The catalog is never passed to the evidence runner,
+   accounting authority, signing authority, correctness caller, or optimizer.
+3. A purpose-specific Ed25519 authority signs a schema-v2 release-safe receipt.
+   The receipt binds both declared and observed diff/path hashes, the bundle,
+   manifest, line counts, modes, fragment catalog, v2 scanner policy, worker,
+   execution receipt, hypothesis/candidate documents, and Git lineage. Only
+   sorted violation codes leave the trusted port. The production correctness
+   gate and mounted-volume record store independently recompute the content
+   attestation and verify the pinned key.
+
+A passing receipt requires the optimizer diff digest and declared path hash to
+match the independently derived evidence. A mismatch becomes a normal
+`DIFF_METADATA_MISMATCH` rejection. Malformed Git lineage, evidence, catalog,
+signature, or accounting fails closed without producing a usable receipt.
+
+The optimizer's proposal worker and the authoritative scanner now share the
+same canonical `pi-candidate-integrity-v2` policy commitment. The trusted
+scanner remains authoritative; the optimizer-side scan is only an early
+rejection.
+
+### Alternatives
+
+- Trust optimizer-produced diff metadata after comparing only a digest.
+- Let the scan port return an unsigned or hash-shaped receipt.
+- Run Git derivation on the Mac or in the optimizer sandbox.
+- Put fragment hashes in the optimizer plugin or general artifact registry.
+- Release paths, lines, mode records, or per-fragment matches for debugging.
+
+### Consequences
+
+Candidate metadata substitution can no longer create a passing integrity
+receipt, and a durable gate record cannot be reopened under an untrusted scan
+key. Raw source evidence and benchmark-derived hashes stay out of feedback and
+optimizer channels.
+
+The worker artifact, private catalog material, signing/accounting authorities,
+provider image, and public-key binding still have to be provisioned by the
+protected cloud composition. Authored tests are not execution evidence: the
+new worker, port, gate, and durable-store suites must run in protected cloud CI.
+No project executable, package-manager, formatter, compiler, or test command
+was run on the Mac.
+
+### Evidence
+
+- `scripts/candidate-integrity-worker.mjs`
+- `src/cloud/trusted-git-candidate-integrity.ts`
+- `src/integrity/candidate-scanner.ts`
+- `src/orchestrator/correctness-gate.ts`
+- `src/cloud/mounted-volume-correctness-gate-ports.ts`
+- `src/cloud/production-optimize-runtime-factory.ts`
+- `tests/cloud/trusted-git-candidate-integrity.test.ts`
+- `tests/scripts/candidate-integrity-worker.test.ts`
+- `tests/orchestrator/correctness-gate.test.ts`
+- `tests/cloud/mounted-volume-correctness-gate-ports.test.ts`
+- `PLAN.md`
+- `TODO.md`
+
+## ADR-0084 — Preserve one-use state on ambiguous behavioral finalization errors
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §8.1, §12
+
+### Context
+
+The behavioral release producer distinguishes a finalization failure proven
+not to have committed from one whose commit disposition is unknown. The broker
+previously treated an arbitrary error class as safe to consume unless it was
+the producer's explicit `unsafe-to-consume` error. A transport failure, adapter
+bug, or unnormalized provider exception thrown during `finalize` could
+therefore burn the durable preparation and one-use evaluation even if the
+private release had committed.
+
+### Decision
+
+The broker records whether behavioral finalization was attempted and whether
+it returned normally. If the attempt throws, only
+`TrustedBehavioralReleaseProducerError("known-not-committed")` is a proof that
+cleanup and one-use consumption may proceed. Every other thrown value,
+including an ordinary `Error`, is commit-ambiguous and preserves the
+preparation and request for protected reconciliation. Errors occurring before
+the finalization call, or after a normally resolved call, retain their
+stage-specific handling.
+
+### Alternatives
+
+- Assume every unknown exception happened before commit.
+- Require all implementations to normalize exceptions but leave the broker
+  permissive.
+- Consume the request while preserving only the preparation.
+- Retry finalization immediately without a durable recovery protocol.
+
+### Consequences
+
+Integrity wins over availability at the transactional boundary. An adapter
+that violates the normalized producer contract can stall a request but cannot
+silently double-spend or erase a possibly committed release. ADR-0087 adds the
+source-level durable recovery state machine; paid production still requires
+the concrete provider-termination authority and protected provider-volume
+tests. Cloud CI must run the authored recovery, explicit-non-commit, and
+unknown-error fixtures before release.
+
+### Evidence
+
+- `src/broker/service.ts`
+- `src/evaluator/behavioral-release-producer.ts`
+- `tests/broker/trusted-broker.test.ts`
+- `TODO.md`
+
+## ADR-0085 — Construct the mounted evaluator transaction inside the fixed production runtime
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: the preconstructed evaluator-service dependency in ADR-0072
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §8.1, §10.1, §12
+
+### Context
+
+`createTrustedEvaluationService` already composed the narrow runner, raw
+reader, policy resolver, canonical deriver, destruction boundary, behavioral
+producer, result signer, and one-use broker. The protected production runtime,
+however, accepted an already-constructed `TrustedEvaluationService` inside its
+release-bundle options. Consequently it did not instantiate either
+`MountedVolumeBehavioralPreparationStore` or
+`MountedVolumeBehavioralPrivacyArtifactStore`, could not bind their writer
+fences to the production composition owner, and had no in-process route from
+the producer's atomic behavioral commit to the release-bundle reader.
+
+Accepting the service as an executable dependency also weakened the fixed
+composition claim: a caller could supply an implementation with the correct
+surface while bypassing the reviewed production evaluator constructor. The
+service did not appear as an optimizer port, but its construction and storage
+lifecycle were still outside the authoritative runtime path.
+
+### Decision
+
+Add `ProductionMountedVolumeTrustedEvaluator`, a statically imported
+production adapter whose constructor captures and freezes the typed evaluator
+capabilities. Its exact top-level contract contains runner, retention,
+destruction, Pi adapter, durable evaluator authorities, raw reader,
+policy-provider, three purpose-specific key groups, and pristine hidden
+privacy genesis. There is no module name, executable selector, task field,
+panel field, grader field, or optimizer-provided extension point.
+
+During protected runtime construction, after the cloud marker, volume
+semantics, manifest, and independent dependency attestation have passed, the
+adapter:
+
+1. constructs the mounted private behavioral-preparation store and registers
+   its close-once resource before any await;
+2. constructs and immediately registers the mounted privacy/artifact store
+   with the same owner;
+3. calls `createTrustedEvaluationService` with those exact store instances;
+4. overlays a non-enumerating behavioral artifact source on the governed
+   cache-artifact source; and
+5. returns only the narrow evaluator service and content-hash-only
+   source/reader to the runtime factory.
+
+The runtime factory no longer accepts `release.service`. It injects the
+adapter-produced service into `ArtifactBackedEvaluationReleaseBundleService`
+and exposes only the existing `evaluator.blind-broker` runtime port.
+`optimizer.adapter` has no reference to the service, private stores, release
+overlay, task catalog, or raw evaluator authorities.
+
+The overlay delegates only `cache-attestation` queries to the governed
+external artifact source. Behavioral release, evidence, failure-card, and
+diagnostic-brief queries resolve only by the exact committed content hash in
+the atomic privacy store. Returned references use a reserved trusted URI and
+bind canonical bytes, byte length, and byte SHA-256; reads reconstruct and
+recheck the same tuple. A missing or permanently orphaned behavioral commit
+does not fall back to another registry.
+
+The construction lifecycle wraps store registration in the factory's local
+reverse-order cleanup stack as well as the outer composition owner. A later
+release-service constructor failure therefore closes both private stores, and
+the close-once wrappers make the owner's final drain safe.
+
+### Alternatives
+
+- Continue accepting an already-built evaluator service.
+- Construct the two stores in the controller and pass them as runtime ports.
+- Publish behavioral artifacts into a second registry after the atomic
+  privacy transaction.
+- Let a missing behavioral hash fall through to the general artifact source.
+- Expose the store-backed reader to Claude Code or the optimizer MCP server.
+
+### Consequences
+
+The reviewed runtime now owns evaluator construction and reconstruction, and
+the private transaction shares its lifecycle and mounted-volume fence with
+the rest of the paid composition. There is one authoritative behavioral
+artifact commit and no post-commit copy step. The optimizer still sees only
+release-safe broker output.
+
+This source change does not assert deployment readiness. Real trusted runner,
+raw ingress/decryption/decoder, catalog/ledger, KMS key providers,
+cache-artifact source, signature verifier, provider credentials, and signed
+composition material remain external protected bindings. The paid control
+entrypoint also remains intentionally locked until those authorities are
+bound. Cloud CI and provider-volume crash-handoff evidence are still required;
+no Node, package-manager, formatter, build, or test command was executed on
+the Mac.
+
+### Evidence
+
+- `src/cloud/production-trusted-evaluator.ts`
+- `src/cloud/production-optimize-runtime-factory.ts`
+- `src/cloud/mounted-volume-behavioral-preparation-store.ts`
+- `src/cloud/mounted-volume-behavioral-privacy-store.ts`
+- `tests/cloud/production-trusted-evaluator.test.ts`
+- `tests/cloud/production-optimize-runtime-factory.test.ts`
+- `PLAN.md`
+- `TODO.md`
+
+## ADR-0089 — Cut the first runnable prototype to essential matched-loop work
+
+**Date:** 2026-07-26
+
+**Status:** accepted for MVP; supersedes conflicting MVP scope in earlier ADRs
+
+**Owners:** operator and Dark Factory implementation
+
+### Context
+
+The earlier design grew toward a production research platform: multiple
+promotion stages, twelve-task validation and shadow pools, extensive signing
+authorities, crash-perfect recovery, several sandbox providers, custom image
+publication, sequential statistical budgets, dashboards, and an official
+full-benchmark path. Those controls may be useful later, but they delayed the
+question the prototype actually needs to answer: can a blind cloud loop make
+and credibly measure one general Pi harness improvement?
+
+The operator explicitly directed the implementation to skip everything marked
+safe to defer, finish only the essentials, stop, and present the protected
+inputs required before any cloud or paid test. The operator also confirmed that
+the Azure models are already deployed and the API key already exists; no Azure
+deployment or configuration work is wanted.
+
+### Decision
+
+Adopt [PLAN §0](./PLAN.md#0-essentials-only-mvp-authority) as the authoritative
+MVP scope. Older ADRs and plan sections remain historical design research but
+do not create first-loop blockers where they conflict with this cut.
+
+The essential experiment is:
+
+1. Claude Code, using public family `claude-opus-5` through an existing
+   Microsoft Foundry deployment alias, sees the Pi source and at most a prior
+   task-free closed-vocabulary brief. Candidate creation occurs before task
+   selection.
+2. A trusted broker deterministically selects a hidden failure-weighted panel
+   of five tasks, including one easy canary. Used tasks remain eligible; a
+   consecutive-selection penalty and underexposure term oppose a permanently
+   fixed panel.
+3. Candidate and champion run the same five tasks for three repetitions in the
+   same environment using Pi with public family `claude-opus-4-8` at `high`.
+   A fully fresh cold-cache comparison is 30 trials.
+4. Full-environment champion cache entries may screen. They cannot promote. A
+   positive cache-assisted screen must refresh every cached champion cell so
+   promotion rests on 15 fresh candidate and 15 fresh champion observations.
+5. Repetitions are clustered by task for the decision. Promotion requires
+   complete infrastructure-valid fresh evidence, a minimum aggregate effect,
+   and the predeclared confidence rule.
+6. A trusted sanitizer may use private task-aware diagnostics, but Claude
+   receives only generic allowlisted category/tool-class/cause/intervention
+   cards with coarse bands. Task names, prompts, paths, commands, arbitrary
+   tool names, grader text, raw traces, and per-task outcomes remain private.
+7. Promotion changes champion and causes a newly weighted panel on the next
+   iteration. Reject or inconclusive retains the exact champion and sealed
+   panel for the next attempt. No task is permanently removed from the pool.
+8. Strict JSON is stored in a numbered experiment directory, with hidden
+   selection/evaluation/cache material under a trusted-only `private/`
+   subdirectory.
+
+All executable work remains off the Mac. GitHub-hosted orchestration launches
+isolated Daytona sandboxes on an explicit EU target. Foundry input is limited
+to the existing Anthropic-compatible base URL, two existing deployment aliases,
+and role-scoped protected references to the existing key. Secret values never
+enter source, release artifacts, or chat.
+
+The following are deferred and are not first-loop blockers:
+
+- KMS/HSM and comprehensive signing fabric;
+- crash-perfect recovery and exhaustive replay/handoff transactions;
+- twelve-task and shadow/certification gates;
+- providers other than Daytona EU;
+- custom image publication, SBOM, and provenance workflows;
+- dashboards, PR automation, and automated publication;
+- long-campaign alpha/privacy spending and other sequential statistics;
+- the full 89-task/five-trial and official leaderboard path; and
+- exhaustive supply-chain/production-composition hardening beyond minimum
+  immutable pins and role isolation.
+
+After essential source work is complete, implementation stops before any
+credential or paid/test use. Work resumes only after the operator configures
+the protected GitHub Daytona secret; Daytona EU target, volume, and immutable
+image references; role-scoped Foundry and private-Git secret names; existing
+Foundry URL and deployment aliases; private Pi source permissions; cloud-only
+benchmark/Harbor pin discovery authorization; and a one-iteration cost cap,
+then explicitly says `resume`. No secret value is requested in chat.
+
+### Alternatives
+
+- Finish the production-grade architecture before attempting one real
+  iteration.
+- Remove all privacy feedback and optimize only from aggregate score.
+- Re-select a different panel after every rejected candidate.
+- Compare raw candidate scores across different task subsets.
+- Trust cached champion outcomes for promotion.
+- Provision new Azure resources as part of the prototype.
+- Run development and tests locally on the Mac.
+
+### Consequences
+
+The fastest credible experiment now has a visible boundary and a finite
+operator-input list. Same-cell comparisons avoid declaring a winner merely
+because it received easier tasks. Failure-weighted selection spends budget on
+useful hard cases while the easy canary, panel rotation after promotion, task
+re-eligibility, and task-free feedback reduce reward-hacking pressure. Cache
+screening lowers cost without weakening the fresh-promotion rule.
+
+The cut deliberately accepts fewer production assurances. A normal process or
+provider interruption may need manual recovery; there is one provider; no
+shadow certification exists; and the result is research evidence, not an
+official leaderboard claim. These limitations are explicit and may be
+revisited after the first real cloud iteration.
+
+At acceptance time, the MVP cores, Foundry sanitizer, strict Harbor matched
+planner/decoder, Daytona role-runtime edge, external Pi/Foundry binding, and
+their Vitest specifications are source-ready but cloud-unverified. The cloud
+entrypoint/role workers, real execution wiring, same-panel continuation state,
+persistent cloud ports, cloud quality run, synthetic campaign, and live
+matched iteration remain essential. No performance improvement is claimed
+until a real candidate passes the fresh matched rule.
+
+### Evidence
+
+- `PLAN.md` §0
+- `TODO.md` `MVP-ESSENTIAL`
+- `CLOUD_DELIVERY.md` `Essentials-only MVP fast path`
+- `README.md`
+- `src/mvp/contracts.ts`
+- `src/mvp/selection.ts`
+- `src/mvp/decision.ts`
+- `src/mvp/loop.ts`
+- `src/mvp/privacy.ts`
+- `src/mvp/sanitizer.ts`
+- `src/mvp/schemas.ts`
+- `src/mvp/store.ts`
+- `src/mvp/cloud-config.ts`
+- `src/mvp/daytona-runtime.ts`
+- `src/mvp/harbor.ts`
+- `tests/mvp/core.test.ts`
+- `tests/mvp/loop.test.ts`
+- `tests/mvp/cloud-config.test.ts`
+- `tests/mvp/harbor.test.ts`
+- `tests/mvp/sanitizer.test.ts`
+
+## ADR-0090 — Use one direct, cloud-only execution path for the first loop
+
+**Date:** 2026-07-26
+
+**Status:** accepted for the essentials-only MVP; source remains
+cloud-unverified
+
+**Owners:** operator and Dark Factory implementation
+
+### Context
+
+The first loop needs a concrete route from one Claude-generated candidate to a
+matched Harbor result. A dynamically supplied optimizer or evaluator runtime
+would leave the most important behavior outside the reviewed source. It would
+also make credential placement, hidden-task isolation, and readiness failures
+ambiguous.
+
+Daytona Secret placeholders are scoped to the sandbox in which Daytona issues
+them. The outer evaluator needs its Foundry key to sanitize diagnostics and a
+Daytona key to ask Harbor to create child task sandboxes. Each child task
+sandbox needs a separately attached reference to the evaluated-model secret.
+Copying the outer evaluator's Foundry placeholder into a child would not copy
+the secret; it would replace the child's valid placeholder with an
+unresolvable one.
+
+Harbor 0.20.0 supports attaching Daytona Secrets to direct task sandboxes but
+rejects that secret mechanism for compose/Docker-in-Docker tasks. The first
+MVP must therefore know, privately and immutably, which exact task revisions
+are compatible with its credential-isolated execution path.
+
+### Decision
+
+Use one statically imported implementation path:
+
+1. The protected GitHub workflow builds the exact reviewed TypeScript source
+   and stages one digest-checked controller bundle. No external optimizer or
+   evaluator JavaScript module is accepted.
+2. The launcher creates physically separate optimizer and evaluator Daytona
+   sandboxes on the selected EU target, with disjoint persistent-volume
+   subpaths. It relays only strict task-free optimizer input, candidate
+   proposal, and release receipt objects.
+3. The optimizer checks out the exact champion from the private Pi fork,
+   invokes the pinned Claude Code version with Opus 5 at `high`, restricts its
+   tools and changed paths, validates the task-free proposal, and publishes
+   only the bounded candidate ref. Its Git authorization is an already
+   Base64-encoded `x-access-token:<fine-grained-token>` value stored as a
+   Daytona organization Secret and used only as an HTTPS
+   `Authorization: Basic` header by the Git wrapper. Claude never receives it.
+4. The evaluator reads an evaluator-private immutable runtime pin containing
+   the exact Harbor, Terminal-Bench 2.1 dataset, adapter, environment, hidden
+   task definitions, and direct-sandbox eligibility commitments. Absence,
+   mismatch, or selection of an ineligible task returns a release-safe
+   readiness block before Harbor starts.
+5. A 256-bit catalog namespace is generated once inside the evaluator's
+   mounted private state and reused there. It is not another operator-managed
+   secret and never reaches the optimizer.
+6. The evaluator Daytona sandbox is explicitly created and provider-attested
+   as OS user `root` only so the trusted controller can protect its mounted
+   `private/` tree as root-owned mode `0700`. Candidate and champion checkout,
+   test, offline-build, and packaging work runs under two distinct
+   unprivileged numeric UID/GID pairs in disjoint random temporary trees.
+   Neither untrusted identity can traverse evaluator-private state or mutate
+   the other arm.
+7. The evaluator materializes exact single-parent candidate and champion Pi
+   revisions, independently verifies the proposal paths and pinned source
+   identities, and compiles the reviewed Pi runtime to a self-contained Bun
+   executable. The trusted packager accepts only regular files, rejects links
+   and special files, emits a deterministic manifest/archive with no `./`
+   root member, and binds the build policy, source, tree, dependency lock, and
+   Linux x64 glibc ABI. Child tasks therefore do not depend on a preinstalled
+   Node runtime or a network installer.
+8. The evaluator builds the strict Harbor five-task/three-attempt plan, runs
+   Harbor, and converts only complete requested output into private
+   observations. Raw Harbor output and task locators remain under
+   evaluator-private mounted paths. Cache environment identity includes the
+   canonical runtime-pin digest and full cloud configuration hash, so
+   executable, dataset, adapter, image, endpoint, or role-configuration drift
+   invalidates prior cells.
+9. Harbor receives the *name* of the existing evaluated Foundry Daytona
+   organization Secret in `environment.kwargs.secrets`. Daytona attaches a
+   fresh `ANTHROPIC_FOUNDRY_API_KEY` placeholder to every direct child task
+   sandbox. The Pi adapter deliberately omits that credential from its exec
+   overrides and merely checks inside the child that the attached variable is
+   present.
+10. Harbor may run up to five trials concurrently while each individual Pi
+   agent remains single-run. This preserves the exact 30-cell cold-cache
+   comparison and its cost while reducing expected wall time.
+11. The manual paid workflow permits exactly one iteration, always tears down
+   both outer sandboxes, emits only a task-free receipt, and fails closed if
+   the runtime pin, hidden catalog, task eligibility, source bundle, or other
+   essential binding is absent.
+
+The exact Terminal-Bench 2.1 revision and compatible hidden inventory are not
+invented in source. They must be discovered and reviewed inside the trusted
+cloud after the operator says `resume`. Initial task eligibility is therefore
+limited to direct Daytona tasks that also pass the sealed Bun executable's
+Linux x64 glibc compatibility smoke and attest Harbor's separate-verifier
+mode. The separate verifier is mandatory; checking conventional paths such as
+`/tests` and `/solution` inside the Pi adapter is only defense in depth. That
+is an explicit prototype limitation and possible coverage bias, not evidence
+about Pi quality. The official evaluation set remains external and unknown to
+the optimization loop.
+
+### Alternatives
+
+- Load optimizer/evaluator runtime modules supplied beside the controller.
+- Put optimizer and evaluator in one sandbox or one mounted subpath.
+- Copy the outer evaluator's credential placeholder into child task commands.
+- Allow compose tasks even though Harbor cannot attach the governed secret.
+- Use an SSH key in the first MVP Git path.
+- Run all 30 trials sequentially.
+- Treat an absent runtime pin or unsupported task as a benchmark failure.
+
+### Consequences
+
+The first-loop implementation is smaller, auditable, and explicit about every
+credential transition. The optimizer cannot mount hidden state, and the
+evaluated Pi receives a usable model credential without the outer controller
+learning or logging its value. Five-way concurrency improves prototype
+turnaround without changing the statistical unit or promotion rule.
+
+The MVP does not yet prove that the chosen public image contains every pinned
+runtime dependency, that the exact Terminal-Bench 2.1 inventory has sufficient
+direct-sandbox coverage, or that the TypeScript and Python adapters work
+together in Daytona. Those are cloud-verification steps after the mandatory
+stop. No executable command, package install, formatter, test, Harbor process,
+Pi process, Claude session, or benchmark task is run on the Mac.
+
+### Evidence
+
+- `.github/workflows/mvp-cloud-verify.yml`
+- `.github/workflows/mvp-paid-loop.yml`
+- `scripts/mvp-optimizer-worker.mjs`
+- `src/mvp/cloud-orchestrator.ts`
+- `src/mvp/cloud-optimizer-worker.ts`
+- `src/mvp/cloud-evaluator-worker.ts`
+- `src/mvp/daytona-runtime.ts`
+- `src/mvp/optimizer-worker.ts`
+- `src/mvp/evaluator-runtime.ts`
+- `src/mvp/evaluator-runtime-node.ts`
+- `src/mvp/harbor.ts`
+- `src/terminal-bench/assets/dark_factory_pi.py`
+- `tests/mvp`
+- `tests/terminal-bench/foundry-pi-adapter.test.ts`
+
+## ADR-0091 — Close the MVP static-audit gaps without weakening the runtime boundary
+
+**Date:** 2026-07-26
+
+**Status:** accepted for the essentials-only MVP; source-complete and
+cloud-unverified
+
+**Owners:** operator and Dark Factory implementation
+
+### Context
+
+The final static audit found five issues that would either distort future
+selection, waste the optimizer's bounded turns, allow configuration to fail
+late, reuse an artifact across build-toolchain drift, or make the first cloud
+quality gate predictably misleading.
+
+First, private observations already recorded infrastructure validity, but the
+catalog update still counted an infrastructure-invalid batch as behavioral
+task evidence. Second, four inherited Claude skills described the larger
+MCP-backed protocol and told the MVP optimizer to call tools that are
+deliberately absent from its one-shot session. Third, the cloud configuration
+parser and evaluation schema accepted different Foundry deployment-alias
+grammars. Fourth, a compiled Pi runtime cache path named only the arm and Git
+revision even though Bun, the image, build policy, runtime ABI, or packager
+could change. Finally, executable Daytona/Harbor/OS adapter files cannot be
+meaningfully exercised by isolated unit instrumentation, while counting them
+as zero-covered lines would obscure the coverage of deterministic policy
+cores.
+
+### Decision
+
+1. Update behavioral task history only when every candidate and final champion
+   observation in the matched batch is infrastructure-valid. Persist invalid
+   evidence for diagnosis, but do not let it change failure weights.
+2. Make the four optimizer skills explicitly protocol-aware. In the
+   essentials-only MVP they use the already-validated optimizer input, call no
+   command/check/MCP tool, make one source edit, and end with exactly
+   `hypothesisId`, `hypothesisSummary`, and `interventionSummary`. The trusted
+   wrapper remains responsible for validation, Git publication, builds, and
+   evaluation.
+3. Use one conservative Foundry deployment-alias grammar at every MVP
+   boundary: 1–128 lowercase alphanumeric characters grouped into segments
+   separated by one `.`, `_`, or `-`. Reject uppercase, whitespace, `/`, `@`,
+   `:`, edge separators, and adjacent separators during readiness rather than
+   later during evaluation.
+4. Name and validate every compiled Pi runtime artifact with a canonical build
+   runtime digest. The digest binds the Bun executable hash, fixed Bun Linux
+   baseline target, build-policy hash, Linux x64 glibc ABI, evaluator image
+   and architecture, plus the actual packager hash and byte length. The strict
+   runtime manifest is version 2 and stores the same digest.
+5. Keep the 90% unit threshold unchanged for deterministic source, but
+   explicitly exclude only the executable MVP cloud/controller/worker and
+   evaluator runtime boundary files listed in `vitest.config.ts`. This is not
+   a test waiver: a no-model synthetic iteration and bounded connectivity
+   smoke are mandatory before any paid iteration, and their receipts are the
+   acceptance evidence for Daytona creation, OS identity switching, process
+   termination, secret placeholders, Harbor nesting, and artifact handoff.
+
+### Alternatives
+
+- Count infrastructure failures as ordinary task failures.
+- Let Claude discover that the inherited tools are absent during its paid turn.
+- Accept every Azure deployment-name character and weaken the strict JSON
+  schemas.
+- Clear runtime artifacts manually whenever the image or compiler changes.
+- Lower the global coverage percentage silently or pretend mocked unit calls
+  prove provider and OS behavior.
+
+### Consequences
+
+Task selection remains behavioral rather than infrastructure-driven. Claude's
+limited Opus turn budget is spent on source reasoning and one intervention.
+Deployment aliases fail consistently and early. A cached Pi binary cannot
+survive a relevant compiler, image, ABI, policy, or packager change. The
+coverage exception is narrow, visible, and paired with a stronger environment
+test; until those cloud tests pass, the corresponding adapters remain
+explicitly cloud-unverified.
+
+No project command, formatter, build, test, model, Harbor process, Pi process,
+or benchmark task was run on the Mac while making this decision.
+
+### Evidence
+
+- `src/mvp/loop.ts`
+- `tests/mvp/loop.test.ts`
+- `claude-plugin/skills/analyze-diagnostic-brief/SKILL.md`
+- `claude-plugin/skills/benchmark-integrity/SKILL.md`
+- `claude-plugin/skills/form-falsifiable-hypothesis/SKILL.md`
+- `claude-plugin/skills/modify-pi-harness/SKILL.md`
+- `src/mvp/model-deployment.ts`
+- `tests/mvp/model-deployment.test.ts`
+- `src/mvp/evaluator-runtime-node.ts`
+- `tests/mvp/evaluator-runtime-node.test.ts`
+- `vitest.config.ts`
+- `PLAN.md` §0.5
+- `TODO.md` `MVP-ESSENTIAL`

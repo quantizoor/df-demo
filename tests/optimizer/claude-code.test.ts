@@ -17,15 +17,17 @@ const options = {
   campaignId: "campaign-001",
   experimentNumber: 1,
   phase: "proposal" as const,
-  model: "claude-opus-exact",
+  model: "df-opus5-prod",
+  modelFamily: "claude-opus-5" as const,
+  foundryResourceName: "df-eu-prod",
   effort: "high" as const,
   maximumBudgetUsd: 10,
   maximumTurns: 40,
   timeoutMs: 3_600_000,
   secretReferences: [
     {
-      sourceEnvironmentName: "ANTHROPIC_API_KEY",
-      targetEnvironmentName: "ANTHROPIC_API_KEY",
+      sourceEnvironmentName: "DF_FOUNDRY_OPTIMIZER_SECRET",
+      targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
     },
   ],
 };
@@ -34,6 +36,12 @@ describe("Claude Code optimizer launch", () => {
   it("pins a headless, cloud-only, no-shell plugin session", () => {
     const spec = createClaudeCodeLaunchSpec(options);
     expect(spec.command.environment.DF_CLOUD_EXECUTION).toBe("1");
+    expect(spec.command.environment).toMatchObject({
+      CLAUDE_CODE_USE_FOUNDRY: "1",
+      ANTHROPIC_FOUNDRY_RESOURCE: "df-eu-prod",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "df-opus5-prod",
+      DF_OPTIMIZER_MODEL_ID: "claude-opus-5",
+    });
     expect(spec.command.environment.DF_OPTIMIZER_SUBMISSION_ROOT).toBe(
       "/workspace/submissions",
     );
@@ -60,6 +68,27 @@ describe("Claude Code optimizer launch", () => {
       }),
     ).toThrow(ClaudeCodeSpecificationError);
   });
+
+  it("rejects endpoint injection and non-Foundry optimizer credentials", () => {
+    expect(() =>
+      createClaudeCodeLaunchSpec({
+        ...options,
+        foundryResourceName:
+          "https://df-eu-prod.services.ai.azure.com",
+      }),
+    ).toThrow(ClaudeCodeSpecificationError);
+    expect(() =>
+      createClaudeCodeLaunchSpec({
+        ...options,
+        secretReferences: [
+          {
+            sourceEnvironmentName: "DF_ANTHROPIC_SECRET",
+            targetEnvironmentName: "ANTHROPIC_API_KEY",
+          },
+        ],
+      }),
+    ).toThrow(ClaudeCodeSpecificationError);
+  });
 });
 
 describe("Claude Code stream reduction", () => {
@@ -69,7 +98,7 @@ describe("Claude Code stream reduction", () => {
         type: "system",
         subtype: "init",
         session_id: "session-1",
-        model: "claude-opus-exact",
+        model: "df-opus5-prod",
         plugins: [{ name: "dark-factory", path: "/workspace/plugin" }],
       }),
       JSON.stringify({ type: "assistant", message: { content: "sensitive source text" } }),
@@ -86,7 +115,7 @@ describe("Claude Code stream reduction", () => {
       pluginLoaded: true,
       pluginErrors: [],
       sessionId: "session-1",
-      model: "claude-opus-exact",
+      model: "df-opus5-prod",
       result: "completed",
       totalCostUsd: 2.5,
       turns: 1,

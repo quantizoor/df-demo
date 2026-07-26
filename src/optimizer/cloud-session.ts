@@ -74,9 +74,12 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const ALLOWED_OPTIMIZER_SECRET_TARGETS = new Set([
-  "ANTHROPIC_API_KEY",
-  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_FOUNDRY_API_KEY",
 ]);
+const SAFE_FOUNDRY_RESOURCE =
+  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SAFE_NETWORK_HOST =
+  /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/u;
 
 export class CloudOptimizerSessionError extends Error {
   override readonly name = "CloudOptimizerSessionError";
@@ -132,6 +135,8 @@ export interface CloudOptimizerSessionOptions {
     ClaudeCodeLaunchOptions,
     | "claudeExecutable"
     | "model"
+    | "modelFamily"
+    | "foundryResourceName"
     | "effort"
     | "maximumBudgetUsd"
     | "maximumTurns"
@@ -317,7 +322,12 @@ function assertOptimizerSecrets(references: readonly SecretReference[]): void {
   }
 }
 
-function assertSandboxProfile(profile: CloudOptimizerSandboxProfile): void {
+function assertSandboxProfile(
+  profile: CloudOptimizerSandboxProfile,
+  foundryResourceName: string,
+): void {
+  const foundryHost =
+    `${foundryResourceName}.services.ai.azure.com`;
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u.test(
       profile.imageReference,
@@ -340,8 +350,14 @@ function assertSandboxProfile(profile: CloudOptimizerSandboxProfile): void {
     profile.lifetimeMs < 1 ||
     profile.lifetimeMs > MAXIMUM_OPTIMIZER_LIFETIME_MS ||
     profile.networkAllowDomains.length < 1 ||
+    profile.networkAllowDomains.some(
+      (host) => !SAFE_NETWORK_HOST.test(host),
+    ) ||
     new Set(profile.networkAllowDomains).size !==
-      profile.networkAllowDomains.length
+      profile.networkAllowDomains.length ||
+    !SAFE_FOUNDRY_RESOURCE.test(foundryResourceName) ||
+    !profile.networkAllowDomains.includes(foundryHost) ||
+    profile.networkAllowDomains.includes("api.anthropic.com")
   ) {
     throw new CloudOptimizerSessionError(
       "Optimizer requires a bounded immutable x86_64 cloud sandbox.",
@@ -1118,7 +1134,10 @@ export class CloudOnlyClaudeOptimizerSession {
   readonly #options: CloudOptimizerSessionOptions;
 
   constructor(options: CloudOptimizerSessionOptions) {
-    assertSandboxProfile(options.sandbox);
+    assertSandboxProfile(
+      options.sandbox,
+      options.claude.foundryResourceName,
+    );
     assertOptimizerSecrets(options.optimizerSecretReferences);
     assertArtifact(
       options.workerArtifact,

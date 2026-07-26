@@ -90,7 +90,7 @@ function registerTools(server: McpServer, repository: ReleasedEvidenceRepository
     "df_get_campaign_context",
     {
       description:
-        "Get task-agnostic campaign, champion, budget-band, holdout, and allowed-action context.",
+        "Get task-agnostic campaign, champion, non-capacity budget-band, and allowed-action context.",
       inputSchema: {},
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     },

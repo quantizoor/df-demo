@@ -20,6 +20,49 @@ function base() {
 }
 
 describe("evaluated Pi credential grants", () => {
+  it("pins the MVP Microsoft Foundry Opus 4.8 deployment at high effort", () => {
+    const spec = createPiHarborAgentSpec({
+      ...base(),
+      provider: "microsoft-foundry",
+      modelId: "df-opus48-eval",
+      modelFamily: "claude-opus-4-8",
+      foundryResourceName: "df-eu-prod",
+      thinkingLevel: "high",
+      credentialEnvironmentNames: ["ANTHROPIC_FOUNDRY_API_KEY"],
+    });
+    expect(spec.evaluatedModel).toEqual({
+      provider: "microsoft-foundry",
+      modelId: "df-opus48-eval",
+      modelFamily: "claude-opus-4-8",
+      thinkingLevel: "high",
+      foundryResourceName: "df-eu-prod",
+    });
+    expect(
+      allowedPiProviderEnvironmentNames("microsoft-foundry"),
+    ).toEqual(["ANTHROPIC_FOUNDRY_API_KEY"]);
+  });
+
+  it("rejects a Foundry URL, a different deployment, or a different effort", () => {
+    for (const overrides of [
+      { foundryResourceName: "https://df-eu.services.ai.azure.com" },
+      { modelFamily: "claude-opus-5" },
+      { thinkingLevel: "xhigh" as const },
+    ]) {
+      expect(() =>
+        createPiHarborAgentSpec({
+          ...base(),
+          provider: "microsoft-foundry",
+          modelId: "df-opus48-eval",
+          modelFamily: "claude-opus-4-8",
+          foundryResourceName: "df-eu-prod",
+          thinkingLevel: "high",
+          credentialEnvironmentNames: ["ANTHROPIC_FOUNDRY_API_KEY"],
+          ...overrides,
+        }),
+      ).toThrow(PiHarborAgentError);
+    }
+  });
+
   it("seals the exact provider-specific environment target list", () => {
     const spec = createPiHarborAgentSpec(base());
     expect(spec.credentialEnvironmentNames).toEqual([

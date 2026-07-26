@@ -205,12 +205,17 @@ const LEDGER_STATE_KEYS = [
   "revision",
   "records",
   "usedDispositionAttestations",
+  "usedRecoveryAuthorizations",
 ] as const;
 const LEDGER_RECORD_KEYS = [
   "requestHash",
   "claimToken",
   "status",
   "dispositionAttestationHash",
+  "ownerInstanceIdHash",
+  "claimEpoch",
+  "recoveryRecordHash",
+  "recoveryAuthorizationHash",
   "envelope",
   "failureCode",
 ] as const;
@@ -1480,6 +1485,16 @@ function assertLedgerRecord(
     (value.dispositionAttestationHash !== null &&
       (typeof value.dispositionAttestationHash !== "string" ||
         !SHA256.test(value.dispositionAttestationHash))) ||
+    typeof value.ownerInstanceIdHash !== "string" ||
+    !SHA256.test(value.ownerInstanceIdHash) ||
+    !Number.isSafeInteger(value.claimEpoch) ||
+    (value.claimEpoch as number) <= 0 ||
+    (value.recoveryRecordHash !== null &&
+      (typeof value.recoveryRecordHash !== "string" ||
+        !SHA256.test(value.recoveryRecordHash))) ||
+    (value.recoveryAuthorizationHash !== null &&
+      (typeof value.recoveryAuthorizationHash !== "string" ||
+        !SHA256.test(value.recoveryAuthorizationHash))) ||
     (value.failureCode !== null &&
       (typeof value.failureCode !== "string" ||
         !BROKER_FAILURE_CODES.has(value.failureCode as BrokerFailureCode)))
@@ -1490,6 +1505,12 @@ function assertLedgerRecord(
     assertValidDocument("signedResultEnvelope", value.envelope);
   }
   if (
+    ((value.claimEpoch as number) === 1 &&
+      (value.recoveryRecordHash !== null ||
+        value.recoveryAuthorizationHash !== null)) ||
+    ((value.claimEpoch as number) > 1 &&
+      (value.recoveryRecordHash === null ||
+        value.recoveryAuthorizationHash === null)) ||
     (value.status === "in-flight" &&
       (value.envelope !== null || value.failureCode !== null)) ||
     (value.status === "completed" &&
@@ -1522,12 +1543,14 @@ function assertOneUseLedgerState(
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
     !isPlainRecord(value.records) ||
-    !Array.isArray(value.usedDispositionAttestations)
+    !Array.isArray(value.usedDispositionAttestations) ||
+    !Array.isArray(value.usedRecoveryAuthorizations)
   ) {
     fail("One-use ledger state is malformed.");
   }
   const claimTokens = new Set<string>();
   const boundAttestations = new Set<string>();
+  const boundRecoveryAuthorizations = new Set<string>();
   for (const [requestId, record] of Object.entries(value.records)) {
     assertLedgerRecord(requestId, record);
     if (claimTokens.has(record.claimToken)) {
@@ -1539,6 +1562,20 @@ function assertOneUseLedgerState(
         fail("One-use disposition attestation was bound more than once.");
       }
       boundAttestations.add(record.dispositionAttestationHash);
+    }
+    if (record.recoveryAuthorizationHash !== null) {
+      if (
+        boundRecoveryAuthorizations.has(
+          record.recoveryAuthorizationHash,
+        )
+      ) {
+        fail(
+          "One-use claim recovery authorization was bound more than once.",
+        );
+      }
+      boundRecoveryAuthorizations.add(
+        record.recoveryAuthorizationHash,
+      );
     }
   }
   const usedAttestations = value.usedDispositionAttestations;
@@ -1553,6 +1590,22 @@ function assertOneUseLedgerState(
     )
   ) {
     fail("One-use disposition attestation index is inconsistent.");
+  }
+  const usedRecoveryAuthorizations =
+    value.usedRecoveryAuthorizations;
+  if (
+    usedRecoveryAuthorizations.some(
+      (hash) => typeof hash !== "string" || !SHA256.test(hash),
+    ) ||
+    new Set(usedRecoveryAuthorizations).size !==
+      usedRecoveryAuthorizations.length ||
+    [...boundRecoveryAuthorizations].some(
+      (hash) => !usedRecoveryAuthorizations.includes(hash),
+    )
+  ) {
+    fail(
+      "One-use claim recovery authorization index is inconsistent.",
+    );
   }
 }
 

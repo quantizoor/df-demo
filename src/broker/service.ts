@@ -38,6 +38,14 @@ import type { TrustedPrivateBehavioralPreparation } from "../evaluator/deriver.j
 import {
   hashResultEnvelopeBehavioralSourceMaterial,
 } from "../evaluator/release-lineage.js";
+import {
+  assertPostDestructionReleaseRecoveryRecord,
+  hashResultCompletionEnvelope,
+  sealPostDestructionReleaseRecoveryRecord,
+  type TrustedPostDestructionReleaseRecoveryRecord,
+  type TrustedPostDestructionReleaseRecoveryStore,
+  type TrustedReleaseRecoveryBehavioralState,
+} from "../evaluator/release-recovery-store.js";
 import type {
   TerminalBenchCloudRunner,
   TrustedRawRun,
@@ -133,6 +141,7 @@ export interface TrustedEvaluationBrokerOptions {
   readonly deriver: TrustedCanonicalEvaluationDeriver;
   readonly behavioralPreparationStore?: TrustedBehavioralPreparationStore;
   readonly behavioralReleaseProducer?: TrustedPostDestructionBehavioralReleaseProducer;
+  readonly releaseRecoveryStore?: TrustedPostDestructionReleaseRecoveryStore;
   readonly custodian: TrustedRawArtifactCustodian;
   readonly issuer: TrustedResultEnvelopeIssuer;
   readonly verifier: TrustedResultEnvelopeVerifier;
@@ -339,6 +348,38 @@ function behavioralSourceResultHash(input: {
   });
 }
 
+function behavioralSourceResultHashFromDisposition(input: {
+  readonly request: TrustedAdaptiveEvaluationRequest;
+  readonly requestHash: string;
+  readonly dispositionAttestationHash: string;
+  readonly aggregate: TrustedCanonicalAggregate;
+  readonly retentionPolicyHash: string;
+}): string {
+  return hashResultEnvelopeBehavioralSourceMaterial({
+    envelopeId: `release-${input.requestHash.slice(0, 24)}`,
+    experimentNumber: experimentNumber(input.request),
+    mode: input.request.runMode,
+    protocolHash: input.request.protocolHash,
+    oneUseRequest: {
+      requestId: input.request.requestId,
+      requestHash: input.requestHash,
+      dispositionAttestationHash:
+        input.dispositionAttestationHash,
+      reuseProhibited: true,
+    },
+    normalizedOutcomeSetHash:
+      input.aggregate.normalizedOutcomeSetHash,
+    cacheAttestationHash:
+      input.aggregate.cacheAttestationHash,
+    rawArtifacts: {
+      exported: false,
+      retentionDisposition: "destroyed",
+      retentionPolicyHash: input.retentionPolicyHash,
+    },
+    derivedAt: input.aggregate.derivedAt,
+  });
+}
+
 function assertBehavioralFinalization(
   finalization: TrustedBehavioralReleaseFinalization,
   requestHash: string,
@@ -452,7 +493,1159 @@ export class TrustedEvaluationBroker {
         "The durable behavioral preparation store and finalizer must be composed together.",
       );
     }
+    if (
+      options.releaseRecoveryStore !== undefined &&
+      ((options.releaseRecoveryStore.boundary !==
+        "trusted-cloud" &&
+        options.releaseRecoveryStore.boundary !==
+          "test-only-in-memory") ||
+        typeof options.releaseRecoveryStore.create !==
+          "function" ||
+        typeof options.releaseRecoveryStore.resolve !==
+          "function" ||
+        typeof options.releaseRecoveryStore.advance !==
+          "function")
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "The post-destruction recovery store is not a trusted exact-query boundary.",
+      );
+    }
     this.#options = options;
+  }
+
+  #assertRecoveryRecord(
+    record: TrustedPostDestructionReleaseRecoveryRecord,
+    request: TrustedAdaptiveEvaluationRequest,
+    requestHash: string,
+  ): void {
+    assertPostDestructionReleaseRecoveryRecord(record);
+    if (
+      record.requestId !== request.requestId ||
+      record.requestHash !== requestHash ||
+      record.protocolHash !== request.protocolHash ||
+      record.retentionPolicyHash !==
+        this.#options.retentionPolicy.policyHash ||
+      record.aggregate.requestHash !== requestHash ||
+      record.aggregate.protocolHash !==
+        request.protocolHash ||
+      record.aggregate.payload.kind !==
+        payloadKindFor(request.stage)
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Post-destruction recovery state is detached from its request.",
+      );
+    }
+    assertRawDestructionReceipt(
+      this.#options.retentionPolicy,
+      record.rawManifest,
+      record.destructionReceipt,
+      this.#options.destructionReceiptVerifier,
+    );
+    if (record.envelope !== null) {
+      assertEnvelopeLinks(
+        record.envelope,
+        request,
+        requestHash,
+        record.dispositionAttestationHash,
+        record.aggregate,
+        record.retentionPolicyHash,
+      );
+    }
+  }
+
+  async #resolveRecoveryRecord(
+    request: TrustedAdaptiveEvaluationRequest,
+    requestHash: string,
+  ): Promise<
+    TrustedPostDestructionReleaseRecoveryRecord | null
+  > {
+    const store = this.#options.releaseRecoveryStore;
+    if (store === undefined) return null;
+    const resolution = await store.resolve({
+      requestHash,
+      protocolHash: request.protocolHash,
+    });
+    if (
+      resolution.requestHash !== requestHash ||
+      resolution.protocolHash !== request.protocolHash
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Release recovery lookup is detached.",
+      );
+    }
+    if (resolution.status === "missing") return null;
+    if (resolution.record === undefined) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Release recovery lookup omitted its exact record.",
+      );
+    }
+    this.#assertRecoveryRecord(
+      resolution.record,
+      request,
+      requestHash,
+    );
+    return resolution.record;
+  }
+
+  async #createRecoveryRecord(
+    record: TrustedPostDestructionReleaseRecoveryRecord,
+    request: TrustedAdaptiveEvaluationRequest,
+    requestHash: string,
+  ): Promise<TrustedPostDestructionReleaseRecoveryRecord> {
+    const store = this.#options.releaseRecoveryStore;
+    if (store === undefined) return record;
+    this.#assertRecoveryRecord(record, request, requestHash);
+    try {
+      const receipt = await store.create(record);
+      if (
+        (receipt.status !== "created" &&
+          receipt.status !== "already-created") ||
+        receipt.requestHash !== requestHash ||
+        receipt.protocolHash !== request.protocolHash ||
+        receipt.revision !== record.revision ||
+        receipt.recordHash !== record.recordHash
+      ) {
+        throw new Error("Detached recovery create receipt.");
+      }
+    } catch {
+      const recovered = await this.#resolveRecoveryRecord(
+        request,
+        requestHash,
+      );
+      if (
+        recovered === null ||
+        recovered.recordHash !== record.recordHash
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Post-destruction checkpoint durability is ambiguous.",
+        );
+      }
+      return recovered;
+    }
+    const recovered = await this.#resolveRecoveryRecord(
+      request,
+      requestHash,
+    );
+    if (
+      recovered === null ||
+      recovered.recordHash !== record.recordHash
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Post-destruction checkpoint could not be read back exactly.",
+      );
+    }
+    return recovered;
+  }
+
+  async #advanceRecoveryRecord(
+    prior: TrustedPostDestructionReleaseRecoveryRecord,
+    next: TrustedPostDestructionReleaseRecoveryRecord,
+    request: TrustedAdaptiveEvaluationRequest,
+    requestHash: string,
+  ): Promise<TrustedPostDestructionReleaseRecoveryRecord> {
+    const store = this.#options.releaseRecoveryStore;
+    if (store === undefined) return next;
+    this.#assertRecoveryRecord(prior, request, requestHash);
+    this.#assertRecoveryRecord(next, request, requestHash);
+    try {
+      const receipt = await store.advance({
+        requestHash,
+        protocolHash: request.protocolHash,
+        priorRecordHash: prior.recordHash,
+        next,
+      });
+      if (
+        (receipt.status !== "advanced" &&
+          receipt.status !== "already-advanced") ||
+        receipt.requestHash !== requestHash ||
+        receipt.protocolHash !== request.protocolHash ||
+        receipt.revision !== next.revision ||
+        receipt.recordHash !== next.recordHash
+      ) {
+        throw new Error("Detached recovery advance receipt.");
+      }
+    } catch {
+      const recovered = await this.#resolveRecoveryRecord(
+        request,
+        requestHash,
+      );
+      if (
+        recovered === null ||
+        recovered.recordHash !== next.recordHash
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Post-destruction recovery transition is ambiguous.",
+        );
+      }
+      return recovered;
+    }
+    const recovered = await this.#resolveRecoveryRecord(
+      request,
+      requestHash,
+    );
+    if (
+      recovered === null ||
+      recovered.recordHash !== next.recordHash
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Post-destruction recovery transition could not be read back exactly.",
+      );
+    }
+    return recovered;
+  }
+
+  #nextRecoveryRecord(
+    prior: TrustedPostDestructionReleaseRecoveryRecord,
+    changes: Partial<
+      Omit<
+        TrustedPostDestructionReleaseRecoveryRecord,
+        "recordHash" | "revision"
+      >
+    >,
+  ): TrustedPostDestructionReleaseRecoveryRecord {
+    const {
+      recordHash: _recordHash,
+      revision: _revision,
+      ...current
+    } = prior;
+    return sealPostDestructionReleaseRecoveryRecord({
+      ...current,
+      ...changes,
+      revision: prior.revision + 1,
+    });
+  }
+
+  async #initialRecoveryBehavioralState(input: {
+    readonly request: TrustedAdaptiveEvaluationRequest;
+    readonly requestHash: string;
+    readonly dispositionAttestationHash: string;
+    readonly aggregate: TrustedCanonicalAggregate;
+  }): Promise<TrustedReleaseRecoveryBehavioralState> {
+    const preparationStore =
+      this.#options.behavioralPreparationStore;
+    if (preparationStore === undefined) {
+      return { status: "none" };
+    }
+    const resolution = await preparationStore.resolve({
+      requestHash: input.requestHash,
+      protocolHash: input.request.protocolHash,
+    });
+    if (
+      resolution.requestHash !== input.requestHash ||
+      resolution.protocolHash !== input.request.protocolHash
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Behavioral preparation checkpoint lookup is detached.",
+      );
+    }
+    if (resolution.status === "missing") {
+      return { status: "none" };
+    }
+    if (resolution.status !== "prepared") {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "A fresh post-destruction checkpoint found non-fresh behavioral state.",
+      );
+    }
+    const preparationHash =
+      hashTrustedBehavioralPreparation(
+        resolution.preparation,
+      );
+    if (
+      preparationHash !== resolution.preparationHash ||
+      resolution.preparation.requestHash !==
+        input.requestHash ||
+      resolution.preparation.protocolHash !==
+        input.request.protocolHash
+    ) {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "Behavioral preparation checkpoint is detached.",
+      );
+    }
+    return {
+      status: "prepared",
+      preparationHash,
+      sourceResultEnvelopeHash:
+        behavioralSourceResultHashFromDisposition({
+          request: input.request,
+          requestHash: input.requestHash,
+          dispositionAttestationHash:
+            input.dispositionAttestationHash,
+          aggregate: input.aggregate,
+          retentionPolicyHash:
+            this.#options.retentionPolicy.policyHash,
+      }),
+    };
+  }
+
+  async #recoverPostDestruction(
+    request: TrustedAdaptiveEvaluationRequest,
+    requestHash: string,
+    initialRecord: TrustedPostDestructionReleaseRecoveryRecord,
+  ): Promise<SignedResultEnvelope> {
+    this.#assertRecoveryRecord(
+      initialRecord,
+      request,
+      requestHash,
+    );
+    const recoveredClaim =
+      await this.#options.ledger.recoverInFlight({
+        requestId: request.requestId,
+        requestHash,
+        recoveryRecordHash: initialRecord.recordHash,
+      });
+    assertOneUseClaim(recoveredClaim);
+    if (recoveredClaim.state === "conflict") {
+      throw new TrustedEvaluationBrokerError(
+        "request-conflict",
+        "Recovery found a one-use claim bound to different input.",
+      );
+    }
+    if (recoveredClaim.state === "consumed") {
+      if (initialRecord.status !== "failed") {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Consumed ledger state conflicts with an open recovery record.",
+        );
+      }
+      throw new TrustedEvaluationBrokerError(
+        "request-consumed",
+        "This recovered evaluation was already consumed.",
+      );
+    }
+    if (recoveredClaim.state === "in-flight") {
+      throw new TrustedEvaluationBrokerError(
+        "request-in-flight",
+        "The prior controller could not be fenced for recovery.",
+      );
+    }
+    if (recoveredClaim.state === "completed") {
+      if (
+        initialRecord.envelope === null ||
+        initialRecord.envelopeHash === null ||
+        hashResultCompletionEnvelope(
+          recoveredClaim.envelope,
+        ) !== initialRecord.envelopeHash ||
+        canonicalHash({
+          domain:
+            "dark-factory.one-use-result-completion-envelope.v1",
+          envelope: recoveredClaim.envelope,
+        }) !== initialRecord.envelopeHash
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Completed ledger result is not the exact checkpointed envelope.",
+        );
+      }
+      assertEnvelopeLinks(
+        recoveredClaim.envelope,
+        request,
+        requestHash,
+        initialRecord.dispositionAttestationHash,
+        initialRecord.aggregate,
+        initialRecord.retentionPolicyHash,
+      );
+      if (
+        !(await this.#options.verifier.verify(
+          recoveredClaim.envelope,
+        ))
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Recovered completed result failed signature verification.",
+        );
+      }
+      if (initialRecord.status === "result-issued") {
+        await this.#advanceRecoveryRecord(
+          initialRecord,
+          this.#nextRecoveryRecord(initialRecord, {
+            status: "completed",
+          }),
+          request,
+          requestHash,
+        );
+      } else if (initialRecord.status !== "completed") {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Completed ledger state conflicts with recovery disposition.",
+        );
+      }
+      return recoveredClaim.envelope;
+    }
+
+    let current = initialRecord;
+    if (current.status === "failed") {
+      if (current.failureCode === null) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Failed recovery state omitted its terminal failure code.",
+        );
+      }
+      await this.#options.ledger.consumeFailure(
+        recoveredClaim.claimToken,
+        requestHash,
+        current.failureCode,
+      );
+      throw new TrustedEvaluationBrokerError(
+        "request-consumed",
+        "Recovered terminal failure was reconciled with the one-use ledger.",
+      );
+    }
+    if (current.status === "completed") {
+      throw new TrustedEvaluationBrokerError(
+        "release-validation-failed",
+        "An in-flight ledger claim conflicts with terminal recovery state.",
+      );
+    }
+    let failureCode: BrokerFailureCode =
+      "release-validation-failed";
+    let finalizeAttempted = false;
+    let finalizeResolved = false;
+    let completionAttempted = false;
+    let completionKnownNotCommitted = true;
+    try {
+      if (
+        current.status === "result-issued" &&
+        current.behavioral.status === "finalized"
+      ) {
+        const preparationStore =
+          this.#options.behavioralPreparationStore;
+        if (preparationStore === undefined) {
+          throw new TrustedEvaluationBrokerError(
+            "release-validation-failed",
+            "Checkpointed finalized result has no preparation authority.",
+          );
+        }
+        const resolution = await preparationStore.resolve({
+          requestHash,
+          protocolHash: request.protocolHash,
+        });
+        if (
+          resolution.status === "abandoned" &&
+          resolution.preparationHash ===
+            current.behavioral.preparationHash &&
+          resolution.sourceResultEnvelopeHash ===
+            current.behavioral
+              .sourceResultEnvelopeHash &&
+          resolution.finalizationHash ===
+            current.behavioral.finalizationHash
+        ) {
+          current = await this.#advanceRecoveryRecord(
+            current,
+            this.#nextRecoveryRecord(current, {
+              status: "failed",
+              failureCode:
+                "release-validation-failed",
+              behavioral: {
+                ...current.behavioral,
+                status: "abandoned",
+                orphanFinalizationHash:
+                  resolution.orphanFinalizationHash,
+                orphanFinalization:
+                  resolution.orphanFinalization,
+                abandonmentHash:
+                  resolution.abandonmentHash,
+              },
+            }),
+            request,
+            requestHash,
+          );
+          throw new TrustedEvaluationBrokerError(
+            "release-validation-failed",
+            "A permanently orphaned behavioral release cannot complete a result.",
+          );
+        }
+        if (
+          resolution.status !== "finalized" ||
+          resolution.preparationHash !==
+            current.behavioral.preparationHash ||
+          resolution.sourceResultEnvelopeHash !==
+            current.behavioral.sourceResultEnvelopeHash ||
+          resolution.finalizationHash !==
+            current.behavioral.finalizationHash ||
+          canonicalHash(resolution.finalization) !==
+            canonicalHash(
+              current.behavioral.finalization,
+            )
+        ) {
+          throw new TrustedEvaluationBrokerError(
+            "release-validation-failed",
+            "Checkpointed result conflicts with behavioral release state.",
+          );
+        }
+      }
+      if (current.status === "open") {
+        const preparationStore =
+          this.#options.behavioralPreparationStore;
+        const producer =
+          this.#options.behavioralReleaseProducer;
+        if (current.behavioral.status === "prepared") {
+          if (
+            preparationStore === undefined ||
+            producer === undefined
+          ) {
+            throw new TrustedEvaluationBrokerError(
+              "release-validation-failed",
+              "Checkpointed behavioral preparation has no trusted recovery ports.",
+            );
+          }
+          const resolution = await preparationStore.resolve({
+            requestHash,
+            protocolHash: request.protocolHash,
+          });
+          if (
+            resolution.requestHash !== requestHash ||
+            resolution.protocolHash !== request.protocolHash
+          ) {
+            throw new TrustedEvaluationBrokerError(
+              "release-validation-failed",
+              "Recovered behavioral preparation lookup is detached.",
+            );
+          }
+          if (resolution.status === "prepared") {
+            const preparationHash =
+              hashTrustedBehavioralPreparation(
+                resolution.preparation,
+              );
+            if (
+              preparationHash !==
+                current.behavioral.preparationHash ||
+              preparationHash !==
+                resolution.preparationHash ||
+              current.behavioral
+                .sourceResultEnvelopeHash !==
+                behavioralSourceResultHashFromDisposition({
+                  request,
+                  requestHash,
+                  dispositionAttestationHash:
+                    current.dispositionAttestationHash,
+                  aggregate: current.aggregate,
+                  retentionPolicyHash:
+                    current.retentionPolicyHash,
+                })
+            ) {
+              throw new TrustedEvaluationBrokerError(
+                "release-validation-failed",
+                "Recovered behavioral preparation changed.",
+              );
+            }
+            finalizeAttempted = true;
+            const finalized = await producer.finalize({
+              preparation: resolution.preparation,
+              sourceResultEnvelopeHash:
+                current.behavioral
+                  .sourceResultEnvelopeHash,
+              destructionReceipt:
+                current.destructionReceipt,
+            });
+            finalizeResolved = true;
+            if (finalized === null) {
+              const consumption =
+                await preparationStore.consume({
+                  requestHash,
+                  protocolHash: request.protocolHash,
+                });
+              if (
+                (consumption.status !== "consumed" &&
+                  consumption.status !==
+                    "already-consumed") ||
+                consumption.requestHash !== requestHash ||
+                consumption.protocolHash !==
+                  request.protocolHash ||
+                consumption.preparationHash !==
+                  preparationHash
+              ) {
+                throw new TrustedEvaluationBrokerError(
+                  "release-validation-failed",
+                  "Recovered preparation consumption is detached.",
+                );
+              }
+              current = await this.#advanceRecoveryRecord(
+                current,
+                this.#nextRecoveryRecord(current, {
+                  behavioral: {
+                    status: "consumed",
+                    preparationHash,
+                  },
+                }),
+                request,
+                requestHash,
+              );
+            } else {
+              assertBehavioralFinalization(
+                finalized,
+                requestHash,
+                resolution.preparation.behaviorSourceSetHash,
+              );
+              const aggregate = attachBehavioralFinalization(
+                current.aggregate,
+                finalized,
+              );
+              const finalizationHash =
+                hashTrustedBehavioralPreparationFinalization({
+                  requestHash,
+                  protocolHash: request.protocolHash,
+                  preparationHash,
+                  sourceResultEnvelopeHash:
+                    current.behavioral
+                      .sourceResultEnvelopeHash,
+                  finalization: finalized,
+                });
+              const receipt =
+                await preparationStore.finalize({
+                  requestHash,
+                  protocolHash: request.protocolHash,
+                  preparationHash,
+                  sourceResultEnvelopeHash:
+                    current.behavioral
+                      .sourceResultEnvelopeHash,
+                  finalization: finalized,
+                });
+              if (
+                (receipt.status !== "finalized" &&
+                  receipt.status !==
+                    "already-finalized") ||
+                receipt.requestHash !== requestHash ||
+                receipt.protocolHash !==
+                  request.protocolHash ||
+                receipt.preparationHash !==
+                  preparationHash ||
+                receipt.sourceResultEnvelopeHash !==
+                  current.behavioral
+                    .sourceResultEnvelopeHash ||
+                receipt.finalizationHash !==
+                  finalizationHash
+              ) {
+                throw new TrustedEvaluationBrokerError(
+                  "release-validation-failed",
+                  "Recovered behavioral finalization receipt is detached.",
+                );
+              }
+              current = await this.#advanceRecoveryRecord(
+                current,
+                this.#nextRecoveryRecord(current, {
+                  aggregate,
+                  behavioral: {
+                    status: "finalized",
+                    preparationHash,
+                    sourceResultEnvelopeHash:
+                      current.behavioral
+                        .sourceResultEnvelopeHash,
+                    finalizationHash,
+                    finalization: finalized,
+                  },
+                }),
+                request,
+                requestHash,
+              );
+            }
+          } else if (
+            resolution.status === "finalized" ||
+            resolution.status === "abandoned"
+          ) {
+            const finalization =
+              resolution.status === "finalized"
+                ? resolution.finalization
+                : {
+                    contentHash:
+                      resolution.orphanFinalization
+                        .releaseContentHash,
+                    sourceSetHash:
+                      resolution.orphanFinalization
+                        .sourceSetHash,
+                    privacyThresholdPassed: true as const,
+                    authorizationHash:
+                      resolution.orphanFinalization
+                        .authorizationHash,
+                    requestHash:
+                      resolution.orphanFinalization
+                        .requestHash,
+                  };
+            const finalizationHash =
+              hashTrustedBehavioralPreparationFinalization({
+                requestHash,
+                protocolHash: request.protocolHash,
+                preparationHash:
+                  current.behavioral.preparationHash,
+                sourceResultEnvelopeHash:
+                  current.behavioral
+                    .sourceResultEnvelopeHash,
+                finalization,
+              });
+            if (
+              resolution.preparationHash !==
+                current.behavioral.preparationHash ||
+              resolution.sourceResultEnvelopeHash !==
+                current.behavioral
+                  .sourceResultEnvelopeHash ||
+              resolution.finalizationHash !== finalizationHash
+            ) {
+              throw new TrustedEvaluationBrokerError(
+                "release-validation-failed",
+                "Recovered durable behavioral finalization changed.",
+              );
+            }
+            const aggregate = attachBehavioralFinalization(
+              current.aggregate,
+              finalization,
+            );
+            const behavioral:
+              TrustedReleaseRecoveryBehavioralState =
+              resolution.status === "finalized"
+                ? {
+                    status: "finalized",
+                    preparationHash:
+                      resolution.preparationHash,
+                    sourceResultEnvelopeHash:
+                      resolution.sourceResultEnvelopeHash,
+                    finalizationHash,
+                    finalization,
+                  }
+                : {
+                    status: "abandoned",
+                    preparationHash:
+                      resolution.preparationHash,
+                    sourceResultEnvelopeHash:
+                      resolution.sourceResultEnvelopeHash,
+                    finalizationHash,
+                    finalization,
+                    orphanFinalizationHash:
+                      resolution.orphanFinalizationHash,
+                    orphanFinalization:
+                      resolution.orphanFinalization,
+                    abandonmentHash:
+                      resolution.abandonmentHash,
+                  };
+            current = await this.#advanceRecoveryRecord(
+              current,
+              this.#nextRecoveryRecord(current, {
+                aggregate,
+                behavioral,
+              }),
+              request,
+              requestHash,
+            );
+          } else if (resolution.status === "consumed") {
+            if (
+              resolution.preparationHash !==
+              current.behavioral.preparationHash
+            ) {
+              throw new TrustedEvaluationBrokerError(
+                "release-validation-failed",
+                "Recovered consumed preparation changed.",
+              );
+            }
+            current = await this.#advanceRecoveryRecord(
+              current,
+              this.#nextRecoveryRecord(current, {
+                behavioral: {
+                  status: "consumed",
+                  preparationHash:
+                    resolution.preparationHash,
+                },
+              }),
+              request,
+              requestHash,
+            );
+          } else {
+            throw new TrustedEvaluationBrokerError(
+              "release-validation-failed",
+              "Checkpointed behavioral preparation is missing.",
+            );
+          }
+        } else if (
+          current.behavioral.status === "finalized"
+        ) {
+          if (
+            preparationStore === undefined ||
+            producer === undefined
+          ) {
+            throw new TrustedEvaluationBrokerError(
+              "release-validation-failed",
+              "Finalized recovery state has no trusted lifecycle ports.",
+            );
+          }
+          const resolution = await preparationStore.resolve({
+            requestHash,
+            protocolHash: request.protocolHash,
+          });
+          if (resolution.status === "abandoned") {
+            if (
+              resolution.preparationHash !==
+                current.behavioral.preparationHash ||
+              resolution.sourceResultEnvelopeHash !==
+                current.behavioral
+                  .sourceResultEnvelopeHash ||
+              resolution.finalizationHash !==
+                current.behavioral.finalizationHash
+            ) {
+              throw new TrustedEvaluationBrokerError(
+                "release-validation-failed",
+                "Recovered abandoned preparation changed.",
+              );
+            }
+            current = await this.#advanceRecoveryRecord(
+              current,
+              this.#nextRecoveryRecord(current, {
+                behavioral: {
+                  ...current.behavioral,
+                  status: "abandoned",
+                  orphanFinalizationHash:
+                    resolution.orphanFinalizationHash,
+                  orphanFinalization:
+                    resolution.orphanFinalization,
+                  abandonmentHash:
+                    resolution.abandonmentHash,
+                },
+              }),
+              request,
+              requestHash,
+            );
+          } else if (
+            resolution.status !== "finalized" ||
+            resolution.preparationHash !==
+              current.behavioral.preparationHash ||
+            resolution.sourceResultEnvelopeHash !==
+              current.behavioral.sourceResultEnvelopeHash ||
+            resolution.finalizationHash !==
+              current.behavioral.finalizationHash ||
+            canonicalHash(resolution.finalization) !==
+              canonicalHash(
+                current.behavioral.finalization,
+              )
+          ) {
+            throw new TrustedEvaluationBrokerError(
+              "release-validation-failed",
+              "Recovered finalized preparation is detached.",
+            );
+          }
+        }
+        if (current.behavioral.status === "abandoned") {
+          throw new TrustedEvaluationBrokerError(
+            "release-validation-failed",
+            "A permanently orphaned behavioral release cannot issue a result.",
+          );
+        }
+        const envelope = await this.#options.issuer.issue({
+          request,
+          requestHash,
+          dispositionAttestationHash:
+            current.dispositionAttestationHash,
+          aggregate: current.aggregate,
+          destructionReceipt:
+            current.destructionReceipt,
+          retentionPolicyHash:
+            current.retentionPolicyHash,
+        });
+        assertEnvelopeLinks(
+          envelope,
+          request,
+          requestHash,
+          current.dispositionAttestationHash,
+          current.aggregate,
+          current.retentionPolicyHash,
+        );
+        if (!(await this.#options.verifier.verify(envelope))) {
+          throw new TrustedEvaluationBrokerError(
+            "release-validation-failed",
+            "Recovered evaluator result failed signature verification.",
+          );
+        }
+        current = await this.#advanceRecoveryRecord(
+          current,
+          this.#nextRecoveryRecord(current, {
+            status: "result-issued",
+            envelope,
+            envelopeHash:
+              hashResultCompletionEnvelope(envelope),
+          }),
+          request,
+          requestHash,
+        );
+      }
+      if (
+        current.status !== "result-issued" ||
+        current.envelope === null ||
+        current.envelopeHash === null ||
+        current.behavioral.status === "abandoned"
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Recovered release is not eligible for result completion.",
+        );
+      }
+      assertEnvelopeLinks(
+        current.envelope,
+        request,
+        requestHash,
+        current.dispositionAttestationHash,
+        current.aggregate,
+        current.retentionPolicyHash,
+      );
+      if (
+        !(await this.#options.verifier.verify(
+          current.envelope,
+        ))
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Checkpointed result failed signature verification.",
+        );
+      }
+      completionAttempted = true;
+      await this.#options.ledger.complete(
+        recoveredClaim.claimToken,
+        requestHash,
+        current.dispositionAttestationHash,
+        current.envelope,
+      );
+      current = await this.#advanceRecoveryRecord(
+        current,
+        this.#nextRecoveryRecord(current, {
+          status: "completed",
+        }),
+        request,
+        requestHash,
+      );
+      return current.envelope as SignedResultEnvelope;
+    } catch (error) {
+      failureCode =
+        error instanceof TrustedEvaluationBrokerError
+          ? error.code === "request-conflict" ||
+            error.code === "request-in-flight" ||
+            error.code === "request-consumed"
+            ? "release-validation-failed"
+            : error.code
+          : "release-validation-failed";
+      if (completionAttempted) {
+        try {
+          const inspection = await this.#options.ledger.inspect(
+            request.requestId,
+            requestHash,
+          );
+          assertOneUseLedgerInspection(inspection);
+          if (inspection.state === "completed") {
+            if (
+              current.envelope === null ||
+              current.envelopeHash === null ||
+              hashResultCompletionEnvelope(
+                inspection.envelope,
+              ) !== current.envelopeHash
+            ) {
+              throw new Error(
+                "Recovered completion substituted another envelope.",
+              );
+            }
+            assertEnvelopeLinks(
+              inspection.envelope,
+              request,
+              requestHash,
+              current.dispositionAttestationHash,
+              current.aggregate,
+              current.retentionPolicyHash,
+            );
+            if (
+              !(await this.#options.verifier.verify(
+                inspection.envelope,
+              ))
+            ) {
+              throw new Error(
+                "Recovered completion failed verification.",
+              );
+            }
+            if (current.status === "result-issued") {
+              current = await this.#advanceRecoveryRecord(
+                current,
+                this.#nextRecoveryRecord(current, {
+                  status: "completed",
+                }),
+                request,
+                requestHash,
+              );
+            }
+            return inspection.envelope;
+          }
+          completionKnownNotCommitted =
+            inspection.state === "in-flight" ||
+            inspection.state === "consumed";
+        } catch {
+          completionKnownNotCommitted = false;
+        }
+      }
+      const finalizeFailed =
+        finalizeAttempted && !finalizeResolved;
+      const finalizeKnownNotCommitted =
+        finalizeFailed &&
+        error instanceof
+          TrustedBehavioralReleaseProducerError &&
+        error.finalizationDisposition ===
+          "known-not-committed";
+      let cleanupVerified =
+        current.behavioral.status === "none" ||
+        current.behavioral.status === "consumed" ||
+        current.behavioral.status === "abandoned";
+      if (
+        completionKnownNotCommitted &&
+        current.behavioral.status === "finalized" &&
+        this.#options.behavioralReleaseProducer !==
+          undefined &&
+        this.#options.behavioralPreparationStore !==
+          undefined
+      ) {
+        try {
+          const orphan =
+            await this.#options.behavioralReleaseProducer.orphan(
+              current.behavioral.finalization,
+            );
+          assertBehavioralOrphanFinalization(
+            orphan,
+            current.behavioral.finalization,
+          );
+          const abandonment =
+            await this.#options.behavioralPreparationStore.abandon({
+              requestHash,
+              protocolHash: request.protocolHash,
+              preparationHash:
+                current.behavioral.preparationHash,
+              sourceResultEnvelopeHash:
+                current.behavioral
+                  .sourceResultEnvelopeHash,
+              finalizationHash:
+                current.behavioral.finalizationHash,
+              orphanFinalization: orphan,
+            });
+          assertBehavioralPreparationAbandonment(
+            abandonment,
+            {
+              requestHash,
+              protocolHash: request.protocolHash,
+              preparationHash:
+                current.behavioral.preparationHash,
+              sourceResultEnvelopeHash:
+                current.behavioral
+                  .sourceResultEnvelopeHash,
+              finalizationHash:
+                current.behavioral.finalizationHash,
+              orphanFinalizationHash:
+                orphan.orphanFinalizationHash,
+            },
+          );
+          current = await this.#advanceRecoveryRecord(
+            current,
+            this.#nextRecoveryRecord(current, {
+              ...(current.status === "result-issued"
+                ? {
+                    status: "failed" as const,
+                    failureCode,
+                  }
+                : {}),
+              behavioral: {
+                ...current.behavioral,
+                status: "abandoned",
+                orphanFinalizationHash:
+                  orphan.orphanFinalizationHash,
+                orphanFinalization: orphan,
+                abandonmentHash:
+                  abandonment.abandonmentHash,
+              },
+            }),
+            request,
+            requestHash,
+          );
+          cleanupVerified = true;
+        } catch {
+          cleanupVerified = false;
+        }
+      } else if (
+        completionKnownNotCommitted &&
+        current.behavioral.status === "prepared" &&
+        finalizeKnownNotCommitted &&
+        this.#options.behavioralPreparationStore !==
+          undefined
+      ) {
+        try {
+          const consumption =
+            await this.#options.behavioralPreparationStore.consume({
+              requestHash,
+              protocolHash: request.protocolHash,
+            });
+          if (
+            (consumption.status !== "consumed" &&
+              consumption.status !==
+                "already-consumed") ||
+            consumption.preparationHash !==
+              current.behavioral.preparationHash
+          ) {
+            throw new Error(
+              "Recovered preparation cleanup is detached.",
+            );
+          }
+          current = await this.#advanceRecoveryRecord(
+            current,
+            this.#nextRecoveryRecord(current, {
+              behavioral: {
+                status: "consumed",
+                preparationHash:
+                  current.behavioral.preparationHash,
+              },
+            }),
+            request,
+            requestHash,
+          );
+          cleanupVerified = true;
+        } catch {
+          cleanupVerified = false;
+        }
+      } else if (
+        current.behavioral.status === "prepared" ||
+        (finalizeFailed && !finalizeKnownNotCommitted)
+      ) {
+        cleanupVerified = false;
+      }
+      if (completionKnownNotCommitted && cleanupVerified) {
+        try {
+          if (
+            current.status !== "failed" &&
+            current.status !== "completed"
+          ) {
+            current = await this.#advanceRecoveryRecord(
+              current,
+              this.#nextRecoveryRecord(current, {
+                status: "failed",
+                failureCode,
+              }),
+              request,
+              requestHash,
+            );
+          }
+          await this.#options.ledger.consumeFailure(
+            recoveredClaim.claimToken,
+            requestHash,
+            failureCode,
+          );
+        } catch {
+          /*
+           * Preserve the in-flight claim when either terminal record or
+           * ledger acknowledgement is ambiguous. The next fenced recovery
+           * reconciles both exact stores.
+           */
+        }
+      }
+      throw new TrustedEvaluationBrokerError(
+        failureCode,
+        "Post-destruction recovery failed closed without rerunning hidden tasks.",
+      );
+    }
   }
 
   async evaluate(request: TrustedEvaluationRequest): Promise<SignedResultEnvelope> {
@@ -482,9 +1675,21 @@ export class TrustedEvaluationBroker {
       );
     }
     if (claim.state === "in-flight") {
+      const recoveryRecord =
+        await this.#resolveRecoveryRecord(
+          request,
+          requestHash,
+        );
+      if (recoveryRecord !== null) {
+        return this.#recoverPostDestruction(
+          request,
+          requestHash,
+          recoveryRecord,
+        );
+      }
       throw new TrustedEvaluationBrokerError(
         "request-in-flight",
-        "This one-use evaluation is already in progress.",
+        "This one-use evaluation is in progress and has no exact post-destruction recovery record.",
       );
     }
     if (claim.state === "consumed") {
@@ -513,6 +1718,36 @@ export class TrustedEvaluationBroker {
           "Stored signed evaluator release failed signature verification.",
         );
       }
+      const recoveryRecord =
+        await this.#resolveRecoveryRecord(
+          request,
+          requestHash,
+        );
+      if (
+        recoveryRecord !== null &&
+        recoveryRecord.status === "result-issued" &&
+        recoveryRecord.envelopeHash ===
+          hashResultCompletionEnvelope(claim.envelope)
+      ) {
+        await this.#advanceRecoveryRecord(
+          recoveryRecord,
+          this.#nextRecoveryRecord(recoveryRecord, {
+            status: "completed",
+          }),
+          request,
+          requestHash,
+        );
+      } else if (
+        recoveryRecord !== null &&
+        (recoveryRecord.status !== "completed" ||
+          recoveryRecord.envelopeHash !==
+            hashResultCompletionEnvelope(claim.envelope))
+      ) {
+        throw new TrustedEvaluationBrokerError(
+          "release-validation-failed",
+          "Completed result conflicts with its durable recovery record.",
+        );
+      }
       return claim.envelope;
     }
 
@@ -529,8 +1764,14 @@ export class TrustedEvaluationBroker {
       null;
     let behavioralPreparationFinalizationHash: string | null =
       null;
+    let behavioralFinalizeAttempted = false;
+    let behavioralFinalizeResolved = false;
     let completionAttempted = false;
     let attemptedEnvelopeHash: string | null = null;
+    let recoveryRecord:
+      | TrustedPostDestructionReleaseRecoveryRecord
+      | null = null;
+    let recoveryCheckpointAttempted = false;
     let failureCode: BrokerFailureCode = "evaluation-failed";
     try {
       failureCode = "panel-allocation-failed";
@@ -606,6 +1847,44 @@ export class TrustedEvaluationBroker {
       rawDestroyed = true;
 
       failureCode = "release-validation-failed";
+      if (
+        this.#options.releaseRecoveryStore !== undefined
+      ) {
+        const recoveryBehavioral =
+          await this.#initialRecoveryBehavioralState({
+            request,
+            requestHash,
+            dispositionAttestationHash:
+              panel.dispositionAttestationHash,
+            aggregate,
+          });
+        recoveryCheckpointAttempted = true;
+        recoveryRecord = await this.#createRecoveryRecord(
+          sealPostDestructionReleaseRecoveryRecord({
+            schemaVersion: 1,
+            sensitivity:
+              "trusted-private-post-destruction-release-recovery",
+            requestId: request.requestId,
+            requestHash,
+            protocolHash: request.protocolHash,
+            dispositionAttestationHash:
+              panel.dispositionAttestationHash,
+            retentionPolicyHash:
+              this.#options.retentionPolicy.policyHash,
+            rawManifest: rawRun.manifest,
+            destructionReceipt,
+            aggregate,
+            behavioral: recoveryBehavioral,
+            status: "open",
+            envelope: null,
+            envelopeHash: null,
+            failureCode: null,
+            revision: 1,
+          }),
+          request,
+          requestHash,
+        );
+      }
       const behavioralProducer =
         this.#options.behavioralReleaseProducer;
       if (behavioralProducer !== undefined) {
@@ -753,11 +2032,13 @@ export class TrustedEvaluationBroker {
               requestHash,
             );
           } else {
+            behavioralFinalizeAttempted = true;
             finalized = await behavioralProducer.finalize({
               preparation: preparation as TrustedPrivateBehavioralPreparation,
               sourceResultEnvelopeHash,
               destructionReceipt,
             });
+            behavioralFinalizeResolved = true;
             if (finalized === null) {
               if (behavioralPreparationHash !== null) {
                 const consumption =
@@ -779,6 +2060,28 @@ export class TrustedEvaluationBroker {
                     "release-validation-failed",
                     "Behavioral preparation consumption is detached.",
                   );
+                }
+                if (
+                  recoveryRecord !== null &&
+                  recoveryRecord.behavioral.status ===
+                    "prepared"
+                ) {
+                  recoveryRecord =
+                    await this.#advanceRecoveryRecord(
+                      recoveryRecord,
+                      this.#nextRecoveryRecord(
+                        recoveryRecord,
+                        {
+                          behavioral: {
+                            status: "consumed",
+                            preparationHash:
+                              behavioralPreparationHash,
+                          },
+                        },
+                      ),
+                      request,
+                      requestHash,
+                    );
                 }
               }
             } else {
@@ -830,6 +2133,37 @@ export class TrustedEvaluationBroker {
                     "Behavioral preparation finalization receipt is detached.",
                   );
                 }
+                if (
+                  recoveryRecord !== null &&
+                  recoveryRecord.behavioral.status ===
+                    "prepared"
+                ) {
+                  recoveryRecord =
+                    await this.#advanceRecoveryRecord(
+                      recoveryRecord,
+                      this.#nextRecoveryRecord(
+                        recoveryRecord,
+                        {
+                          aggregate:
+                            attachBehavioralFinalization(
+                              aggregate,
+                              finalized,
+                            ),
+                          behavioral: {
+                            status: "finalized",
+                            preparationHash:
+                              behavioralPreparationHash,
+                            sourceResultEnvelopeHash,
+                            finalizationHash:
+                              expectedFinalizationHash,
+                            finalization: finalized,
+                          },
+                        },
+                      ),
+                      request,
+                      requestHash,
+                    );
+                }
               }
             }
           }
@@ -875,6 +2209,20 @@ export class TrustedEvaluationBroker {
           "dark-factory.one-use-result-completion-envelope.v1",
         envelope,
       });
+      if (recoveryRecord !== null) {
+        recoveryRecord =
+          await this.#advanceRecoveryRecord(
+            recoveryRecord,
+            this.#nextRecoveryRecord(recoveryRecord, {
+              status: "result-issued",
+              envelope,
+              envelopeHash:
+                hashResultCompletionEnvelope(envelope),
+            }),
+            request,
+            requestHash,
+          );
+      }
       completionAttempted = true;
       await this.#options.ledger.complete(
         claim.claimToken,
@@ -882,15 +2230,37 @@ export class TrustedEvaluationBroker {
         panel.dispositionAttestationHash,
         envelope,
       );
+      if (
+        recoveryRecord !== null &&
+        recoveryRecord.status === "result-issued"
+      ) {
+        recoveryRecord =
+          await this.#advanceRecoveryRecord(
+            recoveryRecord,
+            this.#nextRecoveryRecord(recoveryRecord, {
+              status: "completed",
+            }),
+            request,
+            requestHash,
+          );
+      }
       return envelope;
     } catch (error) {
-      const behavioralCommitUnsafeToConsume =
+      const behavioralFinalizeFailed =
+        behavioralFinalizeAttempted && !behavioralFinalizeResolved;
+      const behavioralFinalizeKnownNotCommitted =
+        behavioralFinalizeFailed &&
         error instanceof TrustedBehavioralReleaseProducerError &&
-        error.finalizationDisposition === "unsafe-to-consume";
+        error.finalizationDisposition === "known-not-committed";
+      const behavioralCommitUnsafeToConsume =
+        behavioralFinalizeFailed &&
+        !behavioralFinalizeKnownNotCommitted;
       let behavioralCleanupUnsafe =
         behavioralCommitUnsafeToConsume;
       let behavioralPreparationCleanupVerified =
         this.#options.behavioralPreparationStore === undefined;
+      let recoveryCleanupVerified =
+        !recoveryCheckpointAttempted;
       let completionKnownNotCommitted =
         !completionAttempted && !behavioralCommitUnsafeToConsume;
       if (behavioralCommitUnsafeToConsume) {
@@ -945,6 +2315,23 @@ export class TrustedEvaluationBroker {
               throw new Error(
                 "Recovered signed evaluator result failed verification.",
               );
+            }
+            if (
+              recoveryRecord !== null &&
+              recoveryRecord.status === "result-issued"
+            ) {
+              recoveryRecord =
+                await this.#advanceRecoveryRecord(
+                  recoveryRecord,
+                  this.#nextRecoveryRecord(
+                    recoveryRecord,
+                    {
+                      status: "completed",
+                    },
+                  ),
+                  request,
+                  requestHash,
+                );
             }
             return inspection.envelope;
           }
@@ -1017,6 +2404,40 @@ export class TrustedEvaluationBroker {
                     orphanFinalization.orphanFinalizationHash,
                 },
               );
+              if (
+                recoveryRecord !== null &&
+                recoveryRecord.behavioral.status ===
+                  "finalized"
+              ) {
+                recoveryRecord =
+                  await this.#advanceRecoveryRecord(
+                    recoveryRecord,
+                    this.#nextRecoveryRecord(
+                      recoveryRecord,
+                      {
+                        ...(recoveryRecord.status ===
+                        "result-issued"
+                          ? {
+                              status: "failed" as const,
+                              failureCode,
+                            }
+                          : {}),
+                        behavioral: {
+                          ...recoveryRecord.behavioral,
+                          status: "abandoned",
+                          orphanFinalizationHash:
+                            orphanFinalization
+                              .orphanFinalizationHash,
+                          orphanFinalization,
+                          abandonmentHash:
+                            abandonment.abandonmentHash,
+                        },
+                      },
+                    ),
+                    request,
+                    requestHash,
+                  );
+              }
               behavioralPreparationCleanupVerified = true;
             } catch {
               behavioralPreparationCleanupVerified = false;
@@ -1080,6 +2501,37 @@ export class TrustedEvaluationBroker {
               throw new Error(
                 "Behavioral preparation cleanup did not commit.",
               );
+            }
+            if (
+              recoveryRecord !== null &&
+              recoveryRecord.behavioral.status ===
+                "prepared" &&
+              (consumption.status === "consumed" ||
+                consumption.status ===
+                  "already-consumed")
+            ) {
+              recoveryRecord =
+                await this.#advanceRecoveryRecord(
+                  recoveryRecord,
+                  this.#nextRecoveryRecord(
+                    recoveryRecord,
+                    {
+                      ...(recoveryRecord.status ===
+                      "result-issued"
+                        ? {
+                            status: "failed" as const,
+                            failureCode,
+                          }
+                        : {}),
+                      behavioral: {
+                        status: "consumed",
+                        preparationHash,
+                      },
+                    },
+                  ),
+                  request,
+                  requestHash,
+                );
             }
             if (
               consumption.status === "already-abandoned"
@@ -1195,6 +2647,40 @@ export class TrustedEvaluationBroker {
                   orphanFinalization.orphanFinalizationHash,
               },
             );
+            if (
+              recoveryRecord !== null &&
+              recoveryRecord.behavioral.status ===
+                "finalized"
+            ) {
+              recoveryRecord =
+                await this.#advanceRecoveryRecord(
+                  recoveryRecord,
+                  this.#nextRecoveryRecord(
+                    recoveryRecord,
+                    {
+                      ...(recoveryRecord.status ===
+                      "result-issued"
+                        ? {
+                            status: "failed" as const,
+                            failureCode,
+                          }
+                        : {}),
+                      behavioral: {
+                        ...recoveryRecord.behavioral,
+                        status: "abandoned",
+                        orphanFinalizationHash:
+                          orphanFinalization
+                            .orphanFinalizationHash,
+                        orphanFinalization,
+                        abandonmentHash:
+                          abandonment.abandonmentHash,
+                      },
+                    },
+                  ),
+                  request,
+                  requestHash,
+                );
+            }
             behavioralPreparationCleanupVerified = true;
           } else if (
             resolution.status === "finalized"
@@ -1223,6 +2709,49 @@ export class TrustedEvaluationBroker {
       if (
         completionKnownNotCommitted &&
         behavioralPreparationCleanupVerified
+      ) {
+        if (recoveryRecord !== null) {
+          try {
+            const exactRecovery =
+              await this.#resolveRecoveryRecord(
+                request,
+                requestHash,
+              );
+            if (exactRecovery === null) {
+              throw new Error(
+                "Post-destruction recovery record disappeared.",
+              );
+            }
+            recoveryRecord = exactRecovery;
+            if (
+              recoveryRecord.status !== "failed" &&
+              recoveryRecord.status !== "completed"
+            ) {
+              recoveryRecord =
+                await this.#advanceRecoveryRecord(
+                  recoveryRecord,
+                  this.#nextRecoveryRecord(
+                    recoveryRecord,
+                    {
+                      status: "failed",
+                      failureCode,
+                    },
+                  ),
+                  request,
+                  requestHash,
+                );
+            }
+            recoveryCleanupVerified =
+              recoveryRecord.status === "failed";
+          } catch {
+            recoveryCleanupVerified = false;
+          }
+        }
+      }
+      if (
+        completionKnownNotCommitted &&
+        behavioralPreparationCleanupVerified &&
+        recoveryCleanupVerified
       ) {
         try {
           await this.#options.ledger.consumeFailure(

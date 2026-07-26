@@ -44,9 +44,10 @@ const SAFE_RECEIPT = /^[A-Za-z0-9_-]{16,128}$/u;
 const SAFE_PATH = /^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
 const SAFE_ENV = /^[A-Z_][A-Z0-9_]{0,127}$/u;
 const ALLOWED_OPTIMIZER_SECRETS = new Set([
-  "ANTHROPIC_API_KEY",
-  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_FOUNDRY_API_KEY",
 ]);
+const SAFE_FOUNDRY_RESOURCE =
+  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const REGULAR_TREE_MODES = new Set(["100644", "100755"]);
 const MAX_COMMAND_OUTPUT_BYTES = 128 * 1024 * 1024;
 const MAX_STDERR_BYTES = 16 * 1024 * 1024;
@@ -56,11 +57,58 @@ const MAX_DIFF_BYTES = 32 * 1024 * 1024;
 const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024;
 const MINIMUM_CLAUDE_VERSION = [2, 1, 217];
 const INTEGRITY_POLICY = {
-  version: "pi-candidate-integrity-v1",
+  version: "pi-candidate-integrity-v2",
   allowedRoots: [
     "packages/agent/src/",
     "packages/coding-agent/src/",
     "packages/ai/src/",
+  ],
+  allowedFileExtensions: [
+    ".cjs",
+    ".css",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".mjs",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+  ],
+  protectedGlobs: [
+    {
+      source:
+        "(^|\\/)(test|tests|grader|graders|verifier|verifiers|solution|solutions|reference)(\\/|$)",
+      flags: "iu",
+    },
+    {
+      source:
+        "(^|\\/)(terminal-bench|terminalbench|tbench|harbor)(\\/|$)",
+      flags: "iu",
+    },
+    { source: "(^|\\/)\\.github\\/", flags: "u" },
+    {
+      source:
+        "(^|\\/)(package\\.json|package-lock\\.json|npm-shrinkwrap\\.json|pnpm-lock\\.yaml|yarn\\.lock)$",
+      flags: "u",
+    },
+    {
+      source:
+        "(^|\\/)(tsconfig(?:\\.[A-Za-z0-9._-]+)?\\.json|biome\\.json|vitest\\.config\\.[cm]?[jt]s)$",
+      flags: "u",
+    },
+    {
+      source:
+        "(^|\\/)(scripts|evals?|benchmarks?|fixtures?|examples?)\\/",
+      flags: "iu",
+    },
+    {
+      source:
+        "(^|\\/)(Dockerfile|docker-compose(?:\\.[A-Za-z0-9._-]+)?\\.ya?ml)$",
+      flags: "iu",
+    },
   ],
   maximumChangedFiles: 12,
   maximumChangedLines: 600,
@@ -958,6 +1006,15 @@ function assertClaudeCommand(command, input) {
     command.environment.DF_PLUGIN_DATA_ROOT !== "/workspace/plugin-data" ||
     command.environment.CLAUDE_CONFIG_DIR !==
       "/workspace/plugin-data/claude-config" ||
+    command.environment.CLAUDE_CODE_USE_FOUNDRY !== "1" ||
+    typeof command.environment.ANTHROPIC_FOUNDRY_RESOURCE !== "string" ||
+    !SAFE_FOUNDRY_RESOURCE.test(
+      command.environment.ANTHROPIC_FOUNDRY_RESOURCE,
+    ) ||
+    command.environment.ANTHROPIC_DEFAULT_OPUS_MODEL !==
+      model ||
+    command.environment.DF_OPTIMIZER_MODEL_ID !==
+      "claude-opus-5" ||
     typeof model !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u.test(model) ||
     !new Set(["low", "medium", "high", "xhigh", "max"]).has(effort) ||
@@ -1498,6 +1555,9 @@ function scanDiff(changedFiles, diff, addedLines, deletedLines) {
       file.includes("/../") ||
       /[\u0000-\u001f\u007f]/u.test(file) ||
       !INTEGRITY_POLICY.allowedRoots.some((root) => file.startsWith(root)) ||
+      !INTEGRITY_POLICY.allowedFileExtensions.some((extension) =>
+        file.endsWith(extension)
+      ) ||
       PROTECTED_PATHS.some((pattern) => pattern.test(file))
     ) {
       violations.push("PROTECTED_PATH");

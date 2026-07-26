@@ -38,6 +38,7 @@ jobs:
       inputs.confirmation == format('PREFLIGHT:{0}:{1}', inputs.command, inputs.campaign_id)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    environment: dark-factory-preflight
     env:
       CI: "true"
       RUNNER_ENVIRONMENT: ${{ runner.environment }}

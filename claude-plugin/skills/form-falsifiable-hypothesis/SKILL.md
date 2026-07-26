@@ -23,6 +23,11 @@ Produce these fields:
 - `citedCardIds`: only cards actually used; empty for source-only bootstrap.
 
 Reject your own hypothesis if it depends on an inferred task, tool specific to an inferred
-environment, benchmark identifier, solution pattern, or conditional task detection. Submit
-the completed object once with `df_submit_hypothesis`; submission freezes it.
+environment, benchmark identifier, solution pattern, or conditional task detection.
 
+In the essentials-only MVP there is no `df_submit_hypothesis` tool. Freeze the reasoning
+before editing, keep it in the current session, make one matching change, and finish with
+exactly the JSON object required by the optimizer prompt. Map the causal claim into
+`hypothesisSummary` and the single bounded intervention into `interventionSummary`; do not
+add fields or Markdown. In the full protocol, submit the completed object once with
+`df_submit_hypothesis`.

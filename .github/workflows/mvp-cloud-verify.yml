@@ -1,0 +1,147 @@
+name: mvp-cloud-verify
+
+on:
+  push:
+    branches:
+      - codex/dark-factory-mvp
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character tip of codex/dark-factory-mvp
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvp-cloud-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: >-
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/dark-factory-mvp') ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/dark-factory-mvp')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: "true"
+      DF_CLOUD_EXECUTION: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      REQUESTED_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.source_commit }}
+    steps:
+      - name: Verify cloud runner and immutable request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          [[ "$REQUESTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out the exact branch tip without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.REQUESTED_COMMIT }}
+          persist-credentials: false
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_COMMIT"
+          test "$(git status --porcelain=v1 --untracked-files=all)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Activate exact pnpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          test "$(pnpm --version)" = "11.9.0"
+
+      - name: Resolve the temporary MVP lock without lifecycle scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test ! -e pnpm-lock.yaml; then
+            pnpm install --lockfile-only --ignore-scripts
+          fi
+          pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Format the cloud working copy
+        shell: bash
+        run: pnpm format
+
+      - name: Capture the review patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --binary -- . ':(exclude)pnpm-lock.yaml' > mvp-cloud-format.patch
+          sha256sum mvp-cloud-format.patch > mvp-cloud-format.patch.sha256
+
+      - name: Run lint, typecheck, coverage tests, and build
+        shell: bash
+        run: pnpm check && pnpm build
+
+      - name: Write source-bound verification receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          lock_sha="$(
+            if test -s pnpm-lock.yaml; then
+              sha256sum pnpm-lock.yaml | cut -d' ' -f1
+            else
+              printf '%064d' 0
+            fi
+          )"
+          patch_sha="$(
+            if test -s mvp-cloud-format.patch.sha256; then
+              cut -d' ' -f1 mvp-cloud-format.patch.sha256
+            else
+              printf '%064d' 0
+            fi
+          )"
+          node -e '
+            const fs = require("node:fs");
+            const receipt = {
+              schemaVersion: 1,
+              domain: "dark-factory.mvp-cloud-verification.v1",
+              sourceCommit: process.env.REQUESTED_COMMIT,
+              lockSha256: process.argv[1],
+              formatterPatchSha256: process.argv[2],
+              workflowRunId: process.env.GITHUB_RUN_ID,
+              workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            };
+            fs.writeFileSync(
+              "mvp-cloud-verification.json",
+              `${JSON.stringify(receipt)}\n`,
+              { flag: "wx", mode: 0o600 },
+            );
+          ' "$lock_sha" "$patch_sha"
+          sha256sum mvp-cloud-verification.json > mvp-cloud-verification.json.sha256
+
+      - name: Upload immutable review and verification artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mvp-cloud-verification-${{ env.REQUESTED_COMMIT }}
+          path: |
+            pnpm-lock.yaml
+            mvp-cloud-format.patch
+            mvp-cloud-format.patch.sha256
+            mvp-cloud-verification.json
+            mvp-cloud-verification.json.sha256
+            coverage
+          if-no-files-found: warn
+          retention-days: 14

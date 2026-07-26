@@ -98,4 +98,185 @@ describe("candidate integrity scanner", () => {
       ),
     ).toHaveLength(3);
   });
+
+  it.each(["120000", "160000"])(
+    "rejects special Git object mode %s even when the path extension is allowed",
+    (mode) => {
+      const changedPath = "packages/coding-agent/src/core/policy.ts";
+      const result = scanCandidate({
+        changedFiles: [changedPath],
+        unifiedDiff: [
+          `diff --git a/${changedPath} b/${changedPath}`,
+          `new file mode ${mode}`,
+          "index 0000000..1111111",
+          "--- /dev/null",
+          `+++ b/${changedPath}`,
+          "@@ -0,0 +1 @@",
+          "+target",
+        ].join("\n"),
+        addedLines: 1,
+        deletedLines: 0,
+        taskFragmentHashes: new Set(),
+      });
+
+      expect(result.passed).toBe(false);
+      expect(result.violations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "OPAQUE_BINARY_CHANGE" }),
+        ]),
+      );
+    },
+  );
+
+  it.each(["120000", "160000"])(
+    "rejects modification of an existing special Git object mode %s",
+    (mode) => {
+      const changedPath = "packages/coding-agent/src/core/policy.ts";
+      const result = scanCandidate({
+        changedFiles: [changedPath],
+        unifiedDiff: [
+          `diff --git a/${changedPath} b/${changedPath}`,
+          `index 1111111..2222222 ${mode}`,
+          `--- a/${changedPath}`,
+          `+++ b/${changedPath}`,
+          "@@ -1 +1 @@",
+          "-old-target",
+          "+new-target",
+        ].join("\n"),
+        addedLines: 1,
+        deletedLines: 1,
+        taskFragmentHashes: new Set(),
+      });
+
+      expect(result.passed).toBe(false);
+      expect(result.violations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "OPAQUE_BINARY_CHANGE" }),
+        ]),
+      );
+    },
+  );
+
+  it("rejects an encoded payload split across several literals", () => {
+    const changedPath = "packages/coding-agent/src/core/policy.ts";
+    const chunks = [
+      "A".repeat(90),
+      "B".repeat(90),
+    ];
+    const result = scanCandidate({
+      changedFiles: [changedPath],
+      unifiedDiff: [
+        `+++ b/${changedPath}`,
+        "@@ -1,1 +1,4 @@",
+        `+const first = "${chunks[0]}";`,
+        `+const second = "${chunks[1]}";`,
+      ].join("\n"),
+      addedLines: 2,
+      deletedLines: 0,
+      taskFragmentHashes: new Set(),
+    });
+
+    expect(result.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "ENCODED_PAYLOAD" }),
+      ]),
+    );
+  });
+
+  it("decodes hex before base64 when checking protected fragments", () => {
+    const changedPath = "packages/coding-agent/src/core/policy.ts";
+    const encoded = Buffer.from("protected phrase").toString("hex");
+    const result = scanCandidate({
+      changedFiles: [changedPath],
+      unifiedDiff: [
+        `+++ b/${changedPath}`,
+        "@@ -1,1 +1,2 @@",
+        `+const clue = "${encoded}";`,
+      ].join("\n"),
+      addedLines: 1,
+      deletedLines: 0,
+      taskFragmentHashes: new Set([
+        fragmentHash("protected phrase"),
+      ]),
+    });
+
+    expect(result.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" }),
+      ]),
+    );
+  });
+
+  it("rejects a protected fragment reconstructed across literals", () => {
+    const changedPath = "packages/coding-agent/src/core/policy.ts";
+    const result = scanCandidate({
+      changedFiles: [changedPath],
+      unifiedDiff: [
+        `+++ b/${changedPath}`,
+        "@@ -1,1 +1,3 @@",
+        '+const first = "protected";',
+        '+const second = "phrase";',
+      ].join("\n"),
+      addedLines: 2,
+      deletedLines: 0,
+      taskFragmentHashes: new Set([
+        fragmentHash("protected phrase"),
+      ]),
+    });
+
+    expect(result.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" }),
+      ]),
+    );
+  });
+
+  it("rejects negative mutation counts even when the patch is otherwise allowed", () => {
+    const changedPath = "packages/coding-agent/src/core/policy.ts";
+    const result = scanCandidate({
+      changedFiles: [changedPath],
+      unifiedDiff: [
+        `+++ b/${changedPath}`,
+        "@@ -1,1 +1,2 @@",
+        "+const recovery = true;",
+      ].join("\n"),
+      addedLines: -1,
+      deletedLines: 0,
+      taskFragmentHashes: new Set(),
+    });
+
+    expect(result.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "DIFF_METADATA_MISMATCH",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects a protected diff path hidden behind an allowed changed-file list", () => {
+    const allowedPath =
+      "packages/coding-agent/src/core/policy.ts";
+    const protectedPath =
+      "packages/coding-agent/tests/grader/answer.ts";
+    const result = scanCandidate({
+      changedFiles: [allowedPath],
+      unifiedDiff: [
+        `+++ b/${protectedPath}`,
+        "@@ -1,1 +1,2 @@",
+        "+const answer = true;",
+      ].join("\n"),
+      addedLines: 1,
+      deletedLines: 0,
+      taskFragmentHashes: new Set(),
+    });
+
+    expect(result.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "DIFF_METADATA_MISMATCH",
+        }),
+      ]),
+    );
+  });
 });

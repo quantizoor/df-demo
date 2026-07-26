@@ -20,6 +20,12 @@ import {
   type ProductionRuntimeFactoryDependencyAttestation,
   type ProductionTrustedCloudRuntimeFactoryOptions,
 } from "../../src/cloud/production-optimize-runtime-factory.js";
+import {
+  MountedVolumeBehavioralPreparationStore,
+} from "../../src/cloud/mounted-volume-behavioral-preparation-store.js";
+import {
+  MountedVolumeBehavioralPrivacyArtifactStore,
+} from "../../src/cloud/mounted-volume-behavioral-privacy-store.js";
 import type {
   ProductionOptimizeBootstrapOrReconstructReceipt,
   ProductionOptimizeLifecycleRegistrar,
@@ -45,6 +51,10 @@ import {
   canonicalHash,
   canonicalJson,
 } from "../../src/schemas/canonical.js";
+import {
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
+  createPiHarborAgentSpec,
+} from "../../src/terminal-bench/pi-agent.js";
 
 const NOW = new Date("2026-07-26T12:00:00.000Z");
 const PLUGIN_HASH = "b".repeat(64);
@@ -283,6 +293,196 @@ function provider(): CloudSandboxProvider {
   };
 }
 
+function evaluatorDependencies() {
+  const evaluatorProvider = provider();
+  const privateKeys = {
+    boundary: "trusted-cloud" as const,
+    resolve: async (input: {
+      readonly purpose:
+        | "hidden-catalog-outcome-update"
+        | "result-envelope"
+        | "behavioral-release";
+      readonly keyId: string;
+    }) => ({
+      boundary: "trusted-cloud-key-material" as const,
+      algorithm: "Ed25519" as const,
+      purpose: input.purpose,
+      keyId: input.keyId,
+      keyVersion: "kms-v1",
+      privateKey: keys.privateKey,
+    }),
+  };
+  const publicKeys = {
+    boundary: "trusted-cloud" as const,
+    resolve: async (input: {
+      readonly purpose:
+        | "hidden-catalog-outcome-update"
+        | "result-envelope"
+        | "behavioral-release";
+      readonly keyId: string;
+    }) => ({
+      boundary: "trusted-cloud-key-material" as const,
+      algorithm: "Ed25519" as const,
+      purpose: input.purpose,
+      keyId: input.keyId,
+      keyVersion: "kms-v1",
+      publicKey: keys.publicKey,
+    }),
+  };
+  const harborSecretReferences = [
+    {
+      sourceEnvironmentName: "DF_EVALUATOR_DAYTONA_KEY",
+      targetEnvironmentName: "DAYTONA_API_KEY",
+    },
+  ];
+  const modelSecretReferences = [
+    {
+      sourceEnvironmentName: "DF_EVALUATED_MODEL_KEY",
+      targetEnvironmentName: "OPENAI_API_KEY",
+    },
+  ];
+  const pin = {
+    benchmark: "terminal-bench-2.1" as const,
+    dataset: "terminal-bench/terminal-bench-2-1" as const,
+    registryRevision: 6 as const,
+    taskCount: 89 as const,
+    datasetContentSha256: "1".repeat(64),
+    datasetManifestSha256: "2".repeat(64),
+    harborVersion: "0.20.0",
+    harborPackageSha256: "3".repeat(64),
+    harborExecutableSha256: "4".repeat(64),
+    piHarborAdapterSha256: "5".repeat(64),
+  };
+  return {
+    runner: {
+      provider: evaluatorProvider,
+      pin,
+      sandbox: {
+        requestId: "evaluation-template",
+        imageReference:
+          `ghcr.io/parallaxai/df-evaluator@sha256:${"8".repeat(64)}`,
+        imageDigest: `sha256:${"8".repeat(64)}`,
+        regionClass: "eu-standard",
+        resources: {
+          architecture: "x86_64" as const,
+          cpuCores: 8,
+          memoryMiB: 16_384,
+          diskMiB: 100_000,
+        },
+        network: {
+          defaultAction: "deny" as const,
+          allowDomains: ["api.openai.com"],
+        },
+        lifetimeMs: 3_600_000,
+        secretReferences: [
+          ...harborSecretReferences,
+          ...modelSecretReferences,
+        ],
+      },
+      harborExecutable: "/opt/harbor/bin/harbor",
+      harborWorkingDirectory: "/workspace/evaluator",
+      harborTimeoutMs: 3_600_000,
+      outputPackagerNodeExecutable: "/usr/local/bin/node",
+      outputPackagerTimeoutMs: 900_000,
+      remoteUploadRoot: "/trusted/uploads/",
+      remoteOutputRoot: "/trusted/results/",
+      harborSecretReferences,
+      modelSecretReferences,
+      jobBuilder: { build: unreachable },
+      runtimeVerifier: { verify: unreachable },
+    },
+    retentionPolicy: {
+      policyHash: "6".repeat(64),
+      storageRoot: "trusted://raw/evaluator/" as const,
+      maximumRetentionMinutes: 60,
+      destruction: "crypto-shred" as const,
+      encryptionRequired: true as const,
+      localExportAllowed: false as const,
+    },
+    destructionReceiptVerifier: {
+      trustedKeyId: "raw-destruction-key",
+      publicKey: keys.publicKey,
+    },
+    agent: createPiHarborAgentSpec({
+      adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
+      adapterSha256: pin.piHarborAdapterSha256,
+      provider: "openai",
+      modelId: "evaluated-model",
+      thinkingLevel: "high",
+      enabledTools: ["read", "write", "bash"],
+      credentialEnvironmentNames: ["OPENAI_API_KEY"],
+      timeoutMs: 3_600_000,
+    }),
+    stores: {
+      boundary: "trusted-cloud" as const,
+      durabilityAttestationHash: "9".repeat(64),
+      ledger: {
+        claim: unreachable,
+        inspect: unreachable,
+        recoverInFlight: unreachable,
+        bindDispositionAttestation: unreachable,
+        complete: unreachable,
+        consumeFailure: unreachable,
+      },
+      panels: { allocateAndConsume: unreachable },
+      rawIngress: {
+        persist: unreachable,
+        discard: unreachable,
+      },
+      custodian: { destroy: unreachable },
+      hiddenOutcomeSink: { commit: unreachable },
+      onlineErrorAuthority: {
+        boundary:
+          "trusted-cloud-online-error-authority" as const,
+        reserve: unreachable,
+        reconcile: unreachable,
+      },
+    },
+    raw: {
+      source: {
+        boundary: "trusted-cloud" as const,
+        read: unreachable,
+      },
+      decryptor: {
+        boundary: "trusted-cloud" as const,
+        decrypt: unreachable,
+      },
+      decoder: {
+        boundary: "trusted-cloud" as const,
+        decode: unreachable,
+      },
+    },
+    policyProvider: {
+      boundary: "trusted-cloud" as const,
+      load: unreachable,
+    },
+    hiddenOutcomeSigning: {
+      keyId: "hidden-outcome-key",
+      trustedKeyIds: ["hidden-outcome-key"],
+      privateKeys,
+      publicKeys,
+    },
+    resultEnvelopeSigning: {
+      keyId: "result-envelope-key",
+      trustedKeyIds: ["result-envelope-key"],
+      privateKeys,
+      publicKeys,
+    },
+    behavioralReleaseSigning: {
+      keyId: "behavioral-release-key",
+      trustedKeyIds: ["behavioral-release-key"],
+      privateKeys,
+      publicKeys,
+    },
+    initialPrivacyState: {
+      policyVersion: "aggregate-firewall-v1" as const,
+      maximumReleases: 4,
+      releasesUsed: 0,
+      priorReleases: [],
+    },
+  };
+}
+
 function options(
   signedManifest: ProductionOptimizationCompositionManifest,
 ): ProductionTrustedCloudRuntimeFactoryOptions {
@@ -416,7 +616,7 @@ function options(
           },
           networkAllowDomains: [
             "github.com",
-            "api.anthropic.com",
+            "df-eu-prod.services.ai.azure.com",
           ],
           lifetimeMs: 3_600_000,
         },
@@ -435,7 +635,9 @@ function options(
         },
         claude: {
           claudeExecutable: "/usr/local/bin/claude",
-          model: "claude-opus-4-8",
+          model: "df-opus5-prod",
+          modelFamily: "claude-opus-5",
+          foundryResourceName: "df-eu-prod",
           effort: "high",
           maximumBudgetUsd: 25,
           maximumTurns: 40,
@@ -443,8 +645,8 @@ function options(
         },
         optimizerSecretReferences: [
           {
-            sourceEnvironmentName: "DF_ANTHROPIC_API_KEY",
-            targetEnvironmentName: "ANTHROPIC_API_KEY",
+            sourceEnvironmentName: "DF_FOUNDRY_OPTIMIZER_SECRET",
+            targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
           },
         ],
       },
@@ -481,6 +683,10 @@ function options(
     },
     correctness: {
       recordStore: {
+        integrityScanVerifier: {
+          trustedKeyId: "integrity-key",
+          publicKey: keys.publicKey,
+        },
         candidateBuildVerifier: {
           trustedKeyId: "build-key",
           publicKey: keys.publicKey,
@@ -521,8 +727,11 @@ function options(
         snapshot: unreachable,
       },
       integrityPolicyHash: "b".repeat(64),
+      integrityWorkerSha256: "d".repeat(64),
+      fragmentCatalogHash: "e".repeat(64),
       buildPolicyHash: "c".repeat(64),
     },
+    evaluator: evaluatorDependencies(),
     broker: {
       configuration: {
         source: {
@@ -542,10 +751,6 @@ function options(
         originRepositoryHash: "f".repeat(64),
       },
       release: {
-        service: {
-          boundary: "trusted-cloud-evaluator-service",
-          evaluate: unreachable,
-        },
         source: {
           boundary: "trusted-cloud",
           locate: async () => undefined,
@@ -734,6 +939,58 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
     expect(new Set(registered.map((item) => item.lifecycleId)).size).toBe(
       registered.length,
     );
+    expect(
+      registered.some((item) =>
+        item.lifecycleId.startsWith(
+          "behavioral-preparation-",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      registered.some((item) =>
+        item.lifecycleId.startsWith("behavioral-privacy-"),
+      ),
+    ).toBe(true);
+  });
+
+  it("closes both private evaluator stores if later release composition fails", async () => {
+    const signedManifest = manifest();
+    const configured = options(signedManifest);
+    const preparationClose = vi
+      .spyOn(
+        MountedVolumeBehavioralPreparationStore.prototype,
+        "close",
+      )
+      .mockResolvedValue(undefined);
+    const privacyClose = vi
+      .spyOn(
+        MountedVolumeBehavioralPrivacyArtifactStore.prototype,
+        "close",
+      )
+      .mockResolvedValue(undefined);
+    const malformed = {
+      ...configured,
+      broker: {
+        ...configured.broker,
+        release: {
+          ...configured.broker.release,
+          signatureVerifier: {
+            ...configured.broker.release.signatureVerifier,
+            boundary: "test-only-in-memory",
+          },
+        },
+      },
+    } as unknown as ProductionTrustedCloudRuntimeFactoryOptions;
+
+    await expect(
+      new ProductionTrustedCloudRuntimeFactory(
+        malformed,
+      ).create(factoryInput(signedManifest)),
+    ).rejects.toBeInstanceOf(
+      ProductionTrustedCloudRuntimeFactoryError,
+    );
+    expect(preparationClose).toHaveBeenCalledTimes(1);
+    expect(privacyClose).toHaveBeenCalledTimes(1);
   });
 
   it("rejects independently detached component and port digests", async () => {
@@ -841,6 +1098,12 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
         sha256: string;
       }
     ).sha256 = "f".repeat(64);
+    (
+      mutable.evaluator.resultEnvelopeSigning
+        .privateKeys as unknown as {
+        resolve: typeof unreachable;
+      }
+    ).resolve = unreachable;
 
     await expect(
       factory.create(factoryInput(signedManifest)),
@@ -937,6 +1200,33 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
         new ProductionTrustedCloudRuntimeFactory({
           ...configured,
           taskId: "hidden-task-sentinel",
+        } as unknown as ProductionTrustedCloudRuntimeFactoryOptions),
+    ).toThrow(ProductionTrustedCloudRuntimeFactoryError);
+    expect(
+      () =>
+        new ProductionTrustedCloudRuntimeFactory({
+          ...configured,
+          evaluator: {
+            ...configured.evaluator,
+            taskId: "hidden-task-sentinel",
+          },
+        } as unknown as ProductionTrustedCloudRuntimeFactoryOptions),
+    ).toThrow(ProductionTrustedCloudRuntimeFactoryError);
+    expect(
+      () =>
+        new ProductionTrustedCloudRuntimeFactory({
+          ...configured,
+          broker: {
+            ...configured.broker,
+            release: {
+              ...configured.broker.release,
+              service: {
+                boundary:
+                  "trusted-cloud-evaluator-service",
+                evaluate: unreachable,
+              },
+            },
+          },
         } as unknown as ProductionTrustedCloudRuntimeFactoryOptions),
     ).toThrow(ProductionTrustedCloudRuntimeFactoryError);
   });

@@ -15,6 +15,7 @@ export * from "./raw-ingress.js";
 export * from "./raw-reader.js";
 export * from "./release-bundle-service.js";
 export * from "./release-lineage.js";
+export * from "./release-recovery-store.js";
 export * from "./retention.js";
 export * from "./signature.js";
 export * from "./trusted-keyring.js";

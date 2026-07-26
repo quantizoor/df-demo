@@ -1,0 +1,206 @@
+name: mvp-paid-loop
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact reviewed 40-character controller commit
+        required: true
+        type: string
+      campaign_id:
+        description: MVP campaign identifier
+        required: true
+        type: string
+      confirmation:
+        description: Type RUN_MVP:<campaign_id>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dark-factory-mvp-paid-${{ inputs.campaign_id }}
+  cancel-in-progress: false
+
+jobs:
+  one-iteration:
+    if: inputs.confirmation == format('RUN_MVP:{0}', inputs.campaign_id)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    environment: dark-factory-mvp-paid
+    env:
+      CI: "true"
+      DF_CLOUD_EXECUTION: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      DF_MVP_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_MVP_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+      DF_MVP_MAX_ITERATIONS: "1"
+      DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
+      DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
+      DF_MVP_DAYTONA_IMAGE: ${{ vars.DF_MVP_DAYTONA_IMAGE }}
+      DF_DAYTONA_VOLUME_ID: ${{ vars.DF_DAYTONA_VOLUME_ID }}
+      DF_DAYTONA_VOLUME_SUBPATH: ${{ vars.DF_DAYTONA_VOLUME_SUBPATH }}
+      DF_HARBOR_DAYTONA_SECRET_SOURCE: ${{ vars.DF_HARBOR_DAYTONA_SECRET_SOURCE }}
+      DF_FOUNDRY_BASE_URL: ${{ vars.DF_FOUNDRY_BASE_URL }}
+      DF_OPTIMIZER_DEPLOYMENT: ${{ vars.DF_OPTIMIZER_DEPLOYMENT }}
+      DF_EVALUATED_DEPLOYMENT: ${{ vars.DF_EVALUATED_DEPLOYMENT }}
+      DF_OPTIMIZER_SECRET_SOURCE: ${{ vars.DF_OPTIMIZER_SECRET_SOURCE }}
+      DF_EVALUATED_SECRET_SOURCE: ${{ vars.DF_EVALUATED_SECRET_SOURCE }}
+      DF_PI_GITHUB_OWNER: ${{ vars.DF_PI_GITHUB_OWNER }}
+      DF_PI_GITHUB_REPOSITORY: ${{ vars.DF_PI_GITHUB_REPOSITORY }}
+      DF_PI_BRANCH: ${{ vars.DF_PI_BRANCH }}
+      DF_PI_BASELINE_COMMIT: ${{ vars.DF_PI_BASELINE_COMMIT }}
+      DF_PI_BASELINE_TREE: ${{ vars.DF_PI_BASELINE_TREE }}
+      DF_PI_PACKAGE_LOCK_SHA256: ${{ vars.DF_PI_PACKAGE_LOCK_SHA256 }}
+      DF_GITHUB_SECRET_SOURCE: ${{ vars.DF_GITHUB_SECRET_SOURCE }}
+
+    steps:
+      - name: Verify the manual cloud request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          [[ "$DF_MVP_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DF_MVP_CAMPAIGN_ID" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]
+          test "${{ inputs.confirmation }}" = "RUN_MVP:$DF_MVP_CAMPAIGN_ID"
+
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and reviewed lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DF_MVP_SOURCE_COMMIT"
+          test -s pnpm-lock.yaml
+          test "$(git status --porcelain=v1 --untracked-files=all)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Verify and build entirely on the cloud runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          test "$(pnpm --version)" = "11.9.0"
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm check
+          pnpm build
+
+      - name: Build a deterministic exact-source controller bundle
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          test -s scripts/mvp-optimizer-worker.mjs || missing+=("MVP_OPTIMIZER_WORKER_SOURCE")
+          test -s scripts/package-pi-runtime.mjs || missing+=("MVP_PI_PACKAGER_SOURCE")
+          test -s dist/mvp/cloud-optimizer-worker.js || missing+=("MVP_OPTIMIZER_WORKER_BUILD")
+          test -s dist/mvp/cloud-evaluator-worker.js || missing+=("MVP_EVALUATOR_WORKER_BUILD")
+          test -s dist/mvp/evaluator-runtime.js || missing+=("MVP_EVALUATOR_RUNTIME_BUILD")
+          test -s dist/mvp/evaluator-runtime-node.js || missing+=("MVP_EVALUATOR_NODE_RUNTIME_BUILD")
+          test -s claude-plugin/server/hook-guard.js || missing+=("MVP_OPTIMIZER_PLUGIN_BUILD")
+          if ! test -s src/terminal-bench/assets/dark_factory_pi.py; then
+            missing+=("MVP_PI_HARBOR_ADAPTER_SOURCE")
+          fi
+          if test "${#missing[@]}" -ne 0; then
+            joined="$(IFS=,; echo "${missing[*]}")"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "missing=$joined" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tar \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -cf "$RUNNER_TEMP/df-mvp-controller.tar" \
+            dist node_modules scripts claude-plugin \
+            src/terminal-bench/assets/dark_factory_pi.py
+          gzip -n "$RUNNER_TEMP/df-mvp-controller.tar"
+          bundle="$RUNNER_TEMP/df-mvp-controller.tar.gz"
+          digest="$(sha256sum "$bundle" | cut -d' ' -f1)"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "path=$bundle" >> "$GITHUB_OUTPUT"
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Launch exactly one paid MVP iteration
+        id: launch
+        shell: bash
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          DF_MVP_CONTROLLER_BUNDLE_PATH: ${{ steps.bundle.outputs.path }}
+          DF_MVP_CONTROLLER_BUNDLE_SHA256: ${{ steps.bundle.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          if test "${{ steps.bundle.outputs.ready }}" != "true"; then
+            node -e '
+              const missing = process.argv[1].split(",").filter(Boolean);
+              const receipt = {
+                schemaVersion: 1,
+                domain: "dark-factory.mvp-source-readiness.v1",
+                status: "blocked",
+                actualIterationsCompleted: 0,
+                sourceCommit: process.env.DF_MVP_SOURCE_COMMIT,
+                missingPrerequisites: missing,
+                containsTaskIdentifiers: false,
+                containsTaskLiterals: false,
+                containsGraderData: false,
+                containsRawTraces: false,
+              };
+              require("node:fs").writeFileSync(
+                "mvp-paid-loop-receipt.json",
+                `${JSON.stringify(receipt)}\n`,
+                { flag: "wx", mode: 0o600 },
+              );
+            ' "${{ steps.bundle.outputs.missing }}"
+            echo "exit_code=2" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set +e
+          node dist/mvp/cloud-cli.js > mvp-paid-loop-receipt.json
+          status="$?"
+          set -e
+          test -s mvp-paid-loop-receipt.json
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Upload only the task-free launch or readiness receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mvp-paid-loop-${{ inputs.campaign_id }}-${{ inputs.source_commit }}
+          path: mvp-paid-loop-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Require an actual completed iteration
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.launch.outputs.exit_code }}" = "0"
+          node -e '
+            const receipt = JSON.parse(
+              require("node:fs").readFileSync(
+                "mvp-paid-loop-receipt.json",
+                "utf8",
+              ),
+            );
+            if (
+              receipt.status !== "actual-iteration-completed" ||
+              receipt.actualIterationsCompleted !== 1
+            ) {
+              process.exit(1);
+            }
+          '

@@ -10,7 +10,18 @@ export interface PiHarborAgentOptions {
   readonly adapterImportPath: typeof DARK_FACTORY_PI_HARBOR_IMPORT_PATH;
   readonly adapterSha256: string;
   readonly provider: string;
+  /**
+   * Exact existing provider deployment name. It may differ from the public
+   * model identity and is the value sent in Foundry API requests.
+   */
   readonly modelId: string;
+  readonly modelFamily?: string;
+  /**
+   * Public Microsoft Foundry resource name. The trusted adapter derives the
+   * only permitted API hostname from this DNS label; callers cannot inject a
+   * URL. It is required only for the `microsoft-foundry` provider.
+   */
+  readonly foundryResourceName?: string;
   readonly thinkingLevel: PiThinkingLevel;
   readonly enabledTools: readonly string[];
   /**
@@ -28,7 +39,9 @@ export interface PiHarborAgentSpec {
   readonly evaluatedModel: {
     readonly provider: string;
     readonly modelId: string;
+    readonly modelFamily?: string;
     readonly thinkingLevel: PiThinkingLevel;
+    readonly foundryResourceName?: string;
   };
   readonly promptTransport: "harbor-pi-json-events-v1";
   readonly rawEventRetention: "trusted-only";
@@ -51,6 +64,8 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u;
 const SAFE_TOOL = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
+const SAFE_FOUNDRY_RESOURCE =
+  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const PI_THINKING_LEVELS = new Set([
   "off",
   "minimal",
@@ -80,6 +95,10 @@ const PROVIDER_ENVIRONMENT_POLICIES: Readonly<
       "ANTHROPIC_OAUTH_TOKEN",
       "ANTHROPIC_API_KEY",
     ],
+    optionalConfiguration: [],
+  },
+  "microsoft-foundry": {
+    authentication: ["ANTHROPIC_FOUNDRY_API_KEY"],
     optionalConfiguration: [],
   },
   openai: {
@@ -255,6 +274,21 @@ export function createPiHarborAgentSpec(
       "The evaluated Pi provider credential grant is unsupported or incomplete.",
     );
   }
+  const usesMicrosoftFoundry = options.provider === "microsoft-foundry";
+  if (
+    (usesMicrosoftFoundry &&
+      (options.modelFamily !== "claude-opus-4-8" ||
+        options.thinkingLevel !== "high" ||
+        options.foundryResourceName === undefined ||
+        !SAFE_FOUNDRY_RESOURCE.test(options.foundryResourceName))) ||
+    (!usesMicrosoftFoundry &&
+      (options.foundryResourceName !== undefined ||
+        options.modelFamily !== undefined))
+  ) {
+    throw new PiHarborAgentError(
+      "The evaluated Microsoft Foundry deployment binding is malformed.",
+    );
+  }
   return {
     boundary: "trusted-harbor-adapter",
     adapterImportPath: options.adapterImportPath,
@@ -262,7 +296,13 @@ export function createPiHarborAgentSpec(
     evaluatedModel: {
       provider: options.provider,
       modelId: options.modelId,
+      ...(options.modelFamily === undefined
+        ? {}
+        : { modelFamily: options.modelFamily }),
       thinkingLevel: options.thinkingLevel,
+      ...(options.foundryResourceName === undefined
+        ? {}
+        : { foundryResourceName: options.foundryResourceName }),
     },
     promptTransport: "harbor-pi-json-events-v1",
     rawEventRetention: "trusted-only",

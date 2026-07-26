@@ -44,8 +44,6 @@ beforeEach(async () => {
     nextExperiment: 1,
     allowedNextActions: ["submit-hypothesis"],
     budgetBands: { spend: "low" },
-    freshValidationPanelsRemaining: 5,
-    shadowSlicesRemaining: 2,
   });
   const brief = schemaFixture("diagnosticBrief") as Readonly<
     Record<string, unknown>
@@ -114,6 +112,28 @@ describe("released evidence repository", () => {
     await repo.initialize();
     await repo.campaignContext();
     await expect(repo.queryExperiments([1])).rejects.toThrow(/budget/u);
+  });
+
+  it("rejects optimizer-visible holdout and shadow capacity", async () => {
+    const contextPath = join(evidence, "campaign-context.json");
+    const context = JSON.parse(await readFile(contextPath, "utf8")) as Readonly<
+      Record<string, unknown>
+    >;
+    await writeJson(contextPath, {
+      ...context,
+      freshValidationPanelsRemaining: 5,
+      shadowSlicesRemaining: 2,
+    });
+
+    const repo = repository();
+    await repo.initialize();
+    await expect(repo.campaignContext()).rejects.toThrow(/unapproved field/u);
+
+    await writeJson(contextPath, {
+      ...context,
+      budgetBands: { "shadow-capacity": "low" },
+    });
+    await expect(repo.campaignContext()).rejects.toThrow(/budget bands/u);
   });
 
   it("writes immutable submission envelopes and stop-hook state", async () => {

@@ -4,6 +4,196 @@ This is the execution checklist for [PLAN.md](./PLAN.md). An item is complete
 only when its implementation, tests, documentation, and acceptance criteria
 are all satisfied.
 
+## MVP-ESSENTIAL — Authoritative first-loop checklist
+
+Reference: [PLAN §0](./PLAN.md#0-essentials-only-mvp-authority), especially
+[§0.1](./PLAN.md#01-the-exact-loop),
+[§0.5](./PLAN.md#05-source-status-at-the-mvp-cut),
+[§0.7](./PLAN.md#07-first-runnable-acceptance-boundary), and
+[§0.8](./PLAN.md#08-stopresume-prerequisites).
+
+This is the only blocking checklist for the first runnable prototype. Status
+labels have precise meanings:
+
+- **SOURCE-READY / CLOUD-UNVERIFIED:** implementation and tests exist in the
+  repository, but no local command was run and no passing cloud receipt exists.
+- **NOT YET WIRED:** the interface or core may exist, but the real cloud
+  integration needed for an iteration does not.
+- **OPERATOR INPUT:** a protected runtime reference, permission, or cost choice
+  is required; secret values must never be pasted into chat.
+- **DEFERRED / NOT A BLOCKER:** intentionally outside the MVP cut even if an
+  older checklist below describes it.
+
+### A. Loop and evidence cores
+
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** define strict MVP contracts and JSON
+  schemas for optimizer input, proposals, private observations,
+  closed-vocabulary diagnostics, matched decisions, experiment state, hidden
+  selection, evaluations, and cache accounting.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** select exactly five tasks
+  deterministically from failure, baseline, comparable-public, uncertainty,
+  underexposure, repeat-selection, and cost signals, with exactly one easy
+  canary.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** construct three repetitions for each
+  selected task and require matched candidate/champion cell identity.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** key champion cache entries by the
+  hidden task/revision, champion/repetition, and the complete evaluation
+  environment.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** prohibit promotion from cached
+  champion evidence and refresh cached cells when a positive screen would
+  otherwise promote.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** aggregate repetitions within each of
+  five task clusters and apply the predeclared effect/confidence decision.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** validate sanitizer output against a
+  strict task-free closed vocabulary and forbidden hidden literals.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** atomically write numbered experiment
+  directories with release-safe JSON at the root and trusted-only JSON under
+  `private/`.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** persist the selected panel as
+  iteration state; retain
+  the exact panel after `reject` or `inconclusive`; select a new weighted panel
+  only after `promote`; keep every used task eligible for future panels.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** implement mounted-volume
+  hidden-catalog and full-environment champion-cache ports with restart-safe
+  state across normal iteration boundaries. Cloud proof is pending;
+  crash-perfect recovery is separately deferred.
+
+### B. Real cloud adapters
+
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** parse references to an existing
+  Foundry endpoint and deployment aliases, fix optimizer family
+  `claude-opus-5`, fix evaluated family `claude-opus-4-8` at `high`, require an
+  EU Daytona target and immutable image, and exclude plaintext secret values
+  from the parsed configuration.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** define a Daytona runtime edge for
+  separate optimizer/evaluator roles, disjoint mounted-volume subpaths,
+  role-scoped secret references, immutable EU sandbox specifications, bounded
+  worker commands, output receipts, and verified teardown.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** build and strictly decode a Harbor
+  0.20.0 matched plan with five tasks, three attempts, 15 cells per arm, 30
+  total trials, and deterministic three-AB/two-BA arm-order balancing.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** implement the task-aware Foundry
+  diagnostic classifier wrapper and fail-closed release of only the validated
+  closed-vocabulary brief.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** bind the external Pi/Harbor adapter
+  to the existing Opus 4.8 Foundry deployment at `high` with no grader access
+  in its declared interface.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** add the bounded cloud entrypoint
+  that creates
+  physically separate optimizer and evaluator sandboxes and mounts only their
+  permitted protected-volume subpaths.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** connect pinned Claude Code to the
+  existing Opus 5 deployment, clone the exact private Pi champion without
+  exposing Git credentials, permit only bounded source changes, and return a
+  candidate commit plus hypothesis.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** connect the trusted evaluator to
+  Harbor and
+  Terminal-Bench 2.1, build the candidate/champion from immutable source, run
+  five tasks × three repetitions × two arms, and map all 30 cold-cache trials
+  into strict private observations.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** inject the authored sanitizer into
+  the trusted evaluator path with its role-scoped Foundry credential and
+  release only strict task-free output or a generic failure. Cloud privacy
+  proof is pending.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** execute the authored Pi/Foundry
+  binding in direct Daytona child sandboxes and require an all-step
+  separate-verifier attestation before a task is eligible. Cloud isolation
+  proof is pending.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** persist raw traces and grader
+  outputs only inside the trusted evaluator subpath and relay only strict
+  optimizer input, candidate proposal, and task-free release receipts.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** add one-iteration bounds, optimizer
+  turn/cost/time limits, five-trial evaluator concurrency, worker timeouts, and
+  verified outer-sandbox teardown.
+
+### C. Cloud verification
+
+- [ ] **CLOUD-UNVERIFIED:** generate and review the dependency lock in a
+  GitHub-hosted job; do not generate it on the Mac.
+- [ ] **CLOUD-UNVERIFIED:** run formatting, lint, strict typecheck, Vitest,
+  coverage, build, schema/contract tests, privacy tests, and secret scanning in
+  cloud CI and retain the commit-bound receipt.
+- [ ] **CLOUD-UNVERIFIED:** run a no-model synthetic end-to-end iteration and
+  verify panel continuity, cache refresh, promotion guard, strict artifacts,
+  sandbox teardown, exact candidate/runtime binding, unprivileged build
+  identities, and trusted artifact handoff. This is mandatory because the
+  executable cloud/process adapters are explicitly outside the unit-coverage
+  percentage.
+- [ ] **CLOUD-UNVERIFIED:** verify private Pi fetch/build and Claude/Foundry
+  connectivity inside the correct isolated EU sandboxes without logging a
+  credential.
+- [ ] **CLOUD-UNVERIFIED:** discover and pin the exact Harbor and
+  Terminal-Bench 2.1 inputs inside the trusted cloud while releasing no task
+  identity.
+- [ ] **FIRST LIVE RUN:** with an operator-approved one-iteration budget, run
+  one real five-by-three matched comparison and retain its private evidence and
+  release-safe receipt.
+- [ ] **FIRST LIVE RUN:** if the decision is `promote`, confirm all 30 matched
+  cells used fresh evidence and the next iteration would choose a newly
+  weighted panel; otherwise confirm the next iteration would retain the same
+  panel.
+- [ ] **FIRST LIVE RUN:** do not claim that Dark Factory improves Pi until a
+  real candidate is promoted by the fresh matched rule.
+
+### D. Operator prerequisites before work resumes
+
+- [ ] **OPERATOR INPUT:** make the pushed MVP branch and GitHub Actions result
+  artifacts available for review.
+- [ ] **OPERATOR INPUT:** store `DAYTONA_API_KEY` as a protected GitHub
+  environment secret in `dark-factory-mvp-paid`, with a required reviewer; do
+  not paste it into chat.
+- [ ] **OPERATOR INPUT:** provide non-secret references for the Daytona API,
+  exact EU target, persistent volume/subpath, and immutable public Linux x64
+  glibc image.
+- [ ] **OPERATOR INPUT:** create/identify protected Daytona secret names for
+  the existing Foundry API key in each role, an evaluator-only nested Daytona
+  key, and pre-encoded private Pi HTTPS Basic access, with the host
+  restrictions in `CLOUD_DELIVERY.md`.
+- [ ] **OPERATOR INPUT:** ensure the immutable image contains the exact
+  hard-coded system executables, Claude Code 2.1.217, pinned Harbor 0.20.0 and
+  Bun paths/digests, and reserves UID/GID `65532` and `65533` with no
+  pre-existing processes or owned services.
+- [ ] **OPERATOR INPUT:** provide the existing Foundry Anthropic-compatible
+  base URL and exact optimizer/evaluated deployment aliases. No Azure
+  provisioning or deployment work is requested.
+- [ ] **OPERATOR INPUT:** confirm the pinned private Pi source values and grant
+  the cloud worker fetch plus candidate-ref publication access.
+- [ ] **OPERATOR INPUT:** authorize cloud-only Harbor/Terminal-Bench pin
+  discovery and hidden inventory creation; the private runtime pin must prove
+  at least five exact direct-Daytona, Linux x64 glibc task revisions with
+  separate verifier mode at every step.
+- [ ] **OPERATOR INPUT:** approve the first-run maximum iteration count and cost
+  cap; start with one iteration.
+- [ ] **OPERATOR INPUT:** explicitly say `resume` after all protected values are
+  configured.
+
+### E. Deferred, explicitly non-blocking
+
+- [ ] **DEFERRED / NOT A BLOCKER:** KMS/HSM and comprehensive Ed25519 signing
+  authorities.
+- [ ] **DEFERRED / NOT A BLOCKER:** crash-perfect recovery, distributed
+  transaction journals, and exhaustive replay/handoff machinery.
+- [ ] **DEFERRED / NOT A BLOCKER:** twelve-task validation, shadow pools,
+  shadow certification, and active-versus-certified champions.
+- [ ] **DEFERRED / NOT A BLOCKER:** E2B, Modal, or any provider beyond Daytona
+  EU.
+- [ ] **DEFERRED / NOT A BLOCKER:** custom image publication, SBOM, and
+  provenance pipelines.
+- [ ] **DEFERRED / NOT A BLOCKER:** dashboards, pull-request automation, and
+  automated result publication.
+- [ ] **DEFERRED / NOT A BLOCKER:** long-campaign alpha spending,
+  privacy-budget accounting, and other sequential statistical machinery.
+- [ ] **DEFERRED / NOT A BLOCKER:** the full 89-task/five-trial run and official
+  leaderboard workflow.
+- [ ] **DEFERRED / NOT A BLOCKER:** exhaustive supply-chain and
+  production-composition hardening beyond minimum MVP isolation and immutable
+  pins.
+
+> The legacy DF-000–DF-200 checklist below is retained as long-term engineering
+> research. Only items explicitly repeated in MVP-ESSENTIAL block the first
+> loop. Do not work on a legacy production item merely because it remains
+> unchecked.
+
 ## DF-000 — Governance and benchmark contract
 
 Reference: [PLAN §1](./PLAN.md#1-purpose-and-success-criteria),
@@ -111,9 +301,10 @@ Reference: [PLAN §6](./PLAN.md#6-evidence-store-and-schemas).
   `diagnostic-brief.json` schemas.
 - [ ] Define the task-agnostic `cache-attestation.json` schema.
 - [ ] Define schemas for panel-role attestations, extractor/statistical/privacy
-  policy versions, champion state, and local event records.
+  policy versions, champion state, and release-safe event records.
 - [ ] Define trusted-zone-only schemas for raw trial, grader, ATIF, and
-  normalized rows; prohibit them from the local experiment schema.
+  normalized rows; prohibit them from the governed release-safe experiment
+  schema and optional workstation mirror.
 - [ ] Enforce `additionalProperties: false`.
 - [ ] Implement canonical JSON and SHA-256.
 - [ ] Implement schema versioning and migrations.
@@ -148,13 +339,14 @@ Reference: [PLAN §6](./PLAN.md#6-evidence-store-and-schemas).
   atomic rename and durable synchronization cannot be attested.
 - [x] Implement streaming artifact checksum, length, media-type, URI, and
   canonical-byte verification at the trusted registry boundary.
-- [ ] Implement disposable SQLite index and rebuild.
+- [ ] Implement disposable cloud-side SQLite index and cloud-controller rebuild.
 - [ ] Add positive, negative, property, and corruption fixtures.
-- [ ] Acceptance: the complete local store rebuilds from JSON; every evidence
+- [ ] Acceptance: the complete governed cloud store rebuilds from JSON and an
+  optional workstation export remains a read-only mirror; every evidence
   aggregate derives from a signed normalized outcome; raw/sanitized ATIF,
   grader payloads, per-task rows, task IDs, stable handles, and pool membership
-  cannot validate locally; mutation, truncation, malformed records, and broken
-  references are detected.
+  cannot validate as release-safe evidence; mutation, truncation, malformed
+  records, and broken references are detected.
 
 ## DF-040 — Lifecycle, sealing, stop, and resume
 
@@ -198,7 +390,7 @@ Reference: [PLAN §5](./PLAN.md#5-experiment-lifecycle).
 
 Reference: [PLAN §2.2](./PLAN.md#22-dark-factory-stack),
 [§3.3](./PLAN.md#33-evaluator-and-task-broker-zone), and
-[§6.5](./PLAN.md#65-trusted-trial-records-and-normalized-local-evidence).
+[§6.5](./PLAN.md#65-trusted-trial-records-and-normalized-release-safe-evidence).
 
 - [ ] Pin Harbor and record its version.
 - [ ] Define the evaluator request/result protocol.
@@ -252,9 +444,16 @@ Reference: [PLAN §2.3](./PLAN.md#23-sandbox-policy) and
   hooks/workspace configuration, ignored lifecycle scripts, and artifact-only
   output, so the lock can join the implementation pull request without first
   merging unverified source.
+- [x] Add a read-only push-triggered cloud formatter/quality workflow for the
+  reviewed lock commit. It returns a commit-bound patch and receipt after
+  Biome, lint, typecheck, coverage tests, and build; it cannot write the
+  branch.
 - [x] Add protected, confirmation-bound workflows for cloud quality, first
   lockfile review, task-free Terminal-Bench pin discovery, free staged control
   preflight, role-image publication, and paid control bootstrap.
+- [x] Bind free Daytona preflight to its own GitHub environment and document
+  the required reviewer protection plus explicit public/provider-authenticated
+  image-pull policy.
 - [x] Reject Daytona organization-secret target collisions with controller
   configuration, trusted runtime/provider markers, source pins, process
   loader/startup controls, volume identity, and hosted-runner identity before
@@ -434,8 +633,9 @@ Reference: [PLAN §3.3](./PLAN.md#33-evaluator-and-task-broker-zone) and
   source commitment, result-envelope handoff, and issuer-failure orphaning.
   The durable mounted-volume privacy/artifact transaction, exact hash-only
   reader, permanent orphaning, clean lifecycle handoff, and provider-attested
-  crash-recovery suite are implemented. Its protected cloud acceptance run
-  remains deployment work.
+  store-level crash-handoff suite are implemented. Broker one-use
+  post-destruction recovery remains separately open below. Protected cloud
+  acceptance remains deployment work.
 - [x] Keep the hidden privacy ledger and the complete four-artifact behavioral
   bundle behind one mounted-volume state-envelope commit. Validate every
   historical privacy transition, reverse one-use binding, schema/content hash,
@@ -467,14 +667,31 @@ Reference: [PLAN §3.3](./PLAN.md#33-evaluator-and-task-broker-zone) and
   erase the reusable finalization handle when it atomically records that
   receipt. Exact replay returns the historical abandonment attestation and
   every changed binding fails closed.
-- [ ] Instantiate and immediately lifecycle-register that store in the
-  concrete evaluator bootstrap, execute its adversarial suite against the
-  provider volume, and prove provider-attested crash handoff.
-- [ ] Implement provider-termination-attested one-use-ledger recovery plus an
-  exact release-recovery record. It must resume post-destruction
-  reconciliation without rerunning tasks, preserve a claim when preparation
-  cleanup is unacknowledged, and prevent a finalized preparation whose release
-  was permanently orphaned from ever issuing a result.
+- [x] Treat only an explicit `known-not-committed` producer error as permission
+  to consume preparation and request state; preserve both for every unknown
+  finalization exception until protected reconciliation proves the outcome.
+- [x] Instantiate and immediately lifecycle-register both the private
+  behavioral-preparation store and the atomic privacy/artifact store inside
+  the fixed production runtime evaluator adapter. Construct
+  `TrustedEvaluationService` there, route only committed behavioral hashes
+  through its non-enumerating store-backed release reader, and inject the
+  resulting narrow service into the protected blind-broker runtime without an
+  optimizer-visible port or preconstructed evaluator-service binding.
+- [ ] Execute the evaluator composition, behavioral store, release-overlay,
+  lifecycle-failure, and adversarial suites against the provider volume in
+  approved cloud CI, then prove provider-attested crash handoff. The source
+  tests are authored but were not run on the Mac.
+- [x] Implement provider-termination-authorized one-use claim rotation, an
+  exact append-only post-destruction recovery record, broker resume without a
+  task rerun, exact completion reconciliation, and terminal
+  finalization/orphan handling. Source tests cover changed authorization
+  bindings and a restart that performs no panel allocation, Harbor execution,
+  derivation, or raw destruction.
+- [ ] Bind claim recovery to the selected provider's verified sandbox
+  termination API, lifecycle-register the mounted recovery store in the
+  concrete evaluator bootstrap, and execute restart, acknowledgement-loss,
+  and predecessor-fencing tests on the protected provider volume. The
+  source-only authority contract does not itself attest a provider API.
 - [ ] Replace logical JSON tombstoning with per-record envelope encryption and
   destroy the record data key on finalized/consumed/abandoned transitions if
   provider snapshots or old filesystem blocks fall inside the required
@@ -725,8 +942,8 @@ References: [PLAN §7.1](./PLAN.md#71-walk-forward-repair-and-fresh-validation),
   redundant controls.
 - [ ] Implement task-agnostic cache attestations.
 - [ ] Suppress exact five-task cache hit, anchor, invalidation, and arm counts
-  from local/feedback evidence; retain only status, age bands, budget
-  compliance, aggregate cost, and signed derivation.
+  from operator-visible release-safe evidence; retain only status, age bands,
+  budget compliance, aggregate cost, and signed derivation.
 - [ ] Bind each canonical cache-attestation hash into the signed result
   envelope.
 - [ ] Implement paired effect and uncertainty estimates.
@@ -849,12 +1066,29 @@ Reference: [PLAN §8](./PLAN.md#8-anti-overfitting-and-benchmark-integrity).
 - [x] Implement source diff scanning for protected task/instruction fragments.
 - [x] Reject test, grader, verifier, solution, reference, benchmark, build, and
   policy paths outside the approved Pi mutation roots.
-- [x] Detect encoded payloads and suspicious large constants.
+- [x] Detect encoded payloads and suspicious large constants, including
+  printable hex/Base64 task material and payloads split across adjacent
+  literals.
 - [x] Detect task/environment fingerprint routing.
 - [x] Detect solution URLs and unapproved network tools.
 - [x] Reject every changed extensionless, opaque, binary, or unapproved source
-  format and explicit Git binary patch; unchanged baseline-pinned binary
-  artifacts remain outside candidate mutations.
+  format, explicit Git binary patch, symbolic link, and submodule; unchanged
+  baseline-pinned binary artifacts remain outside candidate mutations.
+- [x] Derive paths and added/deleted counts independently from the unified
+  diff, and reject ambiguous headers, negative counts, duplicate paths, or any
+  mismatch with caller metadata.
+- [x] Wire `scanCandidate` into the production trusted cloud integrity port
+  using diff bytes and metadata derived from the same immutable Git objects;
+  the cloud Git-bundle worker proves the exact single-parent commits/trees,
+  emits a canonical evidence manifest, and the port signs a content-bound
+  schema-v2 release-safe receipt.
+- [x] Make the correctness gate and durable record store verify the pinned
+  integrity receipt key, worker/catalog/policy commitments, authoritative diff
+  and changed-path hashes, line-count and mode hashes, and evidence execution
+  lineage.
+- [x] Keep protected-fragment hashes behind a non-enumerable trusted source and
+  exclude raw paths, diff lines, modes, fragments, tasks, and grader material
+  from the release-safe receipt and optimizer calls.
 - [ ] Test failure-card re-identification, unique literals, and differencing
   attacks.
 - [ ] Test adaptive-query, overlapping/complementary-cohort, stable-feature
@@ -870,7 +1104,9 @@ Reference: [PLAN §8](./PLAN.md#8-anti-overfitting-and-benchmark-integrity).
   effects, and candidate commit before any panel is selected.
 - [ ] Run integrity judging over passing trajectories.
 - [ ] Log and inspect evaluated-agent egress.
-- [ ] Add adversarial bypass fixtures.
+- [ ] Add the complete adversarial bypass corpus; immutable-tree substitution,
+  declared-path substitution, hidden-catalog isolation, and signer
+  substitution fixtures are authored.
 - [ ] Execute the candidate-integrity scanner and adversarial suites in
   protected cloud CI; source implementation and focused tests are authored but
   have not run on the Mac.
@@ -1051,7 +1287,8 @@ Reference: [PLAN §13](./PLAN.md#13-implementation-phases).
 
 Reference: [PLAN §14](./PLAN.md#14-operational-assumptions).
 
-- [ ] Document installation and local prerequisites.
+- [ ] Document cloud deployment and non-executable operator-workstation
+  prerequisites.
 - [ ] Document provider-managed Secrets, KMS-backed authorization, rotation,
   and host allowlists; no runtime secret is resolved by a Mac process.
 - [ ] Document provider setup and compatibility.

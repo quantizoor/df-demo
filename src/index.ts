@@ -21,6 +21,7 @@ export * as mcpHooks from "./mcp/hook-guard.js";
 export * as mcpRepository from "./mcp/repository.js";
 export * as mcpSecurity from "./mcp/security.js";
 export * as mcpServer from "./mcp/server.js";
+export * as mvp from "./mvp/index.js";
 export * as optimizer from "./optimizer/index.js";
 export * as orchestrator from "./orchestrator/index.js";
 export * as schemas from "./schemas/index.js";

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { posix as path } from "node:path";
+import { canonicalHash } from "../schemas/canonical.js";
 
 export const INTEGRITY_VIOLATION_CODES = [
   "BENCHMARK_ARTIFACT_REFERENCE",
+  "DIFF_METADATA_MISMATCH",
   "ENCODED_PAYLOAD",
   "ENVIRONMENT_FINGERPRINT_ROUTING",
   "LARGE_CONSTANT",
@@ -52,8 +54,13 @@ export interface CandidateScanResult {
   readonly violations: readonly IntegrityViolation[];
 }
 
-export const DEFAULT_PI_SCAN_POLICY: CandidateScanPolicy = {
-  allowedRoots: ["packages/agent/", "packages/coding-agent/", "packages/ai/"],
+export const DEFAULT_PI_SCAN_POLICY_DESCRIPTOR = {
+  version: "pi-candidate-integrity-v2",
+  allowedRoots: [
+    "packages/agent/src/",
+    "packages/coding-agent/src/",
+    "packages/ai/src/",
+  ],
   allowedFileExtensions: [
     ".cjs",
     ".css",
@@ -69,17 +76,59 @@ export const DEFAULT_PI_SCAN_POLICY: CandidateScanPolicy = {
     ".yml",
   ],
   protectedGlobs: [
-    /(^|\/)(test|tests|grader|graders|verifier|verifiers|solution|solutions|reference)(\/|$)/iu,
-    /(^|\/)(terminal-bench|terminalbench|tbench|harbor)(\/|$)/iu,
-    /(^|\/)\.github\//u,
-    /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock)$/u,
-    /(^|\/)(tsconfig(?:\.[A-Za-z0-9._-]+)?\.json|biome\.json|vitest\.config\.[cm]?[jt]s)$/u,
-    /(^|\/)(scripts|evals?|benchmarks?|fixtures?|examples?)\//iu,
-    /(^|\/)(Dockerfile|docker-compose(?:\.[A-Za-z0-9._-]+)?\.ya?ml)$/iu,
+    {
+      source:
+        "(^|\\/)(test|tests|grader|graders|verifier|verifiers|solution|solutions|reference)(\\/|$)",
+      flags: "iu",
+    },
+    {
+      source: "(^|\\/)(terminal-bench|terminalbench|tbench|harbor)(\\/|$)",
+      flags: "iu",
+    },
+    { source: "(^|\\/)\\.github\\/", flags: "u" },
+    {
+      source:
+        "(^|\\/)(package\\.json|package-lock\\.json|npm-shrinkwrap\\.json|pnpm-lock\\.yaml|yarn\\.lock)$",
+      flags: "u",
+    },
+    {
+      source:
+        "(^|\\/)(tsconfig(?:\\.[A-Za-z0-9._-]+)?\\.json|biome\\.json|vitest\\.config\\.[cm]?[jt]s)$",
+      flags: "u",
+    },
+    {
+      source: "(^|\\/)(scripts|evals?|benchmarks?|fixtures?|examples?)\\/",
+      flags: "iu",
+    },
+    {
+      source:
+        "(^|\\/)(Dockerfile|docker-compose(?:\\.[A-Za-z0-9._-]+)?\\.ya?ml)$",
+      flags: "iu",
+    },
   ],
   maximumChangedFiles: 12,
   maximumChangedLines: 600,
   maximumLiteralLength: 400,
+} as const;
+
+export const DEFAULT_PI_SCAN_POLICY_HASH = canonicalHash(
+  DEFAULT_PI_SCAN_POLICY_DESCRIPTOR,
+);
+
+export const DEFAULT_PI_SCAN_POLICY: CandidateScanPolicy = {
+  allowedRoots: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.allowedRoots,
+  allowedFileExtensions:
+    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.allowedFileExtensions,
+  protectedGlobs:
+    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.protectedGlobs.map(
+      ({ source, flags }) => new RegExp(source, flags),
+    ),
+  maximumChangedFiles:
+    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumChangedFiles,
+  maximumChangedLines:
+    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumChangedLines,
+  maximumLiteralLength:
+    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumLiteralLength,
 };
 
 const BASE64_PAYLOAD = /(?:["'`])[A-Za-z0-9+/]{160,}={0,2}(?:["'`])/u;
@@ -93,6 +142,10 @@ const BENCHMARK_REFERENCE =
 const FINGERPRINT_ROUTING =
   /(?:process\.env|os\.hostname|hostname\s*\(|uname|machine-id|\/etc\/hostname).{0,160}(?:if|switch|case|includes|match|test)/iu;
 const QUOTED_LITERAL = /(["'`])(?<literal>(?:\\.|(?!\1).)*)\1/gu;
+const BASE64_LITERAL_CONTENT = /^[A-Za-z0-9+/]{24,}={0,2}$/u;
+const HEX_LITERAL_CONTENT = /^(?:[a-f0-9]{2}){12,}$/iu;
+const SPECIAL_GIT_OBJECT_MODE =
+  /(?:^|\n)(?:(?:(?:old|new) mode|new file mode|deleted file mode) (?:120000|160000)|index [^\n]+ (?:120000|160000))(?:\n|$)/u;
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -104,7 +157,7 @@ function normalizePath(value: string): string | null {
     normalized === ".." ||
     normalized.startsWith("../") ||
     normalized.startsWith("/") ||
-    normalized.includes("\0")
+    /[\u0000-\u001f\u007f]/u.test(normalized)
   ) {
     return null;
   }
@@ -145,6 +198,75 @@ function addedDiffLines(diff: string): readonly { content: string; line: number;
     }
   }
   return output;
+}
+
+interface ParsedDiffMetadata {
+  readonly paths: ReadonlySet<string>;
+  readonly addedLines: number;
+  readonly deletedLines: number;
+  readonly unambiguous: boolean;
+}
+
+function parseDiffMetadata(diff: string): ParsedDiffMetadata {
+  const paths = new Set<string>();
+  let addedLines = 0;
+  let deletedLines = 0;
+  let unambiguous = true;
+
+  for (const rawLine of diff.split("\n")) {
+    if (rawLine.startsWith("diff --git ")) {
+      const header =
+        /^diff --git a\/(?<before>\S+) b\/(?<after>\S+)$/u.exec(
+          rawLine,
+        );
+      if (
+        header?.groups?.before === undefined ||
+        header.groups.after === undefined
+      ) {
+        unambiguous = false;
+        continue;
+      }
+      for (const rawPath of [
+        header.groups.before,
+        header.groups.after,
+      ]) {
+        const normalized = normalizePath(rawPath);
+        if (normalized === null) {
+          unambiguous = false;
+        } else {
+          paths.add(normalized);
+        }
+      }
+      continue;
+    }
+    if (
+      rawLine.startsWith("--- a/") ||
+      rawLine.startsWith("+++ b/")
+    ) {
+      const normalized = normalizePath(rawLine.slice(6));
+      if (normalized === null) {
+        unambiguous = false;
+      } else {
+        paths.add(normalized);
+      }
+      continue;
+    }
+    if (rawLine.startsWith("+") && !rawLine.startsWith("+++")) {
+      addedLines += 1;
+    } else if (
+      rawLine.startsWith("-") &&
+      !rawLine.startsWith("---")
+    ) {
+      deletedLines += 1;
+    }
+  }
+
+  return {
+    paths,
+    addedLines,
+    deletedLines,
+    unambiguous,
+  };
 }
 
 function scanAddedLine(
@@ -224,6 +346,172 @@ function scanAddedLine(
   return found;
 }
 
+interface AddedLiteral {
+  readonly value: string;
+  readonly file: string | null;
+  readonly line: number;
+}
+
+function addedLiterals(
+  entries: readonly {
+    readonly content: string;
+    readonly line: number;
+    readonly file: string | null;
+  }[],
+): readonly AddedLiteral[] {
+  const output: AddedLiteral[] = [];
+  for (const entry of entries) {
+    for (const match of entry.content.matchAll(QUOTED_LITERAL)) {
+      output.push({
+        value: match.groups?.literal ?? "",
+        file: entry.file,
+        line: entry.line,
+      });
+    }
+  }
+  return output;
+}
+
+function decodedPrintablePayload(value: string): string | null {
+  let decoded: Buffer;
+  if (HEX_LITERAL_CONTENT.test(value)) {
+    decoded = Buffer.from(value, "hex");
+  } else if (BASE64_LITERAL_CONTENT.test(value) && value.length % 4 === 0) {
+    decoded = Buffer.from(value, "base64");
+  } else {
+    return null;
+  }
+  if (decoded.length === 0) {
+    return null;
+  }
+  const printable = [...decoded].filter(
+    (byte) =>
+      byte === 9 ||
+      byte === 10 ||
+      byte === 13 ||
+      (byte >= 32 && byte <= 126),
+  ).length;
+  if (printable / decoded.length < 0.9) {
+    return null;
+  }
+  return decoded.toString("utf8");
+}
+
+function scanAggregateAddedContent(
+  entries: readonly {
+    readonly content: string;
+    readonly line: number;
+    readonly file: string | null;
+  }[],
+  taskFragmentHashes: ReadonlySet<string>,
+): readonly IntegrityViolation[] {
+  const found: IntegrityViolation[] = [];
+  const literals = addedLiterals(entries);
+
+  for (const literal of literals) {
+    const decoded = decodedPrintablePayload(literal.value);
+    if (decoded === null) {
+      continue;
+    }
+    const normalized = decoded.trim().toLowerCase();
+    if (taskFragmentHashes.has(sha256(normalized))) {
+      found.push(
+        violation(
+          "TASK_FRAGMENT_MATCH",
+          "Candidate contains an encoded protected benchmark fragment",
+          literal.value,
+          literal.file,
+          literal.line,
+        ),
+      );
+    }
+    if (BENCHMARK_REFERENCE.test(decoded)) {
+      found.push(
+        violation(
+          "BENCHMARK_ARTIFACT_REFERENCE",
+          "Candidate contains an encoded benchmark-specific reference",
+          literal.value,
+          literal.file,
+          literal.line,
+        ),
+      );
+    }
+  }
+
+  for (let start = 0; start < literals.length; start += 1) {
+    const first = literals[start];
+    if (first === undefined) {
+      continue;
+    }
+    let compact = "";
+    let spaced = "";
+    let encodedChunks = 0;
+    for (
+      let end = start;
+      end < literals.length && end < start + 12;
+      end += 1
+    ) {
+      const current = literals[end];
+      if (
+        current === undefined ||
+        current.file !== first.file
+      ) {
+        break;
+      }
+      compact += current.value;
+      spaced =
+        spaced.length === 0
+          ? current.value
+          : `${spaced} ${current.value}`;
+      if (
+        BASE64_LITERAL_CONTENT.test(current.value) ||
+        HEX_LITERAL_CONTENT.test(current.value)
+      ) {
+        encodedChunks += 1;
+      } else {
+        encodedChunks = 0;
+      }
+
+      if (
+        end > start &&
+        (taskFragmentHashes.has(
+          sha256(compact.trim().toLowerCase()),
+        ) ||
+          taskFragmentHashes.has(
+            sha256(spaced.trim().toLowerCase()),
+          ))
+      ) {
+        found.push(
+          violation(
+            "TASK_FRAGMENT_MATCH",
+            "Candidate reconstructs a protected benchmark fragment across literals",
+            compact,
+            first.file,
+            first.line,
+          ),
+        );
+      }
+      if (
+        end > start &&
+        encodedChunks === end - start + 1 &&
+        encodedChunks >= 2 &&
+        compact.length >= 160
+      ) {
+        found.push(
+          violation(
+            "ENCODED_PAYLOAD",
+            "Candidate reconstructs an encoded lookup payload across literals",
+            compact,
+            first.file,
+            first.line,
+          ),
+        );
+      }
+    }
+  }
+  return found;
+}
+
 export function scanCandidate(
   input: CandidateScanInput,
   policy: CandidateScanPolicy = DEFAULT_PI_SCAN_POLICY,
@@ -233,6 +521,34 @@ export function scanCandidate(
     original: file,
     normalized: normalizePath(file),
   }));
+  const parsedDiff = parseDiffMetadata(input.unifiedDiff);
+  const normalizedInputPaths = new Set(
+    normalizedFiles.flatMap((file) =>
+      file.normalized === null ? [] : [file.normalized],
+    ),
+  );
+  const diffMetadataMatches =
+    parsedDiff.unambiguous &&
+    Number.isSafeInteger(input.addedLines) &&
+    input.addedLines >= 0 &&
+    Number.isSafeInteger(input.deletedLines) &&
+    input.deletedLines >= 0 &&
+    input.addedLines === parsedDiff.addedLines &&
+    input.deletedLines === parsedDiff.deletedLines &&
+    normalizedInputPaths.size === input.changedFiles.length &&
+    normalizedInputPaths.size === parsedDiff.paths.size &&
+    [...normalizedInputPaths].every((file) =>
+      parsedDiff.paths.has(file),
+    );
+  if (!diffMetadataMatches) {
+    violations.push(
+      violation(
+        "DIFF_METADATA_MISMATCH",
+        "Candidate mutation metadata does not match the supplied Git diff",
+        `${input.changedFiles.join("\n")}\n${input.addedLines}:${input.deletedLines}\n${input.unifiedDiff}`,
+      ),
+    );
+  }
 
   for (const file of normalizedFiles) {
     if (file.normalized === null) {
@@ -291,6 +607,16 @@ export function scanCandidate(
     );
   }
 
+  if (SPECIAL_GIT_OBJECT_MODE.test(input.unifiedDiff)) {
+    violations.push(
+      violation(
+        "OPAQUE_BINARY_CHANGE",
+        "Candidate diff adds or changes a symbolic link or Git submodule",
+        input.unifiedDiff,
+      ),
+    );
+  }
+
   if (
     input.changedFiles.length > policy.maximumChangedFiles ||
     input.addedLines + input.deletedLines > policy.maximumChangedLines
@@ -304,9 +630,16 @@ export function scanCandidate(
     );
   }
 
-  for (const addedLine of addedDiffLines(input.unifiedDiff)) {
+  const addedLines = addedDiffLines(input.unifiedDiff);
+  for (const addedLine of addedLines) {
     violations.push(...scanAddedLine(addedLine, policy, input.taskFragmentHashes));
   }
+  violations.push(
+    ...scanAggregateAddedContent(
+      addedLines,
+      input.taskFragmentHashes,
+    ),
+  );
 
   const unique = new Map<string, IntegrityViolation>();
   for (const item of violations) {
