@@ -80,9 +80,7 @@ export function retainHiddenTaskPanel(
       "A retained panel requires exactly five distinct opaque task handles",
     );
   }
-  const profilesByHandle = new Map(
-    profiles.map((profile) => [profile.handle, profile]),
-  );
+  const profilesByHandle = new Map(profiles.map((profile) => [profile.handle, profile]));
   const selected = retainedHandles.map((handle) => {
     const profile = profilesByHandle.get(handle);
     if (profile === undefined) {
@@ -94,23 +92,17 @@ export function retainHiddenTaskPanel(
       handle: profile.handle,
       revisionDigest: profile.revisionDigest,
       easyCanary: profile.easyCanary,
-      weight: profile.easyCanary
-        ? canaryWeight(profile)
-        : failureWeight(profile),
+      weight: profile.easyCanary ? canaryWeight(profile) : failureWeight(profile),
       sensitiveLiterals: [...profile.sensitiveLiterals],
     };
   });
   if (
     selected.filter((task) => task.easyCanary).length !== 1 ||
     selected.some(
-      (task) =>
-        task.easyCanary &&
-        profilesByHandle.get(task.handle)?.difficulty !== "easy",
+      (task) => task.easyCanary && profilesByHandle.get(task.handle)?.difficulty !== "easy",
     )
   ) {
-    throw new MvpSelectionError(
-      "A retained panel must contain exactly one eligible easy canary",
-    );
+    throw new MvpSelectionError("A retained panel must contain exactly one eligible easy canary");
   }
   return selected;
 }
@@ -131,9 +123,7 @@ export function buildMatchedCells(
 
   const cells = tasks.flatMap((task, taskIndex) =>
     ([1, 2, 3] as const).map((repetition) => ({
-      cellId: sha256(
-        `dark-factory-mvp-cell-v1|${experimentId}|${taskIndex}|${repetition}`,
-      ),
+      cellId: sha256(`dark-factory-mvp-cell-v1|${experimentId}|${taskIndex}|${repetition}`),
       task,
       repetition,
     })),
@@ -206,10 +196,7 @@ function validateProfiles(profiles: readonly HiddenTaskProfile[]): void {
         throw new MvpSelectionError("Selection signals must be finite values in [0, 1]");
       }
     }
-    if (
-      !Number.isSafeInteger(profile.consecutiveSelections) ||
-      profile.consecutiveSelections < 0
-    ) {
+    if (!Number.isSafeInteger(profile.consecutiveSelections) || profile.consecutiveSelections < 0) {
       throw new MvpSelectionError("Consecutive selection counts must be non-negative integers");
     }
     if (

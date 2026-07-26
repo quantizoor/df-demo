@@ -9,17 +9,10 @@ import type {
   TrustedCloudArtifactRef,
 } from "../cloud/types.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import type { TrustedGitPublicationReceipt } from "./git-publication.js";
-import {
-  OFFICIAL_PI_UPSTREAM_URL,
-  type RepositoryRegistration,
-} from "./repository.js";
+import { OFFICIAL_PI_UPSTREAM_URL, type RepositoryRegistration } from "./repository.js";
 import {
   assertExactPlainObjectKeys,
   assertGitObjectId,
@@ -41,8 +34,7 @@ const SOURCE_WORKER_REMOTE_PATH = "/trusted/git/source-worker.mjs";
 const SOURCE_ARCHIVE_REMOTE_PATH = "/trusted/git/candidate-source.tar";
 const SOURCE_BUNDLE_REMOTE_PATH = "/trusted/git/candidate-source.bundle";
 const SOURCE_MANIFEST_REMOTE_PATH = "/trusted/git/source-manifest.json";
-export const TRUSTED_GIT_SOURCE_BUNDLE_REF =
-  "refs/heads/df/bundle/000-source-snapshot" as const;
+export const TRUSTED_GIT_SOURCE_BUNDLE_REF = "refs/heads/df/bundle/000-source-snapshot" as const;
 
 export interface GitSourceTarget {
   readonly remoteRef: string;
@@ -203,9 +195,7 @@ function assertTarget(target: GitSourceTarget): void {
     "Git source target",
   );
   if (
-    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(
-      target.remoteRef,
-    ) ||
+    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(target.remoteRef) ||
     target.remoteRef.includes("..") ||
     target.remoteRef.includes("@{") ||
     target.remoteRef.includes("//") ||
@@ -217,9 +207,7 @@ function assertTarget(target: GitSourceTarget): void {
       .split("/")
       .some(
         (component) =>
-          component.startsWith(".") ||
-          component.endsWith(".") ||
-          component.endsWith(".lock"),
+          component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
       )
   ) {
     throw new TrustedGitContractError("Git source remote ref is invalid.");
@@ -265,9 +253,7 @@ function unsignedSnapshotReceipt(
   };
 }
 
-export function gitSourceSnapshotReceiptHash(
-  receipt: TrustedGitSourceSnapshotReceipt,
-): string {
+export function gitSourceSnapshotReceiptHash(receipt: TrustedGitSourceSnapshotReceipt): string {
   return canonicalHash(unsignedSnapshotReceipt(receipt));
 }
 
@@ -356,27 +342,18 @@ export function parseTrustedGitSourceWorkerManifest(
     readonly sourceBundleArtifact: TrustedCloudArtifactRef;
   },
 ): TrustedGitSourceWorkerManifest {
-  if (
-    Buffer.byteLength(raw, "utf8") <= 0 ||
-    Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024
-  ) {
-    throw new TrustedGitContractError(
-      "Git source worker manifest size is outside policy.",
-    );
+  if (Buffer.byteLength(raw, "utf8") <= 0 || Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024) {
+    throw new TrustedGitContractError("Git source worker manifest size is outside policy.");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new TrustedGitContractError(
-      "Git source worker manifest is not valid JSON.",
-    );
+    throw new TrustedGitContractError("Git source worker manifest is not valid JSON.");
   }
   assertTrustedGitSourceWorkerManifest(parsed, input);
   if (raw !== `${canonicalJson(parsed)}\n`) {
-    throw new TrustedGitContractError(
-      "Git source worker manifest is not canonical JSON.",
-    );
+    throw new TrustedGitContractError("Git source worker manifest is not canonical JSON.");
   }
   return parsed;
 }
@@ -399,10 +376,7 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     input.registration.upstreamVerification.upstreamHeadCommit,
     "Registered upstream HEAD",
   );
-  assertGitObjectId(
-    input.registration.upstreamBaseCommit,
-    "Registered upstream merge base",
-  );
+  assertGitObjectId(input.registration.upstreamBaseCommit, "Registered upstream merge base");
   assertTarget(input.target);
   assertTrustedGitArtifact(
     input.workerArtifact,
@@ -414,10 +388,8 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     requestId: input.requestId,
     registrationId: input.registration.registrationId,
     originRepositoryHash: input.registration.originFingerprint.repositoryHash,
-    upstreamRepositoryHash:
-      input.registration.upstreamFingerprint.repositoryHash,
-    upstreamHeadCommit:
-      input.registration.upstreamVerification.upstreamHeadCommit,
+    upstreamRepositoryHash: input.registration.upstreamFingerprint.repositoryHash,
+    upstreamHeadCommit: input.registration.upstreamVerification.upstreamHeadCommit,
     upstreamBaseCommit: input.registration.upstreamBaseCommit,
     baselineCommit: input.registration.headCommit,
     target: input.target,
@@ -437,10 +409,8 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     outputRemotePath: SOURCE_BUNDLE_REMOTE_PATH,
     resultRemotePath: SOURCE_MANIFEST_REMOTE_PATH,
   });
-  if (SOURCE_ARCHIVE_REMOTE_PATH === SOURCE_BUNDLE_REMOTE_PATH) {
-    throw new TrustedGitContractError(
-      "Trusted Git source archive and bundle paths overlap.",
-    );
+  if (new Set<string>([SOURCE_ARCHIVE_REMOTE_PATH, SOURCE_BUNDLE_REMOTE_PATH]).size !== 2) {
+    throw new TrustedGitContractError("Trusted Git source archive and bundle paths overlap.");
   }
   const command: RemoteCommandSpec = {
     executable: "/usr/bin/node",
@@ -495,10 +465,8 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     snapshotId,
     registrationId: input.registration.registrationId,
     originRepositoryHash: input.registration.originFingerprint.repositoryHash,
-    upstreamRepositoryHash:
-      input.registration.upstreamFingerprint.repositoryHash,
-    upstreamHeadCommit:
-      input.registration.upstreamVerification.upstreamHeadCommit,
+    upstreamRepositoryHash: input.registration.upstreamFingerprint.repositoryHash,
+    upstreamHeadCommit: input.registration.upstreamVerification.upstreamHeadCommit,
     upstreamBaseCommit: input.registration.upstreamBaseCommit,
     baselineCommit: input.registration.headCommit,
     target: structuredClone(input.target),
@@ -627,10 +595,7 @@ export function assertTrustedGitSourceSnapshotReceipt(
     receipt.executionReceiptHash !== cloudExecutionReceiptHash(input.execution) ||
     receipt.manifestArtifactSha256 !== input.manifestArtifact.sha256 ||
     !sameTrustedArtifact(receipt.sourceArtifact, input.sourceArtifact) ||
-    !sameTrustedArtifact(
-      receipt.sourceBundleArtifact,
-      input.sourceBundleArtifact,
-    ) ||
+    !sameTrustedArtifact(receipt.sourceBundleArtifact, input.sourceBundleArtifact) ||
     !isCanonicalTimestamp(receipt.createdAt) ||
     Date.parse(receipt.createdAt) < Date.parse(input.execution.finishedAt) ||
     Date.parse(receipt.createdAt) > Date.parse(input.lease.expiresAt) ||
@@ -684,6 +649,9 @@ export class TrustedGitSourceRunner {
 
   async run(): Promise<TrustedGitSourceSnapshotReceipt> {
     let lease: SandboxLease | undefined;
+    let result: TrustedGitSourceSnapshotReceipt | undefined;
+    let failure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       await requireCompatibleProvider(this.#options.provider, {
         requestId: `probe-${canonicalHash(this.#spec.snapshotId).slice(0, 32)}`,
@@ -703,41 +671,26 @@ export class TrustedGitSourceRunner {
         this.#spec.workerRemotePath,
       );
       const execution = structuredClone(
-        await this.#options.provider.execute(
-          lease,
-          structuredClone(this.#spec.command),
-        ),
+        await this.#options.provider.execute(lease, structuredClone(this.#spec.command)),
       );
       assertSuccessfulCloudExecution(execution, "Git source snapshot");
       const sourceArtifact = structuredClone(
-        await this.#options.provider.download(
-          lease,
-          this.#spec.archiveRemotePath,
-          {
-            mediaType: "application/x-tar",
-            maximumByteLength: 512 * 1024 * 1024,
-          },
-        ),
+        await this.#options.provider.download(lease, this.#spec.archiveRemotePath, {
+          mediaType: "application/x-tar",
+          maximumByteLength: 512 * 1024 * 1024,
+        }),
       );
       const manifestArtifact = structuredClone(
-        await this.#options.provider.download(
-          lease,
-          this.#spec.manifestRemotePath,
-          {
-            mediaType: "application/json",
-            maximumByteLength: 4 * 1024 * 1024,
-          },
-        ),
+        await this.#options.provider.download(lease, this.#spec.manifestRemotePath, {
+          mediaType: "application/json",
+          maximumByteLength: 4 * 1024 * 1024,
+        }),
       );
       const sourceBundleArtifact = structuredClone(
-        await this.#options.provider.download(
-          lease,
-          this.#spec.bundleRemotePath,
-          {
-            mediaType: "application/vnd.git.bundle",
-            maximumByteLength: 2 * 1024 * 1024 * 1024,
-          },
-        ),
+        await this.#options.provider.download(lease, this.#spec.bundleRemotePath, {
+          mediaType: "application/vnd.git.bundle",
+          maximumByteLength: 2 * 1024 * 1024 * 1024,
+        }),
       );
       const receipt = await this.#options.attestor.attest({
         sensitivity: "trusted-git-source-attestation-request",
@@ -757,21 +710,37 @@ export class TrustedGitSourceRunner {
         manifestArtifact,
         verifier: this.#options.receiptVerifier,
       });
-      return receipt;
-    } catch {
-      throw new TrustedGitSourceError(
-        "Trusted cloud Git source snapshot failed closed.",
-      );
+      result = receipt;
+    } catch (error) {
+      failure = { error };
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          throw new TrustedGitSourceError(
-            "Trusted Git source sandbox teardown failed; the snapshot is invalid.",
-          );
+        } catch (error) {
+          teardownFailure = { error };
         }
       }
     }
+    if (teardownFailure !== undefined) {
+      throw new TrustedGitSourceError(
+        "Trusted Git source sandbox teardown failed; the snapshot is invalid.",
+        {
+          cause:
+            failure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [failure.error, teardownFailure.error],
+                  "Git source snapshot and sandbox teardown both failed.",
+                ),
+        },
+      );
+    }
+    if (failure !== undefined || result === undefined) {
+      throw new TrustedGitSourceError("Trusted cloud Git source snapshot failed closed.", {
+        cause: failure?.error,
+      });
+    }
+    return result;
   }
 }

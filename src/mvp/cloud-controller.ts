@@ -3,30 +3,26 @@ import { join } from "node:path";
 
 import {
   type PreparedMvpOptimization,
-  type ReleaseSafeMvpCampaignReceipt,
   prepareNextMvpOptimization,
+  type ReleaseSafeMvpCampaignReceipt,
   runPreparedMvpCampaignIteration,
 } from "./campaign-driver.js";
 import { MountedMvpCampaignStateStore } from "./campaign-state.js";
 import {
   type CandidateProposal,
+  canonicalJson,
   type EvaluationEnvironment,
   type MvpLoopPorts,
   type OptimizerInput,
-  canonicalJson,
   sha256,
 } from "./contracts.js";
 import { MountedChampionCache } from "./mounted-champion-cache.js";
-import {
-  validateCandidateProposal,
-  validateEvaluationEnvironment,
-} from "./schemas.js";
+import { validateCandidateProposal, validateEvaluationEnvironment } from "./schemas.js";
 import { FileExperimentArtifactStore } from "./store.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const REVISION = /^[a-f0-9]{40,64}$/u;
-const SAFE_CAMPAIGN =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SAFE_CAMPAIGN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 export class MvpCloudControllerError extends Error {
@@ -65,9 +61,7 @@ export async function prepareMvpOptimizerInput(input: {
   assertIdentity(input);
   const roots = await mountedRoots(input.stateRoot);
   const now = input.now ?? (() => new Date());
-  const stateStore = new MountedMvpCampaignStateStore(
-    roots.campaign,
-  );
+  const stateStore = new MountedMvpCampaignStateStore(roots.campaign);
   await stateStore.initialize({
     campaignId: input.campaignId,
     frozenBaselineRevision: input.baselineChampionRevision,
@@ -86,32 +80,22 @@ export async function runMvpCloudControllerIteration(
   input: MvpCloudControllerInput,
 ): Promise<ReleaseSafeMvpCampaignReceipt> {
   assertIdentity(input);
-  if (
-    !SAFE_SLUG.test(input.slug) ||
-    !SHA256.test(input.expectedOptimizerInputSha256)
-  ) {
-    throw new MvpCloudControllerError(
-      "The MVP iteration identity is invalid.",
-    );
+  if (!SAFE_SLUG.test(input.slug) || !SHA256.test(input.expectedOptimizerInputSha256)) {
+    throw new MvpCloudControllerError("The MVP iteration identity is invalid.");
   }
   validateCandidateProposal(input.proposal);
   validateEvaluationEnvironment(input.runtime.environment);
 
   const roots = await mountedRoots(input.stateRoot);
   const now = input.now ?? (() => new Date());
-  const stateStore = new MountedMvpCampaignStateStore(
-    roots.campaign,
-  );
+  const stateStore = new MountedMvpCampaignStateStore(roots.campaign);
   await stateStore.initialize({
     campaignId: input.campaignId,
     frozenBaselineRevision: input.baselineChampionRevision,
     initializedAt: now().toISOString(),
   });
   const prepared = await prepareNextMvpOptimization(stateStore);
-  assertPreparedInputBinding(
-    prepared,
-    input.expectedOptimizerInputSha256,
-  );
+  assertPreparedInputBinding(prepared, input.expectedOptimizerInputSha256);
 
   return runPreparedMvpCampaignIteration({
     stateStore,
@@ -141,9 +125,7 @@ function assertIdentity(input: {
     !SAFE_CAMPAIGN.test(input.campaignId) ||
     !REVISION.test(input.baselineChampionRevision)
   ) {
-    throw new MvpCloudControllerError(
-      "The MVP campaign identity is invalid.",
-    );
+    throw new MvpCloudControllerError("The MVP campaign identity is invalid.");
   }
 }
 
@@ -173,12 +155,7 @@ function assertPreparedInputBinding(
   prepared: PreparedMvpOptimization,
   expectedSha256: string,
 ): void {
-  if (
-    sha256(canonicalJson(prepared.optimizerInput)) !==
-    expectedSha256
-  ) {
-    throw new MvpCloudControllerError(
-      "The prepared optimizer input changed before evaluation.",
-    );
+  if (sha256(canonicalJson(prepared.optimizerInput)) !== expectedSha256) {
+    throw new MvpCloudControllerError("The prepared optimizer input changed before evaluation.");
   }
 }

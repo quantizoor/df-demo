@@ -13,26 +13,19 @@ import type {
   TrustedCloudArtifactRef,
 } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
+import { type CandidateBuildSpec, createCandidateBuildSpec } from "../../src/harness/candidate.js";
 import {
   CandidateCloudBuildRunner,
   type TrustedBuildToolchainReceipt,
   type TrustedCandidateRuntimeAttestor,
   type TrustedCandidateRuntimeBuildReceipt,
 } from "../../src/harness/candidate-build-runner.js";
-import {
-  createCandidateBuildSpec,
-  type CandidateBuildSpec,
-} from "../../src/harness/candidate.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
 
 const keys = generateKeyPairSync("ed25519");
 const now = "2026-07-01T00:00:00.000Z";
 
-function artifact(
-  name: string,
-  sha: string,
-  mediaType: string,
-): TrustedCloudArtifactRef {
+function artifact(name: string, sha: string, mediaType: string): TrustedCloudArtifactRef {
   return {
     uri: `trusted://build/${name}`,
     sha256: sha.repeat(64),
@@ -134,10 +127,7 @@ class FakeBuildProvider implements CloudSandboxProvider {
     });
   }
 
-  execute(
-    lease: SandboxLease,
-    _command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  execute(lease: SandboxLease, _command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     this.calls.push("execute");
     const ordinal = this.executions.length + 1;
     const receipt: RemoteExecutionReceipt = {
@@ -165,14 +155,9 @@ class FakeBuildProvider implements CloudSandboxProvider {
     return Promise.resolve();
   }
 
-  download(
-    _lease: SandboxLease,
-    _remotePath: string,
-  ): Promise<TrustedCloudArtifactRef> {
+  download(_lease: SandboxLease, _remotePath: string): Promise<TrustedCloudArtifactRef> {
     this.calls.push("download");
-    return Promise.resolve(
-      artifact("runtime", "a", "application/x-tar"),
-    );
+    return Promise.resolve(artifact("runtime", "a", "application/x-tar"));
   }
 
   cancel(): Promise<void> {
@@ -186,10 +171,7 @@ class FakeBuildProvider implements CloudSandboxProvider {
   }
 }
 
-function toolchain(
-  lease: SandboxLease,
-  spec: CandidateBuildSpec,
-): TrustedBuildToolchainReceipt {
+function toolchain(lease: SandboxLease, spec: CandidateBuildSpec): TrustedBuildToolchainReceipt {
   return {
     sensitivity: "trusted-candidate-build-toolchain",
     sandboxId: lease.sandboxId,
@@ -224,9 +206,9 @@ function commandReceiptHash(receipt: RemoteExecutionReceipt): string {
 }
 
 function signedAttestor(
-  alter: (
-    receipt: TrustedCandidateRuntimeBuildReceipt,
-  ) => TrustedCandidateRuntimeBuildReceipt = (receipt) => receipt,
+  alter: (receipt: TrustedCandidateRuntimeBuildReceipt) => TrustedCandidateRuntimeBuildReceipt = (
+    receipt,
+  ) => receipt,
 ): TrustedCandidateRuntimeAttestor {
   return {
     async attest(input) {
@@ -276,8 +258,7 @@ function runner(
     sandbox: sandbox(),
     spec,
     toolchainVerifier: {
-      verify: (_provider, lease, candidateSpec) =>
-        Promise.resolve(toolchain(lease, candidateSpec)),
+      verify: (_provider, lease, candidateSpec) => Promise.resolve(toolchain(lease, candidateSpec)),
     },
     runtimeAttestor: attestor,
     receiptVerifier: {
@@ -334,8 +315,7 @@ describe("candidate cloud build runner", () => {
           sandbox: sandbox(),
           spec: buildSpec(false),
           toolchainVerifier: {
-            verify: (_provider, lease, spec) =>
-              Promise.resolve(toolchain(lease, spec)),
+            verify: (_provider, lease, spec) => Promise.resolve(toolchain(lease, spec)),
           },
           runtimeAttestor: signedAttestor(),
           receiptVerifier: {

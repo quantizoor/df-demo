@@ -290,17 +290,14 @@ resuming this MVP.
 ## Delivery order
 
 1. Review and merge the delivery workflows and role Containerfiles.
-2. If `pnpm-lock.yaml` does not exist, push the source-only implementation to
-   the exact bootstrap branch `codex/dark-factory-mvp`. That first push
-   automatically runs `bootstrap-pnpm-lockfile-review-artifact` from the
-   branch itself. Once the workflow is available on `main`, an operator may
-   instead dispatch it manually with the source branch's exact
-   `refs/heads/...` ref, exact tip commit, and literal confirmation
-   `GENERATE PNPM LOCKFILE`. Both paths check out the exact branch tip with no
-   persisted credential, reject pnpm hook/workspace configuration, and
-   resolve only a lockfile with lifecycle scripts disabled. This avoids the
-   impossible requirement that untested source first merge to `main` just to
-   generate its own lock.
+2. If `pnpm-lock.yaml` does not exist, first merge the bootstrap workflow to
+   `main`, then dispatch `bootstrap-pnpm-lockfile-review-artifact` from
+   `main` with the source branch's exact `refs/heads/...` ref, exact tip
+   commit, and literal confirmation `GENERATE PNPM LOCKFILE`. The workflow
+   checks out that exact branch tip with no persisted credential, rejects
+   pnpm hook/workspace configuration, and resolves only a lockfile with
+   lifecycle scripts disabled. It does not run automatically on a branch
+   push.
 3. Download the immutable artifact, verify its adjacent SHA-256 file, review
    the full lockfile, and add only `pnpm-lock.yaml` to that same branch in a
    new commit. The bootstrap workflow never commits, pushes, opens a

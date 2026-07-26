@@ -1,12 +1,12 @@
 import {
-  assertDurableExperimentJournalState,
-  emptyExperimentJournalState,
   type AtomicExperimentJournalStateStore,
+  assertDurableExperimentJournalState,
   type DurableExperimentJournalState,
+  emptyExperimentJournalState,
 } from "../orchestrator/experiment-journal.js";
 import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 
 /**
@@ -18,22 +18,19 @@ import {
 export class MountedVolumeAtomicExperimentJournalStateStore
   implements AtomicExperimentJournalStateStore
 {
-  readonly #store: MountedVolumeTransactionalJsonStore<
-    DurableExperimentJournalState
-  >;
+  readonly #store: MountedVolumeTransactionalJsonStore<DurableExperimentJournalState>;
 
   public constructor(options: MountedVolumeDurableStateOptions) {
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableExperimentJournalState>(
-        options,
-        `experiment-journal-${options.storeId}`,
-        {
-          domain: "dark-factory.experiment-journal-state.v1",
-          initialState: emptyExperimentJournalState,
-          assertState: assertDurableExperimentJournalState,
-          revision: (state) => state.revision,
-        },
-      );
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableExperimentJournalState>(
+      options,
+      `experiment-journal-${options.storeId}`,
+      {
+        domain: "dark-factory.experiment-journal-state.v1",
+        initialState: emptyExperimentJournalState,
+        assertState: assertDurableExperimentJournalState,
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public transact<Result>(

@@ -1,19 +1,13 @@
 #!/usr/bin/env node
 
-import type { CandidateProposal } from "./contracts.js";
 import {
   type MvpEvaluatorRuntimeBinding,
   prepareMvpOptimizerInput,
   runMvpCloudControllerIteration,
 } from "./cloud-controller.js";
-import {
-  MvpEvaluatorReadinessError,
-  createMvpEvaluatorRuntime,
-} from "./evaluator-runtime.js";
-import {
-  ClosedVocabularyLlmSanitizer,
-  FoundryMessagesDiagnosticClassifier,
-} from "./sanitizer.js";
+import type { CandidateProposal } from "./contracts.js";
+import { createMvpEvaluatorRuntime, MvpEvaluatorReadinessError } from "./evaluator-runtime.js";
+import { ClosedVocabularyLlmSanitizer, FoundryMessagesDiagnosticClassifier } from "./sanitizer.js";
 import { validateCandidateProposal } from "./schemas.js";
 
 const STATE_ROOT = "/workspace/df-state";
@@ -42,46 +36,30 @@ async function main(): Promise<void> {
   try {
     const proposal =
       operation === "evaluate"
-        ? decodeProposal(
-            requiredEnvironment(
-              "DF_MVP_CANDIDATE_PROPOSAL_BASE64",
-            ),
-          )
+        ? decodeProposal(requiredEnvironment("DF_MVP_CANDIDATE_PROPOSAL_BASE64"))
         : undefined;
     const runtime = await createMvpEvaluatorRuntime({
       stateRoot: STATE_ROOT,
-      evaluatedDeployment: requiredEnvironment(
-        "DF_EVALUATED_DEPLOYMENT",
-      ),
+      evaluatedDeployment: requiredEnvironment("DF_EVALUATED_DEPLOYMENT"),
       modelFamily: "claude-opus-4-8",
       reasoningEffort: "high",
-      foundryBaseUrl: requiredEnvironment(
-        "DF_FOUNDRY_BASE_URL",
-      ),
-      ...(proposal === undefined
-        ? {}
-        : { candidateProposal: proposal }),
+      foundryBaseUrl: requiredEnvironment("DF_FOUNDRY_BASE_URL"),
+      ...(proposal === undefined ? {} : { candidateProposal: proposal }),
     });
     if (operation === "prepare") {
       const optimizerInput = await prepareMvpOptimizerInput({
         stateRoot: STATE_ROOT,
         campaignId: requiredEnvironment("DF_MVP_CAMPAIGN_ID"),
-        baselineChampionRevision: requiredRevision(
-          "DF_PI_BASELINE_COMMIT",
-        ),
+        baselineChampionRevision: requiredRevision("DF_PI_BASELINE_COMMIT"),
       });
       process.stdout.write(`${JSON.stringify(optimizerInput)}\n`);
       return;
     }
     if (proposal === undefined) {
-      throw new Error(
-        "The evaluator candidate proposal is unavailable.",
-      );
+      throw new Error("The evaluator candidate proposal is unavailable.");
     }
 
-    const foundryBaseUrl = requiredEnvironment(
-      "DF_FOUNDRY_BASE_URL",
-    );
+    const foundryBaseUrl = requiredEnvironment("DF_FOUNDRY_BASE_URL");
     const binding: MvpEvaluatorRuntimeBinding = {
       environment: runtime.environment,
       taskCatalog: runtime.taskCatalog,
@@ -89,26 +67,18 @@ async function main(): Promise<void> {
       sanitizer: new ClosedVocabularyLlmSanitizer(
         new FoundryMessagesDiagnosticClassifier({
           baseUrl: foundryBaseUrl,
-          deployment: requiredEnvironment(
-            "DF_EVALUATED_DEPLOYMENT",
-          ),
-          apiKey: requiredEnvironment(
-            "ANTHROPIC_FOUNDRY_API_KEY",
-          ),
+          deployment: requiredEnvironment("DF_EVALUATED_DEPLOYMENT"),
+          apiKey: requiredEnvironment("ANTHROPIC_FOUNDRY_API_KEY"),
         }),
       ),
     };
     const release = await runMvpCloudControllerIteration({
       stateRoot: STATE_ROOT,
       campaignId: requiredEnvironment("DF_MVP_CAMPAIGN_ID"),
-      baselineChampionRevision: requiredRevision(
-        "DF_PI_BASELINE_COMMIT",
-      ),
+      baselineChampionRevision: requiredRevision("DF_PI_BASELINE_COMMIT"),
       slug: "harness-improvement",
       proposal,
-      expectedOptimizerInputSha256: requiredDigest(
-        "DF_MVP_PREPARED_INPUT_SHA256",
-      ),
+      expectedOptimizerInputSha256: requiredDigest("DF_MVP_PREPARED_INPUT_SHA256"),
       runtime: binding,
     });
     process.stdout.write(`${JSON.stringify(release)}\n`);
@@ -129,20 +99,13 @@ function assertCloudRole(): void {
     process.env["DF_MVP_ROLE"] !== "evaluator" ||
     !hasDaytonaIdentity()
   ) {
-    throw new Error(
-      "The evaluator controller is restricted to its Daytona role.",
-    );
+    throw new Error("The evaluator controller is restricted to its Daytona role.");
   }
 }
 
 function hasDaytonaIdentity(): boolean {
-  return [
-    process.env["DAYTONA_SANDBOX_ID"],
-    process.env["DAYTONA_WORKSPACE_ID"],
-  ].some(
-    (value) =>
-      value !== undefined &&
-      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
+  return [process.env["DAYTONA_SANDBOX_ID"], process.env["DAYTONA_WORKSPACE_ID"]].some(
+    (value) => value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
   );
 }
 
@@ -173,21 +136,15 @@ function requiredDigest(name: string): string {
 function decodeProposal(value: string): CandidateProposal {
   let decoded: unknown;
   try {
-    decoded = JSON.parse(
-      Buffer.from(value, "base64url").toString("utf8"),
-    ) as unknown;
+    decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
   } catch {
-    throw new Error(
-      "The evaluator candidate proposal channel is malformed.",
-    );
+    throw new Error("The evaluator candidate proposal channel is malformed.");
   }
   validateCandidateProposal(decoded);
   return decoded as CandidateProposal;
 }
 
-function writeBlocked(
-  missingPrerequisites: readonly string[],
-): void {
+function writeBlocked(missingPrerequisites: readonly string[]): void {
   const result: BlockedReadiness = {
     schemaVersion: 1,
     domain: "dark-factory.mvp-worker-readiness.v1",
@@ -203,8 +160,6 @@ function writeBlocked(
 }
 
 await main().catch(() => {
-  process.stderr.write(
-    "Dark Factory evaluator worker failed closed.\n",
-  );
+  process.stderr.write("Dark Factory evaluator worker failed closed.\n");
   process.exitCode = 1;
 });

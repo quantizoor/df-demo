@@ -1,14 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
-import { createServer } from "node:net";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,20 +22,14 @@ interface Fixture {
 }
 
 async function fixture(): Promise<Fixture> {
-  const root = await mkdtemp(join(tmpdir(), "df-harbor-output-test-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "df-harbor-output-test-")));
   roots.push(root);
   const source = join(root, "request-test-repair");
   const output = join(root, "request-test-repair.harbor-output.tar");
   await mkdir(source);
   await writeFile(join(source, "config.json"), '{"job_name":"fixture"}\n');
   await writeFile(join(source, "result.json"), '{"stats":{}}\n');
-  for (const trial of [
-    "trial-a",
-    "trial-b",
-    "trial-c",
-    "trial-d",
-    "trial-e",
-  ]) {
+  for (const trial of ["trial-a", "trial-b", "trial-c", "trial-d", "trial-e"]) {
     await mkdir(join(source, trial, "agent"), { recursive: true });
     await writeFile(join(source, trial, "result.json"), '{"reward":1}\n');
     await writeFile(
@@ -100,23 +86,15 @@ function invoke(value: Fixture) {
 
 function tarManifest(archive: Buffer): Readonly<Record<string, unknown>> {
   expect(archive.subarray(0, 13).toString("utf8")).toBe("manifest.json");
-  const rawSize = archive
-    .subarray(124, 136)
-    .toString("ascii")
-    .replace(/\0.*$/u, "")
-    .trim();
+  const rawSize = archive.subarray(124, 136).toString("ascii").replace(/\0.*$/u, "").trim();
   const byteLength = Number.parseInt(rawSize, 8);
-  return JSON.parse(
-    archive.subarray(512, 512 + byteLength).toString("utf8"),
-  ) as Readonly<Record<string, unknown>>;
+  return JSON.parse(archive.subarray(512, 512 + byteLength).toString("utf8")) as Readonly<
+    Record<string, unknown>
+  >;
 }
 
 afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) =>
-      rm(root, { recursive: true, force: true }),
-    ),
-  );
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("cloud Harbor output packager", () => {
@@ -168,9 +146,7 @@ describe("cloud Harbor output packager", () => {
       "trial-e/agent/trajectory.json",
       "trial-e/result.json",
     ]);
-    expect(
-      createHash("sha256").update(firstArchive).digest("hex"),
-    ).toBe(
+    expect(createHash("sha256").update(firstArchive).digest("hex")).toBe(
       (
         JSON.parse(firstRun.stdout) as {
           archiveSha256: string;
@@ -181,10 +157,7 @@ describe("cloud Harbor output packager", () => {
 
   it("rejects links before creating a downloadable bundle", async () => {
     const value = await fixture();
-    await symlink(
-      join(value.source, "config.json"),
-      join(value.source, "linked-config.json"),
-    );
+    await symlink(join(value.source, "config.json"), join(value.source, "linked-config.json"));
 
     const run = invoke(value);
     expect(run.status).not.toBe(0);
@@ -193,23 +166,15 @@ describe("cloud Harbor output packager", () => {
 
   it("rejects special files before creating a downloadable bundle", async () => {
     const value = await fixture();
-    const server = createServer();
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(join(value.source, "local.socket"), resolve);
+    const created = spawnSync("mkfifo", [join(value.source, "local.pipe")], {
+      encoding: "utf8",
+      env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin" },
     });
-    try {
-      const run = invoke(value);
-      expect(run.status).not.toBe(0);
-      await expect(readFile(value.output)).rejects.toThrow();
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error === undefined) resolve();
-          else reject(error);
-        });
-      });
-    }
+    expect(created.status).toBe(0);
+
+    const run = invoke(value);
+    expect(run.status).not.toBe(0);
+    await expect(readFile(value.output)).rejects.toThrow();
   });
 
   it.each([

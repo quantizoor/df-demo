@@ -29,15 +29,9 @@ async function main(): Promise<void> {
   }
   const sourceCommit = requiredEnvironment("DF_MVP_SOURCE_COMMIT");
   const workflowRunId = requiredEnvironment("GITHUB_RUN_ID");
-  const workflowRunAttempt = Number(
-    requiredEnvironment("GITHUB_RUN_ATTEMPT"),
-  );
-  const bundlePath = requiredEnvironment(
-    "DF_MVP_CONTROLLER_BUNDLE_PATH",
-  );
-  const bundleSha256 = requiredEnvironment(
-    "DF_MVP_CONTROLLER_BUNDLE_SHA256",
-  );
+  const workflowRunAttempt = Number(requiredEnvironment("GITHUB_RUN_ATTEMPT"));
+  const bundlePath = requiredEnvironment("DF_MVP_CONTROLLER_BUNDLE_PATH");
+  const bundleSha256 = requiredEnvironment("DF_MVP_CONTROLLER_BUNDLE_SHA256");
   if (
     !SHA1.test(sourceCommit) ||
     !bundlePath.startsWith("/") ||
@@ -77,10 +71,7 @@ function requiredEnvironment(name: string): string {
 
 await main().catch((error: unknown) => {
   const message =
-    error instanceof Error &&
-    /^(?:MVP_[A-Z0-9_]+|MVP_CONFIG_NOT_READY)/u.test(
-      error.message,
-    )
+    error instanceof Error && /^(?:MVP_[A-Z0-9_]+|MVP_CONFIG_NOT_READY)/u.test(error.message)
       ? error.message
       : "MVP_CLOUD_LAUNCH_FAILED_CLOSED";
   process.stdout.write(

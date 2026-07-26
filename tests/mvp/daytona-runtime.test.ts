@@ -4,10 +4,7 @@ import {
   inspectMvpCloudEnvironment,
   type MvpCloudConfiguration,
 } from "../../src/mvp/cloud-config.js";
-import {
-  roleSpecification,
-  roleWorkerCommand,
-} from "../../src/mvp/cloud-orchestrator.js";
+import { roleSpecification, roleWorkerCommand } from "../../src/mvp/cloud-orchestrator.js";
 import {
   DaytonaMvpCloudRuntime,
   type MvpDaytonaSdkClient,
@@ -30,8 +27,7 @@ function configuration(): MvpCloudConfiguration {
     DF_DAYTONA_VOLUME_ID: "existing-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "campaigns/mvp-001",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DAYTONA_NESTED",
-    DF_FOUNDRY_BASE_URL:
-      "https://existing.services.ai.azure.com/anthropic",
+    DF_FOUNDRY_BASE_URL: "https://existing.services.ai.azure.com/anthropic",
     DF_OPTIMIZER_DEPLOYMENT: "optimizer-deployment",
     DF_EVALUATED_DEPLOYMENT: "evaluated-deployment",
     DF_OPTIMIZER_SECRET_SOURCE: "FOUNDRY_OPTIMIZER",
@@ -50,8 +46,7 @@ function configuration(): MvpCloudConfiguration {
 
 describe("MVP Daytona runtime", () => {
   it("uses the official SDK shape to mount one isolated subpath and preserve the volume", async () => {
-    const created: Parameters<MvpDaytonaSdkClient["create"]>[0][] =
-      [];
+    const created: Parameters<MvpDaytonaSdkClient["create"]>[0][] = [];
     const uploaded: [string, string][] = [];
     let deleted = false;
     let environment: Readonly<Record<string, string>> = {};
@@ -67,9 +62,7 @@ describe("MVP Daytona runtime", () => {
             environment = parameters.envVars;
             return {
               id: "optimizer-sandbox",
-              ...(parameters.user === undefined
-                ? {}
-                : { user: parameters.user }),
+              ...(parameters.user === undefined ? {} : { user: parameters.user }),
               target: "eu",
               cpu: parameters.resources.cpu,
               memory: parameters.resources.memory,
@@ -116,9 +109,7 @@ describe("MVP Daytona runtime", () => {
       environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
       now: () => new Date("2026-07-26T10:00:00.000Z"),
     });
-    const lease = await runtime.create(
-      roleSpecification(config, "optimizer"),
-    );
+    const lease = await runtime.create(roleSpecification(config, "optimizer"));
     await runtime.stage(lease, {
       localPath: "/cloud/controller.tar.gz",
       sha256: bundleDigest,
@@ -153,27 +144,19 @@ describe("MVP Daytona runtime", () => {
         DF_GITHUB_BASIC_AUTH: "PI_GITHUB_BASIC_AUTH",
       },
     });
-    expect(uploaded).toEqual([
-      [
-        "/cloud/controller.tar.gz",
-        "/tmp/df-mvp-controller.tar.gz",
-      ],
-    ]);
+    expect(uploaded).toEqual([["/cloud/controller.tar.gz", "/tmp/df-mvp-controller.tar.gz"]]);
     expect(deleted).toBe(true);
   });
 
   it("requests and attests root only for the trusted evaluator controller", async () => {
-    const created: Parameters<MvpDaytonaSdkClient["create"]>[0][] =
-      [];
+    const created: Parameters<MvpDaytonaSdkClient["create"]>[0][] = [];
     const factory: MvpDaytonaSdkFactory = {
       createClient: async () => ({
         create: async (parameters) => {
           created.push(parameters);
           return {
             id: "evaluator-sandbox",
-            ...(parameters.user === undefined
-              ? {}
-              : { user: parameters.user }),
+            ...(parameters.user === undefined ? {} : { user: parameters.user }),
             target: "eu",
             cpu: parameters.resources.cpu,
             memory: parameters.resources.memory,

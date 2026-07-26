@@ -1,4 +1,4 @@
-import { createPublicKey, type KeyLike } from "node:crypto";
+import { createPublicKey, type KeyLike, KeyObject } from "node:crypto";
 
 import type {
   CampaignControlAttestation,
@@ -9,12 +9,7 @@ import type {
   CampaignLedgerTransitionVerifier,
 } from "../campaign/store.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash, sha256 } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
 
@@ -25,10 +20,7 @@ const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 const DEFAULT_MAXIMUM_BYTES = 4 * 1024 * 1024;
 const MAXIMUM_BYTES_CEILING = 16 * 1024 * 1024;
 
-export type TrustedCampaignAttestationEvidenceKind =
-  | "ledger-transition"
-  | "decision"
-  | "control";
+export type TrustedCampaignAttestationEvidenceKind = "ledger-transition" | "decision" | "control";
 
 export type TrustedCampaignAttestationPayload =
   | CampaignLedgerTransition
@@ -96,10 +88,7 @@ export interface TrustedCampaignAttestationArtifactSource {
 
 export interface TrustedCampaignAttestationArtifactReader {
   readonly boundary: "trusted-cloud";
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 export interface TrustedCampaignAttestationKeyring {
@@ -143,9 +132,22 @@ function fail(): never {
   throw new TrustedCampaignAttestationVerificationError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function capturePublicKey(value: KeyLike): KeyObject {
+  if (value instanceof KeyObject) {
+    if (value.type !== "public") fail();
+    return createPublicKey({
+      key: value.export({
+        format: "der",
+        type: "spki",
+      }),
+      format: "der",
+      type: "spki",
+    });
+  }
+  return createPublicKey(value);
+}
+
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -160,10 +162,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
 }
@@ -174,15 +173,25 @@ function canonicalTimestamp(value: unknown): value is string {
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
-function campaignIdentity(
-  input: TrustedCampaignAttestationEvidenceInput,
-): {
+function campaignIdentity(input: TrustedCampaignAttestationEvidenceInput): {
   readonly campaignId: string;
   readonly protocolHash: string;
 } {
   const { campaignId, protocolHash } = input.payload;
   if (!SAFE_ID.test(campaignId) || !SHA256.test(protocolHash)) fail();
   return { campaignId, protocolHash };
+}
+
+function isLedgerTransition(
+  value: TrustedCampaignAttestationPayload,
+): value is CampaignLedgerTransition {
+  return "reason" in value && "operation" in value;
+}
+
+function isDecisionAttestation(
+  value: TrustedCampaignAttestationPayload,
+): value is CampaignDecisionAttestation {
+  return "decisionAttestationHash" in value;
 }
 
 /**
@@ -262,17 +271,13 @@ function assertArtifact(
     value === undefined ||
     !isPlainRecord(value) ||
     Object.keys(value).length !== 4 ||
-    !["uri", "sha256", "mediaType", "byteLength"].every((key) =>
-      Object.hasOwn(value, key),
-    ) ||
+    !["uri", "sha256", "mediaType", "byteLength"].every((key) => Object.hasOwn(value, key)) ||
     value.mediaType !== "application/json" ||
     !SHA256.test(value.sha256) ||
     !Number.isSafeInteger(value.byteLength) ||
     value.byteLength <= 0 ||
     value.byteLength > maximumBytes ||
-    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(
-      value.uri,
-    ) ||
+    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(value.uri) ||
     value.uri.includes("..")
   ) {
     fail();
@@ -324,21 +329,18 @@ export class ArtifactBackedCampaignAttestationVerifier
   }
 
   verify(
-    value:
-      | CampaignLedgerTransition
-      | CampaignDecisionAttestation
-      | CampaignControlAttestation,
+    value: CampaignLedgerTransition | CampaignDecisionAttestation | CampaignControlAttestation,
   ): Promise<void> {
     if (!isPlainRecord(value)) {
       return Promise.reject(new TrustedCampaignAttestationVerificationError());
     }
-    if ("reason" in value && "operation" in value) {
+    if (isLedgerTransition(value)) {
       return this.#verify({
         evidenceKind: "ledger-transition",
         payload: value,
       });
     }
-    if ("decisionAttestationHash" in value) {
+    if (isDecisionAttestation(value)) {
       return this.#verify({
         evidenceKind: "decision",
         payload: value,
@@ -350,13 +352,9 @@ export class ArtifactBackedCampaignAttestationVerifier
     });
   }
 
-  async #verify(
-    input: TrustedCampaignAttestationEvidenceInput,
-  ): Promise<void> {
+  async #verify(input: TrustedCampaignAttestationEvidenceInput): Promise<void> {
     try {
-      const snapshot = JSON.parse(
-        canonicalJson(input),
-      ) as TrustedCampaignAttestationEvidenceInput;
+      const snapshot = JSON.parse(canonicalJson(input)) as TrustedCampaignAttestationEvidenceInput;
       const identity = campaignIdentity(snapshot);
       const payloadHash = canonicalHash(snapshot.payload);
       const lookupHash = trustedCampaignAttestationLookupHash(snapshot);
@@ -375,10 +373,7 @@ export class ArtifactBackedCampaignAttestationVerifier
         mediaType: locatedArtifact.mediaType,
         byteLength: locatedArtifact.byteLength,
       });
-      const raw = await this.#readUtf8(
-        artifact,
-        this.#maximumBytes,
-      );
+      const raw = await this.#readUtf8(artifact, this.#maximumBytes);
       const rawByteLength = Buffer.byteLength(raw, "utf8");
       if (
         !Number.isSafeInteger(rawByteLength) ||
@@ -412,8 +407,7 @@ export class ArtifactBackedCampaignAttestationVerifier
       ]);
       if (
         parsed.schemaVersion !== 1 ||
-        parsed.domain !==
-          "dark-factory.campaign-attestation-evidence.v1" ||
+        parsed.domain !== "dark-factory.campaign-attestation-evidence.v1" ||
         parsed.sensitivity !== "release-safe-control" ||
         parsed.evidenceKind !== snapshot.evidenceKind ||
         parsed.campaignId !== identity.campaignId ||
@@ -443,7 +437,7 @@ export class ArtifactBackedCampaignAttestationVerifier
       ) {
         fail();
       }
-      const publicKey = createPublicKey(key.publicKey);
+      const publicKey = capturePublicKey(key.publicKey);
       if (
         publicKey.type !== "public" ||
         publicKey.asymmetricKeyType !== "ed25519" ||

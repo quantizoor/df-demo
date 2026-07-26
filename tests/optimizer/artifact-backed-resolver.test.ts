@@ -4,20 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
+import { fingerprintRemoteUrl } from "../../src/harness/git.js";
 import {
   TRUSTED_GIT_SOURCE_BUNDLE_REF,
   type TrustedGitSourceSnapshotReceipt,
 } from "../../src/harness/git-source.js";
-import { fingerprintRemoteUrl } from "../../src/harness/git.js";
 import {
   OFFICIAL_PI_UPSTREAM_URL,
   type RepositoryRegistration,
 } from "../../src/harness/repository.js";
-import type {
-  OptimizerContext,
-  RepairAggregate,
-  ValidationAggregate,
-} from "../../src/orchestrator/contracts.js";
 import {
   ArtifactBackedCloudOptimizerAdapterResolver,
   ArtifactBackedCloudOptimizerAdapterResolverError,
@@ -30,11 +25,12 @@ import {
   type OptimizerSourceOnlyBootstrapEvidenceMetadata,
   type TrustedOptimizerResolverPublicKey,
 } from "../../src/optimizer/artifact-backed-resolver.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../../src/schemas/canonical.js";
+import type {
+  OptimizerContext,
+  RepairAggregate,
+  ValidationAggregate,
+} from "../../src/orchestrator/contracts.js";
+import { canonicalHash, canonicalJson, sha256 } from "../../src/schemas/canonical.js";
 
 const BASELINE = "a".repeat(40);
 const BASELINE_TREE = "b".repeat(40);
@@ -57,12 +53,7 @@ const analysisKeys = generateKeyPairSync("ed25519");
 const substitutedKeys = generateKeyPairSync("ed25519");
 const bytesByUri = new Map<string, Uint8Array>();
 
-function writeTarText(
-  target: Uint8Array,
-  offset: number,
-  length: number,
-  value: string,
-): void {
+function writeTarText(target: Uint8Array, offset: number, length: number, value: string): void {
   const bytes = Buffer.from(value, "ascii");
   if (bytes.byteLength > length) throw new Error("tar fixture field");
   target.set(bytes, offset);
@@ -88,15 +79,7 @@ function tarArchive(
     writeTarText(header, 100, 8, tarOctal(0o644, 8));
     writeTarText(header, 108, 8, tarOctal(0, 8));
     writeTarText(header, 116, 8, tarOctal(0, 8));
-    writeTarText(
-      header,
-      124,
-      12,
-      tarOctal(
-        entry.type === "symlink" ? 0 : content.byteLength,
-        12,
-      ),
-    );
+    writeTarText(header, 124, 12, tarOctal(entry.type === "symlink" ? 0 : content.byteLength, 12));
     writeTarText(header, 136, 12, tarOctal(0, 12));
     header.fill(0x20, 148, 156);
     let typeByte = 0x30;
@@ -108,29 +91,17 @@ function tarArchive(
     }
     writeTarText(header, 257, 6, "ustar");
     writeTarText(header, 263, 2, "00");
-    const checksum = [...header].reduce(
-      (total, byte) => total + byte,
-      0,
-    );
-    writeTarText(
-      header,
-      148,
-      8,
-      checksum.toString(8).padStart(6, "0") + "\u0000 ",
-    );
+    const checksum = [...header].reduce((total, byte) => total + byte, 0);
+    writeTarText(header, 148, 8, checksum.toString(8).padStart(6, "0") + "\u0000 ");
     blocks.push(header);
     if (entry.type !== "symlink") {
-      const padded = new Uint8Array(
-        Math.ceil(content.byteLength / 512) * 512,
-      );
+      const padded = new Uint8Array(Math.ceil(content.byteLength / 512) * 512);
       padded.set(content);
       blocks.push(padded);
     }
   }
   blocks.push(new Uint8Array(1024));
-  return Uint8Array.from(
-    Buffer.concat(blocks.map((block) => Buffer.from(block))),
-  );
+  return Uint8Array.from(Buffer.concat(blocks.map((block) => Buffer.from(block))));
 }
 
 function safeReleaseArchive(label: string): Uint8Array {
@@ -192,10 +163,7 @@ function sourceArtifact(
   };
 }
 
-function sourceBundleArtifact(
-  name: string,
-  commit: string,
-): TrustedCloudArtifactRef {
+function sourceBundleArtifact(name: string, commit: string): TrustedCloudArtifactRef {
   const bytes = gitBundleBytes(commit);
   const uri = `trusted://optimizer-resolver/${name}` as const;
   bytesByUri.set(uri, bytes);
@@ -214,10 +182,7 @@ function artifact(
   byteLength = 4096,
 ): TrustedCloudArtifactRef {
   const uri = `trusted://optimizer-resolver/${name}` as const;
-  if (
-    mediaType === "application/x-tar" ||
-    mediaType === "application/vnd.git.bundle"
-  ) {
+  if (mediaType === "application/x-tar" || mediaType === "application/vnd.git.bundle") {
     const bytes =
       mediaType === "application/x-tar"
         ? safeReleaseArchive(name)
@@ -253,24 +218,17 @@ function tarArtifact(
   };
 }
 
-function registration(
-  overrides: Partial<RepositoryRegistration> = {},
-): RepositoryRegistration {
+function registration(overrides: Partial<RepositoryRegistration> = {}): RepositoryRegistration {
   return {
     registrationId: "5".repeat(64),
-    canonicalPath:
-      "/Users/operator/Desktop/Repos/ParallaxAI/pi",
+    canonicalPath: "/Users/operator/Desktop/Repos/ParallaxAI/pi",
     branch: "main",
     headCommit: BASELINE,
     treeSha: BASELINE_TREE,
     lockSha256: LOCK,
     upstreamBaseCommit: "6".repeat(40),
-    originFingerprint: fingerprintRemoteUrl(
-      "git@github.com:parallaxai/df-pi-tbench.git",
-    ),
-    upstreamFingerprint: fingerprintRemoteUrl(
-      OFFICIAL_PI_UPSTREAM_URL,
-    ),
+    originFingerprint: fingerprintRemoteUrl("git@github.com:parallaxai/df-pi-tbench.git"),
+    upstreamFingerprint: fingerprintRemoteUrl(OFFICIAL_PI_UPSTREAM_URL),
     originVerification: {
       private: true,
       fetchable: true,
@@ -289,36 +247,34 @@ function registration(
   };
 }
 
-function sourceReceipt(input: {
-  readonly commit?: string;
-  readonly tree?: string;
-  readonly lock?: string;
-  readonly remoteRef?: string;
-  readonly registration?: RepositoryRegistration;
-  readonly sourceArtifact?: TrustedCloudArtifactRef;
-  readonly sourceBundleArtifact?: TrustedCloudArtifactRef;
-  readonly mutate?: (
-    body: Readonly<Record<string, unknown>>,
-  ) => Readonly<Record<string, unknown>>;
-} = {}): TrustedGitSourceSnapshotReceipt {
+function sourceReceipt(
+  input: {
+    readonly commit?: string;
+    readonly tree?: string;
+    readonly lock?: string;
+    readonly remoteRef?: string;
+    readonly registration?: RepositoryRegistration;
+    readonly sourceArtifact?: TrustedCloudArtifactRef;
+    readonly sourceBundleArtifact?: TrustedCloudArtifactRef;
+    readonly mutate?: (
+      body: Readonly<Record<string, unknown>>,
+    ) => Readonly<Record<string, unknown>>;
+  } = {},
+): TrustedGitSourceSnapshotReceipt {
   const pinned = input.registration ?? registration();
   const body = {
     sensitivity: "trusted-git-source-snapshot" as const,
     schemaVersion: 2 as const,
     snapshotId: "snapshot-optimizer-001",
     registrationId: pinned.registrationId,
-    originRepositoryHash:
-      pinned.originFingerprint.repositoryHash,
-    upstreamRepositoryHash:
-      pinned.upstreamFingerprint.repositoryHash,
-    upstreamHeadCommit:
-      pinned.upstreamVerification.upstreamHeadCommit,
+    originRepositoryHash: pinned.originFingerprint.repositoryHash,
+    upstreamRepositoryHash: pinned.upstreamFingerprint.repositoryHash,
+    upstreamHeadCommit: pinned.upstreamVerification.upstreamHeadCommit,
     upstreamBaseCommit: pinned.upstreamBaseCommit,
     baselineCommit: pinned.headCommit,
     provider: "daytona" as const,
     sandboxId: "source-sandbox-001",
-    imageReference:
-      `ghcr.io/parallax/source@sha256:${"a".repeat(64)}`,
+    imageReference: `ghcr.io/parallax/source@sha256:${"a".repeat(64)}`,
     imageDigest: `sha256:${"a".repeat(64)}`,
     networkPolicyHash: "b".repeat(64),
     remoteRef: input.remoteRef ?? "refs/heads/main",
@@ -334,16 +290,10 @@ function sourceReceipt(input: {
     manifestArtifactSha256: "e".repeat(64),
     sourceArtifact:
       input.sourceArtifact ??
-      sourceArtifact(
-        `source-tar-${input.commit ?? BASELINE}`,
-        input.commit ?? BASELINE,
-      ),
+      sourceArtifact(`source-tar-${input.commit ?? BASELINE}`, input.commit ?? BASELINE),
     sourceBundleArtifact:
       input.sourceBundleArtifact ??
-      sourceBundleArtifact(
-        `source-bundle-${input.commit ?? BASELINE}`,
-        input.commit ?? BASELINE,
-      ),
+      sourceBundleArtifact(`source-bundle-${input.commit ?? BASELINE}`, input.commit ?? BASELINE),
     createdAt: "2026-07-26T09:10:00.000Z",
     passed: true as const,
   };
@@ -359,13 +309,15 @@ function sourceReceipt(input: {
   } as unknown as TrustedGitSourceSnapshotReceipt;
 }
 
-function context(input: {
-  readonly number?: number;
-  readonly slug?: string;
-  readonly commit?: string;
-  readonly activeExperiment?: number;
-  readonly brief?: OptimizerContext["diagnosticBrief"];
-} = {}): OptimizerContext {
+function context(
+  input: {
+    readonly number?: number;
+    readonly slug?: string;
+    readonly commit?: string;
+    readonly activeExperiment?: number;
+    readonly brief?: OptimizerContext["diagnosticBrief"];
+  } = {},
+): OptimizerContext {
   const number = input.number ?? 1;
   const activeExperiment = input.activeExperiment ?? 0;
   return {
@@ -391,9 +343,7 @@ function context(input: {
   };
 }
 
-function commonMetadata(
-  evidence: TrustedCloudArtifactRef,
-) {
+function commonMetadata(evidence: TrustedCloudArtifactRef) {
   return {
     schemaVersion: 1 as const,
     artifact: evidence,
@@ -408,9 +358,7 @@ function commonMetadata(
   };
 }
 
-function sealMetadata<
-  T extends Readonly<Record<string, unknown>>,
->(
+function sealMetadata<T extends Readonly<Record<string, unknown>>>(
   body: T,
   privateKey: KeyObject,
   keyId: string,
@@ -424,27 +372,17 @@ function sealMetadata<
   };
   return {
     ...withHash,
-    signature: createEd25519Signature(
-      withHash,
-      privateKey,
-      keyId,
-      "2026-07-26T09:31:00.000Z",
-    ),
+    signature: createEd25519Signature(withHash, privateKey, keyId, "2026-07-26T09:31:00.000Z"),
   };
 }
 
 function bootstrapMetadata(
-  evidence = artifact(
-    "bootstrap-evidence",
-    "4".repeat(64),
-    "application/x-tar",
-  ),
+  evidence = artifact("bootstrap-evidence", "4".repeat(64), "application/x-tar"),
 ): OptimizerSourceOnlyBootstrapEvidenceMetadata {
   return sealMetadata(
     {
       ...commonMetadata(evidence),
-      domain:
-        "dark-factory.optimizer-source-only-bootstrap-evidence.v1" as const,
+      domain: "dark-factory.optimizer-source-only-bootstrap-evidence.v1" as const,
       purpose: "source-only-bootstrap" as const,
       reviewed: true as const,
       reviewPolicyHash: "5".repeat(64),
@@ -465,14 +403,9 @@ function proposalMetadata(input: {
     {
       ...commonMetadata(
         input.evidence ??
-          artifact(
-            `proposal-${input.releaseId}`,
-            "6".repeat(64),
-            "application/x-tar",
-          ),
+          artifact(`proposal-${input.releaseId}`, "6".repeat(64), "application/x-tar"),
       ),
-      domain:
-        "dark-factory.optimizer-proposal-diagnostic-evidence.v1" as const,
+      domain: "dark-factory.optimizer-proposal-diagnostic-evidence.v1" as const,
       purpose: "proposal-diagnostic" as const,
       campaignId: CAMPAIGN,
       experimentId: input.experimentId,
@@ -505,8 +438,7 @@ const candidate = {
 
 const inspectionPolicyBody = {
   schemaVersion: 1 as const,
-  domain:
-    "dark-factory.optimizer-release-artifact-inspection-policy.v1" as const,
+  domain: "dark-factory.optimizer-release-artifact-inspection-policy.v1" as const,
   evaluatorPolicyHash: "f".repeat(64),
   allowedReleasePaths: ["release.json"] as readonly string[],
   forbiddenContentFingerprints: [] as readonly string[],
@@ -546,9 +478,7 @@ const repair = {
   attestationHash: "a".repeat(64),
 } satisfies RepairAggregate;
 
-function validation(
-  releasedEvidenceHash: string | null = "b".repeat(64),
-): ValidationAggregate {
+function validation(releasedEvidenceHash: string | null = "b".repeat(64)): ValidationAggregate {
   return {
     disposition: "promoted",
     validPairs: 12,
@@ -582,8 +512,7 @@ function validation(
     wallTimeMs: 2000,
     attestationHash: "c".repeat(64),
     releasedEvidenceHash,
-    behavioralSourceCommitmentHash:
-      releasedEvidenceHash === null ? null : "9".repeat(64),
+    behavioralSourceCommitmentHash: releasedEvidenceHash === null ? null : "9".repeat(64),
     attemptAccounting: {
       policyVersion: "validation-attempt-ledger-v1",
       terminalStatus: "complete",
@@ -606,38 +535,26 @@ function validation(
 }
 
 function analysisMetadata(input: {
-  readonly query: Extract<
-    OptimizerReleasedEvidenceQuery,
-    { readonly purpose: "analysis" }
-  >;
+  readonly query: Extract<OptimizerReleasedEvidenceQuery, { readonly purpose: "analysis" }>;
   readonly evidence?: TrustedCloudArtifactRef;
   readonly overrides?: Partial<OptimizerAnalysisEvidenceMetadata>;
 }): OptimizerAnalysisEvidenceMetadata {
   return sealMetadata(
     {
       ...commonMetadata(
-        input.evidence ??
-          artifact(
-            "analysis-evidence",
-            "d".repeat(64),
-            "application/x-tar",
-          ),
+        input.evidence ?? artifact("analysis-evidence", "d".repeat(64), "application/x-tar"),
       ),
-      domain:
-        "dark-factory.optimizer-analysis-evidence.v1" as const,
+      domain: "dark-factory.optimizer-analysis-evidence.v1" as const,
       purpose: "analysis" as const,
       campaignId: input.query.campaignId,
       experimentId: input.query.experimentId,
       hypothesisHash: input.query.hypothesisHash,
-      hypothesisDocumentHash:
-        input.query.hypothesisDocumentHash,
+      hypothesisDocumentHash: input.query.hypothesisDocumentHash,
       candidateCommit: input.query.candidateCommit,
       candidatePatchHash: input.query.candidatePatchHash,
       candidateDocumentHash: input.query.candidateDocumentHash,
-      repairAttestationHash:
-        input.query.repairAttestationHash,
-      validationAttestationHash:
-        input.query.validationAttestationHash,
+      repairAttestationHash: input.query.repairAttestationHash,
+      validationAttestationHash: input.query.validationAttestationHash,
       releasedEvidenceHash: input.query.releasedEvidenceHash,
       ...input.overrides,
     },
@@ -655,12 +572,7 @@ function metadataArtifact(
 } {
   const raw = `${canonicalJson(metadata)}\n`;
   return {
-    artifact: artifact(
-      name,
-      sha256(raw),
-      "application/json",
-      Buffer.byteLength(raw, "utf8"),
-    ),
+    artifact: artifact(name, sha256(raw), "application/json", Buffer.byteLength(raw, "utf8")),
     raw,
   };
 }
@@ -674,15 +586,10 @@ function keyMaterial(
     readonly publicKey?: KeyObject;
   } = {},
 ): TrustedOptimizerResolverPublicKey {
-  const byPurpose: Record<
-    OptimizerResolverSignaturePurpose,
-    KeyObject
-  > = {
+  const byPurpose: Record<OptimizerResolverSignaturePurpose, KeyObject> = {
     "git-source-snapshot-receipt": sourceKeys.publicKey,
-    "optimizer-source-only-bootstrap-evidence":
-      bootstrapKeys.publicKey,
-    "optimizer-proposal-diagnostic-evidence":
-      proposalKeys.publicKey,
+    "optimizer-source-only-bootstrap-evidence": bootstrapKeys.publicKey,
+    "optimizer-proposal-diagnostic-evidence": proposalKeys.publicKey,
     "optimizer-analysis-evidence": analysisKeys.publicKey,
   };
   return {
@@ -718,59 +625,37 @@ interface FixtureOptions {
 }
 
 function fixture(options: FixtureOptions = {}) {
-  const receipts =
-    options.receipts ?? [sourceReceipt()];
-  const byCommit = new Map(
-    receipts.map((receipt) => [receipt.commitSha, receipt]),
-  );
+  const receipts = options.receipts ?? [sourceReceipt()];
+  const byCommit = new Map(receipts.map((receipt) => [receipt.commitSha, receipt]));
   const rawByUri = new Map<string, string>();
-  const locatedByQuery = new Map<
-    string,
-    readonly TrustedCloudArtifactRef[]
-  >();
-  const bootstrap = metadataArtifact(
-    "bootstrap-metadata",
-    bootstrapMetadata(),
-  );
+  const locatedByQuery = new Map<string, readonly TrustedCloudArtifactRef[]>();
+  const bootstrap = metadataArtifact("bootstrap-metadata", bootstrapMetadata());
   rawByUri.set(bootstrap.artifact.uri, bootstrap.raw);
-  const locate = vi.fn(async (query: OptimizerReleasedEvidenceQuery) =>
-    locatedByQuery.get(query.queryHash) ?? [],
+  const locate = vi.fn(
+    async (query: OptimizerReleasedEvidenceQuery) => locatedByQuery.get(query.queryHash) ?? [],
   );
-  const readUtf8 = vi.fn(
-    async (
-      inputArtifact: TrustedCloudArtifactRef,
-    ): Promise<string> => {
-      if (options.readerMutatesArtifact) {
-        (
-          inputArtifact as { sha256: string }
-        ).sha256 = "f".repeat(64);
-      }
-      const raw = rawByUri.get(inputArtifact.uri);
-      if (raw === undefined) throw new Error("missing");
-      return raw;
-    },
-  );
-  const readBytes = vi.fn(
-    async (
-      inputArtifact: TrustedCloudArtifactRef,
-    ): Promise<Uint8Array> => {
-      if (options.releaseReaderMutatesArtifact) {
-        (
-          inputArtifact as { sha256: string }
-        ).sha256 = "f".repeat(64);
-      }
-      const bytes = bytesByUri.get(inputArtifact.uri);
-      if (bytes === undefined) throw new Error("missing");
-      return Uint8Array.from(bytes);
-    },
-  );
+  const readUtf8 = vi.fn(async (inputArtifact: TrustedCloudArtifactRef): Promise<string> => {
+    if (options.readerMutatesArtifact) {
+      (inputArtifact as { sha256: string }).sha256 = "f".repeat(64);
+    }
+    const raw = rawByUri.get(inputArtifact.uri);
+    if (raw === undefined) throw new Error("missing");
+    return raw;
+  });
+  const readBytes = vi.fn(async (inputArtifact: TrustedCloudArtifactRef): Promise<Uint8Array> => {
+    if (options.releaseReaderMutatesArtifact) {
+      (inputArtifact as { sha256: string }).sha256 = "f".repeat(64);
+    }
+    const bytes = bytesByUri.get(inputArtifact.uri);
+    if (bytes === undefined) throw new Error("missing");
+    return Uint8Array.from(bytes);
+  });
   const resolver = new ArtifactBackedCloudOptimizerAdapterResolver({
     sourceIndex: {
       boundary: "trusted-cloud",
       findByCommit: async (commit) => byCommit.get(commit),
     },
-    registration:
-      options.pinnedRegistration ?? registration(),
+    registration: options.pinnedRegistration ?? registration(),
     sourceOnlyBootstrapMetadataArtifact: bootstrap.artifact,
     evidenceSource: {
       boundary: "trusted-cloud",
@@ -781,15 +666,12 @@ function fixture(options: FixtureOptions = {}) {
       readUtf8,
     },
     releaseArtifactReader: {
-      boundary:
-        "trusted-cloud-optimizer-release-artifact-reader",
+      boundary: "trusted-cloud-optimizer-release-artifact-reader",
       readBytes,
     },
-    releaseArtifactInspectionPolicy:
-      options.policy ?? inspectionPolicy,
+    releaseArtifactInspectionPolicy: options.policy ?? inspectionPolicy,
     keyAuthority: {
-      boundary:
-        "trusted-cloud-optimizer-resolver-public-key-authority",
+      boundary: "trusted-cloud-optimizer-resolver-public-key-authority",
       resolve: async (request) => {
         const key = keyMaterial(request);
         return options.authorityMutate?.(key, request) ?? key;
@@ -818,22 +700,23 @@ function fixture(options: FixtureOptions = {}) {
   };
 }
 
-function laterContext(input: {
-  readonly number?: number;
-  readonly slug?: string;
-  readonly brief?: OptimizerContext["diagnosticBrief"];
-} = {}): OptimizerContext {
+function laterContext(
+  input: {
+    readonly number?: number;
+    readonly slug?: string;
+    readonly brief?: OptimizerContext["diagnosticBrief"];
+  } = {},
+): OptimizerContext {
   return context({
     number: input.number ?? 2,
     slug: input.slug ?? "use-diagnostic",
     commit: CANDIDATE,
     activeExperiment: 1,
-    brief:
-      input.brief ?? {
-        hash: "e".repeat(64),
-        releaseId: "release-001",
-        actionable: true,
-      },
+    brief: input.brief ?? {
+      hash: "e".repeat(64),
+      releaseId: "release-001",
+      actionable: true,
+    },
   });
 }
 
@@ -847,22 +730,15 @@ function analysisInput() {
   };
 }
 
-async function captureAnalysisQuery(
-  configured: ReturnType<typeof fixture>,
-) {
+async function captureAnalysisQuery(configured: ReturnType<typeof fixture>) {
   const holder: {
-    value?: Extract<
-      OptimizerReleasedEvidenceQuery,
-      { readonly purpose: "analysis" }
-    >;
+    value?: Extract<OptimizerReleasedEvidenceQuery, { readonly purpose: "analysis" }>;
   } = {};
   configured.locate.mockImplementationOnce(async (query) => {
     if (query.purpose === "analysis") holder.value = query;
     return [];
   });
-  await expect(
-    configured.resolver.analysis(analysisInput()),
-  ).rejects.toBeInstanceOf(
+  await expect(configured.resolver.analysis(analysisInput())).rejects.toBeInstanceOf(
     ArtifactBackedCloudOptimizerAdapterResolverError,
   );
   if (holder.value === undefined) {
@@ -876,10 +752,7 @@ async function captureProposalQuery(
   proposalContext: OptimizerContext,
 ) {
   const holder: {
-    value?: Extract<
-      OptimizerReleasedEvidenceQuery,
-      { readonly purpose: "proposal-diagnostic" }
-    >;
+    value?: Extract<OptimizerReleasedEvidenceQuery, { readonly purpose: "proposal-diagnostic" }>;
   } = {};
   configured.locate.mockImplementationOnce(async (query) => {
     if (query.purpose === "proposal-diagnostic") {
@@ -887,9 +760,7 @@ async function captureProposalQuery(
     }
     return [];
   });
-  await expect(
-    configured.resolver.proposal(proposalContext),
-  ).rejects.toBeInstanceOf(
+  await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
     ArtifactBackedCloudOptimizerAdapterResolverError,
   );
   if (holder.value === undefined) {
@@ -909,9 +780,7 @@ describe("artifact-backed production optimizer resolver", () => {
       policyHash: canonicalHash(body),
     };
 
-    expect(() => fixture({ policy })).toThrow(
-      ArtifactBackedCloudOptimizerAdapterResolverError,
-    );
+    expect(() => fixture({ policy })).toThrow(ArtifactBackedCloudOptimizerAdapterResolverError);
   });
 
   it("resolves a signed baseline bundle and fixed bootstrap", async () => {
@@ -921,8 +790,7 @@ describe("artifact-backed production optimizer resolver", () => {
     expect(result.source).toEqual({
       mode: "trusted-bundle",
       registrationId: registration().registrationId,
-      originRepositoryHash:
-        registration().originFingerprint.repositoryHash,
+      originRepositoryHash: registration().originFingerprint.repositoryHash,
       bundle: sourceReceipt().sourceBundleArtifact,
       bundleRef: TRUSTED_GIT_SOURCE_BUNDLE_REF,
       target: {
@@ -932,15 +800,11 @@ describe("artifact-backed production optimizer resolver", () => {
         lockSha256: LOCK,
       },
     });
-    expect(result.releasedEvidence).toEqual(
-      bootstrapMetadata().artifact,
-    );
+    expect(result.releasedEvidence).toEqual(bootstrapMetadata().artifact);
     expect(configured.locate).not.toHaveBeenCalled();
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.source)).toBe(true);
-    expect(JSON.stringify(result)).not.toContain(
-      "/Users/operator",
-    );
+    expect(JSON.stringify(result)).not.toContain("/Users/operator");
 
     const retry = await configured.resolver.proposal(context());
     expect(retry).toEqual(result);
@@ -951,17 +815,13 @@ describe("artifact-backed production optimizer resolver", () => {
     const candidateReceipt = sourceReceipt({
       commit: CANDIDATE,
       tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
     });
     const configured = fixture({
       receipts: [candidateReceipt],
     });
     const proposalContext = laterContext();
-    const query = await captureProposalQuery(
-      configured,
-      proposalContext,
-    );
+    const query = await captureProposalQuery(configured, proposalContext);
     const metadata = proposalMetadata({
       experimentId: query.experimentId,
       diagnosticHash: query.diagnosticHash,
@@ -969,12 +829,11 @@ describe("artifact-backed production optimizer resolver", () => {
       actionable: query.actionable,
     });
     configured.addMetadata(query.queryHash, metadata);
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
 
-    const result =
-      await configured.resolver.proposal(proposalContext);
+    const result = await configured.resolver.proposal(proposalContext);
     expect(result.source.target.commitSha).toBe(CANDIDATE);
     expect(result.releasedEvidence).toEqual(metadata.artifact);
   });
@@ -984,13 +843,11 @@ describe("artifact-backed production optimizer resolver", () => {
     const query = await captureAnalysisQuery(configured);
     const metadata = analysisMetadata({ query });
     configured.addMetadata(query.queryHash, metadata);
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
 
-    await expect(
-      configured.resolver.analysis(analysisInput()),
-    ).resolves.toEqual({
+    await expect(configured.resolver.analysis(analysisInput())).resolves.toEqual({
       releasedEvidence: metadata.artifact,
     });
   });
@@ -1021,9 +878,7 @@ describe("artifact-backed production optimizer resolver", () => {
       receipts: [receipt],
       pinnedRegistration: pinned,
     });
-    await expect(
-      configured.resolver.proposal(context()),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(context())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1033,43 +888,34 @@ describe("artifact-backed production optimizer resolver", () => {
     ["hash", "002-use-diagnostic", "0".repeat(64), "release-001", true],
     ["release", "002-use-diagnostic", "e".repeat(64), "release-999", true],
     ["actionable", "002-use-diagnostic", "e".repeat(64), "release-001", false],
-  ])("rejects validly signed proposal metadata with wrong %s", async (
-    _label,
-    experimentId,
-    diagnosticHash,
-    releaseId,
-    actionable,
-  ) => {
-    const candidateReceipt = sourceReceipt({
-      commit: CANDIDATE,
-      tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
-    });
-    const configured = fixture({ receipts: [candidateReceipt] });
-    const proposalContext = laterContext();
-    const query = await captureProposalQuery(
-      configured,
-      proposalContext,
-    );
-    configured.addMetadata(
-      query.queryHash,
-      proposalMetadata({
-        experimentId,
-        diagnosticHash,
-        releaseId,
-        actionable,
-      }),
-    );
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
-    );
-    await expect(
-      configured.resolver.proposal(proposalContext),
-    ).rejects.toBeInstanceOf(
-      ArtifactBackedCloudOptimizerAdapterResolverError,
-    );
-  });
+  ])(
+    "rejects validly signed proposal metadata with wrong %s",
+    async (_label, experimentId, diagnosticHash, releaseId, actionable) => {
+      const candidateReceipt = sourceReceipt({
+        commit: CANDIDATE,
+        tree: CANDIDATE_TREE,
+        remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
+      });
+      const configured = fixture({ receipts: [candidateReceipt] });
+      const proposalContext = laterContext();
+      const query = await captureProposalQuery(configured, proposalContext);
+      configured.addMetadata(
+        query.queryHash,
+        proposalMetadata({
+          experimentId,
+          diagnosticHash,
+          releaseId,
+          actionable,
+        }),
+      );
+      configured.locate.mockImplementation(
+        async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
+      );
+      await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
+        ArtifactBackedCloudOptimizerAdapterResolverError,
+      );
+    },
+  );
 
   it("rejects analysis metadata detached from the candidate or released result", async () => {
     const configured = fixture();
@@ -1084,12 +930,10 @@ describe("artifact-backed production optimizer resolver", () => {
         },
       }),
     );
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
-    await expect(
-      configured.resolver.analysis(analysisInput()),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.analysis(analysisInput())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1099,10 +943,7 @@ describe("artifact-backed production optimizer resolver", () => {
     async (mode) => {
       const configured = fixture({
         authorityMutate(key) {
-          if (
-            key.purpose !==
-            "optimizer-source-only-bootstrap-evidence"
-          ) {
+          if (key.purpose !== "optimizer-source-only-bootstrap-evidence") {
             return key;
           }
           if (mode === "purpose") {
@@ -1118,24 +959,20 @@ describe("artifact-backed production optimizer resolver", () => {
           return keyMaterial(
             {
               schemaVersion: 1,
-              domain:
-                "dark-factory.optimizer-resolver-public-key-request.v1",
+              domain: "dark-factory.optimizer-resolver-public-key-request.v1",
               purpose: key.purpose,
               keyId: key.keyId,
               keyVersion: key.keyVersion,
               signedAt: "2026-07-26T09:31:00.000Z",
               documentHash: "0".repeat(64),
               authoritySetHash: key.authoritySetHash,
-              verificationKeySetHash:
-                key.verificationKeySetHash,
+              verificationKeySetHash: key.verificationKeySetHash,
             },
             { publicKey: substitutedKeys.publicKey },
           );
         },
       });
-      await expect(
-        configured.resolver.proposal(context()),
-      ).rejects.toBeInstanceOf(
+      await expect(configured.resolver.proposal(context())).rejects.toBeInstanceOf(
         ArtifactBackedCloudOptimizerAdapterResolverError,
       );
     },
@@ -1145,36 +982,27 @@ describe("artifact-backed production optimizer resolver", () => {
     const candidateReceipt = sourceReceipt({
       commit: CANDIDATE,
       tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
     });
     const configured = fixture({ receipts: [candidateReceipt] });
     const proposalContext = laterContext();
-    const query = await captureProposalQuery(
-      configured,
-      proposalContext,
-    );
+    const query = await captureProposalQuery(configured, proposalContext);
     const valid = proposalMetadata({
       experimentId: query.experimentId,
       diagnosticHash: query.diagnosticHash,
       releaseId: query.releaseId,
       actionable: query.actionable,
     });
-    const extra = metadataArtifact(
-      "metadata-with-extra",
-      {
-        ...valid,
-        taskName: "must-not-be-representable",
-      } as unknown as OptimizerProposalDiagnosticEvidenceMetadata,
-    );
+    const extra = metadataArtifact("metadata-with-extra", {
+      ...valid,
+      taskName: "must-not-be-representable",
+    } as unknown as OptimizerProposalDiagnosticEvidenceMetadata);
     configured.rawByUri.set(extra.artifact.uri, extra.raw);
     configured.locatedByQuery.set(query.queryHash, [extra.artifact]);
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
-    await expect(
-      configured.resolver.proposal(proposalContext),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1199,10 +1027,7 @@ describe("artifact-backed production optimizer resolver", () => {
           path: "release.json",
           content: `${canonicalJson({
             schemaVersion: 1,
-            summary: Buffer.from(
-              "/private/grader/answer.txt",
-              "utf8",
-            ).toString("base64url"),
+            summary: Buffer.from("/private/grader/answer.txt", "utf8").toString("base64url"),
           })}\n`,
         },
       ]),
@@ -1239,62 +1064,49 @@ describe("artifact-backed production optimizer resolver", () => {
         },
       ]),
     },
-  ])(
-    "opens signed false-flag evidence and rejects its $label",
-    async ({ evidence }) => {
-      const candidateReceipt = sourceReceipt({
-        commit: CANDIDATE,
-        tree: CANDIDATE_TREE,
-        remoteRef:
-          "refs/heads/df/experiment/001-source-bootstrap",
-      });
-      const configured = fixture({
-        receipts: [candidateReceipt],
-      });
-      const proposalContext = laterContext();
-      const query = await captureProposalQuery(
-        configured,
-        proposalContext,
-      );
-      configured.addMetadata(
-        query.queryHash,
-        proposalMetadata({
-          experimentId: query.experimentId,
-          diagnosticHash: query.diagnosticHash,
-          releaseId: query.releaseId,
-          actionable: query.actionable,
-          evidence,
-        }),
-      );
-      configured.locate.mockImplementation(async (value) =>
-        configured.locatedByQuery.get(value.queryHash) ?? [],
-      );
+  ])("opens signed false-flag evidence and rejects its $label", async ({ evidence }) => {
+    const candidateReceipt = sourceReceipt({
+      commit: CANDIDATE,
+      tree: CANDIDATE_TREE,
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
+    });
+    const configured = fixture({
+      receipts: [candidateReceipt],
+    });
+    const proposalContext = laterContext();
+    const query = await captureProposalQuery(configured, proposalContext);
+    configured.addMetadata(
+      query.queryHash,
+      proposalMetadata({
+        experimentId: query.experimentId,
+        diagnosticHash: query.diagnosticHash,
+        releaseId: query.releaseId,
+        actionable: query.actionable,
+        evidence,
+      }),
+    );
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
+    );
 
-      await expect(
-        configured.resolver.proposal(proposalContext),
-      ).rejects.toBeInstanceOf(
-        ArtifactBackedCloudOptimizerAdapterResolverError,
-      );
-    },
-  );
+    await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
+      ArtifactBackedCloudOptimizerAdapterResolverError,
+    );
+  });
 
   it("rejects an exact protected canary from archive content", async () => {
     const canary = "violet-orchid-release-needle";
     const candidateReceipt = sourceReceipt({
       commit: CANDIDATE,
       tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
     });
     const configured = fixture({
       receipts: [candidateReceipt],
       policy: policyWithCanary(canary),
     });
     const proposalContext = laterContext();
-    const query = await captureProposalQuery(
-      configured,
-      proposalContext,
-    );
+    const query = await captureProposalQuery(configured, proposalContext);
     const evidence = tarArtifact("release-with-canary", [
       {
         path: "release.json",
@@ -1314,13 +1126,11 @@ describe("artifact-backed production optimizer resolver", () => {
         evidence,
       }),
     );
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
 
-    await expect(
-      configured.resolver.proposal(proposalContext),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1329,17 +1139,13 @@ describe("artifact-backed production optimizer resolver", () => {
     const candidateReceipt = sourceReceipt({
       commit: CANDIDATE,
       tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
     });
     const configured = fixture({
       receipts: [candidateReceipt],
     });
     const proposalContext = laterContext();
-    const query = await captureProposalQuery(
-      configured,
-      proposalContext,
-    );
+    const query = await captureProposalQuery(configured, proposalContext);
     const evidence = tarArtifact("release-with-unlisted-path", [
       {
         path: "unexpected.json",
@@ -1359,37 +1165,27 @@ describe("artifact-backed production optimizer resolver", () => {
         evidence,
       }),
     );
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
 
-    await expect(
-      configured.resolver.proposal(proposalContext),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
 
   it("rejects protected benchmark material in the signed source tree archive", async () => {
-    const protectedSource = sourceArtifact(
-      "source-with-benchmark-material",
-      BASELINE,
-      [
-        {
-          path: "terminal-bench/tasks/hidden/task.yaml",
-          content: "instruction: hidden",
-        },
-      ],
-    );
+    const protectedSource = sourceArtifact("source-with-benchmark-material", BASELINE, [
+      {
+        path: "terminal-bench/tasks/hidden/task.yaml",
+        content: "instruction: hidden",
+      },
+    ]);
     const configured = fixture({
-      receipts: [
-        sourceReceipt({ sourceArtifact: protectedSource }),
-      ],
+      receipts: [sourceReceipt({ sourceArtifact: protectedSource })],
     });
 
-    await expect(
-      configured.resolver.proposal(context()),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(context())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1398,53 +1194,37 @@ describe("artifact-backed production optimizer resolver", () => {
     {
       label: "source-tree commit header",
       receipt: sourceReceipt({
-        sourceArtifact: sourceArtifact(
-          "source-with-detached-commit-header",
-          CANDIDATE,
-        ),
+        sourceArtifact: sourceArtifact("source-with-detached-commit-header", CANDIDATE),
       }),
     },
     {
       label: "Git-bundle advertised commit",
       receipt: sourceReceipt({
-        sourceBundleArtifact: sourceBundleArtifact(
-          "bundle-with-detached-advertisement",
-          CANDIDATE,
-        ),
+        sourceBundleArtifact: sourceBundleArtifact("bundle-with-detached-advertisement", CANDIDATE),
       }),
     },
   ])("rejects a detached $label", async ({ receipt }) => {
     const configured = fixture({ receipts: [receipt] });
 
-    await expect(
-      configured.resolver.proposal(context()),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(context())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
 
   it("rejects a protected canary hidden in an otherwise ordinary source file", async () => {
     const canary = "violet orchid release needle";
-    const protectedSource = sourceArtifact(
-      "source-with-protected-canary",
-      BASELINE,
-      [
-        {
-          path: "packages/coding-agent/src/constants.ts",
-          content: `export const marker = "${canary}";\n`,
-        },
-      ],
-    );
+    const protectedSource = sourceArtifact("source-with-protected-canary", BASELINE, [
+      {
+        path: "packages/coding-agent/src/constants.ts",
+        content: `export const marker = "${canary}";\n`,
+      },
+    ]);
     const configured = fixture({
-      receipts: [
-        sourceReceipt({ sourceArtifact: protectedSource }),
-      ],
+      receipts: [sourceReceipt({ sourceArtifact: protectedSource })],
       policy: policyWithCanary(canary),
     });
 
-    await expect(
-      configured.resolver.proposal(context()),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(context())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1453,15 +1233,11 @@ describe("artifact-backed production optimizer resolver", () => {
     const candidateReceipt = sourceReceipt({
       commit: CANDIDATE,
       tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
     });
     const configured = fixture({ receipts: [candidateReceipt] });
     const proposalContext = laterContext();
-    const query = await captureProposalQuery(
-      configured,
-      proposalContext,
-    );
+    const query = await captureProposalQuery(configured, proposalContext);
     const valid = proposalMetadata({
       experimentId: query.experimentId,
       diagnosticHash: query.diagnosticHash,
@@ -1472,16 +1248,11 @@ describe("artifact-backed production optimizer resolver", () => {
     const second = metadataArtifact("ambiguous-b", valid);
     configured.rawByUri.set(first.artifact.uri, first.raw);
     configured.rawByUri.set(second.artifact.uri, second.raw);
-    configured.locatedByQuery.set(query.queryHash, [
-      first.artifact,
-      second.artifact,
-    ]);
-    configured.locate.mockImplementation(async (value) =>
-      configured.locatedByQuery.get(value.queryHash) ?? [],
+    configured.locatedByQuery.set(query.queryHash, [first.artifact, second.artifact]);
+    configured.locate.mockImplementation(
+      async (value) => configured.locatedByQuery.get(value.queryHash) ?? [],
     );
-    await expect(
-      configured.resolver.proposal(proposalContext),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(proposalContext)).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1490,27 +1261,20 @@ describe("artifact-backed production optimizer resolver", () => {
     const mutatedReader = fixture({
       readerMutatesArtifact: true,
     });
-    await expect(
-      mutatedReader.resolver.proposal(context()),
-    ).rejects.toBeInstanceOf(
+    await expect(mutatedReader.resolver.proposal(context())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
 
     const mutatedReleaseReader = fixture({
       releaseReaderMutatesArtifact: true,
     });
-    await expect(
-      mutatedReleaseReader.resolver.proposal(context()),
-    ).rejects.toBeInstanceOf(
+    await expect(mutatedReleaseReader.resolver.proposal(context())).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
 
     const mutableContext = context();
     const receipt = sourceReceipt();
-    const bootstrap = metadataArtifact(
-      "bootstrap-mutation",
-      bootstrapMetadata(),
-    );
+    const bootstrap = metadataArtifact("bootstrap-mutation", bootstrapMetadata());
     const resolver = new ArtifactBackedCloudOptimizerAdapterResolver({
       sourceIndex: {
         boundary: "trusted-cloud",
@@ -1534,8 +1298,7 @@ describe("artifact-backed production optimizer resolver", () => {
         readUtf8: async () => bootstrap.raw,
       },
       releaseArtifactReader: {
-        boundary:
-          "trusted-cloud-optimizer-release-artifact-reader",
+        boundary: "trusted-cloud-optimizer-release-artifact-reader",
         readBytes: async (artifact_) => {
           const bytes = bytesByUri.get(artifact_.uri);
           if (bytes === undefined) throw new Error("missing");
@@ -1544,16 +1307,13 @@ describe("artifact-backed production optimizer resolver", () => {
       },
       releaseArtifactInspectionPolicy: inspectionPolicy,
       keyAuthority: {
-        boundary:
-          "trusted-cloud-optimizer-resolver-public-key-authority",
+        boundary: "trusted-cloud-optimizer-resolver-public-key-authority",
         resolve: async (request) => keyMaterial(request),
       },
       authoritySetHash: AUTHORITY_SET,
       verificationKeySetHash: KEY_SET,
     });
-    await expect(
-      resolver.proposal(mutableContext),
-    ).rejects.toBeInstanceOf(
+    await expect(resolver.proposal(mutableContext)).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
   });
@@ -1562,15 +1322,10 @@ describe("artifact-backed production optimizer resolver", () => {
     const candidateReceipt = sourceReceipt({
       commit: CANDIDATE,
       tree: CANDIDATE_TREE,
-      remoteRef:
-        "refs/heads/df/experiment/001-source-bootstrap",
+      remoteRef: "refs/heads/df/experiment/001-source-bootstrap",
     });
     const configured = fixture({ receipts: [candidateReceipt] });
-    const sharedEvidence = artifact(
-      "shared-evidence",
-      "f".repeat(64),
-      "application/x-tar",
-    );
+    const sharedEvidence = artifact("shared-evidence", "f".repeat(64), "application/x-tar");
     const firstContext = laterContext();
     const secondContext = laterContext({
       number: 3,
@@ -1586,9 +1341,7 @@ describe("artifact-backed production optimizer resolver", () => {
       queries.push(value);
       return configured.locatedByQuery.get(value.queryHash) ?? [];
     });
-    await configured.resolver.proposal(firstContext).catch(
-      () => undefined,
-    );
+    await configured.resolver.proposal(firstContext).catch(() => undefined);
     const firstQuery = queries.at(-1);
     if (firstQuery?.purpose !== "proposal-diagnostic") {
       throw new Error("first query missing");
@@ -1603,12 +1356,12 @@ describe("artifact-backed production optimizer resolver", () => {
         evidence: sharedEvidence,
       }),
     );
-    await expect(
-      configured.resolver.proposal(firstContext),
-    ).resolves.toMatchObject({ releasedEvidence: sharedEvidence });
-    await expect(
-      configured.resolver.proposal(firstContext),
-    ).resolves.toMatchObject({ releasedEvidence: sharedEvidence });
+    await expect(configured.resolver.proposal(firstContext)).resolves.toMatchObject({
+      releasedEvidence: sharedEvidence,
+    });
+    await expect(configured.resolver.proposal(firstContext)).resolves.toMatchObject({
+      releasedEvidence: sharedEvidence,
+    });
     const reboundEvidence = {
       ...sharedEvidence,
       uri: "trusted://optimizer-resolver/shared-evidence-rebound",
@@ -1618,12 +1371,9 @@ describe("artifact-backed production optimizer resolver", () => {
       throw new Error("shared evidence bytes missing");
     }
     bytesByUri.set(reboundEvidence.uri, sharedBytes);
-    const readsBeforeRebound =
-      configured.readBytes.mock.calls.length;
+    const readsBeforeRebound = configured.readBytes.mock.calls.length;
 
-    await configured.resolver.proposal(secondContext).catch(
-      () => undefined,
-    );
+    await configured.resolver.proposal(secondContext).catch(() => undefined);
     const secondQuery = queries.at(-1);
     if (secondQuery?.purpose !== "proposal-diagnostic") {
       throw new Error("second query missing");
@@ -1638,13 +1388,9 @@ describe("artifact-backed production optimizer resolver", () => {
         evidence: reboundEvidence,
       }),
     );
-    await expect(
-      configured.resolver.proposal(secondContext),
-    ).rejects.toBeInstanceOf(
+    await expect(configured.resolver.proposal(secondContext)).rejects.toBeInstanceOf(
       ArtifactBackedCloudOptimizerAdapterResolverError,
     );
-    expect(configured.readBytes).toHaveBeenCalledTimes(
-      readsBeforeRebound + 1,
-    );
+    expect(configured.readBytes).toHaveBeenCalledTimes(readsBeforeRebound + 1);
   });
 });

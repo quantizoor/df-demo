@@ -68,9 +68,7 @@ describe("campaign budgets", () => {
   });
 
   it("never permits an online-error refund or a value outside [0, 1]", () => {
-    expect(() =>
-      checkBudget(snapshot, { onlineErrorSpent: -0.001 }),
-    ).toThrow(/non-negative/u);
+    expect(() => checkBudget(snapshot, { onlineErrorSpent: -0.001 })).toThrow(/non-negative/u);
     expect(() =>
       checkBudget(
         {

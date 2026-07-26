@@ -60,12 +60,7 @@ export async function readAndVerifyEventChain(path: string): Promise<EventChain>
     }
     return parseAndVerifyEventChain(await readFile(path, "utf8"));
   } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
       return { records: [], head: null };
     }
     throw error;

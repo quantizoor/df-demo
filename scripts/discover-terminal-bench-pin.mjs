@@ -1,25 +1,9 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  constants as fileConstants,
-} from "node:fs";
-import {
-  access,
-  lstat,
-  readFile,
-  readdir,
-  realpath,
-  writeFile,
-} from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { createReadStream, constants as fileConstants } from "node:fs";
+import { access, lstat, readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
@@ -54,12 +38,7 @@ function canonicalJson(value) {
     return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
   }
   const keys = Object.keys(value).sort();
-  return `{${keys
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(value[key])}`,
-    )
-    .join(",")}}`;
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
 }
 
 function hashBytes(value) {
@@ -115,10 +94,7 @@ async function assertRegularFile(path) {
 
 function isWithin(root, path) {
   const pathFromRoot = relative(root, path);
-  return (
-    pathFromRoot === "" ||
-    (!pathFromRoot.startsWith(`..${sep}`) && pathFromRoot !== "..")
-  );
+  return pathFromRoot === "" || (!pathFromRoot.startsWith(`..${sep}`) && pathFromRoot !== "..");
 }
 
 async function inventoryDataset(rootInput) {
@@ -136,14 +112,9 @@ async function inventoryDataset(rootInput) {
     const children = await readdir(directory, {
       withFileTypes: true,
     });
-    children.sort((left, right) =>
-      Buffer.from(left.name).compare(Buffer.from(right.name)),
-    );
+    children.sort((left, right) => Buffer.from(left.name).compare(Buffer.from(right.name)));
     for (const child of children) {
-      if (
-        child.isSymbolicLink() ||
-        (!child.isDirectory() && !child.isFile())
-      ) {
+      if (child.isSymbolicLink() || (!child.isDirectory() && !child.isFile())) {
         throw new DiscoveryError();
       }
       const path = resolve(directory, child.name);
@@ -184,13 +155,8 @@ async function inventoryDataset(rootInput) {
   }
 
   await visit(root);
-  entries.sort((left, right) =>
-    Buffer.from(left.path).compare(Buffer.from(right.path)),
-  );
-  if (
-    taskManifests.length !== TASK_COUNT ||
-    datasetManifests.length !== 1
-  ) {
+  entries.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)));
+  if (taskManifests.length !== TASK_COUNT || datasetManifests.length !== 1) {
     throw new DiscoveryError();
   }
   return {
@@ -203,17 +169,12 @@ async function inventoryDataset(rootInput) {
 }
 
 async function main() {
-  if (
-    process.env.GITHUB_ACTIONS !== "true" ||
-    process.env.RUNNER_ENVIRONMENT !== "github-hosted"
-  ) {
+  if (process.env.GITHUB_ACTIONS !== "true" || process.env.RUNNER_ENVIRONMENT !== "github-hosted") {
     throw new DiscoveryError();
   }
   const arguments_ = parseArguments(process.argv.slice(2));
   const sourceCommit = arguments_["--source-commit"];
-  const registryRevision = Number(
-    arguments_["--registry-revision"],
-  );
+  const registryRevision = Number(arguments_["--registry-revision"]);
   const harborVersion = arguments_["--harbor-version"];
   if (
     !COMMIT.test(sourceCommit) ||
@@ -233,12 +194,8 @@ async function main() {
   }
 
   const harborPackage = resolve(arguments_["--harbor-package"]);
-  const harborExecutable = resolve(
-    arguments_["--harbor-executable"],
-  );
-  const harborVersionOutput = resolve(
-    arguments_["--harbor-version-output"],
-  );
+  const harborExecutable = resolve(arguments_["--harbor-executable"]);
+  const harborVersionOutput = resolve(arguments_["--harbor-version-output"]);
   const piAdapter = resolve(arguments_["--pi-adapter"]);
   await Promise.all([
     assertRegularFile(harborPackage),
@@ -265,14 +222,11 @@ async function main() {
     datasetContentSha256: hashBytes(
       canonicalJson({
         schemaVersion: 1,
-        domain:
-          "dark-factory.terminal-bench-dataset-content-manifest.v1",
+        domain: "dark-factory.terminal-bench-dataset-content-manifest.v1",
         entries: inventory.entries,
       }),
     ),
-    datasetManifestSha256: await hashFile(
-      inventory.datasetManifest,
-    ),
+    datasetManifestSha256: await hashFile(inventory.datasetManifest),
     harborVersion,
     harborPackageSha256: await hashFile(harborPackage),
     harborExecutableSha256: await hashFile(harborExecutable),
@@ -290,8 +244,7 @@ async function main() {
   const discoveryPolicyHash = hashBytes(
     canonicalJson({
       schemaVersion: 1,
-      domain:
-        "dark-factory.terminal-bench-pin-discovery-policy.v1",
+      domain: "dark-factory.terminal-bench-pin-discovery-policy.v1",
       cloudOnly: true,
       taskNamesReleased: false,
       taskInstructionsReleased: false,
@@ -303,8 +256,7 @@ async function main() {
   );
   const unsigned = {
     schemaVersion: 1,
-    domain:
-      "dark-factory.terminal-bench-pin-discovery-receipt.v1",
+    domain: "dark-factory.terminal-bench-pin-discovery-receipt.v1",
     sourceCommit,
     runnerClass: "github-hosted",
     pin,
@@ -339,8 +291,7 @@ try {
     `${JSON.stringify({
       ok: false,
       code: "DF_TBENCH_PIN_DISCOVERY_FAILED",
-      message:
-        "Cloud-only Terminal-Bench pin discovery failed closed.",
+      message: "Cloud-only Terminal-Bench pin discovery failed closed.",
     })}\n`,
   );
   process.exitCode = 1;

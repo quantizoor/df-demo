@@ -3,18 +3,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import {
-  campaign,
-  createDarkFactoryCli,
-  runDarkFactoryCli,
-  type CampaignControlStore,
-  type CliOutput,
-} from "../src/index.js";
 import type {
   RepositoryDoctorExpectation,
   RepositoryDoctorReport,
 } from "../src/harness/repository.js";
+import {
+  type CampaignControlStore,
+  type CliOutput,
+  campaign,
+  createDarkFactoryCli,
+  runDarkFactoryCli,
+} from "../src/index.js";
 import { withContentHash } from "../src/schemas/canonical.js";
 import type { CampaignState } from "../src/schemas/control.js";
 import { assertValidDocument } from "../src/schemas/registry.js";
@@ -49,10 +48,7 @@ async function temporaryWorkspace(): Promise<{
   ]);
   await Promise.all([
     writeFile(join(darkFactory, "package.json"), "{}\n"),
-    writeFile(
-      join(darkFactory, "claude-plugin/.claude-plugin/plugin.json"),
-      "{}\n",
-    ),
+    writeFile(join(darkFactory, "claude-plugin/.claude-plugin/plugin.json"), "{}\n"),
     writeFile(join(pi, "package-lock.json"), "{}\n"),
     writeFile(join(pi, "packages/coding-agent/package.json"), "{}\n"),
   ]);
@@ -77,25 +73,62 @@ function captureOutput(): {
 }
 
 function completeEnvironment(secret: string): NodeJS.ProcessEnv {
+  const imageDigest = `sha256:${"a".repeat(64)}`;
   return {
     DF_CLOUD_PROVIDER: "daytona",
     DAYTONA_API_KEY: secret,
-    DF_OPTIMIZER_MODEL: "claude-exact-model",
-    DF_EVALUATED_PROVIDER: "exact-provider",
-    DF_EVALUATED_MODEL: "exact-model",
-    DF_EVALUATED_REASONING: "exact-reasoning",
+    DF_CLOUD_REGION_CLASS: "trusted-eu",
+    DF_TRUSTED_CONTROL_PLANE: "1",
+    DF_TRUSTED_VOLUME_ROOT: "/mnt/dark-factory",
+    DF_CONTROL_IMAGE_REFERENCE: `ghcr.io/parallaxai/df-control@${imageDigest}`,
+    DF_CONTROL_IMAGE_DIGEST: imageDigest,
+    DF_OPTIMIZER_IMAGE_REFERENCE: `ghcr.io/parallaxai/df-optimizer@${imageDigest}`,
+    DF_OPTIMIZER_IMAGE_DIGEST: imageDigest,
+    DF_BUILD_IMAGE_REFERENCE: `ghcr.io/parallaxai/df-build@${imageDigest}`,
+    DF_BUILD_IMAGE_DIGEST: imageDigest,
+    DF_EVALUATOR_IMAGE_REFERENCE: `ghcr.io/parallaxai/df-evaluator@${imageDigest}`,
+    DF_EVALUATOR_IMAGE_DIGEST: imageDigest,
+    DF_FOUNDRY_RESOURCE_NAME: "df-eu-prod",
+    DF_OPTIMIZER_MODEL: "claude-opus-5",
+    DF_OPTIMIZER_DEPLOYMENT_NAME: "df-opus5-prod",
+    DF_OPTIMIZER_EFFORT: "high",
+    DF_CLAUDE_CODE_VERSION: "2.1.217",
+    DF_OPTIMIZER_SECRET_SOURCE: "DF_FOUNDRY_OPTIMIZER_SECRET",
+    DF_OPTIMIZER_SECRET_TARGET: "ANTHROPIC_FOUNDRY_API_KEY",
+    DF_EVALUATED_PROVIDER: "microsoft-foundry",
+    DF_EVALUATED_MODEL: "claude-opus-4-8",
+    DF_EVALUATED_DEPLOYMENT_NAME: "df-opus48-eval",
+    DF_EVALUATED_REASONING: "high",
+    DF_EVALUATED_SECRET_BINDINGS_JSON: JSON.stringify([
+      {
+        sourceEnvironmentName: "DF_FOUNDRY_EVALUATED_SECRET",
+        targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
+      },
+    ]),
+    DF_GITHUB_SECRET_SOURCE: "DF_GITHUB_PRIVATE_REPO_SECRET",
+    DF_HARBOR_SECRET_BINDINGS_JSON: JSON.stringify([
+      {
+        sourceEnvironmentName: "DF_DAYTONA_NESTED_SECRET",
+        targetEnvironmentName: "DAYTONA_API_KEY",
+      },
+    ]),
     DF_MODE: "research",
     DF_LEADERBOARD_ELIGIBILITY: "unverified",
     DF_TRUSTED_ZONE: "trusted-zone",
-    DF_SIGNING_KEY_ID: "signing-key",
+    DF_SIGNING_KEY_ID: "signer",
     DF_HARBOR_VERSION: "0.20.0",
-    DF_TBENCH_DATASET_REVISION: "6",
-    DF_TBENCH_DATASET_DIGEST: HASH,
+    DF_TBENCH_REGISTRY_REVISION: "6",
+    DF_TBENCH_DATASET_CONTENT_SHA256: "b".repeat(64),
+    DF_TBENCH_DATASET_MANIFEST_SHA256: "c".repeat(64),
+    DF_HARBOR_PACKAGE_SHA256: "d".repeat(64),
+    DF_HARBOR_EXECUTABLE_SHA256: "e".repeat(64),
+    DF_PI_HARBOR_ADAPTER_SHA256: "f".repeat(64),
     DF_BUDGET_USD: "100",
     DF_BUDGET_TOKENS: "1000000",
-    DF_BUDGET_WALL_TIME_MINUTES: "60",
-    DF_BUDGET_PRIVACY_RELEASES: "20",
-    DF_BUDGET_PROMOTION_LOOKS: "10",
+    DF_BUDGET_WALL_TIME_MINUTES: "240",
+    DF_BUDGET_ATTEMPTS: "380",
+    DF_BUDGET_PRIVACY_RELEASES: "5",
+    DF_BUDGET_PROMOTION_LOOKS: "5",
     DF_BUDGET_ONLINE_ERROR: "0.05",
   };
 }
@@ -150,9 +183,7 @@ function rehashCampaignState(state: CampaignState): CampaignState {
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
@@ -184,15 +215,14 @@ describe("Dark Factory CLI", () => {
     expect(report.ok).toBe(true);
     expect(report.environment.presence["DAYTONA_API_KEY"]).toBe(true);
     expect(capture.stdout.join("")).not.toContain(secret);
-    expect(capture.stdout.join("")).not.toContain("claude-exact-model");
+    expect(capture.stdout.join("")).not.toContain("claude-opus-5");
   });
 
   it("doctors the sibling Pi checkout without releasing its absolute path", async () => {
     const workspace = await temporaryWorkspace();
     const capture = captureOutput();
-    const inspectRepository = vi.fn(
-      async (expectation: RepositoryDoctorExpectation) =>
-        repositoryReport(expectation.canonicalPath),
+    const inspectRepository = vi.fn(async (expectation: RepositoryDoctorExpectation) =>
+      repositoryReport(expectation.canonicalPath),
     );
 
     const exitCode = await runDarkFactoryCli(["harness", "doctor"], {
@@ -266,13 +296,7 @@ describe("Dark Factory CLI", () => {
     const createCampaignStore = vi.fn(() => fake.store);
 
     const exitCode = await runDarkFactoryCli(
-      [
-        "status",
-        "--campaign",
-        "campaign-001",
-        "--state-root",
-        ".control",
-      ],
+      ["status", "--campaign", "campaign-001", "--state-root", ".control"],
       {
         cwd: "/workspace/df-demo",
         environment: {},
@@ -282,10 +306,7 @@ describe("Dark Factory CLI", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(createCampaignStore).toHaveBeenCalledWith(
-      "/workspace/df-demo/.control",
-      "campaign-001",
-    );
+    expect(createCampaignStore).toHaveBeenCalledWith("/workspace/df-demo/.control", "campaign-001");
     expect(JSON.parse(capture.stdout.join(""))).toMatchObject({
       command: "campaign status",
       ok: true,
@@ -312,14 +333,7 @@ describe("Dark Factory CLI", () => {
     const fake = campaignStore(current, next);
 
     const exitCode = await runDarkFactoryCli(
-      [
-        "campaign",
-        "stop",
-        "--campaign",
-        "campaign-001",
-        "--state-root",
-        ".control",
-      ],
+      ["campaign", "stop", "--campaign", "campaign-001", "--state-root", ".control"],
       {
         cwd: "/workspace/df-demo",
         environment: {},
@@ -329,10 +343,7 @@ describe("Dark Factory CLI", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(fake.requestStop).toHaveBeenCalledWith(
-      current.contentHash,
-      "operator",
-    );
+    expect(fake.requestStop).toHaveBeenCalledWith(current.contentHash, "operator");
     expect(capture.stdout.join("")).toContain('"changed": true');
   });
 
@@ -341,13 +352,7 @@ describe("Dark Factory CLI", () => {
     const createCampaignStore = vi.fn();
 
     const exitCode = await runDarkFactoryCli(
-      [
-        "resume",
-        "--campaign",
-        "campaign-001",
-        "--state-root",
-        ".control",
-      ],
+      ["resume", "--campaign", "campaign-001", "--state-root", ".control"],
       {
         cwd: "/workspace/df-demo",
         environment: {},
@@ -409,8 +414,6 @@ describe("Dark Factory CLI", () => {
 
     expect(exitCode).toBe(0);
     expect(fake.resume).toHaveBeenCalledWith(paused.contentHash, HASH);
-    expect(capture.stdout.join("")).toContain(
-      '"authorizationConsumed": true',
-    );
+    expect(capture.stdout.join("")).toContain('"authorizationConsumed": true');
   });
 });

@@ -1,15 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { updateChampionPointers } from "../core/lifecycle.js";
-import type {
-  BudgetSnapshot,
-  ChampionPointers,
-  ExperimentIdentity,
-} from "../domain/models.js";
-import {
-  allocateOnlineGate,
-  createOnlineErrorBudget,
-} from "../evaluation/statistics.js";
+import type { BudgetSnapshot, ChampionPointers, ExperimentIdentity } from "../domain/models.js";
+import { allocateOnlineGate, createOnlineErrorBudget } from "../evaluation/statistics.js";
 import type {
   BlindBroker,
   DiagnosticBriefReference,
@@ -23,11 +16,8 @@ import { canonicalHash } from "../schemas/canonical.js";
 const PROTOCOL_HASH = createHash("sha256")
   .update("dark-factory-synthetic-protocol-v1")
   .digest("hex");
-const BASELINE_COMMIT = createHash("sha1")
-  .update("dark-factory-synthetic-baseline")
-  .digest("hex");
-const SYNTHETIC_PRIVATE_TASK_CANARY =
-  "DF_SYNTHETIC_PRIVATE_TASK_CANARY";
+const BASELINE_COMMIT = createHash("sha1").update("dark-factory-synthetic-baseline").digest("hex");
+const SYNTHETIC_PRIVATE_TASK_CANARY = "DF_SYNTHETIC_PRIVATE_TASK_CANARY";
 
 type SyntheticDisposition = "promoted" | "rejected" | "inconclusive";
 
@@ -79,9 +69,7 @@ function experiment(number: number): ExperimentIdentity {
   };
 }
 
-function optimizer(
-  expectedSourceBriefHash: string | null,
-): OptimizerAdapter {
+function optimizer(expectedSourceBriefHash: string | null): OptimizerAdapter {
   return {
     propose: async (context) => {
       if (
@@ -93,9 +81,7 @@ function optimizer(
       const commit = candidateCommit(context.experiment.number);
       return {
         hypothesis: {
-          hash: sha256(
-            `synthetic-hypothesis:${String(context.experiment.number)}`,
-          ),
+          hash: sha256(`synthetic-hypothesis:${String(context.experiment.number)}`),
           sourceBriefHash: expectedSourceBriefHash,
           causalClaim: "A generic recovery policy is incomplete.",
           intervention: "Exercise a generic bounded recovery change.",
@@ -107,9 +93,7 @@ function optimizer(
         candidate: {
           commit,
           patchHash: sha256(`synthetic-patch:${commit}`),
-          changedFiles: [
-            "packages/coding-agent/src/core/synthetic-fixture.ts",
-          ],
+          changedFiles: ["packages/coding-agent/src/core/synthetic-fixture.ts"],
           mutationCategory: "synthetic-control-flow",
         },
       };
@@ -128,10 +112,7 @@ function validationAggregate(
   evidenceHash: string,
   gateOrdinal: 1 | 2,
 ): ValidationAggregate {
-  let state = createOnlineErrorBudget(
-    0.05,
-    "synthetic-null-calibration-v1",
-  );
+  let state = createOnlineErrorBudget(0.05, "synthetic-null-calibration-v1");
   if (gateOrdinal === 2) {
     state = allocateOnlineGate(state).nextState;
   }
@@ -153,15 +134,9 @@ function validationAggregate(
       cumulativeSpentBefore: state.spentAlpha,
       cumulativeSpentAfter: gate.nextState.spentAlpha,
       remainingAfter: gate.nextState.remainingAlpha,
-      reservationHash: sha256(
-        `synthetic-online-reservation:${String(gateOrdinal)}`,
-      ),
-      priorStateHash: sha256(
-        `synthetic-online-state:${String(gateOrdinal - 1)}`,
-      ),
-      resultingStateHash: sha256(
-        `synthetic-online-state:${String(gateOrdinal)}`,
-      ),
+      reservationHash: sha256(`synthetic-online-reservation:${String(gateOrdinal)}`),
+      priorStateHash: sha256(`synthetic-online-state:${String(gateOrdinal - 1)}`),
+      resultingStateHash: sha256(`synthetic-online-state:${String(gateOrdinal)}`),
     },
     stratumRegressionVeto: false,
     integrityVeto: false,
@@ -175,9 +150,7 @@ function validationAggregate(
     wallTimeMs: 1,
     attestationHash: sha256(`synthetic-validation:${disposition}`),
     releasedEvidenceHash: evidenceHash,
-    behavioralSourceCommitmentHash: sha256(
-      `synthetic-behavioral-source:${disposition}`,
-    ),
+    behavioralSourceCommitmentHash: sha256(`synthetic-behavioral-source:${disposition}`),
     attemptAccounting: {
       policyVersion: "validation-attempt-ledger-v1",
       terminalStatus: "complete",
@@ -200,20 +173,14 @@ function validationAggregate(
 }
 
 class SyntheticBroker implements BlindBroker {
-  readonly #scenario:
-    | "bootstrap-promote"
-    | "repair-reject"
-    | "validation-inconclusive";
+  readonly #scenario: "bootstrap-promote" | "repair-reject" | "validation-inconclusive";
   readonly #brief: DiagnosticBriefReference;
   readonly #onlineGateOrdinal: 1 | 2;
   readonly #privateTaskCanary = SYNTHETIC_PRIVATE_TASK_CANARY;
   validationConsumed = false;
 
   constructor(
-    scenario:
-      | "bootstrap-promote"
-      | "repair-reject"
-      | "validation-inconclusive",
+    scenario: "bootstrap-promote" | "repair-reject" | "validation-inconclusive",
     experimentNumber: number,
   ) {
     this.#scenario = scenario;
@@ -251,8 +218,7 @@ class SyntheticBroker implements BlindBroker {
     readonly attestationHash: string;
   }> {
     return Promise.resolve({
-      disposition:
-        this.#scenario === "repair-reject" ? "rejected" : "passed",
+      disposition: this.#scenario === "repair-reject" ? "rejected" : "passed",
       attemptOrdinal: 1,
       integrityPassed: true,
       cacheStatus: "not-used",
@@ -264,9 +230,7 @@ class SyntheticBroker implements BlindBroker {
     });
   }
 
-  prepareValidation(input: {
-    readonly remainingExperimentAttempts: number;
-  }): Promise<{
+  prepareValidation(input: { readonly remainingExperimentAttempts: number }): Promise<{
     readonly leaseToken: string;
     readonly attestationHash: string;
     readonly expectedValidArms: number;
@@ -286,9 +250,7 @@ class SyntheticBroker implements BlindBroker {
     }
     return Promise.resolve(
       validationAggregate(
-        this.#scenario === "validation-inconclusive"
-          ? "inconclusive"
-          : "promoted",
+        this.#scenario === "validation-inconclusive" ? "inconclusive" : "promoted",
         this.#brief.hash,
         this.#onlineGateOrdinal,
       ),
@@ -300,9 +262,7 @@ class SyntheticBroker implements BlindBroker {
   }> {
     this.validationConsumed = true;
     return Promise.resolve({
-      dispositionAttestationHash: sha256(
-        `synthetic-panel-disposition:${this.#scenario}`,
-      ),
+      dispositionAttestationHash: sha256(`synthetic-panel-disposition:${this.#scenario}`),
     });
   }
 
@@ -366,8 +326,7 @@ class SyntheticJournal implements ExperimentJournal {
         input.promotedCandidate === null
           ? input.activeChampionBefore
           : updateChampionPointers(input.activeChampionBefore, {
-              experimentNumber:
-                input.promotedCandidate.experimentNumber,
+              experimentNumber: input.promotedCandidate.experimentNumber,
               commit: input.promotedCandidate.commit,
               state: "promoted",
               sealedAt: input.promotedCandidate.decidedAt,
@@ -451,9 +410,7 @@ export async function runSyntheticWalkForwardCampaign(): Promise<SyntheticCampai
             passed: true,
             integrityPassed: true,
             protocolHash: PROTOCOL_HASH,
-            checksHash: sha256(
-              `synthetic-gates:${String(scenario.number)}`,
-            ),
+            checksHash: sha256(`synthetic-gates:${String(scenario.number)}`),
             aggregateCostUsd: 0,
             tokens: 0,
             wallTimeMs: 1,
@@ -462,10 +419,7 @@ export async function runSyntheticWalkForwardCampaign(): Promise<SyntheticCampai
       },
       broker,
       journal,
-      now: () =>
-        new Date(
-          `2026-07-${String(20 + scenario.number).padStart(2, "0")}T00:00:00.000Z`,
-        ),
+      now: () => new Date(`2026-07-${String(20 + scenario.number).padStart(2, "0")}T00:00:00.000Z`),
     });
     const result = await runner.run({
       experiment: experiment(scenario.number),
@@ -473,9 +427,7 @@ export async function runSyntheticWalkForwardCampaign(): Promise<SyntheticCampai
       budget,
       diagnosticBrief,
       previousDiscoveryAttestationHash:
-        scenario.number === 1
-          ? null
-          : sha256(`synthetic-discovery:${String(scenario.number - 1)}`),
+        scenario.number === 1 ? null : sha256(`synthetic-discovery:${String(scenario.number - 1)}`),
       repairAttemptOrdinal: 1,
       stop: { requested: false },
     });
@@ -483,8 +435,7 @@ export async function runSyntheticWalkForwardCampaign(): Promise<SyntheticCampai
       result.disposition !== scenario.expected ||
       journal.events.at(-1) !== "seal" ||
       journal.events.includes("interrupt") ||
-      (scenario.expected !== "rejected" &&
-        broker.validationConsumed !== true)
+      (scenario.expected !== "rejected" && broker.validationConsumed !== true)
     ) {
       throw new Error("Synthetic campaign violated a lifecycle invariant.");
     }
@@ -515,9 +466,7 @@ export async function runSyntheticWalkForwardCampaign(): Promise<SyntheticCampai
     ...body,
     receiptHash: canonicalHash(body),
   };
-  if (
-    JSON.stringify(receipt).includes(SYNTHETIC_PRIVATE_TASK_CANARY)
-  ) {
+  if (JSON.stringify(receipt).includes(SYNTHETIC_PRIVATE_TASK_CANARY)) {
     throw new Error("Synthetic hidden canary crossed the release boundary.");
   }
   return receipt;

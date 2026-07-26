@@ -16,9 +16,9 @@ const MAXIMUM_PATH_BYTES = 4_096;
 const MAXIMUM_JSON_DEPTH = 128;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_PATH_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Harbor archive paths are untrusted and must reject every ASCII control byte.
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
-const NESTED_ARCHIVE =
-  /(?:^|\/)[^/]+\.(?:7z|bz2|gz|rar|tar|tbz2|tgz|txz|xz|zip)$/iu;
+const NESTED_ARCHIVE = /(?:^|\/)[^/]+\.(?:7z|bz2|gz|rar|tar|tbz2|tgz|txz|xz|zip)$/iu;
 
 type PlainRecord = Readonly<Record<string, unknown>>;
 
@@ -85,22 +85,14 @@ function record(value: unknown): PlainRecord {
 function exactKeys(value: unknown, keys: readonly string[]): PlainRecord {
   const result = record(value);
   const actual = Object.keys(result);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
   return result;
 }
 
 function safeInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > maximum
-  ) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > maximum) {
     fail();
   }
   return value;
@@ -136,12 +128,7 @@ function zeroPadding(bytes: Uint8Array): void {
   if (bytes.some((byte) => byte !== 0)) fail();
 }
 
-function writeOctal(
-  header: Uint8Array,
-  offset: number,
-  length: number,
-  value: number,
-): void {
+function writeOctal(header: Uint8Array, offset: number, length: number, value: number): void {
   const encoded = value.toString(8);
   if (encoded.length > length - 1) fail();
   const padded = encoded.padStart(length - 1, "0");
@@ -156,11 +143,7 @@ function writeOctal(
  * than accepting general tar. Alternate encodings, links, devices, sparse
  * files, global PAX state, ownership changes, and nonzero metadata all fail.
  */
-function deterministicHeader(
-  path: string,
-  size: number,
-  type: "0" | "x",
-): Uint8Array {
+function deterministicHeader(path: string, size: number, type: "0" | "x"): Uint8Array {
   const pathBytes = new TextEncoder().encode(path);
   if (pathBytes.byteLength > 100) fail();
   const header = new Uint8Array(BLOCK_BYTES);
@@ -270,6 +253,7 @@ class DuplicateRejectingJsonParser {
   #whitespace(): void {
     while (
       this.#offset < this.#text.length &&
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Strict JSON parsing intentionally admits only the four RFC 8259 whitespace bytes.
       /[\u0009\u000a\u000d\u0020]/u.test(this.#text[this.#offset] ?? "")
     ) {
       this.#offset += 1;
@@ -326,8 +310,7 @@ class DuplicateRejectingJsonParser {
   }
 
   #number(): number {
-    const match =
-      /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/uy;
+    const match = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/uy;
     match.lastIndex = this.#offset;
     const found = match.exec(this.#text);
     if (found === null) fail();
@@ -396,9 +379,7 @@ class DuplicateRejectingJsonParser {
   }
 }
 
-export function parseHarbor020Json(
-  bytes: Uint8Array,
-): PlainRecord {
+export function parseHarbor020Json(bytes: Uint8Array): PlainRecord {
   return record(new DuplicateRejectingJsonParser(bytes).parse());
 }
 
@@ -410,10 +391,7 @@ function assertSafePayloadPath(value: unknown): string {
     CONTROL_CHARACTER.test(path) ||
     path.includes("\\") ||
     path.startsWith("/") ||
-    segments.some(
-      (segment) =>
-        segment.length === 0 || segment === "." || segment === "..",
-    ) ||
+    segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") ||
     NESTED_ARCHIVE.test(path)
   ) {
     fail();
@@ -452,8 +430,7 @@ function parseManifest(
     "files",
   ]);
   if (
-    canonicalJson(manifest) !==
-      new TextDecoder("utf-8", { fatal: true }).decode(body) ||
+    canonicalJson(manifest) !== new TextDecoder("utf-8", { fatal: true }).decode(body) ||
     manifest["schemaVersion"] !== 1 ||
     manifest["domain"] !== "dark-factory.harbor-output-bundle.v1" ||
     manifest["requestId"] !== input.job.requestId ||
@@ -463,17 +440,13 @@ function parseManifest(
     manifest["order"] !== input.invocation.order ||
     manifest["configSha256"] !== input.invocation.configSha256 ||
     manifest["executionId"] !== input.executionId ||
-    safeInteger(manifest["expectedTrialCount"], MAXIMUM_TRIALS) !==
-      input.invocation.armCount ||
+    safeInteger(manifest["expectedTrialCount"], MAXIMUM_TRIALS) !== input.invocation.armCount ||
     !Array.isArray(manifest["files"])
   ) {
     fail();
   }
   const fileCount = safeInteger(manifest["fileCount"], MAXIMUM_FILES);
-  const totalByteLength = safeInteger(
-    manifest["totalByteLength"],
-    MAXIMUM_PAYLOAD_BYTES,
-  );
+  const totalByteLength = safeInteger(manifest["totalByteLength"], MAXIMUM_PAYLOAD_BYTES);
   if (fileCount < 1 || manifest["files"].length !== fileCount) fail();
   const files: Harbor020OutputBundleFile[] = [];
   const paths = new Set<string>();
@@ -481,16 +454,9 @@ function parseManifest(
   for (const rawFile of manifest["files"]) {
     const file = exactKeys(rawFile, ["path", "byteLength", "sha256"]);
     const path = assertSafePayloadPath(file["path"]);
-    const byteLength = safeInteger(
-      file["byteLength"],
-      MAXIMUM_PAYLOAD_BYTES,
-    );
+    const byteLength = safeInteger(file["byteLength"], MAXIMUM_PAYLOAD_BYTES);
     const sha256 = digest(file["sha256"]);
-    if (
-      paths.has(path) ||
-      (files.length > 0 &&
-        compareUtf8(files.at(-1)?.path ?? "", path) >= 0)
-    ) {
+    if (paths.has(path) || (files.length > 0 && compareUtf8(files.at(-1)?.path ?? "", path) >= 0)) {
       fail();
     }
     for (
@@ -562,9 +528,7 @@ function assertHarborLayout(
         !trajectoryDirectories.has(directory) ||
         !paths.has(`${directory}/agent/trajectory.json`),
     ) ||
-    [...trajectoryDirectories].some(
-      (directory) => !resultDirectories.has(directory),
-    )
+    [...trajectoryDirectories].some((directory) => !resultDirectories.has(directory))
   ) {
     fail();
   }
@@ -590,8 +554,7 @@ export function parseHarbor020OutputBundle(input: {
       input.bytes.byteLength < BLOCK_BYTES * 3 ||
       input.bytes.byteLength > input.maximumArchiveBytes ||
       input.bytes.byteLength % BLOCK_BYTES !== 0 ||
-      createHash("sha256").update(input.bytes).digest("hex") !==
-        input.artifact.sha256 ||
+      createHash("sha256").update(input.bytes).digest("hex") !== input.artifact.sha256 ||
       !Number.isSafeInteger(input.maximumArchiveBytes) ||
       input.maximumArchiveBytes < BLOCK_BYTES * 3
     ) {
@@ -602,6 +565,7 @@ export function parseHarbor020OutputBundle(input: {
     const sizeField = new TextDecoder("ascii", { fatal: true }).decode(
       manifestHeader.subarray(124, 136),
     );
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: POSIX tar size fields require an exact trailing NUL terminator.
     if (!/^[0-7]{11}\u0000$/u.test(sizeField)) fail();
     const manifestSize = Number.parseInt(sizeField.slice(0, -1), 8);
     if (
@@ -611,14 +575,8 @@ export function parseHarbor020OutputBundle(input: {
     ) {
       fail();
     }
-    const manifest = parseManifest(
-      cursor.takeEntry("manifest.json", manifestSize, "0"),
-      input,
-    );
-    const trialDirectories = assertHarborLayout(
-      manifest.files,
-      input.invocation.armCount,
-    );
+    const manifest = parseManifest(cursor.takeEntry("manifest.json", manifestSize, "0"), input);
+    const trialDirectories = assertHarborLayout(manifest.files, input.invocation.armCount);
     const retained = new Map<string, Uint8Array>();
     const retainedPaths = new Set([
       "config.json",
@@ -632,17 +590,9 @@ export function parseHarbor020OutputBundle(input: {
       const archivePath = `payload/${file.path}`;
       const pax = paxPathRecord(archivePath);
       const ordinal = String(index).padStart(6, "0");
-      const actualPax = cursor.takeEntry(
-        `.pax/${ordinal}`,
-        pax.byteLength,
-        "x",
-      );
+      const actualPax = cursor.takeEntry(`.pax/${ordinal}`, pax.byteLength, "x");
       if (!equalBytes(actualPax, pax)) fail();
-      const body = cursor.takeEntry(
-        `.files/${ordinal}`,
-        file.byteLength,
-        "0",
-      );
+      const body = cursor.takeEntry(`.files/${ordinal}`, file.byteLength, "0");
       if (createHash("sha256").update(body).digest("hex") !== file.sha256) {
         fail();
       }
@@ -656,9 +606,7 @@ export function parseHarbor020OutputBundle(input: {
     if (retained.size !== retainedPaths.size) fail();
     const trials = trialDirectories.map((directory) => {
       const resultBytes = retained.get(`${directory}/result.json`);
-      const trajectoryBytes = retained.get(
-        `${directory}/agent/trajectory.json`,
-      );
+      const trajectoryBytes = retained.get(`${directory}/agent/trajectory.json`);
       if (resultBytes === undefined || trajectoryBytes === undefined) fail();
       return {
         directory,

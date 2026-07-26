@@ -11,11 +11,11 @@ import type {
 import {
   ArtifactBackedCampaignAttestationVerifier,
   createUnsignedTrustedCampaignAttestationEvidence,
-  TrustedCampaignAttestationVerificationError,
-  trustedCampaignAttestationLookupHash,
   type SignedTrustedCampaignAttestationEvidence,
   type TrustedCampaignAttestationArtifactQuery,
   type TrustedCampaignAttestationEvidenceInput,
+  TrustedCampaignAttestationVerificationError,
+  trustedCampaignAttestationLookupHash,
 } from "../../src/cloud/trusted-campaign-attestations.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
@@ -36,9 +36,7 @@ const HASH_F = "f".repeat(64);
 const COMMIT_A = "a".repeat(40);
 const COMMIT_B = "b".repeat(40);
 
-function ledgers(
-  brokerExposureStateAttestationHash = HASH_A,
-): CampaignLedgerPointers {
+function ledgers(brokerExposureStateAttestationHash = HASH_A): CampaignLedgerPointers {
   return {
     brokerExposureStateAttestationHash,
     repeatedTestingLedgerHash: HASH_B,
@@ -89,10 +87,7 @@ function decisionAttestation(): CampaignDecisionAttestation {
   };
 }
 
-function genesisAttestation(): Extract<
-  CampaignControlAttestation,
-  { readonly kind: "genesis" }
-> {
+function genesisAttestation(): Extract<CampaignControlAttestation, { readonly kind: "genesis" }> {
   return {
     kind: "genesis",
     campaignId: "campaign-001",
@@ -113,10 +108,7 @@ function genesisAttestation(): Extract<
   };
 }
 
-function resumeAttestation(): Extract<
-  CampaignControlAttestation,
-  { readonly kind: "resume" }
-> {
+function resumeAttestation(): Extract<CampaignControlAttestation, { readonly kind: "resume" }> {
   return {
     kind: "resume",
     campaignId: "campaign-001",
@@ -158,9 +150,7 @@ function verifierFixture(input: {
   readonly key?: typeof publicKey;
   readonly keyPurpose?: "campaign-attestation" | "result-envelope";
   readonly sourceBoundary?: "trusted-cloud" | "test-only";
-  readonly artifactTransform?: (
-    artifact: TrustedCloudArtifactRef,
-  ) => TrustedCloudArtifactRef;
+  readonly artifactTransform?: (artifact: TrustedCloudArtifactRef) => TrustedCloudArtifactRef;
 }) {
   const document = input.document ?? signedEvidence(input.evidence);
   const canonical = `${canonicalJson(document)}\n`;
@@ -179,10 +169,7 @@ function verifierFixture(input: {
   );
   const readUtf8 = vi.fn(async () => raw);
   const resolve = vi.fn(
-    async (request: {
-      readonly purpose: "campaign-attestation";
-      readonly keyId: string;
-    }) =>
+    async (request: { readonly purpose: "campaign-attestation"; readonly keyId: string }) =>
       request.keyId === "campaign-key"
         ? {
             boundary: "trusted-cloud-key-material" as const,
@@ -289,9 +276,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       document: signedEvidence(other),
     });
 
-    await expect(
-      fixture.verifier.verify(expected.payload),
-    ).rejects.toBeInstanceOf(
+    await expect(fixture.verifier.verify(expected.payload)).rejects.toBeInstanceOf(
       TrustedCampaignAttestationVerificationError,
     );
   });
@@ -306,9 +291,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       rawTransform: (raw) => ` ${raw}`,
     });
 
-    await expect(
-      fixture.verifier.verify(evidence.payload),
-    ).rejects.toBeInstanceOf(
+    await expect(fixture.verifier.verify(evidence.payload)).rejects.toBeInstanceOf(
       TrustedCampaignAttestationVerificationError,
     );
     expect(fixture.resolve).not.toHaveBeenCalled();
@@ -317,41 +300,36 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
   it.each([
     {
       label: "digest",
-      transform: (
-        artifact: TrustedCloudArtifactRef,
-      ): TrustedCloudArtifactRef => ({
+      transform: (artifact: TrustedCloudArtifactRef): TrustedCloudArtifactRef => ({
         ...artifact,
         sha256: HASH_A,
       }),
     },
     {
       label: "length",
-      transform: (
-        artifact: TrustedCloudArtifactRef,
-      ): TrustedCloudArtifactRef => ({
+      transform: (artifact: TrustedCloudArtifactRef): TrustedCloudArtifactRef => ({
         ...artifact,
         byteLength: artifact.byteLength + 1,
       }),
     },
-  ])("rejects a reader response detached from the sealed artifact $label", async ({
-    transform,
-  }) => {
-    const evidence: TrustedCampaignAttestationEvidenceInput = {
-      evidenceKind: "control",
-      payload: resumeAttestation(),
-    };
-    const fixture = verifierFixture({
-      evidence,
-      artifactTransform: transform,
-    });
+  ])(
+    "rejects a reader response detached from the sealed artifact $label",
+    async ({ transform }) => {
+      const evidence: TrustedCampaignAttestationEvidenceInput = {
+        evidenceKind: "control",
+        payload: resumeAttestation(),
+      };
+      const fixture = verifierFixture({
+        evidence,
+        artifactTransform: transform,
+      });
 
-    await expect(
-      fixture.verifier.verify(evidence.payload),
-    ).rejects.toBeInstanceOf(
-      TrustedCampaignAttestationVerificationError,
-    );
-    expect(fixture.resolve).not.toHaveBeenCalled();
-  });
+      await expect(fixture.verifier.verify(evidence.payload)).rejects.toBeInstanceOf(
+        TrustedCampaignAttestationVerificationError,
+      );
+      expect(fixture.resolve).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects a reader response that exceeds the independent byte ceiling", async () => {
     const evidence: TrustedCampaignAttestationEvidenceInput = {
@@ -367,9 +345,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       }),
     });
 
-    await expect(
-      fixture.verifier.verify(evidence.payload),
-    ).rejects.toBeInstanceOf(
+    await expect(fixture.verifier.verify(evidence.payload)).rejects.toBeInstanceOf(
       TrustedCampaignAttestationVerificationError,
     );
     expect(fixture.resolve).not.toHaveBeenCalled();
@@ -381,10 +357,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       payload: ledgerTransition(),
     };
     const original = signedEvidence(evidence);
-    const {
-      contentHash: _contentHash,
-      ...originalWithoutContentHash
-    } = original;
+    const { contentHash: _contentHash, ...originalWithoutContentHash } = original;
     expect(_contentHash).toBe(original.contentHash);
     const mutated = withContentHash({
       ...originalWithoutContentHash,
@@ -395,9 +368,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       document: mutated,
     });
 
-    await expect(
-      fixture.verifier.verify(evidence.payload),
-    ).rejects.toBeInstanceOf(
+    await expect(fixture.verifier.verify(evidence.payload)).rejects.toBeInstanceOf(
       TrustedCampaignAttestationVerificationError,
     );
   });
@@ -426,9 +397,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       keyPurpose: "result-envelope",
     });
 
-    await expect(
-      fixture.verifier.verify(evidence.payload),
-    ).rejects.toBeInstanceOf(
+    await expect(fixture.verifier.verify(evidence.payload)).rejects.toBeInstanceOf(
       TrustedCampaignAttestationVerificationError,
     );
   });
@@ -449,9 +418,7 @@ describe("ArtifactBackedCampaignAttestationVerifier", () => {
       resolve: vi.fn(async () => undefined),
     });
 
-    await expect(
-      fixture.verifier.verify(evidence.payload),
-    ).resolves.toBeUndefined();
+    await expect(fixture.verifier.verify(evidence.payload)).resolves.toBeUndefined();
     expect(fixture.locate).toHaveBeenCalledTimes(1);
     expect(fixture.readUtf8).toHaveBeenCalledTimes(1);
     expect(fixture.resolve).toHaveBeenCalledTimes(1);

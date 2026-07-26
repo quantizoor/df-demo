@@ -1,6 +1,4 @@
-import type {
-  TrustedOptimizerReleaseArtifactReader,
-} from "../optimizer/release-artifact-safety.js";
+import type { TrustedOptimizerReleaseArtifactReader } from "../optimizer/release-artifact-safety.js";
 import type { TrustedArtifactBridge } from "./artifact-bridge.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
 
@@ -8,8 +6,7 @@ const MAXIMUM_BYTES = 512 * 1024 * 1024;
 const MAXIMUM_CHUNKS = 131_072;
 
 export class TrustedOptimizerReleaseArtifactReaderError extends Error {
-  override readonly name =
-    "TrustedOptimizerReleaseArtifactReaderError";
+  override readonly name = "TrustedOptimizerReleaseArtifactReaderError";
 
   constructor() {
     super("Trusted optimizer artifact byte read failed closed.");
@@ -28,8 +25,7 @@ function fail(): never {
 export class BridgeBackedTrustedOptimizerReleaseArtifactReader
   implements TrustedOptimizerReleaseArtifactReader
 {
-  readonly boundary =
-    "trusted-cloud-optimizer-release-artifact-reader" as const;
+  readonly boundary = "trusted-cloud-optimizer-release-artifact-reader" as const;
   readonly #openVerified: TrustedArtifactBridge["openVerified"];
 
   constructor(bridge: TrustedArtifactBridge) {
@@ -42,10 +38,7 @@ export class BridgeBackedTrustedOptimizerReleaseArtifactReader
     this.#openVerified = bridge.openVerified.bind(bridge);
   }
 
-  async readBytes(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<Uint8Array> {
+  async readBytes(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<Uint8Array> {
     let capturedArtifact: TrustedCloudArtifactRef;
     try {
       capturedArtifact = structuredClone(artifact);
@@ -68,9 +61,7 @@ export class BridgeBackedTrustedOptimizerReleaseArtifactReader
     let byteLength = 0;
     let chunkCount = 0;
     try {
-      const source = await this.#openVerified(
-        capturedArtifact,
-      );
+      const source = await this.#openVerified(capturedArtifact);
       for await (const chunk of source) {
         chunkCount += 1;
         if (

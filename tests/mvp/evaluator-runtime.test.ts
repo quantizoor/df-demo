@@ -1,39 +1,35 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  hiddenTaskHandle,
   type EvaluationEnvironment,
-  type PrivateEvaluationRequest,
+  hiddenTaskHandle,
   MVP_SCHEMA_VERSION,
+  type PrivateEvaluationRequest,
 } from "../../src/mvp/contracts.js";
-import {
-  MvpTrustedBatchEvaluator,
-  type MvpEvaluatorRuntimePin,
-  type MvpPiRuntimeSourcePort,
-} from "../../src/mvp/evaluator-runtime.js";
-import type { MountedHiddenTaskCatalog } from "../../src/mvp/mounted-hidden-task-catalog.js";
 import type {
   MvpHarborExecutionPort,
   MvpPiRuntimeMaterialization,
 } from "../../src/mvp/evaluator-runtime.js";
+import {
+  type MvpEvaluatorRuntimePin,
+  type MvpPiRuntimeSourcePort,
+  MvpTrustedBatchEvaluator,
+} from "../../src/mvp/evaluator-runtime.js";
+import type { MountedHiddenTaskCatalog } from "../../src/mvp/mounted-hidden-task-catalog.js";
 
-const digest = (value: string): string =>
-  value.repeat(64).slice(0, 64);
-const revision = (value: string): string =>
-  value.repeat(40).slice(0, 40);
+const digest = (value: string): string => value.repeat(64).slice(0, 64);
+const revision = (value: string): string => value.repeat(40).slice(0, 40);
 
 describe("MVP trusted evaluator runtime", () => {
   it("materializes the trusted campaign champion for an all-cache-hit screen", async () => {
     const root = await mkdtemp(join(tmpdir(), "df-mvp-evaluator-"));
     const adapterPath = join(root, "dark_factory_pi.py");
     await writeFile(adapterPath, "class DarkFactoryPi: pass\n");
-    const adapterSha256 = createHash("sha256")
-      .update("class DarkFactoryPi: pass\n")
-      .digest("hex");
+    const adapterSha256 = createHash("sha256").update("class DarkFactoryPi: pass\n").digest("hex");
     const tasks = Array.from({ length: 5 }, (_, index) => ({
       handle: hiddenTaskHandle(digest(String(index + 1))),
       revisionDigest: digest(String(index + 6)),
@@ -56,27 +52,21 @@ describe("MVP trusted evaluator runtime", () => {
     const environmentDigest = createHash("sha256")
       .update(
         JSON.stringify(
-          Object.fromEntries(
-            Object.entries(environment).sort(([a], [b]) =>
-              a.localeCompare(b),
-            ),
-          ),
+          Object.fromEntries(Object.entries(environment).sort(([a], [b]) => a.localeCompare(b))),
         ),
       )
       .digest("hex");
     const candidateRevision = revision("a");
     const championRevision = revision("b");
-    const requests: PrivateEvaluationRequest[] = cells.map(
-      (cell) => ({
-        schemaVersion: MVP_SCHEMA_VERSION,
-        experimentId: "002-cache-hit-screen",
-        cell,
-        arm: "candidate",
-        harnessRevision: candidateRevision,
-        environment,
-        environmentDigest,
-      }),
-    );
+    const requests: PrivateEvaluationRequest[] = cells.map((cell) => ({
+      schemaVersion: MVP_SCHEMA_VERSION,
+      experimentId: "002-cache-hit-screen",
+      cell,
+      arm: "candidate",
+      harnessRevision: candidateRevision,
+      environment,
+      environmentDigest,
+    }));
     const materialized: string[] = [];
     const source: MvpPiRuntimeSourcePort = {
       materialize: async (input) => {
@@ -97,9 +87,7 @@ describe("MVP trusted evaluator runtime", () => {
             trialId: `trial-${invocation.invocationId}-${index + 1}`,
             harborTaskName: expected.harborTaskName,
             agentName:
-              expected.arm === "candidate"
-                ? "dark-factory-candidate"
-                : "dark-factory-champion",
+              expected.arm === "candidate" ? "dark-factory-candidate" : "dark-factory-champion",
             attemptOrdinal: expected.harborAttemptOrdinal,
             runtimeArchiveSha256:
               expected.arm === "candidate"
@@ -114,9 +102,7 @@ describe("MVP trusted evaluator runtime", () => {
             infrastructureValid: true,
             durationMs: 1_000,
             evaluatedAt: "2026-07-26T10:00:00.000Z",
-            traceArtifactRefs: [
-              `trusted://mvp-private/traces/${digest("f")}`,
-            ],
+            traceArtifactRefs: [`trusted://mvp-private/traces/${digest("f")}`],
             rawDiagnostics: [],
           })),
         ),
@@ -129,13 +115,16 @@ describe("MVP trusted evaluator runtime", () => {
           taskHandle: cell.task.handle,
           taskRevisionDigest: cell.task.revisionDigest,
           repetition: cell.repetition,
-          harborTaskLocator:
-            tasks[Math.floor(index / 3)]!.harborTaskName,
+          harborTaskLocator: tasks[Math.floor(index / 3)]!.harborTaskName,
         })),
     } as unknown as MountedHiddenTaskCatalog;
     const evaluator = new MvpTrustedBatchEvaluator({
       stateRoot: root,
-      pin: pin(adapterPath, adapterSha256, tasks.map((task) => task.revisionDigest)),
+      pin: pin(
+        adapterPath,
+        adapterSha256,
+        tasks.map((task) => task.revisionDigest),
+      ),
       catalog,
       environment,
       evaluatedDeployment: "existing-opus-4-8",
@@ -157,10 +146,7 @@ describe("MVP trusted evaluator runtime", () => {
 
     expect(observations).toHaveLength(15);
     expect(materialized).toEqual(
-      expect.arrayContaining([
-        `candidate:${candidateRevision}`,
-        `champion:${championRevision}`,
-      ]),
+      expect.arrayContaining([`candidate:${candidateRevision}`, `champion:${championRevision}`]),
     );
   });
 });
@@ -215,38 +201,31 @@ function pin(
     enabledTools: ["read", "bash", "write", "edit"],
     timeoutSeconds: 7_200,
     directSandboxEligibleTaskRevisionDigests: eligible,
-    hiddenTaskDefinitions: eligible.map(
-      (revisionDigest, index) => ({
-        harborTaskLocator: `terminal-bench/hidden-${index + 1}`,
-        revisionDigest,
-        difficulty:
-          index === eligible.length - 1
-            ? ("easy" as const)
-            : ("hard" as const),
-        easyCanary: index === eligible.length - 1,
-        baselineFailureRate: 0.8,
-        baselineProvenance: {
-          kind: "trusted-measurement" as const,
-          sourceDigest: digest("b"),
-          datasetRevision: "terminal-bench-2.1",
-        },
-        graderIsolation: {
-          verifierEnvironmentMode: "separate" as const,
-          allStepVerifierEnvironmentModesSeparate: true as const,
-          sourceDigest: digest("c"),
-        },
-        leaderboard: {
-          kind: "unknown" as const,
-          reason: "not-published" as const,
-        },
-        initialFailureRate: 0.8,
-        uncertainty: 0.5,
-        normalizedCost: 0.2,
-        sensitiveLiterals: [
-          `terminal-bench/hidden-${index + 1}`,
-        ],
-      }),
-    ),
+    hiddenTaskDefinitions: eligible.map((revisionDigest, index) => ({
+      harborTaskLocator: `terminal-bench/hidden-${index + 1}`,
+      revisionDigest,
+      difficulty: index === eligible.length - 1 ? ("easy" as const) : ("hard" as const),
+      easyCanary: index === eligible.length - 1,
+      baselineFailureRate: 0.8,
+      baselineProvenance: {
+        kind: "trusted-measurement" as const,
+        sourceDigest: digest("b"),
+        datasetRevision: "terminal-bench-2.1",
+      },
+      graderIsolation: {
+        verifierEnvironmentMode: "separate" as const,
+        allStepVerifierEnvironmentModesSeparate: true as const,
+        sourceDigest: digest("c"),
+      },
+      leaderboard: {
+        kind: "unknown" as const,
+        reason: "not-published" as const,
+      },
+      initialFailureRate: 0.8,
+      uncertainty: 0.5,
+      normalizedCost: 0.2,
+      sensitiveLiterals: [`terminal-bench/hidden-${index + 1}`],
+    })),
     imageDigest: digest("3"),
     architecture: "x86_64",
     runtimeAbi: "linux-x64-glibc",

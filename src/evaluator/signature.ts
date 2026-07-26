@@ -54,7 +54,9 @@ function assertExactKeys(
 ): void {
   const extras = Object.keys(value).filter((key) => !allowed.includes(key));
   if (extras.length > 0) {
-    throw new EnvelopeVerificationError(`${label} contains forbidden field(s): ${extras.join(", ")}.`);
+    throw new EnvelopeVerificationError(
+      `${label} contains forbidden field(s): ${extras.join(", ")}.`,
+    );
   }
 }
 
@@ -278,17 +280,18 @@ function parseBody(value: unknown): AggregateResultBody {
   }
 
   const score = requireRecord(body.score, "Score aggregate");
-  assertExactKeys(score, ["candidate", "champion", "delta", "confidenceInterval95"], "Score aggregate");
+  assertExactKeys(
+    score,
+    ["candidate", "champion", "delta", "confidenceInterval95"],
+    "Score aggregate",
+  );
   const candidate = parseArmScore(score.candidate, "Candidate score");
   const champion =
     score.champion === undefined ? undefined : parseArmScore(score.champion, "Champion score");
   const delta = score.delta === undefined ? undefined : requireNumber(score.delta, "Score delta");
   let confidenceInterval95: readonly [number, number] | undefined;
   if (score.confidenceInterval95 !== undefined) {
-    if (
-      !Array.isArray(score.confidenceInterval95) ||
-      score.confidenceInterval95.length !== 2
-    ) {
+    if (!Array.isArray(score.confidenceInterval95) || score.confidenceInterval95.length !== 2) {
       throw new EnvelopeVerificationError("Confidence interval must contain two bounds.");
     }
     const lower = requireNumber(score.confidenceInterval95[0], "Confidence lower bound");
@@ -303,11 +306,12 @@ function parseBody(value: unknown): AggregateResultBody {
     (stage !== "validation" &&
       (champion !== undefined || delta !== undefined || confidenceInterval95 !== undefined))
   ) {
-    throw new EnvelopeVerificationError("Score comparison fields do not match the evaluation stage.");
+    throw new EnvelopeVerificationError(
+      "Score comparison fields do not match the evaluation stage.",
+    );
   }
   if (
-    (stage === "validation" &&
-      candidate.validArms + (champion?.validArms ?? 0) !== validArms) ||
+    (stage === "validation" && candidate.validArms + (champion?.validArms ?? 0) !== validArms) ||
     (stage !== "validation" && candidate.validArms !== validArms) ||
     (gateDecision !== "inconclusive" && validArms !== requestedArms) ||
     (stage === "validation" &&
@@ -318,7 +322,11 @@ function parseBody(value: unknown): AggregateResultBody {
   }
 
   const cost = requireRecord(body.cost, "Cost aggregate");
-  assertExactKeys(cost, ["totalUsd", "modelUsd", "sandboxUsd", "wallTimeSeconds"], "Cost aggregate");
+  assertExactKeys(
+    cost,
+    ["totalUsd", "modelUsd", "sandboxUsd", "wallTimeSeconds"],
+    "Cost aggregate",
+  );
   const totalUsd = requireNumber(cost.totalUsd, "Total cost");
   const modelUsd = requireNumber(cost.modelUsd, "Model cost");
   const sandboxUsd = requireNumber(cost.sandboxUsd, "Sandbox cost");
@@ -345,7 +353,9 @@ function parseBody(value: unknown): AggregateResultBody {
   if (
     !new Set(["passed", "failed"]).has(integrityStatus) ||
     !Array.isArray(integrity.reasonCodes) ||
-    integrity.reasonCodes.some((reason) => typeof reason !== "string" || !allowedReasons.has(reason)) ||
+    integrity.reasonCodes.some(
+      (reason) => typeof reason !== "string" || !allowedReasons.has(reason),
+    ) ||
     !Number.isSafeInteger(canaryMatchCount) ||
     canaryMatchCount < 0 ||
     (integrityStatus === "passed" &&
@@ -432,8 +442,7 @@ function parseBody(value: unknown): AggregateResultBody {
   }
   const diagnostics = body.diagnostics.map((card) => parseDiagnostic(card));
   if (
-    ((stage !== "validation" || runMode === "submission") &&
-      diagnostics.length > 0) ||
+    ((stage !== "validation" || runMode === "submission") && diagnostics.length > 0) ||
     (diagnostics.length > 0 &&
       (!releaseEligible ||
         !everyComparedGroupAtLeastFive ||
@@ -461,11 +470,9 @@ function parseBody(value: unknown): AggregateResultBody {
     "Leaderboard eligibility",
   );
   if (
-    !new Set([
-      "ineligible-research",
-      "ineligible-policy",
-      "eligible-pending-human-gate",
-    ]).has(leaderboardEligibility) ||
+    !new Set(["ineligible-research", "ineligible-policy", "eligible-pending-human-gate"]).has(
+      leaderboardEligibility,
+    ) ||
     (runMode === "research" && leaderboardEligibility !== "ineligible-research")
   ) {
     throw new EnvelopeVerificationError("Leaderboard eligibility conflicts with run mode.");
@@ -500,8 +507,7 @@ function parseBody(value: unknown): AggregateResultBody {
     cost: { totalUsd, modelUsd, sandboxUsd, wallTimeSeconds },
     integrity: {
       status: integrityStatus as AggregateResultBody["integrity"]["status"],
-      reasonCodes:
-        integrity.reasonCodes as AggregateResultBody["integrity"]["reasonCodes"],
+      reasonCodes: integrity.reasonCodes as AggregateResultBody["integrity"]["reasonCodes"],
       canaryMatchCount,
     },
     privacy: {
@@ -516,14 +522,12 @@ function parseBody(value: unknown): AggregateResultBody {
     cache: {
       usedForRepair,
       usedForDecision: false,
-      promotionEvidence:
-        promotionEvidence as AggregateResultBody["cache"]["promotionEvidence"],
+      promotionEvidence: promotionEvidence as AggregateResultBody["cache"]["promotionEvidence"],
       driftAnchorsPassed,
     },
     diagnostics,
     rawArtifacts: { exported: false, retentionPolicyHash },
-    leaderboardEligibility:
-      leaderboardEligibility as AggregateResultBody["leaderboardEligibility"],
+    leaderboardEligibility: leaderboardEligibility as AggregateResultBody["leaderboardEligibility"],
   };
 }
 
@@ -585,12 +589,10 @@ export async function verifySignedAggregateEnvelope(
     throw new EnvelopeVerificationError("Signed result does not correlate to its request.");
   }
   if (
-    (envelope.body.runMode === "submission") !==
-      (envelope.body.stage === "official") ||
+    (envelope.body.runMode === "submission") !== (envelope.body.stage === "official") ||
     Date.parse(envelope.body.sealedAt) > Date.parse(request.deadlineAt) ||
     Date.parse(envelope.signature.issuedAt) < Date.parse(envelope.body.sealedAt) ||
-    Date.parse(envelope.signature.issuedAt) >
-      Date.parse(envelope.body.sealedAt) + 5 * 60_000
+    Date.parse(envelope.signature.issuedAt) > Date.parse(envelope.body.sealedAt) + 5 * 60_000
   ) {
     throw new EnvelopeVerificationError(
       "Envelope mode or signing timestamps violate the evaluation contract.",

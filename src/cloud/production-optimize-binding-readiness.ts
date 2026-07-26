@@ -13,23 +13,16 @@ const SHA256 = /^[a-f0-9]{64}$/u;
  * task-free protocol metadata.
  */
 const PRODUCTION_RUNTIME_PORT_CONTRACTS = {
-  "control.campaign-state-store":
-    "OptimizationCampaignStateStore",
-  "control.optimization-input-factory":
-    "TrustedOptimizationInputFactory",
-  "control.optimization-resume-verifier":
-    "TrustedOptimizationResumeVerifier",
-  "control.optimization-completion-material":
-    "TrustedOptimizationCompletionMaterialPort",
-  "control.optimization-interruption-port":
-    "TrustedOptimizationInterruptionPort",
+  "control.campaign-state-store": "OptimizationCampaignStateStore",
+  "control.optimization-input-factory": "TrustedOptimizationInputFactory",
+  "control.optimization-resume-verifier": "TrustedOptimizationResumeVerifier",
+  "control.optimization-completion-material": "TrustedOptimizationCompletionMaterialPort",
+  "control.optimization-interruption-port": "TrustedOptimizationInterruptionPort",
   "control.experiment-journal": "ExperimentJournal",
   "optimizer.adapter": "OptimizerAdapter",
   "build.correctness-gate": "CorrectnessGateRunner",
   "evaluator.blind-broker": "BlindBroker",
-} as const satisfies Readonly<
-  Record<ProductionRuntimePortId, string>
->;
+} as const satisfies Readonly<Record<ProductionRuntimePortId, string>>;
 
 const PRODUCTION_OPTIMIZE_BOOTSTRAP_BINDING_SPECIFICATIONS = [
   {
@@ -44,25 +37,26 @@ const PRODUCTION_OPTIMIZE_BOOTSTRAP_BINDING_SPECIFICATIONS = [
   },
 ] as const;
 
-const PRODUCTION_OPTIMIZE_RUNTIME_BINDING_SPECIFICATIONS =
-  PRODUCTION_RUNTIME_PORT_IDS.map((bindingId) => ({
+const PRODUCTION_OPTIMIZE_RUNTIME_BINDING_SPECIFICATIONS = PRODUCTION_RUNTIME_PORT_IDS.map(
+  (bindingId) => ({
     bindingId,
     contract: PRODUCTION_RUNTIME_PORT_CONTRACTS[bindingId],
     boundary: "trusted-cloud" as const,
-  }));
+  }),
+);
 
 const PRODUCTION_OPTIMIZE_BINDING_SPECIFICATION_VALUES = [
   ...PRODUCTION_OPTIMIZE_BOOTSTRAP_BINDING_SPECIFICATIONS,
   ...PRODUCTION_OPTIMIZE_RUNTIME_BINDING_SPECIFICATIONS,
 ] as const;
 
-for (const specification of
-  PRODUCTION_OPTIMIZE_BINDING_SPECIFICATION_VALUES) {
+for (const specification of PRODUCTION_OPTIMIZE_BINDING_SPECIFICATION_VALUES) {
   Object.freeze(specification);
 }
 
-export const PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS =
-  Object.freeze(PRODUCTION_OPTIMIZE_BINDING_SPECIFICATION_VALUES);
+export const PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS = Object.freeze(
+  PRODUCTION_OPTIMIZE_BINDING_SPECIFICATION_VALUES,
+);
 
 export type ProductionOptimizeBindingId =
   (typeof PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS)[number]["bindingId"];
@@ -97,18 +91,13 @@ export interface InspectProductionOptimizeBindingReadinessInput {
   readonly piSourceConfiguration: ProductionOptimizeSourceConfigurationReadiness;
 }
 
-export type ProductionOptimizeSourceConfigurationStatus =
-  | "ready"
-  | "missing"
-  | "invalid";
+export type ProductionOptimizeSourceConfigurationStatus = "ready" | "missing" | "invalid";
 
 export interface ProductionOptimizeBindingReadinessReceipt {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-binding-readiness.v1";
+  readonly domain: "dark-factory.production-optimize-binding-readiness.v1";
   readonly bindingSetHash: string;
-  readonly sourceConfigurationStatus:
-    ProductionOptimizeSourceConfigurationStatus;
+  readonly sourceConfigurationStatus: ProductionOptimizeSourceConfigurationStatus;
   readonly bindingsReady: boolean;
   /**
    * A complete binding registry still cannot authorize execution. Only the
@@ -129,8 +118,7 @@ export interface ReleaseSafeProductionOptimizeBindingReport {
     | "DF_PRODUCTION_OPTIMIZE_BINDINGS_INCOMPLETE"
     | "DF_PRODUCTION_OPTIMIZE_COMPOSITION_UNVERIFIED";
   readonly releaseSafe: true;
-  readonly sourceConfigurationStatus:
-    ProductionOptimizeSourceConfigurationStatus;
+  readonly sourceConfigurationStatus: ProductionOptimizeSourceConfigurationStatus;
   readonly bindingsReady: boolean;
   readonly runtimeCompositionVerified: false;
   readonly runnable: false;
@@ -144,8 +132,7 @@ export interface ReleaseSafeProductionOptimizeBindingReport {
 }
 
 export class ProductionOptimizeBindingReadinessError extends Error {
-  override readonly name =
-    "ProductionOptimizeBindingReadinessError";
+  override readonly name = "ProductionOptimizeBindingReadinessError";
 
   public constructor() {
     super("Production optimize binding readiness failed closed.");
@@ -160,9 +147,7 @@ interface BindingCommitment {
   readonly attestationSha256: string | null;
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -171,13 +156,8 @@ function isPlainRecord(
   );
 }
 
-function isImplementation(
-  value: unknown,
-): value is object | ((...arguments_: never[]) => unknown) {
-  return (
-    (typeof value === "object" && value !== null) ||
-    typeof value === "function"
-  );
+function isImplementation(value: unknown): value is object | ((...arguments_: never[]) => unknown) {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
 function exactBinding(
@@ -218,57 +198,50 @@ export function inspectProductionOptimizeBindingReadiness(
   input: InspectProductionOptimizeBindingReadinessInput,
 ): ProductionOptimizeBindingReadinessReceipt {
   const registryProvided = input.bindings !== undefined;
-  const registry: Readonly<Record<string, unknown>> =
-    isPlainRecord(input.bindings) ? input.bindings : {};
-  const registryMalformed =
-    registryProvided && !isPlainRecord(input.bindings);
+  const registry: Readonly<Record<string, unknown>> = isPlainRecord(input.bindings)
+    ? input.bindings
+    : {};
+  const registryMalformed = registryProvided && !isPlainRecord(input.bindings);
   const requiredIds = new Set<string>(
-    PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map(
-      (specification) => specification.bindingId,
-    ),
+    PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map((specification) => specification.bindingId),
   );
   const unexpectedBindingsPresent =
-    !registryMalformed &&
-    Object.keys(registry).some((key) => !requiredIds.has(key));
+    !registryMalformed && Object.keys(registry).some((key) => !requiredIds.has(key));
 
-  const commitments: BindingCommitment[] =
-    PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map(
-      (specification): BindingCommitment => {
-        if (!Object.hasOwn(registry, specification.bindingId)) {
-          return {
-            bindingId: specification.bindingId,
-            status: "missing",
-            attestationSha256: null,
-          };
-        }
-        const value = registry[specification.bindingId];
-        if (!exactBinding(value, specification.bindingId)) {
-          return {
-            bindingId: specification.bindingId,
-            status: "invalid",
-            attestationSha256: null,
-          };
-        }
+  const commitments: BindingCommitment[] = PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map(
+    (specification): BindingCommitment => {
+      if (!Object.hasOwn(registry, specification.bindingId)) {
         return {
           bindingId: specification.bindingId,
-          status: "bound",
-          attestationSha256: value.attestationSha256,
+          status: "missing",
+          attestationSha256: null,
         };
-      },
-    );
+      }
+      const value = registry[specification.bindingId];
+      if (!exactBinding(value, specification.bindingId)) {
+        return {
+          bindingId: specification.bindingId,
+          status: "invalid",
+          attestationSha256: null,
+        };
+      }
+      return {
+        bindingId: specification.bindingId,
+        status: "bound",
+        attestationSha256: value.attestationSha256,
+      };
+    },
+  );
   const missingBindings = commitments
     .filter((commitment) => commitment.status === "missing")
     .map((commitment) => commitment.bindingId);
   const invalidBindings = commitments
     .filter((commitment) => commitment.status === "invalid")
     .map((commitment) => commitment.bindingId);
-  const configurationStatus = sourceConfigurationStatus(
-    input.piSourceConfiguration,
-  );
+  const configurationStatus = sourceConfigurationStatus(input.piSourceConfiguration);
   const bindingCommitmentHash = canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-binding-commitment.v1",
+    domain: "dark-factory.production-optimize-binding-commitment.v1",
     bindingSetHash: BINDING_SET_HASH,
     commitments,
   });
@@ -280,8 +253,7 @@ export function inspectProductionOptimizeBindingReadiness(
     !unexpectedBindingsPresent;
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimize-binding-readiness.v1" as const,
+    domain: "dark-factory.production-optimize-binding-readiness.v1" as const,
     bindingSetHash: BINDING_SET_HASH,
     sourceConfigurationStatus: configurationStatus,
     bindingsReady,
@@ -304,12 +276,10 @@ function isOrderedKnownBindingList(
 ): value is readonly ProductionOptimizeBindingId[] {
   if (!Array.isArray(value)) return false;
   const order = new Map<string, number>(
-    PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map(
-      (specification, index) => [
-        specification.bindingId,
-        index,
-      ],
-    ),
+    PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map((specification, index) => [
+      specification.bindingId,
+      index,
+    ]),
   );
   let previous = -1;
   for (const item of value) {
@@ -347,12 +317,9 @@ function assertReleaseSafeReceipt(
     keys.length !== expectedKeys.length ||
     keys.some((key) => !expectedKeys.includes(key)) ||
     value["schemaVersion"] !== 1 ||
-    value["domain"] !==
-      "dark-factory.production-optimize-binding-readiness.v1" ||
+    value["domain"] !== "dark-factory.production-optimize-binding-readiness.v1" ||
     value["bindingSetHash"] !== BINDING_SET_HASH ||
-    !["ready", "missing", "invalid"].includes(
-      value["sourceConfigurationStatus"] as string,
-    ) ||
+    !["ready", "missing", "invalid"].includes(value["sourceConfigurationStatus"] as string) ||
     typeof value["bindingsReady"] !== "boolean" ||
     value["runtimeCompositionVerified"] !== false ||
     value["runnable"] !== false ||
@@ -367,10 +334,8 @@ function assertReleaseSafeReceipt(
   ) {
     throw new ProductionOptimizeBindingReadinessError();
   }
-  const missing =
-    value["missingBindings"] as readonly ProductionOptimizeBindingId[];
-  const invalid =
-    value["invalidBindings"] as readonly ProductionOptimizeBindingId[];
+  const missing = value["missingBindings"] as readonly ProductionOptimizeBindingId[];
+  const invalid = value["invalidBindings"] as readonly ProductionOptimizeBindingId[];
   if (
     invalid.some((bindingId) => missing.includes(bindingId)) ||
     value["bindingsReady"] !==
@@ -404,16 +369,14 @@ export function releaseSafeProductionOptimizeBindingReport(
       ? "DF_PRODUCTION_OPTIMIZE_COMPOSITION_UNVERIFIED"
       : "DF_PRODUCTION_OPTIMIZE_BINDINGS_INCOMPLETE",
     releaseSafe: true,
-    sourceConfigurationStatus:
-      readiness.sourceConfigurationStatus,
+    sourceConfigurationStatus: readiness.sourceConfigurationStatus,
     bindingsReady: readiness.bindingsReady,
     runtimeCompositionVerified: false,
     runnable: false,
     missingBindings: readiness.missingBindings,
     invalidBindings: readiness.invalidBindings,
     registryMalformed: readiness.registryMalformed,
-    unexpectedBindingsPresent:
-      readiness.unexpectedBindingsPresent,
+    unexpectedBindingsPresent: readiness.unexpectedBindingsPresent,
     bindingSetHash: readiness.bindingSetHash,
     bindingCommitmentHash: readiness.bindingCommitmentHash,
     readinessReceiptHash: readiness.receiptHash,

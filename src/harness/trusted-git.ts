@@ -1,10 +1,10 @@
-import { canonicalHash } from "../schemas/canonical.js";
 import type {
   RemoteExecutionReceipt,
   SandboxCreateRequest,
   SecretReference,
   TrustedCloudArtifactRef,
 } from "../cloud/types.js";
+import { canonicalHash } from "../schemas/canonical.js";
 import { fingerprintRemoteUrl } from "./git.js";
 import type { RepositoryRegistration } from "./repository.js";
 
@@ -18,8 +18,7 @@ const SAFE_GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 const SAFE_GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const SAFE_IMAGE_REFERENCE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const SAFE_IMAGE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const SAFE_REMOTE_PATH = /^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
 const SAFE_WORKING_DIRECTORY = /^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
 const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
@@ -35,9 +34,7 @@ export interface PrivateGitHubOrigin {
   readonly credential: SecretReference;
 }
 
-export function assertPrivateGitHubOrigin(
-  origin: PrivateGitHubOrigin,
-): void {
+export function assertPrivateGitHubOrigin(origin: PrivateGitHubOrigin): void {
   assertExactPlainObjectKeys(
     origin,
     ["host", "owner", "repository", "credential"],
@@ -57,9 +54,7 @@ export function assertPrivateGitHubOrigin(
     !SAFE_ENVIRONMENT_NAME.test(origin.credential.sourceEnvironmentName) ||
     origin.credential.targetEnvironmentName !== TRUSTED_GIT_CREDENTIAL_TARGET
   ) {
-    throw new TrustedGitContractError(
-      "Private GitHub origin configuration is outside policy.",
-    );
+    throw new TrustedGitContractError("Private GitHub origin configuration is outside policy.");
   }
 }
 
@@ -100,11 +95,7 @@ export function assertTrustedGitArtifact(
   label: string,
   maximumBytes = 4 * 1024 * 1024 * 1024,
 ): void {
-  assertExactPlainObjectKeys(
-    artifact,
-    ["uri", "sha256", "mediaType", "byteLength"],
-    label,
-  );
+  assertExactPlainObjectKeys(artifact, ["uri", "sha256", "mediaType", "byteLength"], label);
   if (
     !TRUSTED_URI.test(artifact.uri) ||
     artifact.uri.includes("..") ||
@@ -159,10 +150,7 @@ export function assertTrustedGitRegistrationSandbox(
   sandbox: SandboxCreateRequest,
   origin: PrivateGitHubOrigin,
 ): void {
-  assertTrustedGitSandboxWithDomains(sandbox, origin, [
-    origin.host,
-    TRUSTED_GIT_PROVIDER_API_HOST,
-  ]);
+  assertTrustedGitSandboxWithDomains(sandbox, origin, [origin.host, TRUSTED_GIT_PROVIDER_API_HOST]);
 }
 
 function assertTrustedGitSandboxWithDomains(
@@ -187,17 +175,14 @@ function assertTrustedGitSandboxWithDomains(
     sandbox.resources.gpuClass !== undefined ||
     sandbox.network.defaultAction !== "deny" ||
     sandbox.network.allowDomains.length !== allowedDomains.length ||
-    sandbox.network.allowDomains.some(
-      (domain, index) => domain !== allowedDomains[index],
-    ) ||
+    sandbox.network.allowDomains.some((domain, index) => domain !== allowedDomains[index]) ||
     sandbox.lifetimeMs <= 0 ||
     sandbox.lifetimeMs > TRUSTED_GIT_MAXIMUM_LIFETIME_MS ||
     !Number.isSafeInteger(sandbox.lifetimeMs) ||
     sandbox.secretReferences.length !== 1 ||
     sandbox.secretReferences[0]?.sourceEnvironmentName !==
       origin.credential.sourceEnvironmentName ||
-    sandbox.secretReferences[0]?.targetEnvironmentName !==
-      origin.credential.targetEnvironmentName
+    sandbox.secretReferences[0]?.targetEnvironmentName !== origin.credential.targetEnvironmentName
   ) {
     throw new TrustedGitContractError(
       "Trusted Git requires a bounded x86_64 sandbox with only its exact GitHub grants.",
@@ -221,9 +206,7 @@ export function assertTrustedGitPaths(paths: {
   if (
     !SAFE_WORKING_DIRECTORY.test(paths.workingDirectory) ||
     paths.workingDirectory === "/" ||
-    remotePaths.some(
-      (path) => !SAFE_REMOTE_PATH.test(path) || path.includes("/../"),
-    ) ||
+    remotePaths.some((path) => !SAFE_REMOTE_PATH.test(path) || path.includes("/../")) ||
     new Set(remotePaths).size !== remotePaths.length
   ) {
     throw new TrustedGitContractError("Trusted Git cloud paths are invalid or overlap.");

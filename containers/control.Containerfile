@@ -14,7 +14,7 @@ WORKDIR /build
 ENV CI=true \
     DF_CLOUD_EXECUTION=1
 
-COPY package.json pnpm-lock.yaml tsconfig.json tsconfig.build.json biome.json vitest.config.ts ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.build.json biome.json vitest.config.ts ./
 COPY src ./src
 COPY scripts ./scripts
 COPY claude-plugin ./claude-plugin

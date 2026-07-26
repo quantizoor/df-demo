@@ -57,18 +57,15 @@ const RELEASE_TEXT_PATTERNS: readonly {
 }[] = [
   {
     label: "URL",
-    pattern:
-      /\b(?:https?|ftp|file|data|git|ssh):(?:\/\/|[^\s]+)/iu,
+    pattern: /\b(?:https?|ftp|file|data|git|ssh):(?:\/\/|[^\s]+)/iu,
   },
   {
     label: "credentialed repository locator",
-    pattern:
-      /\b[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s"'`]+/u,
+    pattern: /\b[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s"'`]+/u,
   },
   {
     label: "absolute POSIX path",
-    pattern:
-      /(?:^|[\s"'(=:[{])\/(?:[A-Za-z0-9._@+-]+\/)*[A-Za-z0-9._@+-]+(?=$|[\s"'`),.;:\]}])/u,
+    pattern: /(?:^|[\s"'(=:[{])\/(?:[A-Za-z0-9._@+-]+\/)*[A-Za-z0-9._@+-]+(?=$|[\s"'`),.;:\]}])/u,
   },
   {
     label: "protected POSIX root",
@@ -85,8 +82,7 @@ const RELEASE_TEXT_PATTERNS: readonly {
   },
   {
     label: "encoded path",
-    pattern:
-      /(?:%(?:2e|2f|5c)|\\x(?:2e|2f|5c)|\\u00(?:2e|2f|5c))/iu,
+    pattern: /(?:%(?:2e|2f|5c)|\\x(?:2e|2f|5c)|\\u00(?:2e|2f|5c))/iu,
   },
   { label: "code fence", pattern: /```/u },
   { label: "inline command or code", pattern: /`[^`]+`/u },
@@ -105,13 +101,12 @@ const RELEASE_TEXT_PATTERNS: readonly {
   },
   {
     label: "grader or verifier identity",
-    pattern:
-      /\b(?:grader|verifier|reference[-_\s]*answer|solution)\b/iu,
+    pattern: /\b(?:grader|verifier|reference[-_\s]*answer|solution)\b/iu,
   },
   {
     label: "control or bidirectional character",
-    pattern:
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u,
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Released evidence must reject hidden controls and bidirectional override characters.
+    pattern: /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u,
   },
 ];
 
@@ -149,12 +144,7 @@ function printableRatio(bytes: Uint8Array): number {
   if (bytes.byteLength === 0) return 0;
   let printable = 0;
   for (const byte of bytes) {
-    if (
-      byte === 9 ||
-      byte === 10 ||
-      byte === 13 ||
-      (byte >= 32 && byte <= 126)
-    ) {
+    if (byte === 9 || byte === 10 || byte === 13 || (byte >= 32 && byte <= 126)) {
       printable += 1;
     }
   }
@@ -165,44 +155,27 @@ function decodedLooksLikePayload(bytes: Uint8Array): boolean {
   if (printableRatio(bytes) < 0.85) return false;
   let decoded: string;
   try {
-    decoded = new TextDecoder("utf-8", { fatal: true }).decode(
-      bytes,
-    );
+    decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return false;
   }
   return (
     /^\s*[/\\[{]/u.test(decoded) ||
-    /\b(?:task|trial|panel|cell|grader|verifier|solution)\b/iu.test(
-      decoded,
-    ) ||
-    /[A-Za-z]{3,}(?:[\s:/._-]+[A-Za-z]{3,}){1,}/u.test(
-      decoded,
-    )
+    /\b(?:task|trial|panel|cell|grader|verifier|solution)\b/iu.test(decoded) ||
+    /[A-Za-z]{3,}(?:[\s:/._-]+[A-Za-z]{3,}){1,}/u.test(decoded)
   );
 }
 
 function looksLikeBase64EncodedText(value: string): boolean {
-  if (
-    value.length < 16 ||
-    value.length > 16_384 ||
-    !/^[A-Za-z0-9+/_-]+={0,2}$/u.test(value)
-  ) {
+  if (value.length < 16 || value.length > 16_384 || !/^[A-Za-z0-9+/_-]+={0,2}$/u.test(value)) {
     return false;
   }
   try {
     const normalized = value.replace(/=+$/u, "");
-    const encoding =
-      /[+\/]/u.test(normalized) ? "base64" : "base64url";
+    const encoding = /[+\/]/u.test(normalized) ? "base64" : "base64url";
     const decoded = Buffer.from(normalized, encoding);
-    const canonical = decoded
-      .toString(encoding)
-      .replace(/=+$/u, "");
-    return (
-      decoded.byteLength >= 8 &&
-      decodedLooksLikePayload(decoded) &&
-      canonical === normalized
-    );
+    const canonical = decoded.toString(encoding).replace(/=+$/u, "");
+    return decoded.byteLength >= 8 && decodedLooksLikePayload(decoded) && canonical === normalized;
   } catch {
     return false;
   }
@@ -219,10 +192,7 @@ function looksLikeHexEncodedText(value: string): boolean {
   }
   try {
     const decoded = Buffer.from(value, "hex");
-    return (
-      decoded.byteLength >= 8 &&
-      decodedLooksLikePayload(decoded)
-    );
+    return decoded.byteLength >= 8 && decodedLooksLikePayload(decoded);
   } catch {
     return false;
   }
@@ -232,20 +202,11 @@ function assertReleaseSafeString(value: string, path: string): void {
   const normalized = value.normalize("NFKC");
   for (const { label, pattern } of RELEASE_TEXT_PATTERNS) {
     if (pattern.test(normalized)) {
-      throw new UnsafeEvidenceError(
-        path,
-        `contains a forbidden ${label}`,
-      );
+      throw new UnsafeEvidenceError(path, `contains a forbidden ${label}`);
     }
   }
-  if (
-    looksLikeBase64EncodedText(normalized) ||
-    looksLikeHexEncodedText(normalized)
-  ) {
-    throw new UnsafeEvidenceError(
-      path,
-      "contains an encoded printable payload",
-    );
+  if (looksLikeBase64EncodedText(normalized) || looksLikeHexEncodedText(normalized)) {
+    throw new UnsafeEvidenceError(path, "contains an encoded printable payload");
   }
 }
 
@@ -266,7 +227,9 @@ function scan(value: unknown, path: string, ancestors: ReadonlySet<object>): voi
   nextAncestors.add(value);
 
   if (Array.isArray(value)) {
-    value.forEach((item, index) => scan(item, `${path}/${index}`, nextAncestors));
+    value.forEach((item, index) => {
+      scan(item, `${path}/${index}`, nextAncestors);
+    });
     return;
   }
 
@@ -296,10 +259,7 @@ export function isReleaseSafe(value: unknown): boolean {
   }
 }
 
-export function assertReleaseSafeText(
-  value: string,
-  path = "$",
-): void {
+export function assertReleaseSafeText(value: string, path = "$"): void {
   assertReleaseSafeString(value, path);
 }
 

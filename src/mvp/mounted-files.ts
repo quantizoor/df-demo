@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  mkdir,
-  open,
-  rename,
-  rm,
-} from "node:fs/promises";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 export const MVP_MAX_STATE_BYTES = 8 * 1024 * 1024;
@@ -45,11 +40,7 @@ export async function readOptionalBoundedJson(
   }
 }
 
-export async function writeJsonAtomic(
-  path: string,
-  value: unknown,
-  mode = 0o600,
-): Promise<void> {
+export async function writeJsonAtomic(path: string, value: unknown, mode = 0o600): Promise<void> {
   const parent = dirname(path);
   await mkdir(parent, { recursive: true, mode: 0o700 });
   const temporaryPath = join(parent, `.tmp-${randomUUID()}.json`);
@@ -93,8 +84,6 @@ export async function withMountedLock<Result>(
 
 export function isNodeError(error: unknown, code: string): boolean {
   return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === code
+    error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === code
   );
 }

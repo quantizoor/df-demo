@@ -2,25 +2,25 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Type } from "@sinclair/typebox";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
 import {
-  MVP_CACHE_POLICY,
-  MVP_SCHEMA_VERSION,
   type CachedChampionObservation,
   type ChampionCacheKey,
   type ChampionCachePort,
   canonicalJson,
   evaluationEnvironmentDigest,
+  MVP_CACHE_POLICY,
+  MVP_SCHEMA_VERSION,
   sha256,
 } from "./contracts.js";
-import { EvaluationEnvironmentSchema } from "./schemas.js";
 import {
   assertMountedRoot,
   isNodeError,
   readOptionalBoundedJson,
   writeJsonAtomic,
 } from "./mounted-files.js";
+import { EvaluationEnvironmentSchema } from "./schemas.js";
 
 const DigestSchema = Type.String({ pattern: "^[a-f0-9]{64}$" });
 const RevisionSchema = Type.String({ pattern: "^[a-f0-9]{40,64}$" });
@@ -87,7 +87,7 @@ const CacheDocumentSchema = Type.Object(
 );
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: true });
-addFormats(ajv);
+addFormatsModule.default(ajv);
 const validateCacheKeySchema = ajv.compile(CacheKeySchema);
 const validateCacheDocumentSchema = ajv.compile(CacheDocumentSchema);
 
@@ -113,10 +113,7 @@ export class MountedChampionCache implements ChampionCachePort {
     return document.observation;
   }
 
-  public async put(
-    key: ChampionCacheKey,
-    observation: CachedChampionObservation,
-  ): Promise<void> {
+  public async put(key: ChampionCacheKey, observation: CachedChampionObservation): Promise<void> {
     assertCacheKey(key);
     const document: CacheDocument = {
       schemaVersion: MVP_SCHEMA_VERSION,
@@ -137,10 +134,7 @@ export class MountedChampionCache implements ChampionCachePort {
       await rm(stagingDirectory, { recursive: true, force: true });
       if (isNodeError(error, "EEXIST") || isNodeError(error, "ENOTEMPTY")) {
         const existing = await this.get(key);
-        if (
-          existing !== null &&
-          canonicalJson(existing) === canonicalJson(observation)
-        ) {
+        if (existing !== null && canonicalJson(existing) === canonicalJson(observation)) {
           return;
         }
         throw new Error("Champion cache key already contains different evidence");
@@ -186,10 +180,7 @@ function assertCacheKey(key: ChampionCacheKey): void {
   }
 }
 
-function assertDocumentMatchesKey(
-  document: CacheDocument,
-  key: ChampionCacheKey,
-): void {
+function assertDocumentMatchesKey(document: CacheDocument, key: ChampionCacheKey): void {
   if (canonicalJson(document.key) !== canonicalJson(key)) {
     throw new Error("Champion cache document key does not match the requested key");
   }

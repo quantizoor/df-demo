@@ -10,11 +10,7 @@ import {
   type TrustedTaskObservationSet,
   type TrustedTerminalBenchTaskInventory,
 } from "../broker/catalog-import.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, sha256 } from "../schemas/canonical.js";
 import {
   assertTerminalBench21Pin,
   hashTerminalBench21Pin,
@@ -22,8 +18,8 @@ import {
 } from "../terminal-bench/pin.js";
 import type { TrustedArtifactBridge } from "./artifact-bridge.js";
 import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 import type {
   ProductionOptimizeLifecycleRegistrar,
@@ -33,18 +29,14 @@ import type { VerifyingTrustedJsonArtifactReader } from "./trusted-json-reader.j
 import type { TrustedCloudArtifactRef } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const DEFAULT_MAXIMUM_BUNDLE_BYTES = 16 * 1024 * 1024;
 const MAXIMUM_BUNDLE_BYTES = 64 * 1024 * 1024;
 const INVENTORY_KIND = "inventory" as const;
 const BASELINE_KIND = "initial-pi-baseline" as const;
 const LEADERBOARD_KIND = "comparable-public-leaderboard" as const;
 
-type CatalogMaterialKind =
-  | typeof INVENTORY_KIND
-  | typeof BASELINE_KIND
-  | typeof LEADERBOARD_KIND;
+type CatalogMaterialKind = typeof INVENTORY_KIND | typeof BASELINE_KIND | typeof LEADERBOARD_KIND;
 
 const BUNDLE_KEYS = [
   "schemaVersion",
@@ -81,19 +73,12 @@ const STATE_KEYS = [
   "comparableLeaderboard",
   "stateCommitment",
 ] as const;
-const ARTIFACT_KEYS = [
-  "uri",
-  "sha256",
-  "mediaType",
-  "byteLength",
-] as const;
+const ARTIFACT_KEYS = ["uri", "sha256", "mediaType", "byteLength"] as const;
 
 export interface TrustedTerminalBenchCatalogMaterialBundle {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-terminal-bench-catalog-material-bundle.v1";
-  readonly sensitivity:
-    "trusted-hidden-terminal-bench-catalog-material";
+  readonly domain: "dark-factory.trusted-terminal-bench-catalog-material-bundle.v1";
+  readonly sensitivity: "trusted-hidden-terminal-bench-catalog-material";
   readonly pin: TerminalBench21Pin;
   readonly inventory: TrustedTerminalBenchTaskInventory;
   readonly initialPiBaseline: TrustedTaskObservationSet | null;
@@ -103,8 +88,7 @@ export interface TrustedTerminalBenchCatalogMaterialBundle {
 
 export interface TrustedCatalogMaterialNormalizerSpec {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-catalog-material-normalizer-spec.v1";
+  readonly domain: "dark-factory.trusted-catalog-material-normalizer-spec.v1";
   readonly executionBoundary: "trusted-cloud-evaluator-only";
   readonly benchmark: "terminal-bench-2.1";
   readonly dataset: "terminal-bench/terminal-bench-2-1";
@@ -123,8 +107,7 @@ export interface TrustedCatalogMaterialNormalizerSpec {
 
 export interface TrustedCatalogMaterialPublicationReceipt {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-catalog-material-publication-receipt.v1";
+  readonly domain: "dark-factory.trusted-catalog-material-publication-receipt.v1";
   readonly sensitivity: "release-safe-control";
   readonly status: "published" | "already-published";
   readonly datasetPinHash: string;
@@ -159,17 +142,13 @@ export interface MountedVolumeTrustedCatalogMaterialRegistryOptions {
  * one canonical task-bearing bundle directly to the trusted registry process.
  */
 export interface TrustedTerminalBenchCatalogNormalizationWorker {
-  readonly boundary:
-    "trusted-cloud-terminal-bench-catalog-normalization-worker";
-  normalize(
-    spec: TrustedCatalogMaterialNormalizerSpec,
-  ): Promise<string>;
+  readonly boundary: "trusted-cloud-terminal-bench-catalog-normalization-worker";
+  normalize(spec: TrustedCatalogMaterialNormalizerSpec): Promise<string>;
 }
 
 interface CatalogMaterialRegistryEntry {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-catalog-material-registry-entry.v1";
+  readonly domain: "dark-factory.trusted-catalog-material-registry-entry.v1";
   readonly kind: CatalogMaterialKind;
   readonly lookupHash: string;
   readonly documentHash: string;
@@ -180,8 +159,7 @@ interface CatalogMaterialRegistryEntry {
 
 interface DurableCatalogMaterialRegistryState {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "trusted-hidden-catalog-material-registry";
+  readonly sensitivity: "trusted-hidden-catalog-material-registry";
   readonly revision: 0 | 1;
   readonly datasetPinHash: string;
   readonly datasetContentSha256: string;
@@ -209,8 +187,7 @@ interface CapturedOptions {
 }
 
 export class MountedVolumeTrustedCatalogMaterialRegistryError extends Error {
-  override readonly name =
-    "MountedVolumeTrustedCatalogMaterialRegistryError";
+  override readonly name = "MountedVolumeTrustedCatalogMaterialRegistryError";
 
   public constructor() {
     super("Trusted hidden catalog material registry failed closed.");
@@ -221,9 +198,7 @@ function fail(): never {
   throw new MountedVolumeTrustedCatalogMaterialRegistryError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -244,10 +219,7 @@ function exactKeys(
       (key) =>
         typeof key !== "string" ||
         !expected.includes(key) ||
-        !Object.hasOwn(
-          Object.getOwnPropertyDescriptor(value, key) ?? {},
-          "value",
-        ),
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, "value"),
     )
   ) {
     fail();
@@ -263,14 +235,8 @@ function cloneCanonical<Value>(value: Value): Value {
 }
 
 function deepFreeze<Value>(value: Value): Value {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    !Object.isFrozen(value)
-  ) {
-    for (const child of Object.values(
-      value as Readonly<Record<string, unknown>>,
-    )) {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Readonly<Record<string, unknown>>)) {
       deepFreeze(child);
     }
     Object.freeze(value);
@@ -286,31 +252,22 @@ function unchanged(value: object, expected: string): boolean {
   }
 }
 
-function bundleHash(
-  bundle: Omit<TrustedTerminalBenchCatalogMaterialBundle, "bundleHash">,
-): string {
+function bundleHash(bundle: Omit<TrustedTerminalBenchCatalogMaterialBundle, "bundleHash">): string {
   return canonicalHash({
-    domain:
-      "dark-factory.trusted-terminal-bench-catalog-material-bundle-hash.v1",
+    domain: "dark-factory.trusted-terminal-bench-catalog-material-bundle-hash.v1",
     bundle,
   });
 }
 
-function entryHash(
-  entry: Omit<CatalogMaterialRegistryEntry, "entryHash">,
-): string {
+function entryHash(entry: Omit<CatalogMaterialRegistryEntry, "entryHash">): string {
   return canonicalHash(entry);
 }
 
 function stateCommitment(
-  state: Omit<
-    DurableCatalogMaterialRegistryState,
-    "stateCommitment"
-  >,
+  state: Omit<DurableCatalogMaterialRegistryState, "stateCommitment">,
 ): string {
   return canonicalHash({
-    domain:
-      "dark-factory.trusted-catalog-material-registry-state-commitment.v1",
+    domain: "dark-factory.trusted-catalog-material-registry-state-commitment.v1",
     state,
   });
 }
@@ -353,20 +310,15 @@ function assertBundle(
 ): asserts value is TrustedTerminalBenchCatalogMaterialBundle {
   exactKeys(value, BUNDLE_KEYS);
   try {
-    assertTerminalBench21Pin(
-      value.pin as unknown as TerminalBench21Pin,
-    );
+    assertTerminalBench21Pin(value.pin as unknown as TerminalBench21Pin);
   } catch {
     fail();
   }
-  const bundle =
-    value as unknown as TrustedTerminalBenchCatalogMaterialBundle;
+  const bundle = value as unknown as TrustedTerminalBenchCatalogMaterialBundle;
   if (
     bundle.schemaVersion !== 1 ||
-    bundle.domain !==
-      "dark-factory.trusted-terminal-bench-catalog-material-bundle.v1" ||
-    bundle.sensitivity !==
-      "trusted-hidden-terminal-bench-catalog-material" ||
+    bundle.domain !== "dark-factory.trusted-terminal-bench-catalog-material-bundle.v1" ||
+    bundle.sensitivity !== "trusted-hidden-terminal-bench-catalog-material" ||
     canonicalJson(bundle.pin) !== canonicalJson(expected.pin) ||
     hashTerminalBench21Pin(bundle.pin) !== expected.datasetPinHash ||
     bundle.pin.registryRevision !== 6 ||
@@ -393,10 +345,7 @@ function assertInventoryQuery(
   value: unknown,
   options: CapturedOptions,
 ): asserts value is TrustedCatalogInventoryQuery {
-  const expected = createTrustedCatalogInventoryQuery(
-    options.pin,
-    options.datasetPinHash,
-  );
+  const expected = createTrustedCatalogInventoryQuery(options.pin, options.datasetPinHash);
   if (canonicalJson(value) !== canonicalJson(expected)) fail();
 }
 
@@ -417,8 +366,7 @@ function assertObservationQuery(
     "queryHash",
   ]);
   if (
-    (value.sourceKind !== BASELINE_KIND &&
-      value.sourceKind !== LEADERBOARD_KIND) ||
+    (value.sourceKind !== BASELINE_KIND && value.sourceKind !== LEADERBOARD_KIND) ||
     typeof value.sourceCommitment !== "string" ||
     !SHA256.test(value.sourceCommitment)
   ) {
@@ -441,47 +389,30 @@ function assertEntry(
   const entry = value as unknown as CatalogMaterialRegistryEntry;
   if (
     entry.schemaVersion !== 1 ||
-    entry.domain !==
-      "dark-factory.trusted-catalog-material-registry-entry.v1" ||
-    ![INVENTORY_KIND, BASELINE_KIND, LEADERBOARD_KIND].includes(
-      entry.kind,
-    ) ||
+    entry.domain !== "dark-factory.trusted-catalog-material-registry-entry.v1" ||
+    ![INVENTORY_KIND, BASELINE_KIND, LEADERBOARD_KIND].includes(entry.kind) ||
     !SHA256.test(entry.lookupHash) ||
     !SHA256.test(entry.documentHash) ||
-    (entry.kind === INVENTORY_KIND) !==
-      (entry.sourceCommitment === null) ||
-    (entry.sourceCommitment !== null &&
-      !SHA256.test(entry.sourceCommitment))
+    (entry.kind === INVENTORY_KIND) !== (entry.sourceCommitment === null) ||
+    (entry.sourceCommitment !== null && !SHA256.test(entry.sourceCommitment))
   ) {
     fail();
   }
-  assertArtifact(
-    entry.artifact,
-    options.datasetPinHash,
-    entry.kind,
-    options.maximumBundleBytes,
-  );
+  assertArtifact(entry.artifact, options.datasetPinHash, entry.kind, options.maximumBundleBytes);
   const { entryHash: observedHash, ...unsigned } = entry;
-  if (
-    !SHA256.test(observedHash) ||
-    observedHash !== entryHash(unsigned)
-  ) {
+  if (!SHA256.test(observedHash) || observedHash !== entryHash(unsigned)) {
     fail();
   }
 }
 
-function initialState(
-  options: CapturedOptions,
-): DurableCatalogMaterialRegistryState {
+function initialState(options: CapturedOptions): DurableCatalogMaterialRegistryState {
   const unsigned = {
     schemaVersion: 1 as const,
-    sensitivity:
-      "trusted-hidden-catalog-material-registry" as const,
+    sensitivity: "trusted-hidden-catalog-material-registry" as const,
     revision: 0 as const,
     datasetPinHash: options.datasetPinHash,
     datasetContentSha256: options.pin.datasetContentSha256,
-    datasetManifestSha256:
-      options.pin.datasetManifestSha256,
+    datasetManifestSha256: options.pin.datasetManifestSha256,
     registryRevision: 6 as const,
     taskCount: 89 as const,
     bundleHash: null,
@@ -500,18 +431,14 @@ function assertState(
   options: CapturedOptions,
 ): asserts value is DurableCatalogMaterialRegistryState {
   exactKeys(value, STATE_KEYS);
-  const state =
-    value as unknown as DurableCatalogMaterialRegistryState;
+  const state = value as unknown as DurableCatalogMaterialRegistryState;
   if (
     state.schemaVersion !== 1 ||
-    state.sensitivity !==
-      "trusted-hidden-catalog-material-registry" ||
+    state.sensitivity !== "trusted-hidden-catalog-material-registry" ||
     (state.revision !== 0 && state.revision !== 1) ||
     state.datasetPinHash !== options.datasetPinHash ||
-    state.datasetContentSha256 !==
-      options.pin.datasetContentSha256 ||
-    state.datasetManifestSha256 !==
-      options.pin.datasetManifestSha256 ||
+    state.datasetContentSha256 !== options.pin.datasetContentSha256 ||
+    state.datasetManifestSha256 !== options.pin.datasetManifestSha256 ||
     state.registryRevision !== 6 ||
     state.taskCount !== 89 ||
     !SHA256.test(state.stateCommitment)
@@ -528,28 +455,18 @@ function assertState(
       fail();
     }
   } else {
-    if (
-      state.bundleHash === null ||
-      !SHA256.test(state.bundleHash) ||
-      state.inventory === null
-    ) {
+    if (state.bundleHash === null || !SHA256.test(state.bundleHash) || state.inventory === null) {
       fail();
     }
     assertEntry(state.inventory, options);
     if (
       state.inventory.kind !== INVENTORY_KIND ||
       state.inventory.lookupHash !==
-        createTrustedCatalogInventoryQuery(
-          options.pin,
-          options.datasetPinHash,
-        ).queryHash
+        createTrustedCatalogInventoryQuery(options.pin, options.datasetPinHash).queryHash
     ) {
       fail();
     }
-    for (const [
-      expectedKind,
-      entry,
-    ] of [
+    for (const [expectedKind, entry] of [
       [BASELINE_KIND, state.initialPiBaseline],
       [LEADERBOARD_KIND, state.comparableLeaderboard],
     ] as const) {
@@ -585,14 +502,10 @@ function captureOptions(
       "bridge",
       "reader",
       ...(options.lifecycle === undefined ? [] : ["lifecycle"]),
-      ...(options.maximumBundleBytes === undefined
-        ? []
-        : ["maximumBundleBytes"]),
+      ...(options.maximumBundleBytes === undefined ? [] : ["maximumBundleBytes"]),
     ]);
     assertTerminalBench21Pin(options.pin);
-    const maximumBundleBytes =
-      options.maximumBundleBytes ??
-      DEFAULT_MAXIMUM_BUNDLE_BYTES;
+    const maximumBundleBytes = options.maximumBundleBytes ?? DEFAULT_MAXIMUM_BUNDLE_BYTES;
     if (
       options.pin.registryRevision !== 6 ||
       options.pin.taskCount !== 89 ||
@@ -600,8 +513,7 @@ function captureOptions(
       typeof options.bridge?.persistVerified !== "function" ||
       options.reader?.boundary !== "trusted-cloud" ||
       typeof options.reader?.readUtf8 !== "function" ||
-      (options.lifecycle !== undefined &&
-        typeof options.lifecycle.register !== "function") ||
+      (options.lifecycle !== undefined && typeof options.lifecycle.register !== "function") ||
       !Number.isSafeInteger(maximumBundleBytes) ||
       maximumBundleBytes < 64 * 1024 ||
       maximumBundleBytes > MAXIMUM_BUNDLE_BYTES
@@ -637,13 +549,10 @@ export function createTrustedCatalogMaterialNormalizerSpec(
     const pin = cloneCanonical(pinInput);
     const unsigned = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.trusted-catalog-material-normalizer-spec.v1" as const,
-      executionBoundary:
-        "trusted-cloud-evaluator-only" as const,
+      domain: "dark-factory.trusted-catalog-material-normalizer-spec.v1" as const,
+      executionBoundary: "trusted-cloud-evaluator-only" as const,
       benchmark: "terminal-bench-2.1" as const,
-      dataset:
-        "terminal-bench/terminal-bench-2-1" as const,
+      dataset: "terminal-bench/terminal-bench-2-1" as const,
       datasetPinHash: hashTerminalBench21Pin(pin),
       datasetContentSha256: pin.datasetContentSha256,
       datasetManifestSha256: pin.datasetManifestSha256,
@@ -676,17 +585,9 @@ export function createTrustedTerminalBenchCatalogMaterialBundle(input: {
   readonly comparableLeaderboard: TrustedTaskObservationSet | null;
 }): TrustedTerminalBenchCatalogMaterialBundle {
   try {
-    exactKeys(input, [
-      "pin",
-      "inventory",
-      "initialPiBaseline",
-      "comparableLeaderboard",
-    ]);
+    exactKeys(input, ["pin", "inventory", "initialPiBaseline", "comparableLeaderboard"]);
     assertTerminalBench21Pin(input.pin);
-    if (
-      input.pin.registryRevision !== 6 ||
-      input.pin.taskCount !== 89
-    ) {
+    if (input.pin.registryRevision !== 6 || input.pin.taskCount !== 89) {
       fail();
     }
     const pin = cloneCanonical(input.pin);
@@ -697,20 +598,14 @@ export function createTrustedTerminalBenchCatalogMaterialBundle(input: {
     };
     const unsigned = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.trusted-terminal-bench-catalog-material-bundle.v1" as const,
-      sensitivity:
-        "trusted-hidden-terminal-bench-catalog-material" as const,
+      domain: "dark-factory.trusted-terminal-bench-catalog-material-bundle.v1" as const,
+      sensitivity: "trusted-hidden-terminal-bench-catalog-material" as const,
       pin,
       inventory: cloneCanonical(input.inventory),
       initialPiBaseline:
-        input.initialPiBaseline === null
-          ? null
-          : cloneCanonical(input.initialPiBaseline),
+        input.initialPiBaseline === null ? null : cloneCanonical(input.initialPiBaseline),
       comparableLeaderboard:
-        input.comparableLeaderboard === null
-          ? null
-          : cloneCanonical(input.comparableLeaderboard),
+        input.comparableLeaderboard === null ? null : cloneCanonical(input.comparableLeaderboard),
     };
     const result = {
       ...unsigned,
@@ -733,23 +628,17 @@ function parseCanonicalBundle(
       raw.length === 0 ||
       raw.charCodeAt(0) === 0xfeff ||
       raw.includes("\u0000") ||
-      Buffer.byteLength(raw, "utf8") >
-        options.maximumBundleBytes
+      Buffer.byteLength(raw, "utf8") > options.maximumBundleBytes
     ) {
       fail();
     }
     const parsed = JSON.parse(raw) as unknown;
-    if (
-      !isPlainRecord(parsed) ||
-      raw !== `${canonicalJson(parsed)}\n`
-    ) {
+    if (!isPlainRecord(parsed) || raw !== `${canonicalJson(parsed)}\n`) {
       fail();
     }
     assertBundle(parsed, options);
     return deepFreeze(
-      cloneCanonical(
-        parsed as unknown as TrustedTerminalBenchCatalogMaterialBundle,
-      ),
+      cloneCanonical(parsed as unknown as TrustedTerminalBenchCatalogMaterialBundle),
     );
   } catch {
     fail();
@@ -763,8 +652,7 @@ function receipt(
 ): TrustedCatalogMaterialPublicationReceipt {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.trusted-catalog-material-publication-receipt.v1" as const,
+    domain: "dark-factory.trusted-catalog-material-publication-receipt.v1" as const,
     sensitivity: "release-safe-control" as const,
     status,
     datasetPinHash: hashTerminalBench21Pin(bundle.pin),
@@ -772,12 +660,9 @@ function receipt(
     taskCount: 89 as const,
     bundleHash: bundle.bundleHash,
     inventoryHash: bundle.inventory.inventoryHash,
-    initialPiBaselineSourceCommitment:
-      bundle.initialPiBaseline?.sourceCommitment ?? null,
-    initialPiBaselineObservationSetHash:
-      bundle.initialPiBaseline?.observationSetHash ?? null,
-    comparableLeaderboardSourceCommitment:
-      bundle.comparableLeaderboard?.sourceCommitment ?? null,
+    initialPiBaselineSourceCommitment: bundle.initialPiBaseline?.sourceCommitment ?? null,
+    initialPiBaselineObservationSetHash: bundle.initialPiBaseline?.observationSetHash ?? null,
+    comparableLeaderboardSourceCommitment: bundle.comparableLeaderboard?.sourceCommitment ?? null,
     comparableLeaderboardObservationSetHash:
       bundle.comparableLeaderboard?.observationSetHash ?? null,
     registryCommitment,
@@ -800,65 +685,50 @@ function receipt(
  * persists task-bearing bytes only in the evaluator/broker trust zone.
  */
 export class MountedVolumeTrustedCatalogMaterialRegistry {
-  readonly boundary =
-    "trusted-cloud-hidden-catalog-material-registry" as const;
+  readonly boundary = "trusted-cloud-hidden-catalog-material-registry" as const;
   readonly lifecycleId: string;
   readonly lifecycleResource: TrustedProductionOptimizeCloseable;
   readonly source: TrustedTerminalBenchCatalogMaterialSource;
   readonly #options: CapturedOptions;
   readonly #store: MountedVolumeTransactionalJsonStore<DurableCatalogMaterialRegistryState>;
-  readonly #assertTrustedRuntime:
-    TrustedArtifactBridge["assertTrustedRuntime"];
+  readonly #assertTrustedRuntime: TrustedArtifactBridge["assertTrustedRuntime"];
   readonly #persistVerified: TrustedArtifactBridge["persistVerified"];
   readonly #readUtf8: VerifyingTrustedJsonArtifactReader["readUtf8"];
   #normalizationAttempted = false;
 
-  public constructor(
-    options: MountedVolumeTrustedCatalogMaterialRegistryOptions,
-  ) {
+  public constructor(options: MountedVolumeTrustedCatalogMaterialRegistryOptions) {
     this.#options = captureOptions(options);
     options.bridge.assertTrustedRuntime();
-    this.#assertTrustedRuntime =
-      options.bridge.assertTrustedRuntime.bind(options.bridge);
-    this.#persistVerified =
-      options.bridge.persistVerified.bind(options.bridge);
+    this.#assertTrustedRuntime = options.bridge.assertTrustedRuntime.bind(options.bridge);
+    this.#persistVerified = options.bridge.persistVerified.bind(options.bridge);
     this.#readUtf8 = options.reader.readUtf8.bind(options.reader);
     this.lifecycleId = `catalog-material-${canonicalHash({
-      domain:
-        "dark-factory.trusted-catalog-material-registry-lifecycle.v1",
+      domain: "dark-factory.trusted-catalog-material-registry-lifecycle.v1",
       storeId: options.durableState.storeId,
       datasetPinHash: this.#options.datasetPinHash,
     }).slice(0, 24)}`;
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableCatalogMaterialRegistryState>(
-        options.durableState,
-        "trusted-hidden-catalog-material-registry-v1",
-        {
-          domain:
-            "dark-factory.trusted-hidden-catalog-material-registry-state.v1",
-          initialState: () => initialState(this.#options),
-          assertState: (
-            value: unknown,
-          ): asserts value is DurableCatalogMaterialRegistryState => {
-            assertState(value, this.#options);
-          },
-          revision: (state) => state.revision,
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableCatalogMaterialRegistryState>(
+      options.durableState,
+      "trusted-hidden-catalog-material-registry-v1",
+      {
+        domain: "dark-factory.trusted-hidden-catalog-material-registry-state.v1",
+        initialState: () => initialState(this.#options),
+        assertState: (value: unknown): asserts value is DurableCatalogMaterialRegistryState => {
+          assertState(value, this.#options);
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
     this.lifecycleResource = Object.freeze({
-      boundary:
-        "trusted-cloud-production-optimize-lifecycle" as const,
+      boundary: "trusted-cloud-production-optimize-lifecycle" as const,
       lifecycleId: this.lifecycleId,
       close: (): Promise<void> => this.close(),
     });
     options.lifecycle?.register(this.lifecycleResource);
-    const loadInventory =
-      this.#loadInventory.bind(this);
-    const loadObservations =
-      this.#loadObservations.bind(this);
+    const loadInventory = this.#loadInventory.bind(this);
+    const loadObservations = this.#loadObservations.bind(this);
     this.source = Object.freeze({
-      boundary:
-        "trusted-cloud-terminal-bench-catalog-material-source" as const,
+      boundary: "trusted-cloud-terminal-bench-catalog-material-source" as const,
       loadInventory,
       loadObservations,
     });
@@ -882,26 +752,18 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
       !SHA256.test(lookupHash) ||
       !SHA256.test(documentHash) ||
       (kind === INVENTORY_KIND) !== (sourceCommitment === null) ||
-      (sourceCommitment !== null &&
-        !SHA256.test(sourceCommitment))
+      (sourceCommitment !== null && !SHA256.test(sourceCommitment))
     ) {
       fail();
     }
     const raw = `${canonicalJson(document)}\n`;
     const bytes = Buffer.from(raw, "utf8");
-    if (
-      bytes.byteLength <= 0 ||
-      bytes.byteLength > this.#options.maximumBundleBytes
-    ) {
+    if (bytes.byteLength <= 0 || bytes.byteLength > this.#options.maximumBundleBytes) {
       fail();
     }
     const byteHash = sha256(bytes);
     const expectedArtifact: TrustedCloudArtifactRef = {
-      uri: artifactUri(
-        this.#options.datasetPinHash,
-        kind,
-        byteHash,
-      ),
+      uri: artifactUri(this.#options.datasetPinHash, kind, byteHash),
       sha256: byteHash,
       mediaType: "application/json",
       byteLength: bytes.byteLength,
@@ -913,16 +775,12 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
         yield bytes;
       })(),
     });
-    if (
-      canonicalJson(artifact) !==
-      canonicalJson(expectedArtifact)
-    ) {
+    if (canonicalJson(artifact) !== canonicalJson(expectedArtifact)) {
       fail();
     }
     const unsigned = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.trusted-catalog-material-registry-entry.v1" as const,
+      domain: "dark-factory.trusted-catalog-material-registry-entry.v1" as const,
       kind,
       lookupHash,
       documentHash,
@@ -970,10 +828,7 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
         document,
       );
     };
-    const initialPiBaseline = await persistObservation(
-      BASELINE_KIND,
-      bundle.initialPiBaseline,
-    );
+    const initialPiBaseline = await persistObservation(BASELINE_KIND, bundle.initialPiBaseline);
     const comparableLeaderboard = await persistObservation(
       LEADERBOARD_KIND,
       bundle.comparableLeaderboard,
@@ -996,43 +851,32 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
       if (current.revision === 1) {
         if (
           current.bundleHash !== bundle.bundleHash ||
-          current.inventory?.documentHash !==
-            bundle.inventory.inventoryHash ||
+          current.inventory?.documentHash !== bundle.inventory.inventoryHash ||
           current.initialPiBaseline?.documentHash !==
-            (bundle.initialPiBaseline?.observationSetHash ??
-              undefined) ||
+            (bundle.initialPiBaseline?.observationSetHash ?? undefined) ||
           current.comparableLeaderboard?.documentHash !==
-            (bundle.comparableLeaderboard
-              ?.observationSetHash ?? undefined)
+            (bundle.comparableLeaderboard?.observationSetHash ?? undefined)
         ) {
           fail();
         }
-        return receipt(
-          "already-published",
-          bundle,
-          current.stateCommitment,
-        );
+        return receipt("already-published", bundle, current.stateCommitment);
       }
       const persisted = await this.#persistBundle(bundle);
       const next = await this.#store.transact((state) => {
         if (state.revision !== 0) fail();
         const unsigned = {
           schemaVersion: 1 as const,
-          sensitivity:
-            "trusted-hidden-catalog-material-registry" as const,
+          sensitivity: "trusted-hidden-catalog-material-registry" as const,
           revision: 1 as const,
           datasetPinHash: this.#options.datasetPinHash,
-          datasetContentSha256:
-            this.#options.pin.datasetContentSha256,
-          datasetManifestSha256:
-            this.#options.pin.datasetManifestSha256,
+          datasetContentSha256: this.#options.pin.datasetContentSha256,
+          datasetManifestSha256: this.#options.pin.datasetManifestSha256,
           registryRevision: 6 as const,
           taskCount: 89 as const,
           bundleHash: persisted.bundle.bundleHash,
           inventory: persisted.inventory,
           initialPiBaseline: persisted.initialPiBaseline,
-          comparableLeaderboard:
-            persisted.comparableLeaderboard,
+          comparableLeaderboard: persisted.comparableLeaderboard,
         };
         const nextState: DurableCatalogMaterialRegistryState = {
           ...unsigned,
@@ -1044,11 +888,7 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
           result: cloneCanonical(nextState),
         };
       });
-      return receipt(
-        "published",
-        bundle,
-        next.stateCommitment,
-      );
+      return receipt("published", bundle, next.stateCommitment);
     } catch {
       fail();
     }
@@ -1063,14 +903,12 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
       this.#assertTrustedRuntime();
       exactKeys(workerInput, ["boundary", "normalize"]);
       if (
-        workerInput.boundary !==
-          "trusted-cloud-terminal-bench-catalog-normalization-worker" ||
+        workerInput.boundary !== "trusted-cloud-terminal-bench-catalog-normalization-worker" ||
         typeof workerInput.normalize !== "function"
       ) {
         fail();
       }
-      const normalize =
-        workerInput.normalize.bind(workerInput);
+      const normalize = workerInput.normalize.bind(workerInput);
       const spec = createTrustedCatalogMaterialNormalizerSpec(
         this.#options.pin,
         this.#options.maximumBundleBytes,
@@ -1094,8 +932,7 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
     );
     if (
       typeof raw !== "string" ||
-      Buffer.byteLength(raw, "utf8") !==
-        entry.artifact.byteLength ||
+      Buffer.byteLength(raw, "utf8") !== entry.artifact.byteLength ||
       sha256(raw) !== entry.artifact.sha256
     ) {
       fail();
@@ -1106,10 +943,7 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
     } catch {
       fail();
     }
-    if (
-      !isPlainRecord(parsed) ||
-      raw !== `${canonicalJson(parsed)}\n`
-    ) {
+    if (!isPlainRecord(parsed) || raw !== `${canonicalJson(parsed)}\n`) {
       fail();
     }
     return cloneCanonical(parsed);
@@ -1123,19 +957,15 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
     try {
       buildTrustedHiddenCatalogImport({
         expectedDatasetPinHash: this.#options.datasetPinHash,
-        inventory:
-          document as unknown as TrustedTerminalBenchTaskInventory,
+        inventory: document as unknown as TrustedTerminalBenchTaskInventory,
         initialPiBaseline: null,
         comparableLeaderboard: null,
       });
     } catch {
       fail();
     }
-    const inventory =
-      document as unknown as TrustedTerminalBenchTaskInventory;
-    if (
-      inventory.inventoryHash !== state.inventory.documentHash
-    ) {
+    const inventory = document as unknown as TrustedTerminalBenchTaskInventory;
+    if (inventory.inventoryHash !== state.inventory.documentHash) {
       fail();
     }
     return deepFreeze(cloneCanonical(inventory));
@@ -1173,21 +1003,12 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
       const before = canonicalJson(queryInput);
       const query = cloneCanonical(queryInput);
       const state = await this.#snapshot();
-      if (
-        state.revision !== 1 ||
-        state.inventory === null
-      ) {
+      if (state.revision !== 1 || state.inventory === null) {
         fail();
       }
-      assertObservationQuery(
-        query,
-        this.#options,
-        state.inventory.documentHash,
-      );
+      assertObservationQuery(query, this.#options, state.inventory.documentHash);
       const entry =
-        query.sourceKind === BASELINE_KIND
-          ? state.initialPiBaseline
-          : state.comparableLeaderboard;
+        query.sourceKind === BASELINE_KIND ? state.initialPiBaseline : state.comparableLeaderboard;
       if (
         entry === null ||
         entry.lookupHash !== query.queryHash ||
@@ -1195,33 +1016,22 @@ export class MountedVolumeTrustedCatalogMaterialRegistry {
       ) {
         fail();
       }
-      const inventory =
-        await this.#readInventoryFromState(state);
+      const inventory = await this.#readInventoryFromState(state);
       const document = await this.#readDocument(entry);
-      const observations =
-        document as unknown as TrustedTaskObservationSet;
+      const observations = document as unknown as TrustedTaskObservationSet;
       try {
         buildTrustedHiddenCatalogImport({
-          expectedDatasetPinHash:
-            this.#options.datasetPinHash,
+          expectedDatasetPinHash: this.#options.datasetPinHash,
           inventory,
-          initialPiBaseline:
-            query.sourceKind === BASELINE_KIND
-              ? observations
-              : null,
-          comparableLeaderboard:
-            query.sourceKind === LEADERBOARD_KIND
-              ? observations
-              : null,
+          initialPiBaseline: query.sourceKind === BASELINE_KIND ? observations : null,
+          comparableLeaderboard: query.sourceKind === LEADERBOARD_KIND ? observations : null,
         });
       } catch {
         fail();
       }
       if (
-        observations.observationSetHash !==
-          entry.documentHash ||
-        observations.sourceCommitment !==
-          entry.sourceCommitment ||
+        observations.observationSetHash !== entry.documentHash ||
+        observations.sourceCommitment !== entry.sourceCommitment ||
         !unchanged(queryInput, before)
       ) {
         fail();

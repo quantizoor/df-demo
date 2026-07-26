@@ -61,10 +61,7 @@
     "/usr/local/bin/harbor",
     "/usr/local/bin/bun"
   ],
-  "reservedIds": [
-    65532,
-    65533
-  ],
+  "reservedIds": [65532, 65533],
   "defaultUser": {
     "uid": 10001,
     "gid": 10001,

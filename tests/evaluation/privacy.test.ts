@@ -2,15 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   assertReleaseContainsNoLiterals,
   createPrivacyBudget,
-  releaseBehaviorCards,
   type PrivateBehaviorObservation,
+  releaseBehaviorCards,
 } from "../../src/evaluation/index.js";
-import {
-  behaviorWithFailure,
-  behaviorWithoutFailure,
-  digest,
-  taskId,
-} from "./fixtures.js";
+import { behaviorWithFailure, behaviorWithoutFailure, digest, taskId } from "./fixtures.js";
 
 describe("aggregate evidence privacy firewall", () => {
   it("releases only statistically supported aggregate cards", () => {
@@ -20,19 +15,13 @@ describe("aggregate evidence privacy firewall", () => {
       experimentDigest: digest(1_001),
       analysisWindowDigest: digest(2_001),
       privacyState: createPrivacyBudget(5),
-      forbiddenLiterals: [
-        "actual-task-name",
-        "/hidden/task/path",
-        "private-package-name",
-      ],
+      forbiddenLiterals: ["actual-task-name", "/hidden/task/path", "private-package-name"],
     });
     expect(result.release.suppression).toBe("none");
     expect(result.release.cards.length).toBeGreaterThan(0);
-    expect(
-      result.release.cards.some(
-        (card) => card.feature === "invalid-tool-invocation",
-      ),
-    ).toBe(true);
+    expect(result.release.cards.some((card) => card.feature === "invalid-tool-invocation")).toBe(
+      true,
+    );
     const serialized = JSON.stringify(result.release);
     expect(serialized).not.toContain("taskId");
     expect(serialized).not.toContain(digest(1));
@@ -141,11 +130,7 @@ describe("aggregate evidence privacy firewall", () => {
 
   it("suppresses candidate/champion behavior from unmatched hidden task sets", () => {
     const observations = pairedObservations(1, 12).filter(
-      (observation) =>
-        !(
-          observation.arm === "champion" &&
-          observation.taskId === taskId(12)
-        ),
+      (observation) => !(observation.arm === "champion" && observation.taskId === taskId(12)),
     );
     observations.push({
       taskId: taskId(13),
@@ -213,12 +198,12 @@ describe("aggregate evidence privacy firewall", () => {
     expect(() =>
       assertReleaseContainsNoLiterals({ statement: "use /private/task/file" }, []),
     ).toThrow(/literal shape/u);
-    expect(() =>
-      assertReleaseContainsNoLiterals({ statement: "SECRET_API_KEY" }, []),
-    ).toThrow(/literal shape/u);
-    expect(() =>
-      assertReleaseContainsNoLiterals({ statement: digest(500) }, []),
-    ).toThrow(/literal shape/u);
+    expect(() => assertReleaseContainsNoLiterals({ statement: "SECRET_API_KEY" }, [])).toThrow(
+      /literal shape/u,
+    );
+    expect(() => assertReleaseContainsNoLiterals({ statement: digest(500) }, [])).toThrow(
+      /literal shape/u,
+    );
     expect(() =>
       assertReleaseContainsNoLiterals({ statement: "private package" }, ["private package"]),
     ).toThrow(/source literal/u);

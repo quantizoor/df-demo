@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   TrustedCatalogGenesisLoaderError,
-  TrustedTerminalBenchCatalogGenesisLoader,
   type TrustedCatalogInventoryQuery,
   type TrustedCatalogObservationQuery,
+  TrustedTerminalBenchCatalogGenesisLoader,
   type TrustedTerminalBenchCatalogMaterialSource,
 } from "../../src/broker/catalog-genesis-loader.js";
 import {
@@ -14,10 +14,7 @@ import {
   type TrustedTerminalBenchTaskInventory,
 } from "../../src/broker/catalog-import.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
-import {
-  hashTerminalBench21Pin,
-  type TerminalBench21Pin,
-} from "../../src/terminal-bench/pin.js";
+import { hashTerminalBench21Pin, type TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 
 const pin: TerminalBench21Pin = {
   benchmark: "terminal-bench-2.1",
@@ -37,8 +34,7 @@ const LEADERBOARD_COMMITMENT = "7".repeat(64);
 
 function inventory(): TrustedTerminalBenchTaskInventory {
   const unsigned = {
-    sensitivity:
-      "trusted-terminal-bench-task-inventory" as const,
+    sensitivity: "trusted-terminal-bench-task-inventory" as const,
     schemaVersion: 1 as const,
     datasetPinHash: hashTerminalBench21Pin(pin),
     registryRevision: 6 as const,
@@ -46,12 +42,9 @@ function inventory(): TrustedTerminalBenchTaskInventory {
     createdAt: "2026-07-26T00:00:00.000Z",
     tasks: Array.from({ length: 89 }, (_, index) => ({
       packageTaskName: `synthetic-benchmark/case-${String(index + 1).padStart(3, "0")}`,
-      taskRevisionDigest: (index + 1)
-        .toString(16)
-        .padStart(64, "0"),
+      taskRevisionDigest: (index + 1).toString(16).padStart(64, "0"),
       capabilityStratum: `capability-${index % 9}`,
-      difficultyStratum:
-        index % 3 === 0 ? "difficult" : "moderate",
+      difficultyStratum: index % 3 === 0 ? "difficult" : "moderate",
       normalizedExpectedCost: (index % 10) / 10,
       scoringEligible: true,
       infrastructureValid: true,
@@ -81,10 +74,8 @@ function observations(
         packageTaskName: task.packageTaskName,
         taskRevisionDigest: task.taskRevisionDigest,
         validAttempts: 3,
-        passedAttempts:
-          sourceKind === "initial-pi-baseline" ? 0 : 1,
-        meanReward:
-          sourceKind === "initial-pi-baseline" ? 0 : 1 / 3,
+        passedAttempts: sourceKind === "initial-pi-baseline" ? 0 : 1,
+        meanReward: sourceKind === "initial-pi-baseline" ? 0 : 1 / 3,
         meanLatencyMs: 25_000,
         meanCostUsd: 0.2,
       },
@@ -92,23 +83,19 @@ function observations(
   };
   return {
     ...unsigned,
-    observationSetHash:
-      computeTrustedTaskObservationSetHash(unsigned),
+    observationSetHash: computeTrustedTaskObservationSetHash(unsigned),
   };
 }
 
-function source(input: {
-  readonly onInventory?: (
-    query: TrustedCatalogInventoryQuery,
-  ) => void;
-  readonly onObservation?: (
-    query: TrustedCatalogObservationQuery,
-  ) => void;
-  readonly detachedBaseline?: boolean;
-} = {}): TrustedTerminalBenchCatalogMaterialSource {
+function source(
+  input: {
+    readonly onInventory?: (query: TrustedCatalogInventoryQuery) => void;
+    readonly onObservation?: (query: TrustedCatalogObservationQuery) => void;
+    readonly detachedBaseline?: boolean;
+  } = {},
+): TrustedTerminalBenchCatalogMaterialSource {
   return {
-    boundary:
-      "trusted-cloud-terminal-bench-catalog-material-source",
+    boundary: "trusted-cloud-terminal-bench-catalog-material-source",
     async loadInventory(query) {
       input.onInventory?.(query);
       return inventory();
@@ -117,8 +104,7 @@ function source(input: {
       input.onObservation?.(query);
       return observations(
         query.sourceKind,
-        input.detachedBaseline === true &&
-          query.sourceKind === "initial-pi-baseline"
+        input.detachedBaseline === true && query.sourceKind === "initial-pi-baseline"
           ? "8".repeat(64)
           : query.sourceCommitment,
       );
@@ -138,8 +124,7 @@ describe("trusted Terminal-Bench catalog genesis loader", () => {
       pin,
       source: materialSource,
       initialPiBaselineCommitment: BASELINE_COMMITMENT,
-      comparableLeaderboardCommitment:
-        LEADERBOARD_COMMITMENT,
+      comparableLeaderboardCommitment: LEADERBOARD_COMMITMENT,
     });
     const loaded = await loader.loadOnce();
 
@@ -152,10 +137,8 @@ describe("trusted Terminal-Bench catalog genesis loader", () => {
         schemaVersion: inventoryQuery.schemaVersion,
         domain: inventoryQuery.domain,
         datasetPinHash: inventoryQuery.datasetPinHash,
-        datasetContentSha256:
-          inventoryQuery.datasetContentSha256,
-        datasetManifestSha256:
-          inventoryQuery.datasetManifestSha256,
+        datasetContentSha256: inventoryQuery.datasetContentSha256,
+        datasetManifestSha256: inventoryQuery.datasetManifestSha256,
         registryRevision: inventoryQuery.registryRevision,
         expectedTaskCount: inventoryQuery.expectedTaskCount,
       }),
@@ -164,9 +147,7 @@ describe("trusted Terminal-Bench catalog genesis loader", () => {
     expect(released).not.toContain("synthetic-benchmark");
     expect(released).not.toContain("case-001");
     expect(Object.keys(loaded)).not.toContain("hiddenImport");
-    expect(JSON.stringify(loaded)).not.toContain(
-      "synthetic-benchmark",
-    );
+    expect(JSON.stringify(loaded)).not.toContain("synthetic-benchmark");
     expect({ ...loaded }).not.toHaveProperty("hiddenImport");
     expect(loaded.hiddenImport.seeds).toHaveLength(89);
     expect(loaded.releaseSafeReceipt).toMatchObject({
@@ -175,9 +156,7 @@ describe("trusted Terminal-Bench catalog genesis loader", () => {
       containsTaskIdentifiers: false,
       containsObservationRows: false,
     });
-    await expect(loader.loadOnce()).rejects.toBeInstanceOf(
-      TrustedCatalogGenesisLoaderError,
-    );
+    await expect(loader.loadOnce()).rejects.toBeInstanceOf(TrustedCatalogGenesisLoaderError);
   });
 
   it("captures the trusted source before later dependency mutation", async () => {
@@ -209,12 +188,8 @@ describe("trusted Terminal-Bench catalog genesis loader", () => {
       comparableLeaderboardCommitment: null,
     });
 
-    await expect(loader.loadOnce()).rejects.toBeInstanceOf(
-      TrustedCatalogGenesisLoaderError,
-    );
-    await expect(loader.loadOnce()).rejects.toBeInstanceOf(
-      TrustedCatalogGenesisLoaderError,
-    );
+    await expect(loader.loadOnce()).rejects.toBeInstanceOf(TrustedCatalogGenesisLoaderError);
+    await expect(loader.loadOnce()).rejects.toBeInstanceOf(TrustedCatalogGenesisLoaderError);
   });
 
   it("rejects a dataset revision other than the sealed 2.1 revision", () => {

@@ -9,13 +9,12 @@ import {
   TRUSTED_PI_CODING_AGENT_PACKAGE_NAME,
   type TrustedGitRegistrationReceipt,
 } from "../harness/git-registration.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash, sha256 } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
+import {
+  type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
+} from "./mounted-volume-state.js";
 import {
   type ProductionOptimizeBootstrapOrReconstructReceipt,
   type ProductionOptimizeBootstrapOrReconstructRequest,
@@ -23,21 +22,14 @@ import {
   type TrustedProductionOptimizeBootstrapOrReconstructPort,
   type TrustedProductionOptimizeCloseable,
 } from "./production-optimize-composition-owner.js";
-import {
-  MountedVolumeTransactionalJsonStore,
-  type MountedVolumeDurableStateOptions,
-} from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const SAFE_EXTERNAL_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,255}$/u;
+const SAFE_EXTERNAL_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,255}$/u;
 const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$/u;
-const SAFE_KEY_VERSION =
-  /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
-const SAFE_HEAD_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_KEY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
+const SAFE_HEAD_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
 const EXACT_SEMVER =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
@@ -55,8 +47,7 @@ export type ProductionOptimizePrerequisiteKeyPurpose =
 
 export interface SignedProductionOptimizeCampaignGenesis {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-campaign-genesis.v1";
+  readonly domain: "dark-factory.production-optimize-campaign-genesis.v1";
   readonly sensitivity: "release-safe-control";
   readonly deployment: "trusted-cloud";
   readonly campaignId: string;
@@ -77,8 +68,7 @@ export interface SignedProductionOptimizeCampaignGenesis {
  */
 export interface SignedProductionOptimizeHiddenCatalogGenesis {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-hidden-catalog-genesis.v1";
+  readonly domain: "dark-factory.production-optimize-hidden-catalog-genesis.v1";
   readonly sensitivity: "trusted-control-task-free-commitment";
   readonly deployment: "trusted-cloud";
   readonly campaignId: string;
@@ -105,8 +95,7 @@ export interface SignedProductionOptimizeHiddenCatalogGenesis {
 }
 
 export interface TrustedProductionOptimizePrerequisiteSource {
-  readonly boundary:
-    "trusted-cloud-production-optimize-prerequisite-source";
+  readonly boundary: "trusted-cloud-production-optimize-prerequisite-source";
   locatePrivatePiRegistration(input: {
     readonly purpose: "production-optimize-private-pi-registration";
     readonly sourcePrerequisiteHash: string;
@@ -152,8 +141,7 @@ export interface TrustedProductionOptimizePrerequisitePublicKey {
 }
 
 export interface TrustedProductionOptimizePrerequisitePublicKeyAuthority {
-  readonly boundary:
-    "trusted-cloud-production-optimize-prerequisite-public-key-authority";
+  readonly boundary: "trusted-cloud-production-optimize-prerequisite-public-key-authority";
   resolve(input: {
     readonly purpose: ProductionOptimizePrerequisiteKeyPurpose;
     readonly keyId: string;
@@ -164,23 +152,19 @@ export interface TrustedProductionOptimizePrerequisitePublicKeyAuthority {
 
 export interface ProductionOptimizeCampaignGenesisAuthorityInput {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-campaign-genesis-authority-input.v1";
+  readonly domain: "dark-factory.production-optimize-campaign-genesis-authority-input.v1";
   readonly requestHash: string;
   readonly sourcePrerequisiteHash: string;
   readonly sourceRegistrationId: string;
-  readonly genesisPrerequisite:
-    SignedProductionOptimizeCampaignGenesis;
+  readonly genesisPrerequisite: SignedProductionOptimizeCampaignGenesis;
 }
 
 export interface ProductionOptimizeHiddenCatalogGenesisAuthorityInput {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-hidden-catalog-genesis-authority-input.v1";
+  readonly domain: "dark-factory.production-optimize-hidden-catalog-genesis-authority-input.v1";
   readonly requestHash: string;
   readonly campaignStateHash: string;
-  readonly catalogPrerequisite:
-    SignedProductionOptimizeHiddenCatalogGenesis;
+  readonly catalogPrerequisite: SignedProductionOptimizeHiddenCatalogGenesis;
 }
 
 export interface ProductionOptimizeGenesisEnsureResult {
@@ -190,26 +174,20 @@ export interface ProductionOptimizeGenesisEnsureResult {
 }
 
 export interface TrustedProductionOptimizeCampaignGenesisAuthority {
-  readonly boundary:
-    "trusted-cloud-production-optimize-campaign-genesis-authority";
+  readonly boundary: "trusted-cloud-production-optimize-campaign-genesis-authority";
   ensureExact(
     input: ProductionOptimizeCampaignGenesisAuthorityInput,
   ): Promise<ProductionOptimizeGenesisEnsureResult>;
 }
 
 export interface TrustedProductionOptimizeHiddenCatalogGenesisAuthority {
-  readonly boundary:
-    "trusted-cloud-production-optimize-hidden-catalog-genesis-authority";
+  readonly boundary: "trusted-cloud-production-optimize-hidden-catalog-genesis-authority";
   ensureExact(
     input: ProductionOptimizeHiddenCatalogGenesisAuthorityInput,
   ): Promise<ProductionOptimizeGenesisEnsureResult>;
 }
 
-type BootstrapPhase =
-  | "claimed"
-  | "campaign-ensured"
-  | "catalog-ensured"
-  | "committed";
+type BootstrapPhase = "claimed" | "campaign-ensured" | "catalog-ensured" | "committed";
 
 interface DurableBootstrapBinding {
   readonly request: ProductionOptimizeBootstrapOrReconstructRequest;
@@ -219,14 +197,12 @@ interface DurableBootstrapBinding {
   readonly catalogStateHash: string | null;
   readonly claimedAt: string;
   readonly advancedAt: string;
-  readonly receipt:
-    ProductionOptimizeBootstrapOrReconstructReceipt | null;
+  readonly receipt: ProductionOptimizeBootstrapOrReconstructReceipt | null;
 }
 
 interface DurableBootstrapCoordinationState {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-bootstrap-coordination.v1";
+  readonly domain: "dark-factory.production-optimize-bootstrap-coordination.v1";
   readonly revision: number;
   readonly binding: DurableBootstrapBinding | null;
 }
@@ -238,33 +214,24 @@ interface BootstrapClaim {
 
 export interface DurableProductionOptimizeBootstrapOrReconstructOptions {
   readonly durableState: MountedVolumeDurableStateOptions;
-  readonly prerequisiteSource:
-    TrustedProductionOptimizePrerequisiteSource;
-  readonly publicKeyAuthority:
-    TrustedProductionOptimizePrerequisitePublicKeyAuthority;
-  readonly keyRotations:
-    readonly ProductionOptimizePrerequisiteKeyRotation[];
-  readonly campaignGenesisAuthority:
-    TrustedProductionOptimizeCampaignGenesisAuthority;
-  readonly hiddenCatalogGenesisAuthority:
-    TrustedProductionOptimizeHiddenCatalogGenesisAuthority;
+  readonly prerequisiteSource: TrustedProductionOptimizePrerequisiteSource;
+  readonly publicKeyAuthority: TrustedProductionOptimizePrerequisitePublicKeyAuthority;
+  readonly keyRotations: readonly ProductionOptimizePrerequisiteKeyRotation[];
+  readonly campaignGenesisAuthority: TrustedProductionOptimizeCampaignGenesisAuthority;
+  readonly hiddenCatalogGenesisAuthority: TrustedProductionOptimizeHiddenCatalogGenesisAuthority;
   readonly now?: () => Date;
 }
 
-interface CapturedRotation
-  extends ProductionOptimizePrerequisiteKeyRotation {
+interface CapturedRotation extends ProductionOptimizePrerequisiteKeyRotation {
   readonly validFromMs: number;
   readonly validUntilMs: number;
 }
 
 export class ProductionOptimizeBootstrapOrReconstructError extends Error {
-  override readonly name =
-    "ProductionOptimizeBootstrapOrReconstructError";
+  override readonly name = "ProductionOptimizeBootstrapOrReconstructError";
 
   public constructor() {
-    super(
-      "Production optimize bootstrap or reconstruction failed closed.",
-    );
+    super("Production optimize bootstrap or reconstruction failed closed.");
   }
 }
 
@@ -272,9 +239,7 @@ function fail(): never {
   throw new ProductionOptimizeBootstrapOrReconstructError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -289,10 +254,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -300,10 +262,7 @@ function exactKeys(
 function timestamp(value: unknown): number {
   if (typeof value !== "string") fail();
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail();
   }
   return parsed;
@@ -311,10 +270,7 @@ function timestamp(value: unknown): number {
 
 function readNow(now: () => Date): Date {
   const value = now();
-  if (
-    !(value instanceof Date) ||
-    !Number.isFinite(value.getTime())
-  ) {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
     fail();
   }
   return new Date(value.getTime());
@@ -325,14 +281,8 @@ function cloneCanonical<T>(value: T): T {
 }
 
 function freezeJson<T>(value: T): T {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    !Object.isFrozen(value)
-  ) {
-    for (const child of Object.values(
-      value as Readonly<Record<string, unknown>>,
-    )) {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Readonly<Record<string, unknown>>)) {
       freezeJson(child);
     }
     Object.freeze(value);
@@ -340,9 +290,7 @@ function freezeJson<T>(value: T): T {
   return value;
 }
 
-function assertSignature(
-  value: unknown,
-): asserts value is Signature {
+function assertSignature(value: unknown): asserts value is Signature {
   exactKeys(value, ["algorithm", "keyId", "signedAt", "signature"]);
   if (
     value.algorithm !== "ed25519" ||
@@ -386,8 +334,7 @@ function assertRequest(
   };
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1" ||
+    value.domain !== "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1" ||
     typeof value.manifestId !== "string" ||
     !SAFE_ID.test(value.manifestId) ||
     typeof value.campaignId !== "string" ||
@@ -419,14 +366,10 @@ function receiptUnsigned(
     readonly catalogStateHash: string;
     readonly verifiedAt: string;
   },
-): Omit<
-  ProductionOptimizeBootstrapOrReconstructReceipt,
-  "receiptHash"
-> {
+): Omit<ProductionOptimizeBootstrapOrReconstructReceipt, "receiptHash"> {
   return {
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1",
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1",
     requestHash: request.requestHash,
     manifestHash: request.manifestHash,
     campaignId: request.campaignId,
@@ -485,8 +428,7 @@ function assertReceipt(
   ]);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" ||
+    value.domain !== "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" ||
     typeof value.requestHash !== "string" ||
     !SHA256.test(value.requestHash) ||
     typeof value.manifestHash !== "string" ||
@@ -497,8 +439,7 @@ function assertReceipt(
     !SAFE_ID.test(value.lineageId) ||
     typeof value.protocolHash !== "string" ||
     !SHA256.test(value.protocolHash) ||
-    (value.disposition !== "bootstrapped" &&
-      value.disposition !== "reconstructed") ||
+    (value.disposition !== "bootstrapped" && value.disposition !== "reconstructed") ||
     typeof value.sourcePrerequisiteHash !== "string" ||
     !SHA256.test(value.sourcePrerequisiteHash) ||
     typeof value.genesisPrerequisiteHash !== "string" ||
@@ -524,12 +465,9 @@ function assertReceipt(
       value.campaignId !== request.campaignId ||
       value.lineageId !== request.lineageId ||
       value.protocolHash !== request.protocolHash ||
-      value.sourcePrerequisiteHash !==
-        request.sourcePrerequisiteHash ||
-      value.genesisPrerequisiteHash !==
-        request.genesisPrerequisiteHash ||
-      value.catalogPrerequisiteHash !==
-        request.catalogPrerequisiteHash)
+      value.sourcePrerequisiteHash !== request.sourcePrerequisiteHash ||
+      value.genesisPrerequisiteHash !== request.genesisPrerequisiteHash ||
+      value.catalogPrerequisiteHash !== request.catalogPrerequisiteHash)
   ) {
     fail();
   }
@@ -596,13 +534,10 @@ const REGISTRATION_RECEIPT_KEYS = [
   "signature",
 ] as const;
 
-function expectedRegistrationId(
-  receipt: TrustedGitRegistrationReceipt,
-): string {
+function expectedRegistrationId(receipt: TrustedGitRegistrationReceipt): string {
   return createHash("sha256")
     .update(
-      `${receipt.commitSha}:${receipt.originRepositoryHash}:` +
-        receipt.upstreamBaseCommit,
+      `${receipt.commitSha}:${receipt.originRepositoryHash}:` + receipt.upstreamBaseCommit,
       "utf8",
     )
     .digest("hex");
@@ -634,12 +569,8 @@ function assertPrivatePiRegistration(
     !SAFE_EXTERNAL_ID.test(value.registrationRequestId) ||
     typeof value.registrationId !== "string" ||
     value.registrationId !==
-      expectedRegistrationId(
-        value as unknown as TrustedGitRegistrationReceipt,
-      ) ||
-    hashes.some(
-      (hash) => typeof hash !== "string" || !SHA256.test(hash),
-    ) ||
+      expectedRegistrationId(value as unknown as TrustedGitRegistrationReceipt) ||
+    hashes.some((hash) => typeof hash !== "string" || !SHA256.test(hash)) ||
     typeof value.remoteRef !== "string" ||
     !SAFE_HEAD_REF.test(value.remoteRef) ||
     value.remoteRef.includes("..") ||
@@ -656,29 +587,21 @@ function assertPrivatePiRegistration(
     value.packageName !== TRUSTED_PI_CODING_AGENT_PACKAGE_NAME ||
     typeof value.packageVersion !== "string" ||
     !EXACT_SEMVER.test(value.packageVersion) ||
-    value.harnessRegistrationSchemaVersion !==
-      TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
+    value.harnessRegistrationSchemaVersion !== TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
     value.adapterId !== TRUSTED_PI_ADAPTER_ID ||
-    value.adapterExecutionMode !==
-      TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
+    value.adapterExecutionMode !== TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
     value.sessionsDisabled !== true ||
     value.uncontrolledExtensionsDisabled !== true ||
     value.uncontrolledContextFilesDisabled !== true ||
     value.originPrivate !== true ||
     value.originFetchable !== true ||
     value.originWritable !== true ||
-    value.privacyEvidence !==
-      "github-rest-private-and-visibility" ||
-    value.fetchEvidence !==
-      "authenticated-ls-remote-and-fetch" ||
+    value.privacyEvidence !== "github-rest-private-and-visibility" ||
+    value.fetchEvidence !== "authenticated-ls-remote-and-fetch" ||
     value.writeEvidence !== "github-rest-permissions-push" ||
-    value.lineageEvidence !==
-      "canonical-upstream-fetched-merge-base" ||
-    timestamp(value.providerVerifiedAt) >
-      timestamp(value.attestedAt) ||
-    (value.provider !== "daytona" &&
-      value.provider !== "e2b" &&
-      value.provider !== "modal") ||
+    value.lineageEvidence !== "canonical-upstream-fetched-merge-base" ||
+    timestamp(value.providerVerifiedAt) > timestamp(value.attestedAt) ||
+    (value.provider !== "daytona" && value.provider !== "e2b" && value.provider !== "modal") ||
     typeof value.sandboxId !== "string" ||
     !SAFE_EXTERNAL_ID.test(value.sandboxId) ||
     typeof value.imageReference !== "string" ||
@@ -687,11 +610,8 @@ function assertPrivatePiRegistration(
     typeof value.imageDigest !== "string" ||
     !IMAGE_DIGEST.test(value.imageDigest) ||
     value.passed !== true ||
-    timestamp(value.signature.signedAt) <
-      timestamp(value.attestedAt) ||
-    gitRegistrationReceiptHash(
-      value as unknown as TrustedGitRegistrationReceipt,
-    ) !== expectedHash
+    timestamp(value.signature.signedAt) < timestamp(value.attestedAt) ||
+    gitRegistrationReceiptHash(value as unknown as TrustedGitRegistrationReceipt) !== expectedHash
   ) {
     fail();
   }
@@ -724,15 +644,13 @@ function assertCampaignGenesis(
   const signedAt = timestamp(value.signature.signedAt);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-optimize-campaign-genesis.v1" ||
+    value.domain !== "dark-factory.production-optimize-campaign-genesis.v1" ||
     value.sensitivity !== "release-safe-control" ||
     value.deployment !== "trusted-cloud" ||
     value.campaignId !== request.campaignId ||
     value.lineageId !== request.lineageId ||
     value.protocolHash !== request.protocolHash ||
-    value.sourcePrerequisiteHash !==
-      request.sourcePrerequisiteHash ||
+    value.sourcePrerequisiteHash !== request.sourcePrerequisiteHash ||
     typeof value.initialCampaignStateHash !== "string" ||
     !SHA256.test(value.initialCampaignStateHash) ||
     typeof value.genesisPolicyHash !== "string" ||
@@ -789,16 +707,13 @@ function assertCatalogGenesis(
   const signedAt = timestamp(value.signature.signedAt);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-optimize-hidden-catalog-genesis.v1" ||
-    value.sensitivity !==
-      "trusted-control-task-free-commitment" ||
+    value.domain !== "dark-factory.production-optimize-hidden-catalog-genesis.v1" ||
+    value.sensitivity !== "trusted-control-task-free-commitment" ||
     value.deployment !== "trusted-cloud" ||
     value.campaignId !== request.campaignId ||
     value.lineageId !== request.lineageId ||
     value.protocolHash !== request.protocolHash ||
-    value.campaignGenesisPrerequisiteHash !==
-      request.genesisPrerequisiteHash ||
+    value.campaignGenesisPrerequisiteHash !== request.genesisPrerequisiteHash ||
     typeof value.datasetPinHash !== "string" ||
     !SHA256.test(value.datasetPinHash) ||
     value.registryRevision !== 6 ||
@@ -841,9 +756,7 @@ function assertPhase(value: unknown): asserts value is BootstrapPhase {
   }
 }
 
-function assertBinding(
-  value: unknown,
-): asserts value is DurableBootstrapBinding {
+function assertBinding(value: unknown): asserts value is DurableBootstrapBinding {
   exactKeys(value, [
     "request",
     "phase",
@@ -861,11 +774,9 @@ function assertBinding(
   if (
     typeof value.replayObserved !== "boolean" ||
     (value.campaignStateHash !== null &&
-      (typeof value.campaignStateHash !== "string" ||
-        !SHA256.test(value.campaignStateHash))) ||
+      (typeof value.campaignStateHash !== "string" || !SHA256.test(value.campaignStateHash))) ||
     (value.catalogStateHash !== null &&
-      (typeof value.catalogStateHash !== "string" ||
-        !SHA256.test(value.catalogStateHash))) ||
+      (typeof value.catalogStateHash !== "string" || !SHA256.test(value.catalogStateHash))) ||
     advancedAt < claimedAt
   ) {
     fail();
@@ -890,10 +801,8 @@ function assertBinding(
       (value.campaignStateHash === null ||
         value.catalogStateHash === null ||
         value.receipt === null ||
-        value.receipt.campaignStateHash !==
-          value.campaignStateHash ||
-        value.receipt.catalogStateHash !==
-          value.catalogStateHash))
+        value.receipt.campaignStateHash !== value.campaignStateHash ||
+        value.receipt.catalogStateHash !== value.catalogStateHash))
   ) {
     fail();
   }
@@ -902,16 +811,10 @@ function assertBinding(
 function assertCoordinationState(
   value: unknown,
 ): asserts value is DurableBootstrapCoordinationState {
-  exactKeys(value, [
-    "schemaVersion",
-    "domain",
-    "revision",
-    "binding",
-  ]);
+  exactKeys(value, ["schemaVersion", "domain", "revision", "binding"]);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-optimize-bootstrap-coordination.v1" ||
+    value.domain !== "dark-factory.production-optimize-bootstrap-coordination.v1" ||
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0
   ) {
@@ -932,13 +835,7 @@ function captureRotations(
     fail();
   }
   const rotations = value.map((candidate): CapturedRotation => {
-    exactKeys(candidate, [
-      "purpose",
-      "keyId",
-      "keyVersion",
-      "validFrom",
-      "validUntil",
-    ]);
+    exactKeys(candidate, ["purpose", "keyId", "keyVersion", "validFrom", "validUntil"]);
     if (
       !PRODUCTION_OPTIMIZE_PREREQUISITE_KEY_PURPOSES.includes(
         candidate.purpose as ProductionOptimizePrerequisiteKeyPurpose,
@@ -954,8 +851,7 @@ function captureRotations(
     const validUntilMs = timestamp(candidate.validUntil);
     if (validUntilMs <= validFromMs) fail();
     return {
-      purpose:
-        candidate.purpose as ProductionOptimizePrerequisiteKeyPurpose,
+      purpose: candidate.purpose as ProductionOptimizePrerequisiteKeyPurpose,
       keyId: candidate.keyId,
       keyVersion: candidate.keyVersion,
       validFrom: candidate.validFrom as string,
@@ -965,9 +861,7 @@ function captureRotations(
     };
   });
   const identities = rotations.map(
-    (rotation) =>
-      `${rotation.purpose}\u0000${rotation.keyId}\u0000` +
-      rotation.keyVersion,
+    (rotation) => `${rotation.purpose}\u0000${rotation.keyId}\u0000` + rotation.keyVersion,
   );
   if (new Set(identities).size !== identities.length) fail();
   for (const purpose of PRODUCTION_OPTIMIZE_PREREQUISITE_KEY_PURPOSES) {
@@ -992,9 +886,7 @@ function captureRotations(
       }
     }
   }
-  return Object.freeze(
-    rotations.map((rotation) => Object.freeze(rotation)),
-  );
+  return Object.freeze(rotations.map((rotation) => Object.freeze(rotation)));
 }
 
 function matchingRotation(
@@ -1062,11 +954,7 @@ async function verifySignedDocument(
   resolve: TrustedProductionOptimizePrerequisitePublicKeyAuthority["resolve"],
   now: Date,
 ): Promise<string> {
-  const rotation = matchingRotation(
-    rotations,
-    input.purpose,
-    input.signature,
-  );
+  const rotation = matchingRotation(rotations, input.purpose, input.signature);
   if (timestamp(input.signature.signedAt) > now.getTime()) fail();
   const request = freezeJson({
     purpose: input.purpose,
@@ -1104,33 +992,26 @@ async function verifySignedDocument(
 }
 
 class MountedVolumeBootstrapCoordinationStore {
-  readonly boundary =
-    "trusted-cloud-production-optimize-lifecycle" as const;
-  readonly lifecycleId =
-    "production-bootstrap-coordination" as const;
-  readonly #store: MountedVolumeTransactionalJsonStore<
-    DurableBootstrapCoordinationState
-  >;
+  readonly boundary = "trusted-cloud-production-optimize-lifecycle" as const;
+  readonly lifecycleId = "production-bootstrap-coordination" as const;
+  readonly #store: MountedVolumeTransactionalJsonStore<DurableBootstrapCoordinationState>;
 
   public constructor(options: MountedVolumeDurableStateOptions) {
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableBootstrapCoordinationState>(
-        options,
-        `production-optimize-bootstrap-${options.storeId}`,
-        {
-          domain:
-            "dark-factory.production-optimize-bootstrap-coordination.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            domain:
-              "dark-factory.production-optimize-bootstrap-coordination.v1",
-            revision: 0,
-            binding: null,
-          }),
-          assertState: assertCoordinationState,
-          revision: (state) => state.revision,
-        },
-      );
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableBootstrapCoordinationState>(
+      options,
+      `production-optimize-bootstrap-${options.storeId}`,
+      {
+        domain: "dark-factory.production-optimize-bootstrap-coordination.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          domain: "dark-factory.production-optimize-bootstrap-coordination.v1",
+          revision: 0,
+          binding: null,
+        }),
+        assertState: assertCoordinationState,
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public claim(
@@ -1140,7 +1021,7 @@ class MountedVolumeBootstrapCoordinationStore {
     const requestSnapshot = cloneCanonical(request);
     assertRequest(requestSnapshot);
     timestamp(claimedAt);
-    return this.#store.transact((state) => {
+    return this.#store.transact<BootstrapClaim>((state) => {
       if (state.binding === null) {
         return {
           next: {
@@ -1163,10 +1044,7 @@ class MountedVolumeBootstrapCoordinationStore {
           },
         };
       }
-      if (
-        canonicalJson(state.binding.request) !==
-        canonicalJson(requestSnapshot)
-      ) {
+      if (canonicalJson(state.binding.request) !== canonicalJson(requestSnapshot)) {
         fail();
       }
       const result = {
@@ -1196,19 +1074,13 @@ class MountedVolumeBootstrapCoordinationStore {
     campaignStateHash: string,
     advancedAt: string,
   ): Promise<void> {
-    if (
-      !SHA256.test(requestHash) ||
-      !SHA256.test(campaignStateHash)
-    ) {
+    if (!SHA256.test(requestHash) || !SHA256.test(campaignStateHash)) {
       fail();
     }
     timestamp(advancedAt);
     return this.#store.transact((state) => {
       const binding = state.binding;
-      if (
-        binding === null ||
-        binding.request.requestHash !== requestHash
-      ) {
+      if (binding === null || binding.request.requestHash !== requestHash) {
         fail();
       }
       if (binding.phase !== "claimed") {
@@ -1236,25 +1108,16 @@ class MountedVolumeBootstrapCoordinationStore {
     catalogStateHash: string,
     advancedAt: string,
   ): Promise<void> {
-    if (
-      !SHA256.test(requestHash) ||
-      !SHA256.test(catalogStateHash)
-    ) {
+    if (!SHA256.test(requestHash) || !SHA256.test(catalogStateHash)) {
       fail();
     }
     timestamp(advancedAt);
     return this.#store.transact((state) => {
       const binding = state.binding;
-      if (
-        binding === null ||
-        binding.request.requestHash !== requestHash
-      ) {
+      if (binding === null || binding.request.requestHash !== requestHash) {
         fail();
       }
-      if (
-        binding.phase === "claimed" ||
-        binding.campaignStateHash === null
-      ) {
+      if (binding.phase === "claimed" || binding.campaignStateHash === null) {
         fail();
       }
       if (binding.phase !== "campaign-ensured") {
@@ -1291,17 +1154,14 @@ class MountedVolumeBootstrapCoordinationStore {
       const binding = state.binding;
       if (
         binding === null ||
-        canonicalJson(binding.request) !==
-          canonicalJson(input.request) ||
+        canonicalJson(binding.request) !== canonicalJson(input.request) ||
         binding.campaignStateHash !== input.campaignStateHash ||
         binding.catalogStateHash !== input.catalogStateHash ||
-        (input.claim.phaseAtClaim !== "claimed" &&
-          input.campaignDisposition !== "existing") ||
+        (input.claim.phaseAtClaim !== "claimed" && input.campaignDisposition !== "existing") ||
         ((input.claim.phaseAtClaim === "catalog-ensured" ||
           input.claim.phaseAtClaim === "committed") &&
           input.catalogDisposition !== "existing") ||
-        (input.campaignDisposition === "created" &&
-          input.catalogDisposition === "existing")
+        (input.campaignDisposition === "created" && input.catalogDisposition === "existing")
       ) {
         fail();
       }
@@ -1348,18 +1208,12 @@ class MountedVolumeBootstrapCoordinationStore {
 }
 
 interface CapturedDependencies {
-  readonly locatePrivatePiRegistration:
-    TrustedProductionOptimizePrerequisiteSource["locatePrivatePiRegistration"];
-  readonly locateCampaignGenesis:
-    TrustedProductionOptimizePrerequisiteSource["locateCampaignGenesis"];
-  readonly locateHiddenCatalogGenesis:
-    TrustedProductionOptimizePrerequisiteSource["locateHiddenCatalogGenesis"];
-  readonly resolvePublicKey:
-    TrustedProductionOptimizePrerequisitePublicKeyAuthority["resolve"];
-  readonly ensureCampaign:
-    TrustedProductionOptimizeCampaignGenesisAuthority["ensureExact"];
-  readonly ensureCatalog:
-    TrustedProductionOptimizeHiddenCatalogGenesisAuthority["ensureExact"];
+  readonly locatePrivatePiRegistration: TrustedProductionOptimizePrerequisiteSource["locatePrivatePiRegistration"];
+  readonly locateCampaignGenesis: TrustedProductionOptimizePrerequisiteSource["locateCampaignGenesis"];
+  readonly locateHiddenCatalogGenesis: TrustedProductionOptimizePrerequisiteSource["locateHiddenCatalogGenesis"];
+  readonly resolvePublicKey: TrustedProductionOptimizePrerequisitePublicKeyAuthority["resolve"];
+  readonly ensureCampaign: TrustedProductionOptimizeCampaignGenesisAuthority["ensureExact"];
+  readonly ensureCatalog: TrustedProductionOptimizeHiddenCatalogGenesisAuthority["ensureExact"];
   readonly rotations: readonly CapturedRotation[];
   readonly now: () => Date;
 }
@@ -1367,64 +1221,55 @@ interface CapturedDependencies {
 function captureDependencies(
   options: DurableProductionOptimizeBootstrapOrReconstructOptions,
 ): CapturedDependencies {
-  exactKeys(options, [
-    "durableState",
-    "prerequisiteSource",
-    "publicKeyAuthority",
-    "keyRotations",
-    "campaignGenesisAuthority",
-    "hiddenCatalogGenesisAuthority",
-    "now",
-  ].filter((key) => key !== "now" || options.now !== undefined));
+  exactKeys(
+    options,
+    [
+      "durableState",
+      "prerequisiteSource",
+      "publicKeyAuthority",
+      "keyRotations",
+      "campaignGenesisAuthority",
+      "hiddenCatalogGenesisAuthority",
+      "now",
+    ].filter((key) => key !== "now" || options.now !== undefined),
+  );
   if (
     options.prerequisiteSource.boundary !==
       "trusted-cloud-production-optimize-prerequisite-source" ||
-    typeof options.prerequisiteSource
-      .locatePrivatePiRegistration !== "function" ||
-    typeof options.prerequisiteSource.locateCampaignGenesis !==
-      "function" ||
-    typeof options.prerequisiteSource
-      .locateHiddenCatalogGenesis !== "function" ||
+    typeof options.prerequisiteSource.locatePrivatePiRegistration !== "function" ||
+    typeof options.prerequisiteSource.locateCampaignGenesis !== "function" ||
+    typeof options.prerequisiteSource.locateHiddenCatalogGenesis !== "function" ||
     options.publicKeyAuthority.boundary !==
       "trusted-cloud-production-optimize-prerequisite-public-key-authority" ||
     typeof options.publicKeyAuthority.resolve !== "function" ||
     options.campaignGenesisAuthority.boundary !==
       "trusted-cloud-production-optimize-campaign-genesis-authority" ||
-    typeof options.campaignGenesisAuthority.ensureExact !==
-      "function" ||
+    typeof options.campaignGenesisAuthority.ensureExact !== "function" ||
     options.hiddenCatalogGenesisAuthority.boundary !==
       "trusted-cloud-production-optimize-hidden-catalog-genesis-authority" ||
-    typeof options.hiddenCatalogGenesisAuthority.ensureExact !==
-      "function" ||
+    typeof options.hiddenCatalogGenesisAuthority.ensureExact !== "function" ||
     (options.now !== undefined && typeof options.now !== "function")
   ) {
     fail();
   }
   const sourceNow = options.now ?? (() => new Date());
   return {
-    locatePrivatePiRegistration:
-      options.prerequisiteSource.locatePrivatePiRegistration.bind(
-        options.prerequisiteSource,
-      ),
-    locateCampaignGenesis:
-      options.prerequisiteSource.locateCampaignGenesis.bind(
-        options.prerequisiteSource,
-      ),
-    locateHiddenCatalogGenesis:
-      options.prerequisiteSource.locateHiddenCatalogGenesis.bind(
-        options.prerequisiteSource,
-      ),
-    resolvePublicKey: options.publicKeyAuthority.resolve.bind(
-      options.publicKeyAuthority,
+    locatePrivatePiRegistration: options.prerequisiteSource.locatePrivatePiRegistration.bind(
+      options.prerequisiteSource,
     ),
-    ensureCampaign:
-      options.campaignGenesisAuthority.ensureExact.bind(
-        options.campaignGenesisAuthority,
-      ),
-    ensureCatalog:
-      options.hiddenCatalogGenesisAuthority.ensureExact.bind(
-        options.hiddenCatalogGenesisAuthority,
-      ),
+    locateCampaignGenesis: options.prerequisiteSource.locateCampaignGenesis.bind(
+      options.prerequisiteSource,
+    ),
+    locateHiddenCatalogGenesis: options.prerequisiteSource.locateHiddenCatalogGenesis.bind(
+      options.prerequisiteSource,
+    ),
+    resolvePublicKey: options.publicKeyAuthority.resolve.bind(options.publicKeyAuthority),
+    ensureCampaign: options.campaignGenesisAuthority.ensureExact.bind(
+      options.campaignGenesisAuthority,
+    ),
+    ensureCatalog: options.hiddenCatalogGenesisAuthority.ensureExact.bind(
+      options.hiddenCatalogGenesisAuthority,
+    ),
     rotations: captureRotations(options.keyRotations),
     now: () => readNow(sourceNow),
   };
@@ -1444,8 +1289,7 @@ async function registerEnsureResult(
   const resource = value.resource;
   exactKeys(resource, ["boundary", "lifecycleId", "close"]);
   if (
-    resource.boundary !==
-      "trusted-cloud-production-optimize-lifecycle" ||
+    resource.boundary !== "trusted-cloud-production-optimize-lifecycle" ||
     typeof resource.lifecycleId !== "string" ||
     !SAFE_ID.test(resource.lifecycleId) ||
     typeof resource.close !== "function"
@@ -1454,9 +1298,7 @@ async function registerEnsureResult(
   }
   const close = resource.close.bind(resource);
   try {
-    input.lifecycle.register(
-      resource as unknown as TrustedProductionOptimizeCloseable,
-    );
+    input.lifecycle.register(resource as unknown as TrustedProductionOptimizeCloseable);
   } catch {
     try {
       await close();
@@ -1466,8 +1308,7 @@ async function registerEnsureResult(
     fail();
   }
   if (
-    (value.disposition !== "created" &&
-      value.disposition !== "existing") ||
+    (value.disposition !== "created" && value.disposition !== "existing") ||
     typeof value.stateHash !== "string" ||
     value.stateHash !== input.expectedStateHash
   ) {
@@ -1479,9 +1320,7 @@ async function registerEnsureResult(
   };
 }
 
-function assertLifecycle(
-  value: unknown,
-): asserts value is ProductionOptimizeLifecycleRegistrar {
+function assertLifecycle(value: unknown): asserts value is ProductionOptimizeLifecycleRegistrar {
   exactKeys(value, ["boundary", "register"]);
   if (
     value.boundary !== "production-optimize-composition-owner" ||
@@ -1491,19 +1330,14 @@ function assertLifecycle(
   }
 }
 
-function sourceQuery(
-  request: ProductionOptimizeBootstrapOrReconstructRequest,
-) {
+function sourceQuery(request: ProductionOptimizeBootstrapOrReconstructRequest) {
   return freezeJson({
-    purpose:
-      "production-optimize-private-pi-registration" as const,
+    purpose: "production-optimize-private-pi-registration" as const,
     sourcePrerequisiteHash: request.sourcePrerequisiteHash,
   });
 }
 
-function campaignQuery(
-  request: ProductionOptimizeBootstrapOrReconstructRequest,
-) {
+function campaignQuery(request: ProductionOptimizeBootstrapOrReconstructRequest) {
   return freezeJson({
     purpose: "production-optimize-campaign-genesis" as const,
     campaignId: request.campaignId,
@@ -1514,12 +1348,9 @@ function campaignQuery(
   });
 }
 
-function catalogQuery(
-  request: ProductionOptimizeBootstrapOrReconstructRequest,
-) {
+function catalogQuery(request: ProductionOptimizeBootstrapOrReconstructRequest) {
   return freezeJson({
-    purpose:
-      "production-optimize-hidden-catalog-genesis" as const,
+    purpose: "production-optimize-hidden-catalog-genesis" as const,
     campaignId: request.campaignId,
     lineageId: request.lineageId,
     protocolHash: request.protocolHash,
@@ -1544,21 +1375,15 @@ function catalogQuery(
 export class DurableProductionOptimizeBootstrapOrReconstructPort
   implements TrustedProductionOptimizeBootstrapOrReconstructPort
 {
-  readonly boundary =
-    "trusted-cloud-production-optimize-bootstrap-or-reconstruct" as const;
+  readonly boundary = "trusted-cloud-production-optimize-bootstrap-or-reconstruct" as const;
   readonly #coordination: MountedVolumeBootstrapCoordinationStore;
   readonly #dependencies: CapturedDependencies;
   #inFlightRequestHash: string | null = null;
 
-  public constructor(
-    options: DurableProductionOptimizeBootstrapOrReconstructOptions,
-  ) {
+  public constructor(options: DurableProductionOptimizeBootstrapOrReconstructOptions) {
     try {
       this.#dependencies = captureDependencies(options);
-      this.#coordination =
-        new MountedVolumeBootstrapCoordinationStore(
-          options.durableState,
-        );
+      this.#coordination = new MountedVolumeBootstrapCoordinationStore(options.durableState);
     } catch {
       fail();
     }
@@ -1587,18 +1412,11 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
       const sourceLookupJson = canonicalJson(sourceLookup);
       const campaignLookupJson = canonicalJson(campaignLookup);
       const catalogLookupJson = canonicalJson(catalogLookup);
-      const [sourceCandidate, campaignCandidate, catalogCandidate] =
-        await Promise.all([
-          this.#dependencies.locatePrivatePiRegistration(
-            sourceLookup,
-          ),
-          this.#dependencies.locateCampaignGenesis(
-            campaignLookup,
-          ),
-          this.#dependencies.locateHiddenCatalogGenesis(
-            catalogLookup,
-          ),
-        ]);
+      const [sourceCandidate, campaignCandidate, catalogCandidate] = await Promise.all([
+        this.#dependencies.locatePrivatePiRegistration(sourceLookup),
+        this.#dependencies.locateCampaignGenesis(campaignLookup),
+        this.#dependencies.locateHiddenCatalogGenesis(catalogLookup),
+      ]);
       if (
         canonicalJson(request) !== requestJson ||
         canonicalJson(sourceLookup) !== sourceLookupJson ||
@@ -1615,21 +1433,15 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
       const campaign = cloneCanonical<unknown>(campaignCandidate);
       const catalog = cloneCanonical<unknown>(catalogCandidate);
       const now = this.#dependencies.now();
-      assertPrivatePiRegistration(
-        source,
-        requestSnapshot.sourcePrerequisiteHash,
-      );
+      assertPrivatePiRegistration(source, requestSnapshot.sourcePrerequisiteHash);
       assertCampaignGenesis(campaign, requestSnapshot, now);
       assertCatalogGenesis(catalog, requestSnapshot, now);
       const keyFingerprints = await Promise.all([
         verifySignedDocument(
           {
-            document: source as unknown as Readonly<
-              Record<string, unknown>
-            >,
+            document: source as unknown as Readonly<Record<string, unknown>>,
             signature: source.signature,
-            purpose:
-              "production-optimize-private-pi-registration",
+            purpose: "production-optimize-private-pi-registration",
           },
           this.#dependencies.rotations,
           this.#dependencies.resolvePublicKey,
@@ -1637,9 +1449,7 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
         ),
         verifySignedDocument(
           {
-            document: campaign as unknown as Readonly<
-              Record<string, unknown>
-            >,
+            document: campaign as unknown as Readonly<Record<string, unknown>>,
             signature: campaign.signature,
             purpose: "production-optimize-campaign-genesis",
           },
@@ -1649,21 +1459,16 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
         ),
         verifySignedDocument(
           {
-            document: catalog as unknown as Readonly<
-              Record<string, unknown>
-            >,
+            document: catalog as unknown as Readonly<Record<string, unknown>>,
             signature: catalog.signature,
-            purpose:
-              "production-optimize-hidden-catalog-genesis",
+            purpose: "production-optimize-hidden-catalog-genesis",
           },
           this.#dependencies.rotations,
           this.#dependencies.resolvePublicKey,
           now,
         ),
       ]);
-      if (
-        new Set(keyFingerprints).size !== keyFingerprints.length
-      ) {
+      if (new Set(keyFingerprints).size !== keyFingerprints.length) {
         fail();
       }
 
@@ -1684,29 +1489,20 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
 
       const campaignInput = freezeJson({
         schemaVersion: 1 as const,
-        domain:
-          "dark-factory.production-optimize-campaign-genesis-authority-input.v1" as const,
+        domain: "dark-factory.production-optimize-campaign-genesis-authority-input.v1" as const,
         requestHash: requestSnapshot.requestHash,
-        sourcePrerequisiteHash:
-          requestSnapshot.sourcePrerequisiteHash,
+        sourcePrerequisiteHash: requestSnapshot.sourcePrerequisiteHash,
         sourceRegistrationId: source.registrationId,
         genesisPrerequisite: cloneCanonical(campaign),
       });
       const campaignInputJson = canonicalJson(campaignInput);
-      const campaignResultCandidate =
-        await this.#dependencies.ensureCampaign(campaignInput);
+      const campaignResultCandidate = await this.#dependencies.ensureCampaign(campaignInput);
       if (canonicalJson(campaignInput) !== campaignInputJson) fail();
-      const campaignResult = await registerEnsureResult(
-        campaignResultCandidate,
-        {
-          lifecycle,
-          expectedStateHash: campaign.initialCampaignStateHash,
-        },
-      );
-      if (
-        claim.phaseAtClaim !== "claimed" &&
-        campaignResult.disposition !== "existing"
-      ) {
+      const campaignResult = await registerEnsureResult(campaignResultCandidate, {
+        lifecycle,
+        expectedStateHash: campaign.initialCampaignStateHash,
+      });
+      if (claim.phaseAtClaim !== "claimed" && campaignResult.disposition !== "existing") {
         fail();
       }
       await this.#coordination.recordCampaign(
@@ -1724,22 +1520,16 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
         catalogPrerequisite: cloneCanonical(catalog),
       });
       const catalogInputJson = canonicalJson(catalogInput);
-      const catalogResultCandidate =
-        await this.#dependencies.ensureCatalog(catalogInput);
+      const catalogResultCandidate = await this.#dependencies.ensureCatalog(catalogInput);
       if (canonicalJson(catalogInput) !== catalogInputJson) fail();
-      const catalogResult = await registerEnsureResult(
-        catalogResultCandidate,
-        {
-          lifecycle,
-          expectedStateHash: catalog.initialCatalogStateHash,
-        },
-      );
+      const catalogResult = await registerEnsureResult(catalogResultCandidate, {
+        lifecycle,
+        expectedStateHash: catalog.initialCatalogStateHash,
+      });
       if (
-        ((claim.phaseAtClaim === "catalog-ensured" ||
-          claim.phaseAtClaim === "committed") &&
+        ((claim.phaseAtClaim === "catalog-ensured" || claim.phaseAtClaim === "committed") &&
           catalogResult.disposition !== "existing") ||
-        (campaignResult.disposition === "created" &&
-          catalogResult.disposition === "existing")
+        (campaignResult.disposition === "created" && catalogResult.disposition === "existing")
       ) {
         fail();
       }
@@ -1757,13 +1547,11 @@ export class DurableProductionOptimizeBootstrapOrReconstructPort
         catalogStateHash: catalogResult.stateHash,
         verifiedAt: this.#dependencies.now().toISOString(),
       });
-      const receipt = claim.fresh
-        ? committed
-        : reconstructedReceipt(committed, requestSnapshot);
+      const receipt = claim.fresh ? committed : reconstructedReceipt(committed, requestSnapshot);
       assertReceipt(receipt, requestSnapshot);
       return receipt;
     } catch {
-      fail();
+      return fail();
     } finally {
       if (ownsInFlight) this.#inFlightRequestHash = null;
     }

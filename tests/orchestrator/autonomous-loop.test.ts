@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  BudgetSnapshot,
-  ChampionPointers,
-} from "../../src/domain/models.js";
+import type { BudgetSnapshot, ChampionPointers } from "../../src/domain/models.js";
 import {
   AutonomousOptimizationLoop,
   type ClaimedOptimizationExperiment,
@@ -10,10 +7,7 @@ import {
   type OptimizationLoopSnapshot,
   type ProductionOptimizationCoordinator,
 } from "../../src/orchestrator/autonomous-loop.js";
-import type {
-  ExperimentRunInput,
-  ExperimentRunResult,
-} from "../../src/orchestrator/contracts.js";
+import type { ExperimentRunInput, ExperimentRunResult } from "../../src/orchestrator/contracts.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
 
 const BASELINE = "a".repeat(40);
@@ -55,10 +49,7 @@ function budget(
   };
 }
 
-function champion(
-  activeExperiment = 0,
-  activeCommit = BASELINE,
-): ChampionPointers {
+function champion(activeExperiment = 0, activeCommit = BASELINE): ChampionPointers {
   return {
     baselineCommit: BASELINE,
     activeExperiment,
@@ -70,16 +61,18 @@ function champion(
   };
 }
 
-function snapshot(input: {
-  readonly experimentNumber?: number;
-  readonly activeChampion?: ChampionPointers;
-  readonly campaignBudget?: BudgetSnapshot;
-  readonly panels?: number;
-  readonly stateHash?: string;
-  readonly status?: OptimizationLoopSnapshot["status"];
-  readonly inFlightExperimentNumber?: number | null;
-  readonly hardBudgetExhausted?: boolean;
-} = {}): OptimizationLoopSnapshot {
+function snapshot(
+  input: {
+    readonly experimentNumber?: number;
+    readonly activeChampion?: ChampionPointers;
+    readonly campaignBudget?: BudgetSnapshot;
+    readonly panels?: number;
+    readonly stateHash?: string;
+    readonly status?: OptimizationLoopSnapshot["status"];
+    readonly inFlightExperimentNumber?: number | null;
+    readonly hardBudgetExhausted?: boolean;
+  } = {},
+): OptimizationLoopSnapshot {
   return {
     schemaVersion: 1,
     campaignId: "campaign-001",
@@ -88,17 +81,14 @@ function snapshot(input: {
     stateHash: input.stateHash ?? INITIAL_STATE_HASH,
     status: input.status ?? "running",
     nextExperimentNumber: input.experimentNumber ?? 1,
-    inFlightExperimentNumber:
-      input.inFlightExperimentNumber ?? null,
+    inFlightExperimentNumber: input.inFlightExperimentNumber ?? null,
     inFlightKind:
-      input.inFlightExperimentNumber === undefined ||
-      input.inFlightExperimentNumber === null
+      input.inFlightExperimentNumber === undefined || input.inFlightExperimentNumber === null
         ? null
         : "optimization",
     activeChampion: input.activeChampion ?? champion(),
     budget: input.campaignBudget ?? budget(),
-    hardBudgetExhausted:
-      input.hardBudgetExhausted ?? false,
+    hardBudgetExhausted: input.hardBudgetExhausted ?? false,
     freshValidationPanelsRemaining: input.panels ?? 3,
   };
 }
@@ -123,14 +113,16 @@ function experimentInput(
     activeChampion: campaign.activeChampion,
     budget: campaign.budget,
     diagnosticBrief:
-      options.diagnosticBrief ?? (sourceOnly ? null : {
-        hash: DISCOVERY_HASH,
-        releaseId: "diagnostic:001",
-        actionable: true,
-      }),
+      options.diagnosticBrief ??
+      (sourceOnly
+        ? null
+        : {
+            hash: DISCOVERY_HASH,
+            releaseId: "diagnostic:001",
+            actionable: true,
+          }),
     previousDiscoveryAttestationHash:
-      options.previousDiscoveryAttestationHash ??
-      (sourceOnly ? null : DISCOVERY_HASH),
+      options.previousDiscoveryAttestationHash ?? (sourceOnly ? null : DISCOVERY_HASH),
     repairAttemptOrdinal: 1,
     stop: { requested: false },
   };
@@ -172,8 +164,7 @@ function result(input: {
 }): ExperimentRunResult {
   return {
     disposition: input.disposition,
-    activeChampion:
-      input.activeChampion ?? input.campaign.activeChampion,
+    activeChampion: input.activeChampion ?? input.campaign.activeChampion,
     budget: input.campaignBudget,
     diagnosticBrief:
       input.diagnosticBrief !== undefined
@@ -190,8 +181,7 @@ function committedSnapshot(
   runResult: ExperimentRunResult,
 ): OptimizationLoopSnapshot {
   const promotionLookDelta =
-    runResult.budget.usage.promotionLooks -
-    claim.input.budget.usage.promotionLooks;
+    runResult.budget.usage.promotionLooks - claim.input.budget.usage.promotionLooks;
   return {
     ...claim.snapshot,
     stateHash: COMMITTED_STATE_HASH,
@@ -200,8 +190,7 @@ function committedSnapshot(
     activeChampion: runResult.activeChampion,
     budget: runResult.budget,
     freshValidationPanelsRemaining:
-      claim.snapshot.freshValidationPanelsRemaining -
-      promotionLookDelta,
+      claim.snapshot.freshValidationPanelsRemaining - promotionLookDelta,
   };
 }
 
@@ -228,15 +217,9 @@ function coordinator(input: {
 }
 
 function clock(): () => Date {
-  const instants = [
-    "2026-07-26T09:00:00.000Z",
-    "2026-07-26T09:01:00.000Z",
-  ] as const;
+  const instants = ["2026-07-26T09:00:00.000Z", "2026-07-26T09:01:00.000Z"] as const;
   let index = 0;
-  return () =>
-    new Date(
-      instants[index++] ?? "2026-07-26T09:01:00.000Z",
-    );
+  return () => new Date(instants[index++] ?? "2026-07-26T09:01:00.000Z");
 }
 
 describe("autonomous optimization loop", () => {
@@ -490,9 +473,7 @@ describe("autonomous optimization loop", () => {
     const initial = snapshot();
     const nextClaim = claim(initial);
     const control = coordinator({ initial, nextClaim });
-    const failure = new Error(
-      "provider request was interrupted by an upstream signal",
-    );
+    const failure = new Error("provider request was interrupted by an upstream signal");
 
     await expect(
       new AutonomousOptimizationLoop({

@@ -9,16 +9,9 @@ import type {
   TrustedCloudArtifactRef,
 } from "../cloud/types.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
-import {
-  OFFICIAL_PI_UPSTREAM_URL,
-  type RepositoryRegistration,
-} from "./repository.js";
+import { OFFICIAL_PI_UPSTREAM_URL, type RepositoryRegistration } from "./repository.js";
 import {
   assertExactPlainObjectKeys,
   assertGitObjectId,
@@ -35,8 +28,7 @@ import {
 } from "./trusted-git.js";
 
 const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const SAFE_HEAD_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_HEAD_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
 const SAFE_AUTHORIZATION_ID = /^publication-auth-[a-f0-9]{48}$/u;
 const MAXIMUM_AUTHORIZATION_LIFETIME_MS = 24 * 60 * 60_000;
 const PUBLICATION_WORKING_DIRECTORY = "/workspace";
@@ -207,11 +199,7 @@ function publicationRefs(experimentId: string): {
   readonly tagRef: string;
 } {
   const ordinal = Number.parseInt(experimentId.split("-", 1)[0] ?? "", 10);
-  if (
-    !EXPERIMENT_ID.test(experimentId) ||
-    !Number.isSafeInteger(ordinal) ||
-    ordinal < 1
-  ) {
+  if (!EXPERIMENT_ID.test(experimentId) || !Number.isSafeInteger(ordinal) || ordinal < 1) {
     throw new TrustedGitContractError("Git publication experiment identifier is invalid.");
   }
   return {
@@ -237,9 +225,7 @@ function assertAuthorizedHeadRef(ref: string): void {
       .split("/")
       .some(
         (component) =>
-          component.startsWith(".") ||
-          component.endsWith(".") ||
-          component.endsWith(".lock"),
+          component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
       )
   ) {
     throw new TrustedGitContractError("Git publication base ref is invalid.");
@@ -328,10 +314,7 @@ export function createTrustedGitPublicationAuthorizationPayload(input: {
 function unsignedAuthorization(
   authorization: TrustedGitPublicationAuthorization,
 ): TrustedGitPublicationAuthorizationPayload {
-  const {
-    signature: _signature,
-    ...payload
-  } = authorization;
+  const { signature: _signature, ...payload } = authorization;
   return payload;
 }
 
@@ -404,11 +387,9 @@ export function assertTrustedGitPublicationAuthorization(
     authorization.sensitivity !== "trusted-git-publication-authorization" ||
     authorization.schemaVersion !== 1 ||
     !SAFE_AUTHORIZATION_ID.test(authorization.authorizationId) ||
-    canonicalHash(unsignedAuthorization(authorization)) !==
-      canonicalHash(expectedPayload) ||
+    canonicalHash(unsignedAuthorization(authorization)) !== canonicalHash(expectedPayload) ||
     authorization.registrationId !== input.registration.registrationId ||
-    authorization.originRepositoryHash !==
-      input.registration.originFingerprint.repositoryHash ||
+    authorization.originRepositoryHash !== input.registration.originFingerprint.repositoryHash ||
     authorization.baselineCommit !== input.registration.headCommit ||
     authorization.workerSha256 !== input.workerArtifact.sha256 ||
     !Number.isFinite(now) ||
@@ -471,9 +452,7 @@ function unsignedPublicationReceipt(
   };
 }
 
-export function gitPublicationReceiptHash(
-  receipt: TrustedGitPublicationReceipt,
-): string {
+export function gitPublicationReceiptHash(receipt: TrustedGitPublicationReceipt): string {
   return canonicalHash(unsignedPublicationReceipt(receipt));
 }
 
@@ -529,8 +508,7 @@ export function assertTrustedGitPublicationWorkerResult(
     document.candidateCommit !== input.authorization.candidateCommit ||
     document.candidateTree !== input.authorization.candidateTree ||
     document.lockSha256 !== input.authorization.lockSha256 ||
-    document.candidateBundleSha256 !==
-      input.authorization.candidateBundle.sha256 ||
+    document.candidateBundleSha256 !== input.authorization.candidateBundle.sha256 ||
     document.bundleRef !== input.spec.bundleRef ||
     document.branchRef !== input.authorization.branchRef ||
     document.tagRef !== input.authorization.tagRef ||
@@ -554,27 +532,18 @@ export function parseTrustedGitPublicationWorkerResult(
     readonly spec: TrustedGitPublicationSpec;
   },
 ): TrustedGitPublicationWorkerResult {
-  if (
-    Buffer.byteLength(raw, "utf8") <= 0 ||
-    Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024
-  ) {
-    throw new TrustedGitContractError(
-      "Git publication worker result size is outside policy.",
-    );
+  if (Buffer.byteLength(raw, "utf8") <= 0 || Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024) {
+    throw new TrustedGitContractError("Git publication worker result size is outside policy.");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new TrustedGitContractError(
-      "Git publication worker result is not valid JSON.",
-    );
+    throw new TrustedGitContractError("Git publication worker result is not valid JSON.");
   }
   assertTrustedGitPublicationWorkerResult(parsed, input);
   if (raw !== `${canonicalJson(parsed)}\n`) {
-    throw new TrustedGitContractError(
-      "Git publication worker result is not canonical JSON.",
-    );
+    throw new TrustedGitContractError("Git publication worker result is not canonical JSON.");
   }
   return parsed;
 }
@@ -596,10 +565,7 @@ export function createTrustedGitPublicationSpec(input: {
     input.registration.upstreamVerification.upstreamHeadCommit,
     "Registered upstream HEAD",
   );
-  assertGitObjectId(
-    input.registration.upstreamBaseCommit,
-    "Registered upstream merge base",
-  );
+  assertGitObjectId(input.registration.upstreamBaseCommit, "Registered upstream merge base");
   const authorizationHash = trustedGitPublicationAuthorizationHash(input.authorization);
   const publicationId = `publication-${canonicalHash({
     requestId: input.requestId,
@@ -673,14 +639,10 @@ export function createTrustedGitPublicationSpec(input: {
     authorizationHash,
     registrationId: input.registration.registrationId,
     originRepositoryHash: input.registration.originFingerprint.repositoryHash,
-    upstreamRepositoryHash:
-      input.registration.upstreamFingerprint.repositoryHash,
-    upstreamHeadCommit:
-      input.registration.upstreamVerification.upstreamHeadCommit,
+    upstreamRepositoryHash: input.registration.upstreamFingerprint.repositoryHash,
+    upstreamHeadCommit: input.registration.upstreamVerification.upstreamHeadCommit,
     upstreamBaseCommit: input.registration.upstreamBaseCommit,
-    bundleRef: trustedGitCandidateBundleRef(
-      input.authorization.experimentId,
-    ),
+    bundleRef: trustedGitCandidateBundleRef(input.authorization.experimentId),
     workerArtifact: structuredClone(input.workerArtifact),
     candidateBundle: structuredClone(input.authorization.candidateBundle),
     workerRemotePath: PUBLICATION_WORKER_REMOTE_PATH,
@@ -794,8 +756,7 @@ export function assertTrustedGitPublicationReceipt(
     receipt.resultArtifactSha256 !== input.resultArtifact.sha256 ||
     !isCanonicalTimestamp(receipt.publishedAt) ||
     Date.parse(receipt.publishedAt) < Date.parse(input.execution.finishedAt) ||
-    Date.parse(receipt.publishedAt) >=
-      Date.parse(input.authorization.expiresAt) ||
+    Date.parse(receipt.publishedAt) >= Date.parse(input.authorization.expiresAt) ||
     Date.parse(receipt.publishedAt) > Date.parse(input.lease.expiresAt) ||
     receipt.passed !== true ||
     receipt.signature.algorithm !== "ed25519" ||
@@ -863,6 +824,9 @@ export class TrustedGitPublicationRunner {
 
   async run(): Promise<TrustedGitPublicationReceipt> {
     let lease: SandboxLease | undefined;
+    let result: TrustedGitPublicationReceipt | undefined;
+    let failure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       assertTrustedGitPublicationAuthorization(this.#options.authorization, {
         registration: this.#options.registration,
@@ -893,21 +857,14 @@ export class TrustedGitPublicationRunner {
         this.#spec.bundleRemotePath,
       );
       const execution = structuredClone(
-        await this.#options.provider.execute(
-          lease,
-          structuredClone(this.#spec.command),
-        ),
+        await this.#options.provider.execute(lease, structuredClone(this.#spec.command)),
       );
       assertSuccessfulCloudExecution(execution, "Git publication");
       const resultArtifact = structuredClone(
-        await this.#options.provider.download(
-          lease,
-          this.#spec.resultRemotePath,
-          {
-            mediaType: "application/json",
-            maximumByteLength: 4 * 1024 * 1024,
-          },
-        ),
+        await this.#options.provider.download(lease, this.#spec.resultRemotePath, {
+          mediaType: "application/json",
+          maximumByteLength: 4 * 1024 * 1024,
+        }),
       );
       const receipt = await this.#options.attestor.attest({
         sensitivity: "trusted-git-publication-attestation-request",
@@ -925,21 +882,37 @@ export class TrustedGitPublicationRunner {
         resultArtifact,
         verifier: this.#options.receiptVerifier,
       });
-      return receipt;
-    } catch {
-      throw new TrustedGitPublicationError(
-        "Trusted cloud Git publication failed closed.",
-      );
+      result = receipt;
+    } catch (error) {
+      failure = { error };
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          throw new TrustedGitPublicationError(
-            "Trusted Git publication sandbox teardown failed; publication is unconfirmed.",
-          );
+        } catch (error) {
+          teardownFailure = { error };
         }
       }
     }
+    if (teardownFailure !== undefined) {
+      throw new TrustedGitPublicationError(
+        "Trusted Git publication sandbox teardown failed; publication is unconfirmed.",
+        {
+          cause:
+            failure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [failure.error, teardownFailure.error],
+                  "Git publication and sandbox teardown both failed.",
+                ),
+        },
+      );
+    }
+    if (failure !== undefined || result === undefined) {
+      throw new TrustedGitPublicationError("Trusted cloud Git publication failed closed.", {
+        cause: failure?.error,
+      });
+    }
+    return result;
   }
 }

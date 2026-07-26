@@ -1,9 +1,6 @@
-import type {
-  CloudProviderName,
-  TrustedCloudArtifactRef,
-} from "../cloud/types.js";
-import type { HarnessArtifactReference } from "../evaluator/contracts.js";
+import type { CloudProviderName, TrustedCloudArtifactRef } from "../cloud/types.js";
 import type { HiddenTaskId } from "../evaluation/types.js";
+import type { HarnessArtifactReference } from "../evaluator/contracts.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import {
   assertTrustedHarborJobArtifact,
@@ -19,6 +16,7 @@ import {
   hashTerminalBench21Pin,
   type TerminalBench21Pin,
 } from "./pin.js";
+import type { TrustedHarborJobBuilder, TrustedHarborJobBuildRequest } from "./runner.js";
 import {
   assertTrustedMatchedPanel,
   type MatchedArmKind,
@@ -26,10 +24,6 @@ import {
   type TrustedMatchedArmSchedule,
   type TrustedMatchedPanel,
 } from "./trusted.js";
-import type {
-  TrustedHarborJobBuildRequest,
-  TrustedHarborJobBuilder,
-} from "./runner.js";
 
 export interface TrustedResolvedTask {
   readonly sensitivity: "trusted-hidden-task-resolution";
@@ -39,10 +33,7 @@ export interface TrustedResolvedTask {
 }
 
 export interface TrustedHiddenTaskResolver {
-  resolve(
-    taskId: HiddenTaskId,
-    taskRevisionDigest: string,
-  ): Promise<TrustedResolvedTask>;
+  resolve(taskId: HiddenTaskId, taskRevisionDigest: string): Promise<TrustedResolvedTask>;
 }
 
 export interface TrustedHarnessRuntimeResolver {
@@ -90,17 +81,41 @@ interface AgentRuntime {
 }
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const SAFE_TASK_NAME =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_HOST =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/u;
-const SAFE_RELATIVE_PATH =
-  /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const MICROSOFT_FOUNDRY_MODEL_FAMILY = "claude-opus-4-8";
 
 export class TrustedHarborJobBuildError extends Error {
   override readonly name = "TrustedHarborJobBuildError";
+}
+
+function foundryModelBinding(
+  agent: PiHarborAgentSpec,
+): { readonly resourceName: string; readonly modelFamily: string } | undefined {
+  const model = agent.evaluatedModel;
+  if (model.provider !== "microsoft-foundry") {
+    if (model.foundryResourceName !== undefined || model.modelFamily !== undefined) {
+      throw new TrustedHarborJobBuildError(
+        "A non-Foundry evaluation cannot carry a Microsoft Foundry model binding.",
+      );
+    }
+    return undefined;
+  }
+  if (
+    model.foundryResourceName === undefined ||
+    model.modelFamily !== MICROSOFT_FOUNDRY_MODEL_FAMILY
+  ) {
+    throw new TrustedHarborJobBuildError(
+      "Microsoft Foundry evaluation requires its exact model family and resource binding.",
+    );
+  }
+  return {
+    resourceName: model.foundryResourceName,
+    modelFamily: model.modelFamily,
+  };
 }
 
 function assertRemoteRoot(root: string, label: string): void {
@@ -159,11 +174,8 @@ function assertRuntimeResolution(
     !SHA256.test(resolution.buildReceiptHash) ||
     !Number.isFinite(Date.parse(resolution.verifiedAt)) ||
     resolution.artifact.sha256 !== harness.archiveSha256 ||
-    !new Set(["application/gzip", "application/x-tar"]).has(
-      resolution.artifact.mediaType,
-    ) ||
-    resolution.resolutionHash !==
-      computeHarnessRuntimeResolutionHash(resolution)
+    !new Set(["application/gzip", "application/x-tar"]).has(resolution.artifact.mediaType) ||
+    resolution.resolutionHash !== computeHarnessRuntimeResolutionHash(resolution)
   ) {
     throw new TrustedHarborJobBuildError(
       "A resolved harness runtime is not a release-validated build of the sealed harness.",
@@ -189,9 +201,7 @@ function onlyHarness(
         harness.uri !== first.uri,
     )
   ) {
-    throw new TrustedHarborJobBuildError(
-      "A sealed arm kind resolves to more than one harness.",
-    );
+    throw new TrustedHarborJobBuildError("A sealed arm kind resolves to more than one harness.");
   }
   return first;
 }
@@ -210,16 +220,12 @@ function assertScheduleMatchesPanel(
     schedule.armCount !== expectedArms ||
     schedule.arms.length !== expectedArms
   ) {
-    throw new TrustedHarborJobBuildError(
-      "Hidden panel and matched-arm schedule do not correlate.",
-    );
+    throw new TrustedHarborJobBuildError("Hidden panel and matched-arm schedule do not correlate.");
   }
   for (const [cellOrdinal, cell] of panel.cells.entries()) {
     const arms = schedule.arms.filter((arm) => arm.cellOrdinal === cellOrdinal);
     const expectedKinds =
-      panel.stage === "repair"
-        ? (["candidate"] as const)
-        : (["candidate", "champion"] as const);
+      panel.stage === "repair" ? (["candidate"] as const) : (["candidate", "champion"] as const);
     if (
       arms.length !== expectedKinds.length ||
       expectedKinds.some((kind) => !arms.some((arm) => arm.arm === kind)) ||
@@ -231,9 +237,7 @@ function assertScheduleMatchesPanel(
           arm.order !== cell.order,
       )
     ) {
-      throw new TrustedHarborJobBuildError(
-        "A hidden schedule arm does not match its sealed cell.",
-      );
+      throw new TrustedHarborJobBuildError("A hidden schedule arm does not match its sealed cell.");
     }
   }
 }
@@ -249,9 +253,7 @@ function configRole(
   return order === "AB" ? "config-ab" : "config-ba";
 }
 
-function invocationAgentOrder(
-  order: TrustedHarborInvocation["order"],
-): readonly MatchedArmKind[] {
+function invocationAgentOrder(order: TrustedHarborInvocation["order"]): readonly MatchedArmKind[] {
   if (order === "repair") return ["candidate"];
   return order === "AB" ? ["candidate", "champion"] : ["champion", "candidate"];
 }
@@ -269,6 +271,7 @@ function createAgentConfig(
   agent: PiHarborAgentSpec,
   options: TerminalBench21JobBuilderOptions,
 ): Readonly<Record<string, unknown>> {
+  const foundry = foundryModelBinding(agent);
   return {
     name: `dark-factory-${runtime.arm}`,
     import_path: agent.adapterImportPath,
@@ -286,15 +289,12 @@ function createAgentConfig(
       pi_entrypoint: options.piEntrypoint,
       thinking: agent.evaluatedModel.thinkingLevel,
       enabled_tools: agent.enabledTools,
-      credential_environment_names:
-        agent.credentialEnvironmentNames,
-      ...(agent.evaluatedModel.foundryResourceName === undefined
+      credential_environment_names: agent.credentialEnvironmentNames,
+      ...(foundry === undefined
         ? {}
         : {
-            foundry_resource_name:
-              agent.evaluatedModel.foundryResourceName,
-            model_family:
-              agent.evaluatedModel.modelFamily!,
+            foundry_resource_name: foundry.resourceName,
+            model_family: foundry.modelFamily,
           }),
     },
   };
@@ -352,10 +352,7 @@ async function resolveTaskNames(
   const names: string[] = [];
   try {
     for (const cell of cells) {
-      const resolved = await resolver.resolve(
-        cell.taskId,
-        cell.taskRevisionDigest,
-      );
+      const resolved = await resolver.resolve(cell.taskId, cell.taskRevisionDigest);
       if (
         resolved.sensitivity !== "trusted-hidden-task-resolution" ||
         resolved.taskId !== cell.taskId ||
@@ -394,21 +391,14 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
     assertArtifact(options.outputPackagerArtifact, "Harbor output packager");
     if (
       options.adapterArtifact.sha256 !== options.pin.piHarborAdapterSha256 ||
-      !new Set(["text/x-python", "text/plain"]).has(
-        options.adapterArtifact.mediaType,
+      !new Set(["text/x-python", "text/plain"]).has(options.adapterArtifact.mediaType) ||
+      !new Set(["application/javascript", "text/javascript", "text/plain"]).has(
+        options.outputPackagerArtifact.mediaType,
       ) ||
-      !new Set([
-        "application/javascript",
-        "text/javascript",
-        "text/plain",
-      ]).has(options.outputPackagerArtifact.mediaType) ||
       options.modelApiAllowedHosts.length === 0 ||
       options.modelApiAllowedHosts.some((host) => !SAFE_HOST.test(host)) ||
-      new Set(options.modelApiAllowedHosts).size !==
-        options.modelApiAllowedHosts.length ||
-      !new Set(["daytona", "e2b", "modal"]).has(
-        options.environmentType,
-      ) ||
+      new Set(options.modelApiAllowedHosts).size !== options.modelApiAllowedHosts.length ||
+      !new Set(["daytona", "e2b", "modal"]).has(options.environmentType) ||
       !SAFE_RELATIVE_PATH.test(options.piEntrypoint)
     ) {
       throw new TrustedHarborJobBuildError(
@@ -422,22 +412,18 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
     if (
       request.sensitivity !== "hidden-harbor-build-request" ||
       canonicalHash(request.pin) !== canonicalHash(this.#options.pin) ||
-      canonicalHash(request.isolationPolicy) !==
-        hashHarborAgentIsolationPolicy() ||
+      canonicalHash(request.isolationPolicy) !== hashHarborAgentIsolationPolicy() ||
       request.agent.adapterSha256 !== this.#options.pin.piHarborAdapterSha256
     ) {
       throw new TrustedHarborJobBuildError(
         "Harbor build request violates its immutable pin or isolation policy.",
       );
     }
-    if (request.agent.evaluatedModel.provider === "microsoft-foundry") {
-      const resource =
-        request.agent.evaluatedModel.foundryResourceName;
+    const foundry = foundryModelBinding(request.agent);
+    if (foundry !== undefined) {
       if (
-        resource === undefined ||
         this.#options.modelApiAllowedHosts.length !== 1 ||
-        this.#options.modelApiAllowedHosts[0] !==
-          `${resource}.services.ai.azure.com`
+        this.#options.modelApiAllowedHosts[0] !== `${foundry.resourceName}.services.ai.azure.com`
       ) {
         throw new TrustedHarborJobBuildError(
           "Microsoft Foundry evaluation requires its exact derived API host.",
@@ -461,17 +447,13 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
     const runtimes = new Map<MatchedArmKind, AgentRuntime>();
     for (const [arm, harness] of [
       ["candidate", candidate],
-      ...(champion === undefined
-        ? []
-        : ([["champion", champion]] as const)),
+      ...(champion === undefined ? [] : ([["champion", champion]] as const)),
     ] as const) {
       let resolution: TrustedHarnessRuntimeResolution;
       try {
         resolution = await this.#options.runtimeResolver.resolve(harness);
       } catch {
-        throw new TrustedHarborJobBuildError(
-          "A sealed harness runtime could not be resolved.",
-        );
+        throw new TrustedHarborJobBuildError("A sealed harness runtime could not be resolved.");
       }
       assertRuntimeResolution(resolution, harness, `${arm} runtime`);
       runtimes.set(arm, {
@@ -488,10 +470,7 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
     const invocations: TrustedHarborInvocation[] = [];
     for (const order of orders) {
       const cells = cellsForInvocation(request.panel, order);
-      const taskNames = await resolveTaskNames(
-        cells,
-        this.#options.taskResolver,
-      );
+      const taskNames = await resolveTaskNames(cells, this.#options.taskResolver);
       const invocationId = `${request.panel.requestId}-${order.toLowerCase()}`;
       const agentOrder = invocationAgentOrder(order);
       const config = createHiddenConfig({
@@ -529,8 +508,7 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
           "Published Harbor config changed its canonical content.",
         );
       }
-      const remoteConfigPath =
-        `${this.#options.remoteUploadRoot}config-${order.toLowerCase()}.json`;
+      const remoteConfigPath = `${this.#options.remoteUploadRoot}config-${order.toLowerCase()}.json`;
       uploads.push({
         role: configRole(order),
         artifact,
@@ -541,10 +519,8 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
         order,
         configSha256,
         remoteConfigPath,
-        remoteHarborJobPath:
-          `${this.#options.remoteOutputRoot}${invocationId}`,
-        remoteOutputPath:
-          `${this.#options.remoteOutputRoot}${invocationId}.harbor-output.tar`,
+        remoteHarborJobPath: `${this.#options.remoteOutputRoot}${invocationId}`,
+        remoteOutputPath: `${this.#options.remoteOutputRoot}${invocationId}.harbor-output.tar`,
         cellCount: cells.length,
         armCount: cells.length * agentOrder.length,
         agentOrder,
@@ -557,8 +533,7 @@ export class TerminalBench21TrustedJobBuilder implements TrustedHarborJobBuilder
     uploads.push({
       role: "output-packager",
       artifact: this.#options.outputPackagerArtifact,
-      remotePath:
-        `${this.#options.remoteUploadRoot}package-harbor-output.mjs`,
+      remotePath: `${this.#options.remoteUploadRoot}package-harbor-output.mjs`,
     });
     uploads.push({
       role: "pi-adapter",

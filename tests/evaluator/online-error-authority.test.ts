@@ -2,29 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import { createOnlineErrorBudget } from "../../src/evaluation/statistics.js";
 import {
-  DurableTrustedOnlineErrorBudgetAuthority,
-  TrustedOnlineErrorBudgetError,
+  hashEvaluationRequest,
+  type TrustedEvaluationRequest,
+} from "../../src/evaluator/contracts.js";
+import {
   assertDurableOnlineErrorBudgetState,
   assertTrustedOnlineErrorBudgetReconciliation,
   assertTrustedOnlineErrorBudgetReservation,
   createDurableOnlineErrorBudgetState,
-  onlineErrorBudgetCampaignIdHash,
   type DurableOnlineErrorBudgetState,
+  DurableTrustedOnlineErrorBudgetAuthority,
+  onlineErrorBudgetCampaignIdHash,
   type TrustedOnlineErrorBudgetCasStore,
+  TrustedOnlineErrorBudgetError,
 } from "../../src/evaluator/online-error-authority.js";
-import {
-  hashEvaluationRequest,
-  type TrustedEvaluationRequest,
-} from "../../src/evaluator/contracts.js";
 
 const CAMPAIGN_ID = "campaign-online-error-authority-test";
-const CAMPAIGN_HASH =
-  onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID);
+const CAMPAIGN_HASH = onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID);
 const DISPOSITION_HASH = "b".repeat(64);
-const INITIAL = createOnlineErrorBudget(
-  0.05,
-  "null-calibration-v1",
-);
+const INITIAL = createOnlineErrorBudget(0.05, "null-calibration-v1");
 
 function request(ordinal: number): TrustedEvaluationRequest {
   const suffix = ordinal.toString().padStart(3, "0");
@@ -111,10 +107,7 @@ class AtomicMemoryCasStore implements TrustedOnlineErrorBudgetCasStore {
   }
 }
 
-function authority(
-  store = new AtomicMemoryCasStore(),
-  maximumCasAttempts = 32,
-) {
+function authority(store = new AtomicMemoryCasStore(), maximumCasAttempts = 32) {
   return {
     store,
     authority: new DurableTrustedOnlineErrorBudgetAuthority({
@@ -137,15 +130,11 @@ function reserveInput(evaluationRequest: TrustedEvaluationRequest) {
 
 describe("trusted online sequential-error authority", () => {
   it("derives one domain-separated campaign scope from a safe campaign ID", () => {
-    expect(onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID)).toBe(
-      CAMPAIGN_HASH,
+    expect(onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID)).toBe(CAMPAIGN_HASH);
+    expect(onlineErrorBudgetCampaignIdHash("another-campaign")).not.toBe(CAMPAIGN_HASH);
+    expect(() => onlineErrorBudgetCampaignIdHash("../unsafe-campaign")).toThrow(
+      TrustedOnlineErrorBudgetError,
     );
-    expect(
-      onlineErrorBudgetCampaignIdHash("another-campaign"),
-    ).not.toBe(CAMPAIGN_HASH);
-    expect(() =>
-      onlineErrorBudgetCampaignIdHash("../unsafe-campaign"),
-    ).toThrow(TrustedOnlineErrorBudgetError);
   });
 
   it("is idempotent for one immutable validation request", async () => {
@@ -156,9 +145,7 @@ describe("trusted online sequential-error authority", () => {
 
     expect(replay).toEqual(first);
     expect(value.store.state.revision).toBe(1);
-    expect(value.store.state.current.spentAlpha).toBe(
-      first.accounting.cumulativeSpentAfter,
-    );
+    expect(value.store.state.current.spentAlpha).toBe(first.accounting.cumulativeSpentAfter);
     expect(first.accounting.alphaSpent).toBeGreaterThan(0);
   });
 
@@ -170,10 +157,9 @@ describe("trusted online sequential-error authority", () => {
       value.authority.reserve(reserveInput(request(2))),
     ]);
 
-    expect(new Set([
-      first.accounting.gateOrdinal,
-      second.accounting.gateOrdinal,
-    ])).toEqual(new Set([1, 2]));
+    expect(new Set([first.accounting.gateOrdinal, second.accounting.gateOrdinal])).toEqual(
+      new Set([1, 2]),
+    );
     expect(value.store.state.revision).toBe(2);
     expect(value.store.state.current.spentAlpha).toBe(
       first.accounting.alphaSpent + second.accounting.alphaSpent,
@@ -183,46 +169,30 @@ describe("trusted online sequential-error authority", () => {
   it("fails closed after bounded persistent CAS conflicts", async () => {
     const value = authority(new AtomicMemoryCasStore(), 3);
     value.store.alwaysConflict = true;
-    await expect(
-      value.authority.reserve(reserveInput(request(1))),
-    ).rejects.toMatchObject({ code: "state-conflict" });
+    await expect(value.authority.reserve(reserveInput(request(1)))).rejects.toMatchObject({
+      code: "state-conflict",
+    });
     expect(value.store.state.revision).toBe(0);
   });
 
   it("burns a reservation even if the outcome-bearing workload later fails", async () => {
     const value = authority();
-    const reservation = await value.authority.reserve(
-      reserveInput(request(1)),
+    const reservation = await value.authority.reserve(reserveInput(request(1)));
+    await expect(Promise.reject(new Error("simulated provider failure"))).rejects.toThrow(
+      /provider failure/u,
     );
-    await expect(
-      Promise.reject(new Error("simulated provider failure")),
-    ).rejects.toThrow(/provider failure/u);
 
     expect(value.store.state.revision).toBe(1);
-    expect(value.store.state.current.spentAlpha).toBe(
-      reservation.accounting.alphaSpent,
-    );
-    expect(
-      value.store.state.reservations[reservation.requestHash],
-    ).toEqual(reservation);
+    expect(value.store.state.current.spentAlpha).toBe(reservation.accounting.alphaSpent);
+    expect(value.store.state.reservations[reservation.requestHash]).toEqual(reservation);
     const reconciliation = await value.authority.reconcile();
     expect(() =>
-      assertTrustedOnlineErrorBudgetReconciliation(
-        reconciliation,
-        CAMPAIGN_ID,
-      ),
+      assertTrustedOnlineErrorBudgetReconciliation(reconciliation, CAMPAIGN_ID),
     ).not.toThrow();
-    expect(reconciliation.onlineErrorSpent).toBe(
-      reservation.accounting.cumulativeSpentAfter,
-    );
-    expect(reconciliation.campaignIdHash).toBe(
-      onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID),
-    );
+    expect(reconciliation.onlineErrorSpent).toBe(reservation.accounting.cumulativeSpentAfter);
+    expect(reconciliation.campaignIdHash).toBe(onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID));
     expect(() =>
-      assertTrustedOnlineErrorBudgetReconciliation(
-        reconciliation,
-        "different-campaign",
-      ),
+      assertTrustedOnlineErrorBudgetReconciliation(reconciliation, "different-campaign"),
     ).toThrow(TrustedOnlineErrorBudgetError);
     expect(() =>
       assertTrustedOnlineErrorBudgetReconciliation({
@@ -230,17 +200,13 @@ describe("trusted online sequential-error authority", () => {
         durableStateCommitment: "f".repeat(64),
       }),
     ).toThrow(TrustedOnlineErrorBudgetError);
-    expect(reconciliation.resultingStateHash).toBe(
-      reservation.accounting.resultingStateHash,
-    );
+    expect(reconciliation.resultingStateHash).toBe(reservation.accounting.resultingStateHash);
   });
 
   it("rejects replay mutation and reservation tampering", async () => {
     const value = authority();
     const original = request(1);
-    const reservation = await value.authority.reserve(
-      reserveInput(original),
-    );
+    const reservation = await value.authority.reserve(reserveInput(original));
     const mutated = {
       ...original,
       candidate: {
@@ -248,9 +214,9 @@ describe("trusted online sequential-error authority", () => {
         archiveSha256: "9".repeat(64),
       },
     };
-    await expect(
-      value.authority.reserve(reserveInput(mutated)),
-    ).rejects.toMatchObject({ code: "request-conflict" });
+    await expect(value.authority.reserve(reserveInput(mutated))).rejects.toMatchObject({
+      code: "request-conflict",
+    });
 
     const tampered = {
       ...reservation,
@@ -259,9 +225,9 @@ describe("trusted online sequential-error authority", () => {
         alphaSpent: reservation.accounting.alphaSpent / 2,
       },
     };
-    expect(() =>
-      assertTrustedOnlineErrorBudgetReservation(tampered),
-    ).toThrow(TrustedOnlineErrorBudgetError);
+    expect(() => assertTrustedOnlineErrorBudgetReservation(tampered)).toThrow(
+      TrustedOnlineErrorBudgetError,
+    );
   });
 
   it("eventually refuses another look when the summable schedule is below the minimum", async () => {
@@ -269,9 +235,7 @@ describe("trusted online sequential-error authority", () => {
     let exhausted = false;
     for (let ordinal = 1; ordinal <= 1_000; ordinal += 1) {
       try {
-        await value.authority.reserve(
-          reserveInput(request(ordinal)),
-        );
+        await value.authority.reserve(reserveInput(request(ordinal)));
       } catch (error) {
         expect(error).toMatchObject({ code: "budget-exhausted" });
         exhausted = true;

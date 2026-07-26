@@ -1,30 +1,21 @@
-import {
-  createHash,
-  generateKeyPairSync,
-} from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
   ArtifactDerivedCandidateIntegrityScanPort,
-  taskFragmentCatalogHash,
   type TrustedCandidateGitEvidenceManifest,
   type TrustedCandidateGitEvidenceRunner,
   type TrustedCandidateIntegrityArtifactReader,
   type TrustedCandidateIntegritySigningAuthority,
   type TrustedTaskFragmentHashCatalog,
+  taskFragmentCatalogHash,
 } from "../../src/cloud/trusted-git-candidate-integrity.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
-import {
-  DEFAULT_PI_SCAN_POLICY_HASH,
-} from "../../src/integrity/candidate-scanner.js";
+import { DEFAULT_PI_SCAN_POLICY_HASH } from "../../src/integrity/candidate-scanner.js";
 import type { TrustedCloudIntegrityScanInput } from "../../src/orchestrator/correctness-gate.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 
 const keys = generateKeyPairSync("ed25519");
 const KEY_ID = "candidate-integrity-test-key";
@@ -34,8 +25,7 @@ const CANDIDATE_COMMIT = "3".repeat(40);
 const CANDIDATE_TREE = "4".repeat(40);
 const WORKER_SHA256 = "5".repeat(64);
 const PROTOCOL_HASH = "6".repeat(64);
-const PATH =
-  "packages/coding-agent/src/core/system-prompt.ts";
+const PATH = "packages/coding-agent/src/core/system-prompt.ts";
 const DIFF = [
   `diff --git a/${PATH} b/${PATH}`,
   `index ${"a".repeat(40)}..${"b".repeat(40)} 100644`,
@@ -51,11 +41,7 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function artifact(
-  name: string,
-  contents: string,
-  mediaType: string,
-): TrustedCloudArtifactRef {
+function artifact(name: string, contents: string, mediaType: string): TrustedCloudArtifactRef {
   return {
     uri: `trusted://candidate-integrity/${name}`,
     sha256: sha256(contents),
@@ -80,13 +66,15 @@ function catalog(): TrustedTaskFragmentHashCatalog {
   };
 }
 
-function fixture(input: {
-  readonly claimedFiles?: readonly string[];
-  readonly mutateManifest?: (
-    manifest: TrustedCandidateGitEvidenceManifest,
-  ) => TrustedCandidateGitEvidenceManifest;
-  readonly invalidSigner?: boolean;
-} = {}) {
+function fixture(
+  input: {
+    readonly claimedFiles?: readonly string[];
+    readonly mutateManifest?: (
+      manifest: TrustedCandidateGitEvidenceManifest,
+    ) => TrustedCandidateGitEvidenceManifest;
+    readonly invalidSigner?: boolean;
+  } = {},
+) {
   const fragmentCatalog = catalog();
   const diffArtifact = artifact("derived.diff", DIFF, "text/x-diff");
   const candidateBundle: TrustedCloudArtifactRef = {
@@ -99,8 +87,7 @@ function fixture(input: {
     schemaVersion: 1 as const,
     domain: "dark-factory.candidate-git-evidence.v1" as const,
     experimentId: "001-generic-recovery",
-    bundleRef:
-      "refs/heads/df/bundle/001-generic-recovery",
+    bundleRef: "refs/heads/df/bundle/001-generic-recovery",
     candidateBundleSha256: candidateBundle.sha256,
     candidateBundleByteLength: candidateBundle.byteLength,
     sourceCommit: SOURCE_COMMIT,
@@ -132,21 +119,11 @@ function fixture(input: {
       },
     ]),
   }) as TrustedCandidateGitEvidenceManifest;
-  const selectedManifest =
-    input.mutateManifest?.(baseManifest) ?? baseManifest;
-  const {
-    contentHash: _contentHash,
-    ...manifestBody
-  } = selectedManifest;
-  const manifest = withContentHash(
-    manifestBody,
-  ) as TrustedCandidateGitEvidenceManifest;
+  const selectedManifest = input.mutateManifest?.(baseManifest) ?? baseManifest;
+  const { contentHash: _contentHash, ...manifestBody } = selectedManifest;
+  const manifest = withContentHash(manifestBody) as TrustedCandidateGitEvidenceManifest;
   const manifestRaw = `${canonicalJson(manifest)}\n`;
-  const manifestArtifact = artifact(
-    "evidence.json",
-    manifestRaw,
-    "application/json",
-  );
+  const manifestArtifact = artifact("evidence.json", manifestRaw, "application/json");
   const contents = new Map<string, string>([
     [manifestArtifact.uri, manifestRaw],
     [diffArtifact.uri, DIFF],
@@ -178,9 +155,7 @@ function fixture(input: {
     keyId: KEY_ID,
     sign: vi.fn(async (receipt) =>
       createEd25519Signature(
-        input.invalidSigner === true
-          ? { ...receipt, passed: !receipt.passed }
-          : receipt,
+        input.invalidSigner === true ? { ...receipt, passed: !receipt.passed } : receipt,
         keys.privateKey,
         KEY_ID,
         "2026-07-26T10:00:02.000Z",
@@ -250,30 +225,22 @@ describe("artifact-derived candidate integrity scan port", () => {
       schemaVersion: 2,
       passed: true,
       violationCodes: [],
-      candidateBundleSha256:
-        item.scanInput.candidateBundle.sha256,
+      candidateBundleSha256: item.scanInput.candidateBundle.sha256,
       evidenceDiffSha256: item.scanInput.candidateDiff.sha256,
-      fragmentCatalogHash:
-        item.fragmentCatalog.fragmentCatalogHash,
+      fragmentCatalogHash: item.fragmentCatalog.fragmentCatalogHash,
       workerSha256: WORKER_SHA256,
       containsTaskIdentifiers: false,
     });
     expect(JSON.stringify(result)).not.toContain(PATH);
-    expect(JSON.stringify(result)).not.toContain(
-      item.fragmentCatalog.fragmentHashes[0],
-    );
+    expect(JSON.stringify(result)).not.toContain(item.fragmentCatalog.fragmentHashes[0]);
     expect(item.evidenceRunner.derive).toHaveBeenCalledTimes(1);
-    const evidenceRequest = vi.mocked(
-      item.evidenceRunner.derive,
-    ).mock.calls[0]?.[0];
+    const evidenceRequest = vi.mocked(item.evidenceRunner.derive).mock.calls[0]?.[0];
     expect(evidenceRequest).not.toHaveProperty("fragmentHashes");
   });
 
   it("records a claimed-path substitution as a normal integrity rejection", async () => {
     const item = fixture({
-      claimedFiles: [
-        "packages/coding-agent/src/core/tools.ts",
-      ],
+      claimedFiles: ["packages/coding-agent/src/core/tools.ts"],
     });
     await expect(item.port.scan(item.scanInput)).resolves.toMatchObject({
       receipt: {
@@ -285,9 +252,7 @@ describe("artifact-derived candidate integrity scan port", () => {
 
   it("fails closed when the signing authority signs different content", async () => {
     const item = fixture({ invalidSigner: true });
-    await expect(item.port.scan(item.scanInput)).rejects.toThrow(
-      "failed closed",
-    );
+    await expect(item.port.scan(item.scanInput)).rejects.toThrow("failed closed");
   });
 
   it("fails closed when the evidence manifest changes the immutable candidate tree", async () => {
@@ -297,8 +262,6 @@ describe("artifact-derived candidate integrity scan port", () => {
         candidateTree: "0".repeat(40),
       }),
     });
-    await expect(item.port.scan(item.scanInput)).rejects.toThrow(
-      "failed closed",
-    );
+    await expect(item.port.scan(item.scanInput)).rejects.toThrow("failed closed");
   });
 });

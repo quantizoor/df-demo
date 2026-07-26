@@ -9,22 +9,22 @@ import type {
   ChampionPointers,
   ExperimentIdentity,
 } from "../../src/domain/models.js";
-import { ExperimentStore } from "../../src/evidence/store.js";
 import { readAndVerifyEventChain } from "../../src/evidence/events.js";
-import {
-  type AtomicExperimentJournalStateStore,
-  type DurableExperimentJournalState,
-  ProductionExperimentJournal,
-  type ReleaseSafeFinalExperimentSnapshot,
-  assertDurableExperimentJournalState,
-  emptyExperimentJournalState,
-  latestJournalBudgetForExperiment,
-} from "../../src/orchestrator/experiment-journal.js";
+import { ExperimentStore } from "../../src/evidence/store.js";
 import type {
   GateResult,
   OptimizerProposal,
   ValidationAggregate,
 } from "../../src/orchestrator/contracts.js";
+import {
+  type AtomicExperimentJournalStateStore,
+  assertDurableExperimentJournalState,
+  type DurableExperimentJournalState,
+  emptyExperimentJournalState,
+  latestJournalBudgetForExperiment,
+  ProductionExperimentJournal,
+  type ReleaseSafeFinalExperimentSnapshot,
+} from "../../src/orchestrator/experiment-journal.js";
 import { canonicalJson } from "../../src/schemas/canonical.js";
 
 const BASELINE = "a".repeat(40);
@@ -178,9 +178,7 @@ const validation: ValidationAggregate = {
   },
 };
 
-function budgetWith(
-  usage: Partial<BudgetSnapshot["usage"]>,
-): BudgetSnapshot {
+function budgetWith(usage: Partial<BudgetSnapshot["usage"]>): BudgetSnapshot {
   return {
     limits: initialBudget.limits,
     usage: { ...initialBudget.usage, ...usage },
@@ -198,11 +196,9 @@ async function journalFixture() {
     reasonCode: "cloud-stage-failed",
     attestationHash: HASH_B,
   }));
-  const artifactAssembler = vi.fn(
-    async (_snapshot: ReleaseSafeFinalExperimentSnapshot) => {
-      throw new Error("Artifact assembly stopped after snapshot capture.");
-    },
-  );
+  const artifactAssembler = vi.fn(async (_snapshot: ReleaseSafeFinalExperimentSnapshot) => {
+    throw new Error("Artifact assembly stopped after snapshot capture.");
+  });
   const journal = new ProductionExperimentJournal({
     evidenceStore,
     stateStore,
@@ -228,16 +224,13 @@ async function journalFixture() {
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
 describe("ProductionExperimentJournal", () => {
   it("records exact idempotent stage order and separates budget stages", async () => {
-    const { journal, stateStore, evidenceStore, artifactAssembler } =
-      await journalFixture();
+    const { journal, stateStore, evidenceStore, artifactAssembler } = await journalFixture();
     const gateBudget = budgetWith({
       spentUsd: 1,
       tokens: 10,
@@ -301,9 +294,9 @@ describe("ProductionExperimentJournal", () => {
       diagnosticBudget: null,
     });
     expect(record?.validation?.panelDispositionAttestationHash).toBe(HASH_B);
-    expect(
-      latestJournalBudgetForExperiment(stateStore.state, experiment),
-    ).toEqual(validationBudget);
+    expect(latestJournalBudgetForExperiment(stateStore.state, experiment)).toEqual(
+      validationBudget,
+    );
     expect(() =>
       latestJournalBudgetForExperiment(stateStore.state, {
         ...experiment,
@@ -314,9 +307,7 @@ describe("ProductionExperimentJournal", () => {
       join(evidenceStore.root, EXPERIMENT_NAME, "events.jsonl"),
     );
     expect(chain.records).toHaveLength(8);
-    expect(
-      chain.records.map((entry) => entry.payload.messageCode),
-    ).toEqual([
+    expect(chain.records.map((entry) => entry.payload.messageCode)).toEqual([
       "journal-create",
       "journal-proposal",
       "journal-gates",
@@ -382,9 +373,7 @@ describe("ProductionExperimentJournal", () => {
       }),
     ).rejects.toThrow(/invalid during gates-recorded/u);
     await expect(
-      journal.updateBudget(
-        budgetWith({ spentUsd: 2, tokens: 10, wallTimeMs: 100 }),
-      ),
+      journal.updateBudget(budgetWith({ spentUsd: 2, tokens: 10, wallTimeMs: 100 })),
     ).rejects.toThrow(/does not bind its recorded aggregate/u);
   });
 
@@ -405,13 +394,9 @@ describe("ProductionExperimentJournal", () => {
       experiment,
       gates: fractionalGates,
     });
-    await journal.updateBudget(
-      budgetWith({ spentUsd: 0.1 + 0.2, tokens: 10, wallTimeMs: 100 }),
-    );
+    await journal.updateBudget(budgetWith({ spentUsd: 0.1 + 0.2, tokens: 10, wallTimeMs: 100 }));
 
-    expect(stateStore.state.records[EXPERIMENT_NAME]?.phase).toBe(
-      "gates-budgeted",
-    );
+    expect(stateStore.state.records[EXPERIMENT_NAME]?.phase).toBe("gates-budgeted");
   });
 
   it("labels a gate rejection as pre-validation without spending a promotion look", async () => {
@@ -456,8 +441,7 @@ describe("ProductionExperimentJournal", () => {
   });
 
   it("durably interrupts a pending operation without persisting raw failure text", async () => {
-    const { journal, stateStore, evidenceStore, interruptionAttestor } =
-      await journalFixture();
+    const { journal, stateStore, evidenceStore, interruptionAttestor } = await journalFixture();
     await journal.create({
       experiment,
       activeChampionBefore: champions,
@@ -522,14 +506,9 @@ describe("ProductionExperimentJournal", () => {
 
   it("detects corruption in validation release-safety flags before transaction use", () => {
     const stateStore = new MemoryJournalStateStore();
-    const corrupted = structuredClone(stateStore.state) as unknown as Record<
-      string,
-      unknown
-    >;
+    const corrupted = structuredClone(stateStore.state) as unknown as Record<string, unknown>;
     corrupted["sensitivity"] = "trusted-hidden-evaluator-state";
 
-    expect(() =>
-      assertDurableExperimentJournalState(corrupted),
-    ).toThrow(/metadata is malformed/u);
+    expect(() => assertDurableExperimentJournalState(corrupted)).toThrow(/metadata is malformed/u);
   });
 });

@@ -56,11 +56,7 @@ export interface CandidateScanResult {
 
 export const DEFAULT_PI_SCAN_POLICY_DESCRIPTOR = {
   version: "pi-candidate-integrity-v2",
-  allowedRoots: [
-    "packages/agent/src/",
-    "packages/coding-agent/src/",
-    "packages/ai/src/",
-  ],
+  allowedRoots: ["packages/agent/src/", "packages/coding-agent/src/", "packages/ai/src/"],
   allowedFileExtensions: [
     ".cjs",
     ".css",
@@ -101,8 +97,7 @@ export const DEFAULT_PI_SCAN_POLICY_DESCRIPTOR = {
       flags: "iu",
     },
     {
-      source:
-        "(^|\\/)(Dockerfile|docker-compose(?:\\.[A-Za-z0-9._-]+)?\\.ya?ml)$",
+      source: "(^|\\/)(Dockerfile|docker-compose(?:\\.[A-Za-z0-9._-]+)?\\.ya?ml)$",
       flags: "iu",
     },
   ],
@@ -111,30 +106,23 @@ export const DEFAULT_PI_SCAN_POLICY_DESCRIPTOR = {
   maximumLiteralLength: 400,
 } as const;
 
-export const DEFAULT_PI_SCAN_POLICY_HASH = canonicalHash(
-  DEFAULT_PI_SCAN_POLICY_DESCRIPTOR,
-);
+export const DEFAULT_PI_SCAN_POLICY_HASH = canonicalHash(DEFAULT_PI_SCAN_POLICY_DESCRIPTOR);
 
 export const DEFAULT_PI_SCAN_POLICY: CandidateScanPolicy = {
   allowedRoots: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.allowedRoots,
-  allowedFileExtensions:
-    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.allowedFileExtensions,
-  protectedGlobs:
-    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.protectedGlobs.map(
-      ({ source, flags }) => new RegExp(source, flags),
-    ),
-  maximumChangedFiles:
-    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumChangedFiles,
-  maximumChangedLines:
-    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumChangedLines,
-  maximumLiteralLength:
-    DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumLiteralLength,
+  allowedFileExtensions: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.allowedFileExtensions,
+  protectedGlobs: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.protectedGlobs.map(
+    ({ source, flags }) => new RegExp(source, flags),
+  ),
+  maximumChangedFiles: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumChangedFiles,
+  maximumChangedLines: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumChangedLines,
+  maximumLiteralLength: DEFAULT_PI_SCAN_POLICY_DESCRIPTOR.maximumLiteralLength,
 };
 
 const BASE64_PAYLOAD = /(?:["'`])[A-Za-z0-9+/]{160,}={0,2}(?:["'`])/u;
 const HEX_PAYLOAD = /(?:["'`])(?:[a-f0-9]{2}){100,}(?:["'`])/iu;
 const NETWORK_ADDITION =
-  /\b(?:curl|wget|fetch\s*\(|axios|undici|node:https|node:http|WebSocket)\b/u;
+  /(?:\b(?:curl|wget|axios|undici|node:https|node:http|WebSocket)\b|\bfetch\s*\()/u;
 const SOLUTION_REFERENCE =
   /(?:github\.com|gitlab\.com|gist\.github\.com|pastebin\.com).{0,100}(?:solution|answer|terminal.?bench)/iu;
 const BENCHMARK_REFERENCE =
@@ -157,6 +145,7 @@ function normalizePath(value: string): string | null {
     normalized === ".." ||
     normalized.startsWith("../") ||
     normalized.startsWith("/") ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Candidate paths are untrusted and must reject every ASCII control byte.
     /[\u0000-\u001f\u007f]/u.test(normalized)
   ) {
     return null;
@@ -174,7 +163,9 @@ function violation(
   return { code, path: filePath, line, evidenceHash: sha256(evidence), message };
 }
 
-function addedDiffLines(diff: string): readonly { content: string; line: number; file: string | null }[] {
+function addedDiffLines(
+  diff: string,
+): readonly { content: string; line: number; file: string | null }[] {
   const output: { content: string; line: number; file: string | null }[] = [];
   let file: string | null = null;
   let targetLine = 0;
@@ -215,21 +206,12 @@ function parseDiffMetadata(diff: string): ParsedDiffMetadata {
 
   for (const rawLine of diff.split("\n")) {
     if (rawLine.startsWith("diff --git ")) {
-      const header =
-        /^diff --git a\/(?<before>\S+) b\/(?<after>\S+)$/u.exec(
-          rawLine,
-        );
-      if (
-        header?.groups?.before === undefined ||
-        header.groups.after === undefined
-      ) {
+      const header = /^diff --git a\/(?<before>\S+) b\/(?<after>\S+)$/u.exec(rawLine);
+      if (header?.groups?.before === undefined || header.groups.after === undefined) {
         unambiguous = false;
         continue;
       }
-      for (const rawPath of [
-        header.groups.before,
-        header.groups.after,
-      ]) {
+      for (const rawPath of [header.groups.before, header.groups.after]) {
         const normalized = normalizePath(rawPath);
         if (normalized === null) {
           unambiguous = false;
@@ -239,10 +221,7 @@ function parseDiffMetadata(diff: string): ParsedDiffMetadata {
       }
       continue;
     }
-    if (
-      rawLine.startsWith("--- a/") ||
-      rawLine.startsWith("+++ b/")
-    ) {
+    if (rawLine.startsWith("--- a/") || rawLine.startsWith("+++ b/")) {
       const normalized = normalizePath(rawLine.slice(6));
       if (normalized === null) {
         unambiguous = false;
@@ -253,10 +232,7 @@ function parseDiffMetadata(diff: string): ParsedDiffMetadata {
     }
     if (rawLine.startsWith("+") && !rawLine.startsWith("+++")) {
       addedLines += 1;
-    } else if (
-      rawLine.startsWith("-") &&
-      !rawLine.startsWith("---")
-    ) {
+    } else if (rawLine.startsWith("-") && !rawLine.startsWith("---")) {
       deletedLines += 1;
     }
   }
@@ -277,7 +253,9 @@ function scanAddedLine(
   const found: IntegrityViolation[] = [];
   const { content, file, line } = entry;
   if (BASE64_PAYLOAD.test(content) || HEX_PAYLOAD.test(content)) {
-    found.push(violation("ENCODED_PAYLOAD", "Encoded lookup payload is not allowed", content, file, line));
+    found.push(
+      violation("ENCODED_PAYLOAD", "Encoded lookup payload is not allowed", content, file, line),
+    );
   }
   if (NETWORK_ADDITION.test(content)) {
     found.push(
@@ -292,7 +270,13 @@ function scanAddedLine(
   }
   if (SOLUTION_REFERENCE.test(content)) {
     found.push(
-      violation("SOLUTION_REFERENCE", "Candidate references a likely solution source", content, file, line),
+      violation(
+        "SOLUTION_REFERENCE",
+        "Candidate references a likely solution source",
+        content,
+        file,
+        line,
+      ),
     );
   }
   if (BENCHMARK_REFERENCE.test(content)) {
@@ -385,11 +369,7 @@ function decodedPrintablePayload(value: string): string | null {
     return null;
   }
   const printable = [...decoded].filter(
-    (byte) =>
-      byte === 9 ||
-      byte === 10 ||
-      byte === 13 ||
-      (byte >= 32 && byte <= 126),
+    (byte) => byte === 9 || byte === 10 || byte === 13 || (byte >= 32 && byte <= 126),
   ).length;
   if (printable / decoded.length < 0.9) {
     return null;
@@ -446,27 +426,14 @@ function scanAggregateAddedContent(
     let compact = "";
     let spaced = "";
     let encodedChunks = 0;
-    for (
-      let end = start;
-      end < literals.length && end < start + 12;
-      end += 1
-    ) {
+    for (let end = start; end < literals.length && end < start + 12; end += 1) {
       const current = literals[end];
-      if (
-        current === undefined ||
-        current.file !== first.file
-      ) {
+      if (current === undefined || current.file !== first.file) {
         break;
       }
       compact += current.value;
-      spaced =
-        spaced.length === 0
-          ? current.value
-          : `${spaced} ${current.value}`;
-      if (
-        BASE64_LITERAL_CONTENT.test(current.value) ||
-        HEX_LITERAL_CONTENT.test(current.value)
-      ) {
+      spaced = spaced.length === 0 ? current.value : `${spaced} ${current.value}`;
+      if (BASE64_LITERAL_CONTENT.test(current.value) || HEX_LITERAL_CONTENT.test(current.value)) {
         encodedChunks += 1;
       } else {
         encodedChunks = 0;
@@ -474,12 +441,8 @@ function scanAggregateAddedContent(
 
       if (
         end > start &&
-        (taskFragmentHashes.has(
-          sha256(compact.trim().toLowerCase()),
-        ) ||
-          taskFragmentHashes.has(
-            sha256(spaced.trim().toLowerCase()),
-          ))
+        (taskFragmentHashes.has(sha256(compact.trim().toLowerCase())) ||
+          taskFragmentHashes.has(sha256(spaced.trim().toLowerCase())))
       ) {
         found.push(
           violation(
@@ -523,9 +486,7 @@ export function scanCandidate(
   }));
   const parsedDiff = parseDiffMetadata(input.unifiedDiff);
   const normalizedInputPaths = new Set(
-    normalizedFiles.flatMap((file) =>
-      file.normalized === null ? [] : [file.normalized],
-    ),
+    normalizedFiles.flatMap((file) => (file.normalized === null ? [] : [file.normalized])),
   );
   const diffMetadataMatches =
     parsedDiff.unambiguous &&
@@ -537,9 +498,7 @@ export function scanCandidate(
     input.deletedLines === parsedDiff.deletedLines &&
     normalizedInputPaths.size === input.changedFiles.length &&
     normalizedInputPaths.size === parsedDiff.paths.size &&
-    [...normalizedInputPaths].every((file) =>
-      parsedDiff.paths.has(file),
-    );
+    [...normalizedInputPaths].every((file) => parsedDiff.paths.has(file));
   if (!diffMetadataMatches) {
     violations.push(
       violation(
@@ -553,51 +512,48 @@ export function scanCandidate(
   for (const file of normalizedFiles) {
     if (file.normalized === null) {
       violations.push(
-        violation("PROTECTED_PATH", "Changed path is absolute or escapes the repository", file.original),
+        violation(
+          "PROTECTED_PATH",
+          "Changed path is absolute or escapes the repository",
+          file.original,
+        ),
       );
       continue;
     }
-    if (!policy.allowedRoots.some((root) => file.normalized?.startsWith(root))) {
+    const normalized = file.normalized;
+    if (!policy.allowedRoots.some((root) => normalized.startsWith(root))) {
       violations.push(
         violation(
           "PROTECTED_PATH",
           "Changed path is outside the approved Pi mutation roots",
-          file.normalized,
-          file.normalized,
+          normalized,
+          normalized,
         ),
       );
     }
-    if (
-      !policy.allowedFileExtensions.some((extension) =>
-        file.normalized?.endsWith(extension),
-      )
-    ) {
+    if (!policy.allowedFileExtensions.some((extension) => normalized.endsWith(extension))) {
       violations.push(
         violation(
           "OPAQUE_BINARY_CHANGE",
           "Candidate changes an extensionless, binary, or unapproved source format",
-          file.normalized,
-          file.normalized,
+          normalized,
+          normalized,
         ),
       );
     }
-    if (policy.protectedGlobs.some((pattern) => pattern.test(file.normalized))) {
+    if (policy.protectedGlobs.some((pattern) => pattern.test(normalized))) {
       violations.push(
         violation(
           "PROTECTED_PATH",
           "Changed path matches a protected benchmark, test, or policy path",
-          file.normalized,
-          file.normalized,
+          normalized,
+          normalized,
         ),
       );
     }
   }
 
-  if (
-    /(?:^|\n)(?:GIT binary patch|Binary files [^\n]+ differ)(?:\n|$)/u.test(
-      input.unifiedDiff,
-    )
-  ) {
+  if (/(?:^|\n)(?:GIT binary patch|Binary files [^\n]+ differ)(?:\n|$)/u.test(input.unifiedDiff)) {
     violations.push(
       violation(
         "OPAQUE_BINARY_CHANGE",
@@ -634,12 +590,7 @@ export function scanCandidate(
   for (const addedLine of addedLines) {
     violations.push(...scanAddedLine(addedLine, policy, input.taskFragmentHashes));
   }
-  violations.push(
-    ...scanAggregateAddedContent(
-      addedLines,
-      input.taskFragmentHashes,
-    ),
-  );
+  violations.push(...scanAggregateAddedContent(addedLines, input.taskFragmentHashes));
 
   const unique = new Map<string, IntegrityViolation>();
   for (const item of violations) {

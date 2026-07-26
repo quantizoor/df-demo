@@ -1,7 +1,4 @@
-import {
-  createHash,
-  generateKeyPairSync,
-} from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +6,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { TrustedArtifactRuntimeGuard } from "../../src/cloud/artifact-bridge.js";
+import type {
+  MountedVolumeDurableStateOptions,
+  MountedVolumeStateSemanticsGuard,
+} from "../../src/cloud/mounted-volume-state.js";
 import {
   DurableProductionOptimizeBootstrapOrReconstructPort,
   type ProductionOptimizeGenesisEnsureResult,
@@ -26,19 +27,12 @@ import type {
   ProductionOptimizeLifecycleRegistrar,
   TrustedProductionOptimizeCloseable,
 } from "../../src/cloud/production-optimize-composition-owner.js";
-import type {
-  MountedVolumeDurableStateOptions,
-  MountedVolumeStateSemanticsGuard,
-} from "../../src/cloud/mounted-volume-state.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
 import {
   gitRegistrationReceiptHash,
   type TrustedGitRegistrationReceipt,
 } from "../../src/harness/git-registration.js";
-import {
-  canonicalHash,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, withContentHash } from "../../src/schemas/canonical.js";
 
 const NOW = "2026-07-26T12:00:00.000Z";
 const VALID_FROM = "2026-07-26T00:00:00.000Z";
@@ -50,21 +44,15 @@ const CAMPAIGN_STATE_HASH = "b".repeat(64);
 const CATALOG_STATE_HASH = "c".repeat(64);
 
 const keyPairs = {
-  "production-optimize-private-pi-registration":
-    generateKeyPairSync("ed25519"),
-  "production-optimize-campaign-genesis":
-    generateKeyPairSync("ed25519"),
-  "production-optimize-hidden-catalog-genesis":
-    generateKeyPairSync("ed25519"),
+  "production-optimize-private-pi-registration": generateKeyPairSync("ed25519"),
+  "production-optimize-campaign-genesis": generateKeyPairSync("ed25519"),
+  "production-optimize-hidden-catalog-genesis": generateKeyPairSync("ed25519"),
 } as const;
 
 const keyIds = {
-  "production-optimize-private-pi-registration":
-    "private-pi-registration-key-001",
-  "production-optimize-campaign-genesis":
-    "campaign-genesis-key-001",
-  "production-optimize-hidden-catalog-genesis":
-    "hidden-catalog-genesis-key-001",
+  "production-optimize-private-pi-registration": "private-pi-registration-key-001",
+  "production-optimize-campaign-genesis": "campaign-genesis-key-001",
+  "production-optimize-hidden-catalog-genesis": "hidden-catalog-genesis-key-001",
 } as const;
 
 const runtimeGuard: TrustedArtifactRuntimeGuard = {
@@ -80,10 +68,7 @@ function registrationReceipt(): TrustedGitRegistrationReceipt {
   const originRepositoryHash = "2".repeat(64);
   const upstreamBaseCommit = "3".repeat(40);
   const registrationId = createHash("sha256")
-    .update(
-      `${commitSha}:${originRepositoryHash}:${upstreamBaseCommit}`,
-      "utf8",
-    )
+    .update(`${commitSha}:${originRepositoryHash}:${upstreamBaseCommit}`, "utf8")
     .digest("hex");
   const payload: Omit<TrustedGitRegistrationReceipt, "signature"> = {
     sensitivity: "trusted-git-registration",
@@ -133,24 +118,17 @@ function registrationReceipt(): TrustedGitRegistrationReceipt {
     ...payload,
     signature: createEd25519Signature(
       payload,
-      keyPairs["production-optimize-private-pi-registration"]
-        .privateKey,
+      keyPairs["production-optimize-private-pi-registration"].privateKey,
       keyIds["production-optimize-private-pi-registration"],
       "2026-07-26T11:58:00.000Z",
     ),
   };
 }
 
-function campaignGenesis(
-  sourcePrerequisiteHash: string,
-): SignedProductionOptimizeCampaignGenesis {
-  const payload: Omit<
-    SignedProductionOptimizeCampaignGenesis,
-    "signature" | "contentHash"
-  > = {
+function campaignGenesis(sourcePrerequisiteHash: string): SignedProductionOptimizeCampaignGenesis {
+  const payload: Omit<SignedProductionOptimizeCampaignGenesis, "signature" | "contentHash"> = {
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-campaign-genesis.v1",
+    domain: "dark-factory.production-optimize-campaign-genesis.v1",
     sensitivity: "release-safe-control",
     deployment: "trusted-cloud",
     campaignId: CAMPAIGN_ID,
@@ -176,13 +154,9 @@ function campaignGenesis(
 function catalogGenesis(
   genesisPrerequisiteHash: string,
 ): SignedProductionOptimizeHiddenCatalogGenesis {
-  const payload: Omit<
-    SignedProductionOptimizeHiddenCatalogGenesis,
-    "signature" | "contentHash"
-  > = {
+  const payload: Omit<SignedProductionOptimizeHiddenCatalogGenesis, "signature" | "contentHash"> = {
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-hidden-catalog-genesis.v1",
+    domain: "dark-factory.production-optimize-hidden-catalog-genesis.v1",
     sensitivity: "trusted-control-task-free-commitment",
     deployment: "trusted-cloud",
     campaignId: CAMPAIGN_ID,
@@ -209,8 +183,7 @@ function catalogGenesis(
     ...payload,
     signature: createEd25519Signature(
       payload,
-      keyPairs["production-optimize-hidden-catalog-genesis"]
-        .privateKey,
+      keyPairs["production-optimize-hidden-catalog-genesis"].privateKey,
       keyIds["production-optimize-hidden-catalog-genesis"],
       "2026-07-26T11:30:00.000Z",
     ),
@@ -226,14 +199,12 @@ interface FixtureDocuments {
 
 function documents(): FixtureDocuments {
   const registration = registrationReceipt();
-  const sourcePrerequisiteHash =
-    gitRegistrationReceiptHash(registration);
+  const sourcePrerequisiteHash = gitRegistrationReceiptHash(registration);
   const campaign = campaignGenesis(sourcePrerequisiteHash);
   const catalog = catalogGenesis(campaign.contentHash);
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1" as const,
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1" as const,
     manifestId: "production-manifest-001",
     manifestHash: "5".repeat(64),
     campaignId: CAMPAIGN_ID,
@@ -257,8 +228,7 @@ function documents(): FixtureDocuments {
 interface KeyMode {
   readonly revokedPurpose?: ProductionOptimizePrerequisiteKeyPurpose;
   readonly wrongPurpose?: ProductionOptimizePrerequisiteKeyPurpose;
-  readonly substitutedPurpose?:
-    ProductionOptimizePrerequisiteKeyPurpose;
+  readonly substitutedPurpose?: ProductionOptimizePrerequisiteKeyPurpose;
 }
 
 function publicKey(
@@ -276,10 +246,7 @@ function publicKey(
   return {
     boundary: "trusted-cloud-key-material",
     algorithm: "Ed25519",
-    purpose:
-      mode.wrongPurpose === purpose
-        ? "production-optimize-campaign-genesis"
-        : purpose,
+    purpose: mode.wrongPurpose === purpose ? "production-optimize-campaign-genesis" : purpose,
     keyId: keyIds[purpose],
     keyVersion: "v1",
     validFrom: VALID_FROM,
@@ -294,12 +261,9 @@ function publicKey(
   };
 }
 
-function keyAuthority(
-  mode: KeyMode = {},
-): TrustedProductionOptimizePrerequisitePublicKeyAuthority {
+function keyAuthority(mode: KeyMode = {}): TrustedProductionOptimizePrerequisitePublicKeyAuthority {
   return {
-    boundary:
-      "trusted-cloud-production-optimize-prerequisite-public-key-authority",
+    boundary: "trusted-cloud-production-optimize-prerequisite-public-key-authority",
     resolve(input) {
       return Promise.resolve(publicKey(input.purpose, mode));
     },
@@ -307,9 +271,7 @@ function keyAuthority(
 }
 
 function rotations() {
-  return (
-    Object.keys(keyPairs) as ProductionOptimizePrerequisiteKeyPurpose[]
-  ).map((purpose) => ({
+  return (Object.keys(keyPairs) as ProductionOptimizePrerequisiteKeyPurpose[]).map((purpose) => ({
     purpose,
     keyId: keyIds[purpose],
     keyVersion: "v1",
@@ -327,24 +289,20 @@ function prerequisiteSource(
   }> = {},
 ): TrustedProductionOptimizePrerequisiteSource {
   return {
-    boundary:
-      "trusted-cloud-production-optimize-prerequisite-source",
+    boundary: "trusted-cloud-production-optimize-prerequisite-source",
     locatePrivatePiRegistration() {
       return Promise.resolve(
-        (replacements.registration ??
-          docs.registration) as TrustedGitRegistrationReceipt,
+        (replacements.registration ?? docs.registration) as TrustedGitRegistrationReceipt,
       );
     },
     locateCampaignGenesis() {
       return Promise.resolve(
-        (replacements.campaign ??
-          docs.campaign) as SignedProductionOptimizeCampaignGenesis,
+        (replacements.campaign ?? docs.campaign) as SignedProductionOptimizeCampaignGenesis,
       );
     },
     locateHiddenCatalogGenesis() {
       return Promise.resolve(
-        (replacements.catalog ??
-          docs.catalog) as SignedProductionOptimizeHiddenCatalogGenesis,
+        (replacements.catalog ?? docs.catalog) as SignedProductionOptimizeHiddenCatalogGenesis,
       );
     },
   };
@@ -374,10 +332,7 @@ function world(): World {
   };
 }
 
-function resource(
-  lifecycleId: string,
-  current: World,
-): TrustedProductionOptimizeCloseable {
+function resource(lifecycleId: string, current: World): TrustedProductionOptimizeCloseable {
   return {
     boundary: "trusted-cloud-production-optimize-lifecycle",
     lifecycleId,
@@ -388,59 +343,44 @@ function resource(
   };
 }
 
-function campaignAuthority(
-  current: World,
-): TrustedProductionOptimizeCampaignGenesisAuthority {
+function campaignAuthority(current: World): TrustedProductionOptimizeCampaignGenesisAuthority {
   return {
-    boundary:
-      "trusted-cloud-production-optimize-campaign-genesis-authority",
+    boundary: "trusted-cloud-production-optimize-campaign-genesis-authority",
     async ensureExact(): Promise<ProductionOptimizeGenesisEnsureResult> {
       if (current.throwCampaign) throw new Error("simulated crash");
       if (current.campaignBarrier !== null) {
         await current.campaignBarrier;
       }
-      const disposition =
-        current.campaignStateHash === null ? "created" : "existing";
+      const disposition = current.campaignStateHash === null ? "created" : "existing";
       current.campaignStateHash ??= CAMPAIGN_STATE_HASH;
       return {
         disposition,
-        stateHash: current.wrongCampaignHash
-          ? "d".repeat(64)
-          : current.campaignStateHash,
+        stateHash: current.wrongCampaignHash ? "d".repeat(64) : current.campaignStateHash,
         resource: resource("campaign-genesis-resource", current),
       };
     },
   };
 }
 
-function catalogAuthority(
-  current: World,
-): TrustedProductionOptimizeHiddenCatalogGenesisAuthority {
+function catalogAuthority(current: World): TrustedProductionOptimizeHiddenCatalogGenesisAuthority {
   return {
-    boundary:
-      "trusted-cloud-production-optimize-hidden-catalog-genesis-authority",
+    boundary: "trusted-cloud-production-optimize-hidden-catalog-genesis-authority",
     ensureExact(): Promise<ProductionOptimizeGenesisEnsureResult> {
       if (current.throwCatalog) {
         return Promise.reject(new Error("simulated crash"));
       }
-      const disposition =
-        current.catalogStateHash === null ? "created" : "existing";
+      const disposition = current.catalogStateHash === null ? "created" : "existing";
       current.catalogStateHash ??= CATALOG_STATE_HASH;
       return Promise.resolve({
         disposition,
-        stateHash: current.wrongCatalogHash
-          ? "e".repeat(64)
-          : current.catalogStateHash,
+        stateHash: current.wrongCatalogHash ? "e".repeat(64) : current.catalogStateHash,
         resource: resource("catalog-genesis-resource", current),
       });
     },
   };
 }
 
-function durableState(
-  volumeRoot: string,
-  controller: string,
-): MountedVolumeDurableStateOptions {
+function durableState(volumeRoot: string, controller: string): MountedVolumeDurableStateOptions {
   return {
     volumeRoot,
     storeId: "bootstrap-test",
@@ -468,8 +408,7 @@ function port(input: {
 }) {
   return new DurableProductionOptimizeBootstrapOrReconstructPort({
     durableState: durableState(input.root, input.controller),
-    prerequisiteSource:
-      input.source ?? prerequisiteSource(input.docs),
+    prerequisiteSource: input.source ?? prerequisiteSource(input.docs),
     publicKeyAuthority: input.keys ?? keyAuthority(),
     keyRotations: rotations(),
     campaignGenesisAuthority: campaignAuthority(input.world),
@@ -511,10 +450,7 @@ async function invoke(
 ) {
   const owner = lifecycle();
   try {
-    return await authority.verifyBootstrapOrReconstruct(
-      request,
-      owner.registrar,
-    );
+    return await authority.verifyBootstrapOrReconstruct(request, owner.registrar);
   } finally {
     await owner.close();
   }
@@ -522,9 +458,7 @@ async function invoke(
 
 describe("durable production optimize bootstrap or reconstruct port", () => {
   it("bootstraps once and returns a deterministic reconstructed retry", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-production-bootstrap-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-production-bootstrap-test-"));
     const docs = documents();
     const current = world();
     const first = await invoke(
@@ -538,17 +472,13 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
     );
     expect(first).toMatchObject({
       disposition: "bootstrapped",
-      sourcePrerequisiteHash:
-        gitRegistrationReceiptHash(docs.registration),
+      sourcePrerequisiteHash: gitRegistrationReceiptHash(docs.registration),
       campaignStateHash: CAMPAIGN_STATE_HASH,
       catalogStateHash: CATALOG_STATE_HASH,
       prerequisitesVerified: true,
       idempotentlyBound: true,
     });
-    expect(current.closeEvents).toEqual([
-      "catalog-genesis-resource",
-      "campaign-genesis-resource",
-    ]);
+    expect(current.closeEvents).toEqual(["catalog-genesis-resource", "campaign-genesis-resource"]);
 
     const second = await invoke(
       port({
@@ -573,14 +503,8 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
   });
 
   it("recovers strict prefixes after interruption at each durable phase", async () => {
-    for (const crashPoint of [
-      "claimed",
-      "campaign-ensured",
-      "catalog-ensured",
-    ] as const) {
-      const root = await mkdtemp(
-        join(tmpdir(), `df-bootstrap-${crashPoint}-`),
-      );
+    for (const crashPoint of ["claimed", "campaign-ensured", "catalog-ensured"] as const) {
+      const root = await mkdtemp(join(tmpdir(), `df-bootstrap-${crashPoint}-`));
       const docs = documents();
       const current = world();
       const clock: MutableClock = { calls: 0, throwAt: null };
@@ -625,9 +549,7 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
   });
 
   it("bounds concurrent work to one in-flight request identity", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-concurrent-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-concurrent-"));
     const docs = documents();
     const current = world();
     let release = (): void => {};
@@ -641,18 +563,12 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
       world: current,
     });
     const firstOwner = lifecycle();
-    const first = authority.verifyBootstrapOrReconstruct(
-      docs.request,
-      firstOwner.registrar,
-    );
+    const first = authority.verifyBootstrapOrReconstruct(docs.request, firstOwner.registrar);
     await Promise.resolve();
     await Promise.resolve();
     const secondOwner = lifecycle();
     await expect(
-      authority.verifyBootstrapOrReconstruct(
-        docs.request,
-        secondOwner.registrar,
-      ),
+      authority.verifyBootstrapOrReconstruct(docs.request, secondOwner.registrar),
     ).rejects.toThrow(/failed closed/u);
     release();
     await expect(first).resolves.toMatchObject({
@@ -663,9 +579,7 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
   });
 
   it("rejects a different request after the durable identity is claimed", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-different-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-different-"));
     const docs = documents();
     const current = world();
     await invoke(
@@ -682,8 +596,7 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
       manifestId: "production-manifest-002",
       requestHash: undefined,
     };
-    const { requestHash: _requestHash, ...unsigned } =
-      changedUnsigned;
+    const { requestHash: _requestHash, ...unsigned } = changedUnsigned;
     const changed = {
       ...unsigned,
       requestHash: canonicalHash(unsigned),
@@ -708,9 +621,7 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
       "genesisPrerequisiteHash",
       "catalogPrerequisiteHash",
     ] as const) {
-      const root = await mkdtemp(
-        join(tmpdir(), `df-bootstrap-wrong-${field}-`),
-      );
+      const root = await mkdtemp(join(tmpdir(), `df-bootstrap-wrong-${field}-`));
       const unsigned = {
         ...docs.request,
         [field]: "f".repeat(64),
@@ -739,21 +650,17 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
     const docs = documents();
     const cases: readonly KeyMode[] = [
       {
-        wrongPurpose:
-          "production-optimize-hidden-catalog-genesis",
+        wrongPurpose: "production-optimize-hidden-catalog-genesis",
       },
       {
         revokedPurpose: "production-optimize-campaign-genesis",
       },
       {
-        substitutedPurpose:
-          "production-optimize-private-pi-registration",
+        substitutedPurpose: "production-optimize-private-pi-registration",
       },
     ];
     for (const [index, mode] of cases.entries()) {
-      const root = await mkdtemp(
-        join(tmpdir(), `df-bootstrap-key-${index}-`),
-      );
+      const root = await mkdtemp(join(tmpdir(), `df-bootstrap-key-${index}-`));
       await expect(
         invoke(
           port({
@@ -771,22 +678,18 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
 
   it("rejects task-bearing catalog fields even when re-signed", async () => {
     const docs = documents();
-    const { signature: _signature, contentHash: _contentHash, ...body } =
-      docs.catalog;
+    const { signature: _signature, contentHash: _contentHash, ...body } = docs.catalog;
     const taskBearing = withContentHash({
       ...body,
       taskIds: ["hidden-task-001"],
       signature: createEd25519Signature(
         { ...body, taskIds: ["hidden-task-001"] },
-        keyPairs["production-optimize-hidden-catalog-genesis"]
-          .privateKey,
+        keyPairs["production-optimize-hidden-catalog-genesis"].privateKey,
         keyIds["production-optimize-hidden-catalog-genesis"],
         "2026-07-26T11:30:00.000Z",
       ),
     });
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-task-bearing-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-task-bearing-"));
     await expect(
       invoke(
         port({
@@ -804,31 +707,27 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
   });
 
   it("captures dependency methods and freezes authority inputs", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-capture-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-capture-"));
     const docs = documents();
     const current = world();
     const source = prerequisiteSource(docs);
     const keys = keyAuthority();
     const campaign = campaignAuthority(current);
     const catalog = catalogAuthority(current);
-    const authority =
-      new DurableProductionOptimizeBootstrapOrReconstructPort({
-        durableState: durableState(root, "b"),
-        prerequisiteSource: source,
-        publicKeyAuthority: keys,
-        keyRotations: rotations(),
-        campaignGenesisAuthority: campaign,
-        hiddenCatalogGenesisAuthority: catalog,
-        now: () => new Date(NOW),
-      });
+    const authority = new DurableProductionOptimizeBootstrapOrReconstructPort({
+      durableState: durableState(root, "b"),
+      prerequisiteSource: source,
+      publicKeyAuthority: keys,
+      keyRotations: rotations(),
+      campaignGenesisAuthority: campaign,
+      hiddenCatalogGenesisAuthority: catalog,
+      now: () => new Date(NOW),
+    });
     (
       source as unknown as {
         locatePrivatePiRegistration(): Promise<never>;
       }
-    ).locatePrivatePiRegistration = () =>
-      Promise.reject(new Error("mutated"));
+    ).locatePrivatePiRegistration = () => Promise.reject(new Error("mutated"));
     (
       keys as unknown as {
         resolve(): Promise<never>;
@@ -850,9 +749,7 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
   });
 
   it("fails closed when a dependency attempts to mutate a frozen query", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-input-mutation-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-input-mutation-"));
     const docs = documents();
     const source = prerequisiteSource(docs);
     source.locateCampaignGenesis = (input) => {
@@ -878,9 +775,7 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
   });
 
   it("registers acquired resources before rejecting bad state and cleans in reverse", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-cleanup-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-cleanup-"));
     const docs = documents();
     const current = world();
     current.wrongCatalogHash = true;
@@ -895,16 +790,11 @@ describe("durable production optimize bootstrap or reconstruct port", () => {
         docs.request,
       ),
     ).rejects.toThrow(/failed closed/u);
-    expect(current.closeEvents).toEqual([
-      "catalog-genesis-resource",
-      "campaign-genesis-resource",
-    ]);
+    expect(current.closeEvents).toEqual(["catalog-genesis-resource", "campaign-genesis-resource"]);
   });
 
   it("rejects a catalog that exists while its campaign must be created", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-bootstrap-impossible-prefix-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-bootstrap-impossible-prefix-"));
     const docs = documents();
     const current = world();
     current.catalogStateHash = CATALOG_STATE_HASH;

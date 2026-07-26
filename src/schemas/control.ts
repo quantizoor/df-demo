@@ -1,4 +1,4 @@
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 import {
   HashSchema,
@@ -42,8 +42,7 @@ const RegistrationProvenanceReferenceSchema = Type.Object(
 const WorkspaceRelativePathSchema = Type.String({
   minLength: 1,
   maxLength: 512,
-  pattern:
-    "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+  pattern: "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
 });
 
 const SanitizedRemoteFingerprintSchema = Type.Object(
@@ -213,10 +212,7 @@ const LastSealedDecisionSchema = Type.Union([
     {
       experimentNumber: PositiveExperimentNumberSchema,
       stage: Type.Literal("pre-validation"),
-      disposition: Type.Union([
-        Type.Literal("rejected"),
-        Type.Literal("inconclusive"),
-      ]),
+      disposition: Type.Union([Type.Literal("rejected"), Type.Literal("inconclusive")]),
       decisionAttestationHash: HashSchema,
       sealedAt: TimestampSchema,
     },
@@ -298,9 +294,7 @@ export const CampaignStateSchema = Type.Object(
       {
         nextExperimentNumber: PositiveExperimentNumberSchema,
         inFlightExperimentNumber: Nullable(PositiveExperimentNumberSchema),
-        inFlightKind: Nullable(
-          Type.Union([Type.Literal("optimization"), Type.Literal("shadow")]),
-        ),
+        inFlightKind: Nullable(Type.Union([Type.Literal("optimization"), Type.Literal("shadow")])),
         lastInterruptedExperimentNumber: Nullable(PositiveExperimentNumberSchema),
       },
       { additionalProperties: false },

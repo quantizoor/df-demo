@@ -1,11 +1,8 @@
-import {
-  createHarnessRegistration,
-  type CampaignStateData,
-} from "../../src/campaign/index.js";
+import { type CampaignStateData, createHarnessRegistration } from "../../src/campaign/index.js";
 import { withContentHash } from "../../src/schemas/canonical.js";
 import {
-  CONTROL_SCHEMA_VERSION,
   type CampaignState,
+  CONTROL_SCHEMA_VERSION,
   type HarnessRegistration,
 } from "../../src/schemas/control.js";
 import { assertValidDocument } from "../../src/schemas/registry.js";

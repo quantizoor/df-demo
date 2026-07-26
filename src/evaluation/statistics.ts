@@ -81,10 +81,7 @@ export function jeffreysPosterior(passes: number, failures: number): BetaPosteri
   return { alpha: passes + 0.5, beta: failures + 0.5 };
 }
 
-export function betaCredibleInterval(
-  posterior: BetaPosterior,
-  mass = 0.95,
-): CredibleInterval {
+export function betaCredibleInterval(posterior: BetaPosterior, mass = 0.95): CredibleInterval {
   validatePosterior(posterior);
   if (!(mass > 0 && mass < 1)) {
     throw new Error("Credible interval mass must be in (0, 1)");
@@ -153,7 +150,9 @@ export function summarizePairedDirichletJeffreys(
 ): PairedPosteriorSummary {
   validateIntegrationPoints(integrationPoints);
   validateWeights(strata.map((stratum) => stratum.weight));
-  strata.forEach((stratum) => validateCategoryCounts(stratum.counts));
+  strata.forEach((stratum) => {
+    validateCategoryCounts(stratum.counts);
+  });
 
   const combinedSamples: number[] = [];
   const belowByStratum = new Array<number>(strata.length).fill(0);
@@ -162,8 +161,7 @@ export function summarizePairedDirichletJeffreys(
     let combined = 0;
     strata.forEach((stratum, stratumIndex) => {
       const counts = stratum.counts;
-      const discordantAlpha =
-        counts.challengerOnlyPass + counts.championOnlyPass + 1;
+      const discordantAlpha = counts.challengerOnlyPass + counts.championOnlyPass + 1;
       const concordantAlpha = counts.bothPass + counts.bothFail + 1;
       const challengerAlpha = counts.challengerOnlyPass + 0.5;
       const championAlpha = counts.championOnlyPass + 0.5;
@@ -197,9 +195,7 @@ export function summarizePairedDirichletJeffreys(
 
   return {
     ...summarizeSamples(combinedSamples, threshold),
-    stratumProbabilityBelowMinusPointOne: belowByStratum.map(
-      (count) => count / integrationPoints,
-    ),
+    stratumProbabilityBelowMinusPointOne: belowByStratum.map((count) => count / integrationPoints),
   };
 }
 
@@ -257,20 +253,15 @@ export function assertOnlineGateAllocation(
   if (
     allocation.authorized !== expected.authorized ||
     allocation.alphaSpent !== expected.alphaSpent ||
-    allocation.requiredPosteriorProbability !==
-      expected.requiredPosteriorProbability ||
+    allocation.requiredPosteriorProbability !== expected.requiredPosteriorProbability ||
     allocation.nextState.policyVersion !== expected.nextState.policyVersion ||
-    allocation.nextState.nullCalibrationId !==
-      expected.nextState.nullCalibrationId ||
+    allocation.nextState.nullCalibrationId !== expected.nextState.nullCalibrationId ||
     allocation.nextState.initialAlpha !== expected.nextState.initialAlpha ||
-    allocation.nextState.remainingAlpha !==
-      expected.nextState.remainingAlpha ||
+    allocation.nextState.remainingAlpha !== expected.nextState.remainingAlpha ||
     allocation.nextState.spentAlpha !== expected.nextState.spentAlpha ||
     allocation.nextState.gatesSpent !== expected.nextState.gatesSpent
   ) {
-    throw new Error(
-      "Reserved online gate does not match the deterministic spending schedule",
-    );
+    throw new Error("Reserved online gate does not match the deterministic spending schedule");
   }
 }
 
@@ -295,11 +286,7 @@ export function regularizedIncompleteBeta(x: number, alpha: number, beta: number
   return 1 - (factor * betaContinuedFraction(1 - x, beta, alpha)) / beta;
 }
 
-export function inverseRegularizedBeta(
-  probability: number,
-  alpha: number,
-  beta: number,
-): number {
+export function inverseRegularizedBeta(probability: number, alpha: number, beta: number): number {
   validatePosterior({ alpha, beta });
   if (probability <= 0) {
     return 0;
@@ -320,10 +307,7 @@ export function inverseRegularizedBeta(
   return (lower + upper) / 2;
 }
 
-function summarizeSamples(
-  samples: number[],
-  threshold: number,
-): DifferencePosteriorSummary {
+function summarizeSamples(samples: number[], threshold: number): DifferencePosteriorSummary {
   samples.sort((left, right) => left - right);
   const greater = samples.filter((sample) => sample > threshold).length;
   return {
@@ -399,12 +383,11 @@ function betaContinuedFraction(x: number, alpha: number, beta: number): number {
   const qam = alpha - 1;
   let c = 1;
   let d = 1 - (qab * x) / qap;
-  d = 1 / Math.max(Math.abs(d), minimum) * Math.sign(d || 1);
+  d = (1 / Math.max(Math.abs(d), minimum)) * Math.sign(d || 1);
   let result = d;
   for (let iteration = 1; iteration <= maximumIterations; iteration += 1) {
     const evenNumerator =
-      (iteration * (beta - iteration) * x) /
-      ((qam + 2 * iteration) * (alpha + 2 * iteration));
+      (iteration * (beta - iteration) * x) / ((qam + 2 * iteration) * (alpha + 2 * iteration));
     d = 1 + evenNumerator * d;
     d = Math.abs(d) < minimum ? minimum : d;
     c = 1 + evenNumerator / c;
@@ -431,14 +414,8 @@ function betaContinuedFraction(x: number, alpha: number, beta: number): number {
 
 function logGamma(value: number): number {
   const coefficients = [
-    676.5203681218851,
-    -1259.1392167224028,
-    771.3234287776531,
-    -176.6150291621406,
-    12.507343278686905,
-    -0.13857109526572012,
-    9.984369578019572e-6,
-    1.5056327351493116e-7,
+    676.5203681218851, -1259.1392167224028, 771.3234287776531, -176.6150291621406,
+    12.507343278686905, -0.13857109526572012, 9.984369578019572e-6, 1.5056327351493116e-7,
   ];
   if (value < 0.5) {
     return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * value)) - logGamma(1 - value);
@@ -449,12 +426,7 @@ function logGamma(value: number): number {
     series += coefficient / (shifted + index + 1);
   });
   const t = shifted + coefficients.length - 0.5;
-  return (
-    0.5 * Math.log(2 * Math.PI) +
-    (shifted + 0.5) * Math.log(t) -
-    t +
-    Math.log(series)
-  );
+  return 0.5 * Math.log(2 * Math.PI) + (shifted + 0.5) * Math.log(t) - t + Math.log(series);
 }
 
 function validatePosterior(posterior: BetaPosterior): void {
@@ -490,10 +462,7 @@ function validateCategoryCounts(counts: PairedCategoryCounts): void {
   assertCount(counts.championOnlyPass, "championOnlyPass");
   assertCount(counts.bothFail, "bothFail");
   const total =
-    counts.bothPass +
-    counts.challengerOnlyPass +
-    counts.championOnlyPass +
-    counts.bothFail;
+    counts.bothPass + counts.challengerOnlyPass + counts.championOnlyPass + counts.bothFail;
   if (total === 0) {
     throw new Error("A paired stratum must contain at least one task");
   }
@@ -505,9 +474,7 @@ function assertCount(value: number, label: string): void {
   }
 }
 
-export function assertOnlineErrorBudgetState(
-  state: OnlineErrorBudgetState,
-): void {
+export function assertOnlineErrorBudgetState(state: OnlineErrorBudgetState): void {
   if (
     state.policyVersion !== "online-alpha-spending-v1" ||
     !(state.initialAlpha > 0 && state.initialAlpha <= 0.05) ||
@@ -517,9 +484,7 @@ export function assertOnlineErrorBudgetState(
     !Number.isFinite(state.spentAlpha) ||
     state.spentAlpha < 0 ||
     state.spentAlpha > state.initialAlpha ||
-    Math.abs(
-      state.remainingAlpha + state.spentAlpha - state.initialAlpha,
-    ) > 1e-12 ||
+    Math.abs(state.remainingAlpha + state.spentAlpha - state.initialAlpha) > 1e-12 ||
     !/^[a-z0-9][a-z0-9._-]{2,127}$/u.test(state.nullCalibrationId) ||
     !Number.isSafeInteger(state.gatesSpent) ||
     state.gatesSpent < 0

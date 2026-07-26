@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  MVP_SCHEMA_VERSION,
-  runMvpIteration,
-  sha256,
-  validateMvpExperimentArtifacts,
-  hiddenTaskHandle,
   type CachedChampionObservation,
   type ChampionCacheKey,
   type EvaluationEnvironment,
   type HiddenTaskProfile,
+  hiddenTaskHandle,
+  MVP_SCHEMA_VERSION,
   type MvpExperimentArtifacts,
   type PrivateEvaluationRequest,
+  runMvpIteration,
   type SanitizedDiagnosticBrief,
+  sha256,
+  validateMvpExperimentArtifacts,
 } from "../../src/mvp/index.js";
 
 describe("MVP loop", () => {
@@ -20,9 +20,7 @@ describe("MVP loop", () => {
     let persisted: MvpExperimentArtifacts | undefined;
     const evaluator = vi.fn(async (requests: readonly PrivateEvaluationRequest[]) => {
       events.push(`evaluate:${requests.length}`);
-      return requests.map((request) =>
-        observation(request, request.arm === "candidate" ? 1 : 0),
-      );
+      return requests.map((request) => observation(request, request.arm === "candidate" ? 1 : 0));
     });
     const cachePut = vi.fn(async () => undefined);
     const result = await runMvpIteration(
@@ -79,15 +77,11 @@ describe("MVP loop", () => {
       seededFromPromotion: 15,
     });
     expect(evaluator).toHaveBeenCalledTimes(2);
-    expect(
-      evaluator.mock.calls.flatMap(([requests]) => requests).length,
-    ).toBe(30);
+    expect(evaluator.mock.calls.flatMap(([requests]) => requests).length).toBe(30);
     expect(cachePut).toHaveBeenCalledTimes(30);
     expect(persisted?.privateSelection.tasks).toHaveLength(5);
     expect(persisted?.privateEvaluations.final).toHaveLength(30);
-    expect(
-      persisted?.privateCache.seededFromPromotedCandidateCellIds,
-    ).toHaveLength(15);
+    expect(persisted?.privateCache.seededFromPromotedCandidateCellIds).toHaveLength(15);
     expect(JSON.stringify(persisted?.diagnostics)).not.toContain("actual-secret-task");
   });
 
@@ -136,7 +130,7 @@ describe("MVP loop", () => {
           recordOutcomes,
         },
         evaluator: {
-          evaluateBatch: vi.fn(async (requests) =>
+          evaluateBatch: vi.fn(async (requests: readonly PrivateEvaluationRequest[]) =>
             requests.map((request, index) => ({
               ...observation(request, 0.5),
               infrastructureValid: index !== 0,
@@ -166,11 +160,9 @@ describe("MVP loop", () => {
     );
 
     expect(recordOutcomes).not.toHaveBeenCalled();
-    expect(
-      persisted?.privateEvaluations.final.some(
-        (item) => !item.infrastructureValid,
-      ),
-    ).toBe(true);
+    expect(persisted?.privateEvaluations.final.some((item) => !item.infrastructureValid)).toBe(
+      true,
+    );
   });
 
   it("requires and reuses the previous hidden panel after an inconclusive result", async () => {
@@ -193,7 +185,7 @@ describe("MVP loop", () => {
           recordOutcomes: vi.fn(async () => undefined),
         },
         evaluator: {
-          evaluateBatch: vi.fn(async (requests) =>
+          evaluateBatch: vi.fn(async (requests: readonly PrivateEvaluationRequest[]) =>
             requests.map((request) => observation(request, 0.5)),
           ),
         },
@@ -220,9 +212,9 @@ describe("MVP loop", () => {
       },
     );
 
-    expect(
-      persisted?.privateSelection.tasks.map((task) => task.handle),
-    ).toEqual(retainedTaskHandles);
+    expect(persisted?.privateSelection.tasks.map((task) => task.handle)).toEqual(
+      retainedTaskHandles,
+    );
   });
 
   it("fails closed when a rejected iteration omits its private panel", async () => {
@@ -235,7 +227,7 @@ describe("MVP loop", () => {
             recordOutcomes: vi.fn(async () => undefined),
           },
           evaluator: {
-            evaluateBatch: vi.fn(async (requests) =>
+            evaluateBatch: vi.fn(async (requests: readonly PrivateEvaluationRequest[]) =>
               requests.map((request) => observation(request, 0.5)),
             ),
           },
@@ -340,10 +332,7 @@ function observation(request: PrivateEvaluationRequest, reward: number) {
   };
 }
 
-function cachedObservation(
-  key: ChampionCacheKey,
-  reward: number,
-): CachedChampionObservation {
+function cachedObservation(key: ChampionCacheKey, reward: number): CachedChampionObservation {
   return {
     keyDigest: key.keyDigest,
     taskHandle: key.taskHandle,

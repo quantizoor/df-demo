@@ -5,13 +5,13 @@ import {
   assertSchema,
   assertValidDocument,
   createValidator,
-  schemaRegistry,
   type SchemaName,
+  schemaRegistry,
 } from "../../src/schemas/registry.js";
 import {
-  UnsafeEvidenceError,
   assertReleaseSafe,
   isForbiddenEvidenceField,
+  UnsafeEvidenceError,
 } from "../../src/schemas/safety.js";
 import { schemaFixture } from "./fixtures.js";
 
@@ -28,7 +28,9 @@ function visitSchemas(
   for (const [key, child] of Object.entries(schema)) {
     if (key !== "$id" && child !== undefined) {
       if (Array.isArray(child)) {
-        child.forEach((item, index) => visitSchemas(item, `${path}/${key}/${index}`, visit));
+        child.forEach((item, index) => {
+          visitSchemas(item, `${path}/${key}/${index}`, visit);
+        });
       } else {
         visitSchemas(child, `${path}/${key}`, visit);
       }
@@ -50,9 +52,7 @@ describe("strict schema registry", () => {
       ...(fixture as Readonly<Record<string, unknown>>),
       taskId: "hidden-task",
     });
-    expect(() => assertValidDocument(name, withForbiddenExtra)).toThrow(
-      /additional properties/u,
-    );
+    expect(() => assertValidDocument(name, withForbiddenExtra)).toThrow(/additional properties/u);
   });
 
   it("marks every object schema, including nested objects, as closed", () => {
@@ -75,10 +75,7 @@ describe("strict schema registry", () => {
     const fixture = schemaFixture("analysis");
     expect(() => assertSchema("analysis", fixture)).not.toThrow();
     expect(() =>
-      assertSchema(
-        "https://dark-factory.local/schemas/analysis-1.0.0.json",
-        fixture,
-      ),
+      assertSchema("https://dark-factory.local/schemas/analysis-1.0.0.json", fixture),
     ).not.toThrow();
     const validator = createValidator();
     expect(validator.isValid("analysis", fixture)).toBe(true);
@@ -94,9 +91,9 @@ describe("strict schema registry", () => {
   });
 
   it("rejects row-level task and raw grader channels", () => {
-    const normalized = schemaFixture(
-      "normalizedGraderOutcome",
-    ) as Readonly<Record<string, unknown>>;
+    const normalized = schemaFixture("normalizedGraderOutcome") as Readonly<
+      Record<string, unknown>
+    >;
     const graderLeak = withContentHash({ ...normalized, graderText: "expected secret" });
     expect(() => assertValidDocument("normalizedGraderOutcome", graderLeak)).toThrow();
 
@@ -109,9 +106,10 @@ describe("strict schema registry", () => {
   });
 
   it("enforces release support thresholds", () => {
-    const evidence = structuredClone(
-      schemaFixture("behavioralEvidence"),
-    ) as Record<string, unknown>;
+    const evidence = structuredClone(schemaFixture("behavioralEvidence")) as Record<
+      string,
+      unknown
+    >;
     const window = evidence.analysisWindow as Record<string, unknown>;
     window.support = {
       distinctTaskCountBand: "1-4",
@@ -120,9 +118,7 @@ describe("strict schema registry", () => {
       complementaryCountSuppressionPassed: true,
       differencingBudgetPassed: true,
     };
-    expect(() =>
-      assertValidDocument("behavioralEvidence", withContentHash(evidence)),
-    ).toThrow();
+    expect(() => assertValidDocument("behavioralEvidence", withContentHash(evidence))).toThrow();
   });
 
   it("rejects internally inconsistent aggregate evidence", () => {
@@ -146,9 +142,10 @@ describe("strict schema registry", () => {
   });
 
   it("reproduces signed validation dispositions from the frozen gate inputs", () => {
-    const envelope = structuredClone(
-      schemaFixture("signedResultEnvelope"),
-    ) as Record<string, unknown>;
+    const envelope = structuredClone(schemaFixture("signedResultEnvelope")) as Record<
+      string,
+      unknown
+    >;
     envelope.payload = {
       kind: "validation",
       disposition: "promote",
@@ -197,21 +194,22 @@ describe("strict schema registry", () => {
         wallTimeMs: 1_000,
       },
     };
-    expect(() =>
-      assertValidDocument("signedResultEnvelope", withContentHash(envelope)),
-    ).toThrow(/reproduce exactly/u);
+    expect(() => assertValidDocument("signedResultEnvelope", withContentHash(envelope))).toThrow(
+      /reproduce exactly/u,
+    );
   });
 
   it("fails closed when submission mode leaves an adaptive channel enabled", () => {
-    const manifest = structuredClone(
-      schemaFixture("complianceManifest"),
-    ) as Record<string, unknown>;
+    const manifest = structuredClone(schemaFixture("complianceManifest")) as Record<
+      string,
+      unknown
+    >;
     manifest.mode = "submission";
     const channels = manifest.enabledChannels as Record<string, unknown>;
     channels.officialEvaluation = true;
-    expect(() =>
-      assertValidDocument("complianceManifest", withContentHash(manifest)),
-    ).toThrow(/disable every adaptive feedback channel/u);
+    expect(() => assertValidDocument("complianceManifest", withContentHash(manifest))).toThrow(
+      /disable every adaptive feedback channel/u,
+    );
   });
 });
 
@@ -240,12 +238,8 @@ describe("release safety scanner", () => {
     "Read ${SECRET_TOKEN}",
     "The result came from task 42",
     "Read %2Froot%2Fgrader.txt",
-    Buffer.from("/private/grader/answer.txt", "utf8").toString(
-      "base64url",
-    ),
-    Buffer.from("/var/private/grader.txt", "utf8").toString(
-      "base64",
-    ),
+    Buffer.from("/private/grader/answer.txt", "utf8").toString("base64url"),
+    Buffer.from("/var/private/grader.txt", "utf8").toString("base64"),
     Buffer.from("/root/grader.txt", "utf8").toString("hex"),
     "safe\u202esecret",
   ])("rejects a task-identifying or literal-bearing release string", (text) => {
@@ -255,8 +249,7 @@ describe("release safety scanner", () => {
   it("permits generic behavioral language", () => {
     expect(() =>
       assertReleaseSafe({
-        summary:
-          "Nonzero executions were often retried before output inspection or replanning.",
+        summary: "Nonzero executions were often retried before output inspection or replanning.",
         distinctTaskCountBand: "10-19",
       }),
     ).not.toThrow();
@@ -265,8 +258,8 @@ describe("release safety scanner", () => {
   it("applies the scanner after structural validation", () => {
     const brief = structuredClone(schemaFixture("diagnosticBrief")) as Record<string, unknown>;
     brief.limitations = ["See https://private.example.invalid/grader"];
-    expect(() =>
-      assertValidDocument("diagnosticBrief", withContentHash(brief)),
-    ).toThrow(UnsafeEvidenceError);
+    expect(() => assertValidDocument("diagnosticBrief", withContentHash(brief))).toThrow(
+      UnsafeEvidenceError,
+    );
   });
 });

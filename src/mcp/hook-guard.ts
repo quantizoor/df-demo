@@ -122,10 +122,7 @@ export function evaluatePreToolUse(
   }
   if (
     toolName.startsWith("mcp__") &&
-    !(phase === "proposal"
-      ? PROPOSAL_MCP_TOOLS
-      : ANALYSIS_MCP_TOOLS
-    ).has(toolName)
+    !(phase === "proposal" ? PROPOSAL_MCP_TOOLS : ANALYSIS_MCP_TOOLS).has(toolName)
   ) {
     return {
       allow: false,
@@ -197,11 +194,7 @@ export async function evaluatePreToolUseSecure(
     return decision;
   }
   const toolName = typeof input.tool_name === "string" ? input.tool_name : "";
-  if (
-    !new Set(["Read", "Grep", "Glob", "Edit", "Write", "MultiEdit"]).has(
-      toolName,
-    )
-  ) {
+  if (!new Set(["Read", "Grep", "Glob", "Edit", "Write", "MultiEdit"]).has(toolName)) {
     return decision;
   }
   const candidate = requestedPath(record(input.tool_input));
@@ -243,9 +236,7 @@ export async function evaluatePreToolUseSecure(
       canonicalInspected !== expectedCanonical ||
       pathInside(
         canonicalRoot,
-        targetExists
-          ? canonicalInspected
-          : resolve(canonicalInspected, basename(lexicalTarget)),
+        targetExists ? canonicalInspected : resolve(canonicalInspected, basename(lexicalTarget)),
       ) === null
     ) {
       throw new Error("canonical-path-escape");
@@ -313,11 +304,7 @@ async function stopOutput(
   if (input.stop_hook_active === true) {
     return "{}";
   }
-  const statePath = resolve(
-    pluginData,
-    "sessions",
-    `${opaqueDigest(projectRoot)}.json`,
-  );
+  const statePath = resolve(pluginData, "sessions", `${opaqueDigest(projectRoot)}.json`);
   try {
     const state = JSON.parse(await readFile(statePath, "utf8")) as unknown;
     const value = record(state);
@@ -345,12 +332,9 @@ async function main(): Promise<void> {
     if (options.projectRoot === null) {
       throw new Error("Missing candidate project root");
     }
-    const phase =
-      process.env.DF_OPTIMIZER_PHASE === "analysis" ? "analysis" : "proposal";
+    const phase = process.env.DF_OPTIMIZER_PHASE === "analysis" ? "analysis" : "proposal";
     process.stdout.write(
-      preToolUseOutput(
-        await evaluatePreToolUseSecure(input, options.projectRoot, phase),
-      ),
+      preToolUseOutput(await evaluatePreToolUseSecure(input, options.projectRoot, phase)),
     );
     return;
   }

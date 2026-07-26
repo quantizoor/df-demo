@@ -10,17 +10,14 @@ import type { TrustedArtifactRuntimeGuard } from "../../src/cloud/artifact-bridg
 import {
   MountedVolumeAtomicOneUseLedgerStore,
   MountedVolumeCloudOptimizerSessionRecordStore,
-  MountedVolumeLinearizableHiddenCatalogCasStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeLinearizableHiddenCatalogCasStore,
   type MountedVolumeStateSemanticsGuard,
 } from "../../src/cloud/mounted-volume-state.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import type { ExperimentIdentity } from "../../src/domain/models.js";
 import type { CloudOptimizerProposalResult } from "../../src/optimizer/cloud-session.js";
-import {
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 
 const runtimeGuard: TrustedArtifactRuntimeGuard = {
   assertTrustedCloudRuntime() {},
@@ -61,10 +58,7 @@ function inFlightRecord(index: number): OneUseLedgerRecord {
   };
 }
 
-function appendRecord(
-  state: OneUseLedgerState,
-  index: number,
-): OneUseLedgerState {
+function appendRecord(state: OneUseLedgerState, index: number): OneUseLedgerState {
   return {
     revision: state.revision + 1,
     records: {
@@ -72,8 +66,7 @@ function appendRecord(
       [`request-${index}`]: inFlightRecord(index),
     },
     usedDispositionAttestations: state.usedDispositionAttestations,
-    usedRecoveryAuthorizations:
-      state.usedRecoveryAuthorizations,
+    usedRecoveryAuthorizations: state.usedRecoveryAuthorizations,
   };
 }
 
@@ -197,12 +190,7 @@ function optimizerProposalResult(
       "application/vnd.git.bundle",
       100,
     ),
-    candidateDiff: artifact(
-      "trusted://optimizer/candidate-diff",
-      diffSha256,
-      "text/x-diff",
-      101,
-    ),
+    candidateDiff: artifact("trusted://optimizer/candidate-diff", diffSha256, "text/x-diff", 101),
     sessionState: artifact(
       "trusted://optimizer/session-state",
       stateSha256,
@@ -236,109 +224,103 @@ function optimizerProposalResult(
 }
 
 describe("mounted-volume durable state stores", () => {
-  it(
-    "serializes callbacks exactly once and survives a clean controller handoff",
-    async () => {
-      const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
-      const store = new MountedVolumeAtomicOneUseLedgerStore(options(root));
-      const calls = new Map<number, number>();
+  it("serializes callbacks exactly once and survives a clean controller handoff", async () => {
+    const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
+    const store = new MountedVolumeAtomicOneUseLedgerStore(options(root));
+    const calls = new Map<number, number>();
 
-      await Promise.all(
-        Array.from({ length: 12 }, (_, offset) => {
-          const index = offset + 1;
-          return store.transact((state) => {
-            calls.set(index, (calls.get(index) ?? 0) + 1);
-            return {
-              next: appendRecord(state, index),
-              result: index,
-            };
-          });
-        }),
-      );
-      expect([...calls.values()]).toEqual(Array.from({ length: 12 }, () => 1));
-      await store.close();
+    await Promise.all(
+      Array.from({ length: 12 }, (_, offset) => {
+        const index = offset + 1;
+        return store.transact((state) => {
+          calls.set(index, (calls.get(index) ?? 0) + 1);
+          return {
+            next: appendRecord(state, index),
+            result: index,
+          };
+        });
+      }),
+    );
+    expect([...calls.values()]).toEqual(Array.from({ length: 12 }, () => 1));
+    await store.close();
 
-      const statePath = join(
-        root,
-        "mutable-state",
-        "stores",
-        "one-use-ledger-campaign-a",
-        "state.json",
-      );
-      const raw = await readFile(statePath, "utf8");
-      const parsed = JSON.parse(raw) as Readonly<Record<string, unknown>>;
-      expect(raw).toBe(`${canonicalJson(parsed)}\n`);
+    const statePath = join(
+      root,
+      "mutable-state",
+      "stores",
+      "one-use-ledger-campaign-a",
+      "state.json",
+    );
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw) as Readonly<Record<string, unknown>>;
+    expect(raw).toBe(`${canonicalJson(parsed)}\n`);
 
-      const successor = new MountedVolumeAtomicOneUseLedgerStore(
-        options(root, "2".repeat(64), "b".repeat(48)),
-      );
-      await expect(
-        successor.transact((state) => ({
-          next: state,
-          result: {
-            revision: state.revision,
-            recordCount: Object.keys(state.records).length,
-          },
-        })),
-      ).resolves.toEqual({ revision: 12, recordCount: 12 });
-      await successor.close();
-    },
-  );
-
-  it(
-    "requires provider destruction proof and fences the former lock owner",
-    async () => {
-      const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
-      const prior = new MountedVolumeAtomicOneUseLedgerStore(options(root));
-      await prior.transact((state) => ({
-        next: appendRecord(state, 1),
-        result: undefined,
-      }));
-
-      const unauthorized = new MountedVolumeAtomicOneUseLedgerStore(
-        options(root, "2".repeat(64), "b".repeat(48)),
-      );
-      await expect(
-        unauthorized.transact((state) => ({
-          next: state,
-          result: undefined,
-        })),
-      ).rejects.toThrow(/provider-attested recovery is required/u);
-
-      let recoveredEpoch = 0;
-      const recoveredStore = new MountedVolumeAtomicOneUseLedgerStore({
-        ...options(root, "3".repeat(64), "c".repeat(48)),
-        recoveryAuthority: {
-          authorize: ({ observedLock, observedLockHash }) => {
-            recoveredEpoch = observedLock.fenceEpoch;
-            return Promise.resolve({
-              schemaVersion: 1,
-              domain: "dark-factory.mounted-volume-lock-recovery.v1",
-              namespace: observedLock.namespace,
-              authorizationId: "provider-destruction-1",
-              priorLockHash: observedLockHash,
-              priorFenceEpoch: observedLock.fenceEpoch,
-              providerTerminationAttestationHash: "d".repeat(64),
-              authorizedAt: "2026-07-26T10:00:00.000Z",
-              signerKeyId: "provider-termination-key",
-              signatureHash: "e".repeat(64),
-            });
-          },
+    const successor = new MountedVolumeAtomicOneUseLedgerStore(
+      options(root, "2".repeat(64), "b".repeat(48)),
+    );
+    await expect(
+      successor.transact((state) => ({
+        next: state,
+        result: {
+          revision: state.revision,
+          recordCount: Object.keys(state.records).length,
         },
-      });
-      await expect(
-        recoveredStore.transact((state) => ({
-          next: appendRecord(state, 2),
-          result: state.revision,
-        })),
-      ).resolves.toBe(1);
-      expect(recoveredEpoch).toBe(1);
-      await expect(
-        prior.transact((state) => ({ next: state, result: undefined })),
-      ).rejects.toThrow(/ownership|continuity/u);
-      await recoveredStore.close();
-    },
-  );
+      })),
+    ).resolves.toEqual({ revision: 12, recordCount: 12 });
+    await successor.close();
+  });
+
+  it("requires provider destruction proof and fences the former lock owner", async () => {
+    const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
+    const prior = new MountedVolumeAtomicOneUseLedgerStore(options(root));
+    await prior.transact((state) => ({
+      next: appendRecord(state, 1),
+      result: undefined,
+    }));
+
+    const unauthorized = new MountedVolumeAtomicOneUseLedgerStore(
+      options(root, "2".repeat(64), "b".repeat(48)),
+    );
+    await expect(
+      unauthorized.transact((state) => ({
+        next: state,
+        result: undefined,
+      })),
+    ).rejects.toThrow(/provider-attested recovery is required/u);
+
+    let recoveredEpoch = 0;
+    const recoveredStore = new MountedVolumeAtomicOneUseLedgerStore({
+      ...options(root, "3".repeat(64), "c".repeat(48)),
+      recoveryAuthority: {
+        authorize: ({ observedLock, observedLockHash }) => {
+          recoveredEpoch = observedLock.fenceEpoch;
+          return Promise.resolve({
+            schemaVersion: 1,
+            domain: "dark-factory.mounted-volume-lock-recovery.v1",
+            namespace: observedLock.namespace,
+            authorizationId: "provider-destruction-1",
+            priorLockHash: observedLockHash,
+            priorFenceEpoch: observedLock.fenceEpoch,
+            providerTerminationAttestationHash: "d".repeat(64),
+            authorizedAt: "2026-07-26T10:00:00.000Z",
+            signerKeyId: "provider-termination-key",
+            signatureHash: "e".repeat(64),
+          });
+        },
+      },
+    });
+    await expect(
+      recoveredStore.transact((state) => ({
+        next: appendRecord(state, 2),
+        result: state.revision,
+      })),
+    ).resolves.toBe(1);
+    expect(recoveredEpoch).toBe(1);
+    await expect(prior.transact((state) => ({ next: state, result: undefined }))).rejects.toThrow(
+      /ownership|continuity/u,
+    );
+    await recoveredStore.close();
+  });
 
   it("rejects a symlink substituted for an existing state file", async () => {
     const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
@@ -405,9 +387,7 @@ describe("mounted-volume durable state stores", () => {
 
   it("rejects catalog bytes that do not satisfy the trusted hidden schema", async () => {
     const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
-    const store = new MountedVolumeLinearizableHiddenCatalogCasStore(
-      options(root),
-    );
+    const store = new MountedVolumeLinearizableHiddenCatalogCasStore(options(root));
     await expect(
       store.transact(() => ({
         next: {
@@ -421,23 +401,18 @@ describe("mounted-volume durable state stores", () => {
     await store.close();
   });
 
-  it(
-    "stores optimizer proposals idempotently and rejects changed identity reuse",
-    async () => {
-      const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
-      const store = new MountedVolumeCloudOptimizerSessionRecordStore(
-        options(root),
-      );
-      const result = optimizerProposalResult();
-      await store.put(optimizerExperiment, result);
-      await store.put(optimizerExperiment, result);
-      await expect(store.get(optimizerExperiment)).resolves.toEqual(result);
-      await expect(
-        store.put(optimizerExperiment, optimizerProposalResult("different")),
-      ).rejects.toThrow(/different content/u);
-      await store.close();
-    },
-  );
+  it("stores optimizer proposals idempotently and rejects changed identity reuse", async () => {
+    const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
+    const store = new MountedVolumeCloudOptimizerSessionRecordStore(options(root));
+    const result = optimizerProposalResult();
+    await store.put(optimizerExperiment, result);
+    await store.put(optimizerExperiment, result);
+    await expect(store.get(optimizerExperiment)).resolves.toEqual(result);
+    await expect(
+      store.put(optimizerExperiment, optimizerProposalResult("different")),
+    ).rejects.toThrow(/different content/u);
+    await store.close();
+  });
 
   it("fails before lock acquisition when mounted-volume atomicity is not attested", async () => {
     const root = await mkdtemp(join(tmpdir(), "df-state-test-"));
@@ -449,8 +424,8 @@ describe("mounted-volume durable state stores", () => {
         },
       },
     });
-    await expect(
-      store.transact((state) => ({ next: state, result: undefined })),
-    ).rejects.toThrow(/semantics not attested/u);
+    await expect(store.transact((state) => ({ next: state, result: undefined }))).rejects.toThrow(
+      /semantics not attested/u,
+    );
   });
 });

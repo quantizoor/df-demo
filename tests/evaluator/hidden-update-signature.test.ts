@@ -11,9 +11,9 @@ import {
 import {
   CloudBackedHiddenCatalogOutcomeUpdateSigner,
   CloudBackedHiddenCatalogOutcomeUpdateVerifier,
-  TrustedHiddenUpdateSignatureError,
   type TrustedCloudEd25519PrivateKeyProvider,
   type TrustedCloudEd25519PublicKeyProvider,
+  TrustedHiddenUpdateSignatureError,
 } from "../../src/evaluator/hidden-update-signature.js";
 
 const keys = generateKeyPairSync("ed25519");
@@ -21,12 +21,8 @@ const KEY_ID = "hidden-update-key-1";
 
 function unsigned(): UnsignedTrustedHiddenCatalogOutcomeUpdate {
   const outcomes = Array.from({ length: 5 }, (_, index) => ({
-    taskId: hiddenTaskId(
-      (index + 1).toString(16).padStart(64, "0"),
-    ),
-    taskRevisionDigest: (index + 20)
-      .toString(16)
-      .padStart(64, "0"),
+    taskId: hiddenTaskId((index + 1).toString(16).padStart(64, "0")),
+    taskRevisionDigest: (index + 20).toString(16).padStart(64, "0"),
     capabilityStratum: index % 2 === 0 ? "shell" : "filesystem",
     order: "AB" as const,
     candidate: {
@@ -39,9 +35,7 @@ function unsigned(): UnsignedTrustedHiddenCatalogOutcomeUpdate {
       outputTokens: 20,
       modelUsd: 0.01,
       sandboxUsd: 0.005,
-      finalAttemptDigest: (index + 40)
-        .toString(16)
-        .padStart(64, "0"),
+      finalAttemptDigest: (index + 40).toString(16).padStart(64, "0"),
     },
     champion: null,
   }));
@@ -58,8 +52,7 @@ function unsigned(): UnsignedTrustedHiddenCatalogOutcomeUpdate {
     environmentFingerprintHash: "8".repeat(64),
     updateSetHash,
   };
-  const sourceBindingHash =
-    hashTrustedHiddenCatalogSourceBinding(source);
+  const sourceBindingHash = hashTrustedHiddenCatalogSourceBinding(source);
   return {
     sensitivity: "trusted-hidden-catalog-outcome-update",
     schemaVersion: 1,
@@ -72,8 +65,7 @@ function unsigned(): UnsignedTrustedHiddenCatalogOutcomeUpdate {
 }
 
 function privateProvider(
-  boundary: "trusted-cloud" | "test-only-in-memory" =
-    "test-only-in-memory",
+  boundary: "trusted-cloud" | "test-only-in-memory" = "test-only-in-memory",
 ): TrustedCloudEd25519PrivateKeyProvider {
   return {
     boundary,
@@ -90,8 +82,7 @@ function privateProvider(
 }
 
 function publicProvider(
-  boundary: "trusted-cloud" | "test-only-in-memory" =
-    "test-only-in-memory",
+  boundary: "trusted-cloud" | "test-only-in-memory" = "test-only-in-memory",
 ): TrustedCloudEd25519PublicKeyProvider {
   return {
     boundary,
@@ -115,13 +106,12 @@ describe("cloud-backed hidden catalog outcome signatures", () => {
       keys: privateProvider(),
       now: () => new Date("2026-07-01T00:11:00.000Z"),
     });
-    const verifier =
-      new CloudBackedHiddenCatalogOutcomeUpdateVerifier({
-        deployment: "test-only",
-        keys: publicProvider(),
-        trustedKeyIds: [KEY_ID],
-        now: () => new Date("2026-07-01T00:12:00.000Z"),
-      });
+    const verifier = new CloudBackedHiddenCatalogOutcomeUpdateVerifier({
+      deployment: "test-only",
+      keys: publicProvider(),
+      trustedKeyIds: [KEY_ID],
+      now: () => new Date("2026-07-01T00:12:00.000Z"),
+    });
     const body = unsigned();
     const signature = await signer.sign(body);
     const signed: TrustedSignedHiddenCatalogOutcomeUpdate = {
@@ -138,13 +128,12 @@ describe("cloud-backed hidden catalog outcome signatures", () => {
       keys: privateProvider(),
       now: () => new Date("2026-07-01T00:11:00.000Z"),
     });
-    const verifier =
-      new CloudBackedHiddenCatalogOutcomeUpdateVerifier({
-        deployment: "test-only",
-        keys: publicProvider(),
-        trustedKeyIds: [KEY_ID],
-        now: () => new Date("2026-07-01T00:12:00.000Z"),
-      });
+    const verifier = new CloudBackedHiddenCatalogOutcomeUpdateVerifier({
+      deployment: "test-only",
+      keys: publicProvider(),
+      trustedKeyIds: [KEY_ID],
+      now: () => new Date("2026-07-01T00:12:00.000Z"),
+    });
     const body = unsigned();
     const signed: TrustedSignedHiddenCatalogOutcomeUpdate = {
       ...body,

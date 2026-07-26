@@ -2,10 +2,8 @@ import type { OnlineErrorBudgetState } from "../evaluation/statistics.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import type { PolicyVersions } from "../schemas/primitives.js";
 import type { TrustedRawRun } from "../terminal-bench/runner.js";
-import type {
-  TrustedMatchedArmSchedule,
-  TrustedMatchedPanel,
-} from "../terminal-bench/trusted.js";
+import type { TrustedMatchedArmSchedule, TrustedMatchedPanel } from "../terminal-bench/trusted.js";
+import { hashEvaluationRequest, type TrustedEvaluationRequest } from "./contracts.js";
 import {
   fingerprintForbiddenReleaseLiteral,
   hashTrustedCacheEvidence,
@@ -13,10 +11,6 @@ import {
   type TrustedCanonicalDerivationPolicyResolver,
   type TrustedRepairControl,
 } from "./deriver.js";
-import {
-  hashEvaluationRequest,
-  type TrustedEvaluationRequest,
-} from "./contracts.js";
 import {
   assertTrustedOnlineErrorBudgetReservation,
   type TrustedOnlineErrorBudgetReservation,
@@ -151,10 +145,7 @@ function exactPlainObject(
     throw new Error("Policy binding is not a plain object.");
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     throw new Error("Policy binding contains unexpected fields.");
   }
 }
@@ -243,8 +234,7 @@ export function hashTrustedCanonicalPolicyAttestation(
     requestHash: value.requestHash,
     protocolHash: value.protocolHash,
     dispositionAttestationHash: value.dispositionAttestationHash,
-    expectedEnvironmentFingerprintHash:
-      value.expectedEnvironmentFingerprintHash,
+    expectedEnvironmentFingerprintHash: value.expectedEnvironmentFingerprintHash,
     candidateFrozenAt: value.candidateFrozenAt,
     sealedAt: value.sealedAt,
     presealedStratumWeights: value.presealedStratumWeights,
@@ -279,8 +269,7 @@ function assertContext(
     material.schemaVersion !== 1 ||
     material.requestHash !== context.requestHash ||
     material.protocolHash !== context.protocolHash ||
-    material.dispositionAttestationHash !==
-      context.dispositionAttestationHash ||
+    material.dispositionAttestationHash !== context.dispositionAttestationHash ||
     material.rawManifestHash !== context.rawManifestHash ||
     material.rawArtifactSetHash !== context.rawArtifactSetHash ||
     material.jobSha256 !== context.jobSha256 ||
@@ -320,8 +309,7 @@ function assertCacheBinding(
   if (
     binding.sensitivity !== "trusted-cache-policy-binding" ||
     binding.requestHash !== context.requestHash ||
-    binding.dispositionAttestationHash !==
-      context.dispositionAttestationHash
+    binding.dispositionAttestationHash !== context.dispositionAttestationHash
   ) {
     throw new Error("Cache policy binding is detached.");
   }
@@ -329,16 +317,10 @@ function assertCacheBinding(
   digest(binding.cacheEvidenceSetHash);
   const controls = binding.repair?.controls ?? [];
   if (binding.repair !== null) {
-    exactPlainObject(binding.repair, [
-      "alternatingBucket",
-      "attemptOrdinal",
-      "controls",
-    ]);
+    exactPlainObject(binding.repair, ["alternatingBucket", "attemptOrdinal", "controls"]);
   }
   const requestedRepairAttempt =
-    request.selection.kind === "repair-reuse"
-      ? request.selection.candidateAttempt
-      : null;
+    request.selection.kind === "repair-reuse" ? request.selection.candidateAttempt : null;
   if (
     (request.stage === "repair") !== (binding.repair !== null) ||
     (binding.repair !== null &&
@@ -346,11 +328,9 @@ function assertCacheBinding(
         binding.repair.controls.length !== 5 ||
         (binding.repair.alternatingBucket !== "easy" &&
           binding.repair.alternatingBucket !== "coverage") ||
-        (binding.repair.attemptOrdinal !== 1 &&
-          binding.repair.attemptOrdinal !== 2) ||
+        (binding.repair.attemptOrdinal !== 1 && binding.repair.attemptOrdinal !== 2) ||
         requestedRepairAttempt === null ||
-        binding.repair.attemptOrdinal !==
-          requestedRepairAttempt))
+        binding.repair.attemptOrdinal !== requestedRepairAttempt))
   ) {
     throw new Error("Cache policy does not match the evaluation stage.");
   }
@@ -361,8 +341,7 @@ function assertCacheBinding(
         dispositionAttestationHash: context.dispositionAttestationHash,
         repairControls: controls,
       }) ||
-    binding.bindingHash !==
-      hashTrustedCachePolicyBinding(withoutBindingHash(binding))
+    binding.bindingHash !== hashTrustedCachePolicyBinding(withoutBindingHash(binding))
   ) {
     throw new Error("Cache policy binding hashes are detached.");
   }
@@ -388,15 +367,9 @@ function assertGuardrailBinding(
     binding.sensitivity !== "trusted-guardrail-policy-binding" ||
     binding.requestHash !== context.requestHash ||
     Object.entries(binding)
-      .filter(
-        ([key]) =>
-          key !== "sensitivity" &&
-          key !== "requestHash" &&
-          key !== "bindingHash",
-      )
+      .filter(([key]) => key !== "sensitivity" && key !== "requestHash" && key !== "bindingHash")
       .some(([, value]) => typeof value !== "boolean") ||
-    binding.bindingHash !==
-      hashTrustedGuardrailPolicyBinding(withoutBindingHash(binding))
+    binding.bindingHash !== hashTrustedGuardrailPolicyBinding(withoutBindingHash(binding))
   ) {
     throw new Error("Guardrail policy binding is invalid.");
   }
@@ -422,12 +395,10 @@ function assertScannerBinding(
     !Array.isArray(binding.forbiddenReleaseLiterals) ||
     !Array.isArray(binding.forbiddenContentFingerprints) ||
     !Array.isArray(binding.graderCanaryFingerprints) ||
-    new Set(binding.forbiddenReleaseLiterals).size !==
-      binding.forbiddenReleaseLiterals.length ||
+    new Set(binding.forbiddenReleaseLiterals).size !== binding.forbiddenReleaseLiterals.length ||
     new Set(binding.forbiddenContentFingerprints).size !==
       binding.forbiddenContentFingerprints.length ||
-    new Set(binding.graderCanaryFingerprints).size !==
-      binding.graderCanaryFingerprints.length
+    new Set(binding.graderCanaryFingerprints).size !== binding.graderCanaryFingerprints.length
   ) {
     throw new Error("Release scanner binding is malformed.");
   }
@@ -442,12 +413,9 @@ function assertScannerBinding(
       (literal) =>
         typeof literal !== "string" ||
         literal.trim().length < 4 ||
-        !binding.forbiddenContentFingerprints.includes(
-          fingerprintForbiddenReleaseLiteral(literal),
-        ),
+        !binding.forbiddenContentFingerprints.includes(fingerprintForbiddenReleaseLiteral(literal)),
     ) ||
-    binding.bindingHash !==
-      hashTrustedReleaseScannerBinding(withoutBindingHash(binding))
+    binding.bindingHash !== hashTrustedReleaseScannerBinding(withoutBindingHash(binding))
   ) {
     throw new Error("Release scanner commitment is incomplete.");
   }
@@ -459,13 +427,7 @@ function assertErrorBudgetBinding(
   context: ReturnType<typeof materialContext>,
   reserved: TrustedOnlineErrorBudgetReservation | null,
 ): void {
-  exactPlainObject(binding, [
-    "sensitivity",
-    "requestHash",
-    "state",
-    "reservation",
-    "bindingHash",
-  ]);
+  exactPlainObject(binding, ["sensitivity", "requestHash", "state", "reservation", "bindingHash"]);
   exactPlainObject(binding.state, [
     "policyVersion",
     "nullCalibrationId",
@@ -478,9 +440,7 @@ function assertErrorBudgetBinding(
     binding.sensitivity !== "trusted-online-error-budget-binding" ||
     binding.requestHash !== context.requestHash ||
     binding.state.policyVersion !== "online-alpha-spending-v1" ||
-    !/^[a-z0-9][a-z0-9._-]{2,127}$/u.test(
-      binding.state.nullCalibrationId,
-    ) ||
+    !/^[a-z0-9][a-z0-9._-]{2,127}$/u.test(binding.state.nullCalibrationId) ||
     !(binding.state.initialAlpha > 0 && binding.state.initialAlpha <= 0.05) ||
     !Number.isFinite(binding.state.remainingAlpha) ||
     binding.state.remainingAlpha < 0 ||
@@ -488,15 +448,11 @@ function assertErrorBudgetBinding(
     !Number.isFinite(binding.state.spentAlpha) ||
     binding.state.spentAlpha < 0 ||
     binding.state.spentAlpha > binding.state.initialAlpha ||
-    Math.abs(
-      binding.state.remainingAlpha +
-        binding.state.spentAlpha -
-        binding.state.initialAlpha,
-    ) > 1e-12 ||
+    Math.abs(binding.state.remainingAlpha + binding.state.spentAlpha - binding.state.initialAlpha) >
+      1e-12 ||
     !Number.isSafeInteger(binding.state.gatesSpent) ||
     binding.state.gatesSpent < 0 ||
-    binding.bindingHash !==
-      hashTrustedOnlineErrorBudgetBinding(withoutBindingHash(binding))
+    binding.bindingHash !== hashTrustedOnlineErrorBudgetBinding(withoutBindingHash(binding))
   ) {
     throw new Error("Online error-budget binding is invalid.");
   }
@@ -508,11 +464,9 @@ function assertErrorBudgetBinding(
     assertTrustedOnlineErrorBudgetReservation(reserved);
     if (
       canonicalJson(binding.reservation) !== canonicalJson(reserved) ||
-      canonicalJson(binding.state) !==
-        canonicalJson(binding.reservation.stateBefore) ||
+      canonicalJson(binding.state) !== canonicalJson(binding.reservation.stateBefore) ||
       binding.reservation.requestHash !== context.requestHash ||
-      binding.reservation.dispositionAttestationHash !==
-        context.dispositionAttestationHash
+      binding.reservation.dispositionAttestationHash !== context.dispositionAttestationHash
     ) {
       throw new Error("Online error reservation is detached.");
     }
@@ -558,16 +512,12 @@ function assertBehavioralBinding(
     binding.diagnosticTtlMs < 60_000 ||
     binding.diagnosticTtlMs > 24 * 60 * 60_000 ||
     Object.values(binding.policyVersions).some(
-      (version) =>
-        typeof version !== "string" || !SAFE_VERSION.test(version),
+      (version) => typeof version !== "string" || !SAFE_VERSION.test(version),
     )
   ) {
     throw new Error("Behavioral policy contains an invalid predeclared rule.");
   }
-  if (
-    binding.bindingHash !==
-    hashTrustedBehavioralPolicyBinding(withoutBindingHash(binding))
-  ) {
+  if (binding.bindingHash !== hashTrustedBehavioralPolicyBinding(withoutBindingHash(binding))) {
     throw new Error("Behavioral policy binding hash is detached.");
   }
 }
@@ -577,9 +527,7 @@ function assertStratumWeights(
   panel: TrustedMatchedPanel,
 ): void {
   exactPlainObject(weights, Object.keys(weights));
-  const expected = [
-    ...new Set(panel.cells.map((cell) => cell.capabilityStratum)),
-  ].sort();
+  const expected = [...new Set(panel.cells.map((cell) => cell.capabilityStratum))].sort();
   const actual = Object.keys(weights).sort();
   if (
     canonicalJson(expected) !== canonicalJson(actual) ||
@@ -587,10 +535,7 @@ function assertStratumWeights(
       const weight = weights[stratum];
       return weight === undefined || !Number.isFinite(weight) || weight <= 0;
     }) ||
-    Math.abs(
-      actual.reduce((sum, stratum) => sum + (weights[stratum] ?? 0), 0) -
-        1,
-    ) > 1e-9
+    Math.abs(actual.reduce((sum, stratum) => sum + (weights[stratum] ?? 0), 0) - 1) > 1e-9
   ) {
     throw new Error("Policy strata are not presealed to the selected panel.");
   }
@@ -609,9 +554,7 @@ export class BoundCanonicalDerivationPolicyResolver
 
   constructor(options: BoundCanonicalDerivationPolicyResolverOptions) {
     const requiredBoundary =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
     if (options.provider.boundary !== requiredBoundary) {
       throw new TrustedPolicyResolutionError();
     }
@@ -665,26 +608,19 @@ export class BoundCanonicalDerivationPolicyResolver
       assertContext(material, context);
       const outcomeInputTimes = [
         Date.parse(input.rawRun.manifest.createdAt),
-        ...input.rawRun.executions.map((receipt) =>
-          Date.parse(receipt.startedAt),
-        ),
+        ...input.rawRun.executions.map((receipt) => Date.parse(receipt.startedAt)),
       ];
       const earliestOutcomeBearingInput = Math.min(...outcomeInputTimes);
       if (
         outcomeInputTimes.some((value) => !Number.isFinite(value)) ||
-        Date.parse(material.candidateFrozenAt) >
-          Date.parse(input.panel.sealedAt) ||
+        Date.parse(material.candidateFrozenAt) > Date.parse(input.panel.sealedAt) ||
         Date.parse(material.sealedAt) < Date.parse(input.panel.sealedAt) ||
         Date.parse(material.sealedAt) > earliestOutcomeBearingInput ||
         (input.onlineErrorReservation !== null &&
-          (Date.parse(input.onlineErrorReservation.reservedAt) <
-            Date.parse(input.panel.sealedAt) ||
-            Date.parse(input.onlineErrorReservation.reservedAt) >
-              earliestOutcomeBearingInput))
+          (Date.parse(input.onlineErrorReservation.reservedAt) < Date.parse(input.panel.sealedAt) ||
+            Date.parse(input.onlineErrorReservation.reservedAt) > earliestOutcomeBearingInput))
       ) {
-        throw new Error(
-          "Canonical policy was not sealed before evaluation outcomes.",
-        );
+        throw new Error("Canonical policy was not sealed before evaluation outcomes.");
       }
       assertStratumWeights(material.presealedStratumWeights, input.panel);
       assertCacheBinding(material.cache, input.request, context);
@@ -698,10 +634,7 @@ export class BoundCanonicalDerivationPolicyResolver
       );
       assertBehavioralBinding(material.behavioral, context);
       digest(material.policyAttestationHash);
-      const unsigned: Omit<
-        TrustedCanonicalPolicyMaterial,
-        "policyAttestationHash"
-      > = {
+      const unsigned: Omit<TrustedCanonicalPolicyMaterial, "policyAttestationHash"> = {
         sensitivity: material.sensitivity,
         schemaVersion: material.schemaVersion,
         requestHash: material.requestHash,
@@ -711,8 +644,7 @@ export class BoundCanonicalDerivationPolicyResolver
         rawArtifactSetHash: material.rawArtifactSetHash,
         jobSha256: material.jobSha256,
         runtimeAttestationHash: material.runtimeAttestationHash,
-        expectedEnvironmentFingerprintHash:
-          material.expectedEnvironmentFingerprintHash,
+        expectedEnvironmentFingerprintHash: material.expectedEnvironmentFingerprintHash,
         candidateFrozenAt: material.candidateFrozenAt,
         sealedAt: material.sealedAt,
         presealedStratumWeights: material.presealedStratumWeights,
@@ -724,20 +656,15 @@ export class BoundCanonicalDerivationPolicyResolver
         errorBudget: material.errorBudget,
         behavioral: material.behavioral,
       };
-      if (
-        material.policyAttestationHash !==
-        hashTrustedCanonicalPolicyAttestation(unsigned)
-      ) {
+      if (material.policyAttestationHash !== hashTrustedCanonicalPolicyAttestation(unsigned)) {
         throw new Error("Canonical policy attestation is detached.");
       }
       return {
         sensitivity: "trusted-canonical-derivation-policy",
         requestHash: material.requestHash,
         protocolHash: material.protocolHash,
-        dispositionAttestationHash:
-          material.dispositionAttestationHash,
-        expectedEnvironmentFingerprintHash:
-          material.expectedEnvironmentFingerprintHash,
+        dispositionAttestationHash: material.dispositionAttestationHash,
+        expectedEnvironmentFingerprintHash: material.expectedEnvironmentFingerprintHash,
         cacheAttestationHash: material.cache.cacheAttestationHash,
         cacheEvidenceSetHash: material.cache.cacheEvidenceSetHash,
         policyAttestationHash: material.policyAttestationHash,
@@ -749,35 +676,24 @@ export class BoundCanonicalDerivationPolicyResolver
         replacementAttemptCeiling: material.replacementAttemptCeiling,
         repair: material.cache.repair,
         guardrails: {
-          externalIntegrityVeto:
-            material.guardrails.externalIntegrityVeto,
+          externalIntegrityVeto: material.guardrails.externalIntegrityVeto,
           correctnessVeto: material.guardrails.correctnessVeto,
           capabilityVeto: material.guardrails.capabilityVeto,
-          costWithinGuardrail:
-            material.guardrails.costWithinGuardrail,
-          latencyWithinGuardrail:
-            material.guardrails.latencyWithinGuardrail,
-          accuracyTradeoffPredeclared:
-            material.guardrails.accuracyTradeoffPredeclared,
-          complianceFlagsPassed:
-            material.guardrails.complianceFlagsPassed,
+          costWithinGuardrail: material.guardrails.costWithinGuardrail,
+          latencyWithinGuardrail: material.guardrails.latencyWithinGuardrail,
+          accuracyTradeoffPredeclared: material.guardrails.accuracyTradeoffPredeclared,
+          complianceFlagsPassed: material.guardrails.complianceFlagsPassed,
         },
         behavioralPolicy: {
-          diagnosticsEnabled:
-            material.behavioral.diagnosticsEnabled,
+          diagnosticsEnabled: material.behavioral.diagnosticsEnabled,
           comparison: material.behavioral.comparison,
-          maximumPrivacyReleases:
-            material.behavioral.maximumPrivacyReleases,
-          diagnosticTtlMs:
-            material.behavioral.diagnosticTtlMs,
+          maximumPrivacyReleases: material.behavioral.maximumPrivacyReleases,
+          diagnosticTtlMs: material.behavioral.diagnosticTtlMs,
           policyVersions: material.behavioral.policyVersions,
         },
-        forbiddenReleaseLiterals:
-          material.scanner.forbiddenReleaseLiterals,
-        forbiddenContentFingerprints:
-          material.scanner.forbiddenContentFingerprints,
-        graderCanaryFingerprints:
-          material.scanner.graderCanaryFingerprints,
+        forbiddenReleaseLiterals: material.scanner.forbiddenReleaseLiterals,
+        forbiddenContentFingerprints: material.scanner.forbiddenContentFingerprints,
+        graderCanaryFingerprints: material.scanner.graderCanaryFingerprints,
       };
     } catch {
       throw new TrustedPolicyResolutionError();

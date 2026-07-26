@@ -5,12 +5,12 @@ import {
   evaluateFreshValidation,
   evaluateRepairGate,
   evaluateShadowCertification,
-  makeReleaseSafeRepairGateResult,
-  validateExperimentAttemptBudget,
-  validateShadowAttemptBudget,
   type FreshValidationArm,
   type FreshValidationPair,
+  makeReleaseSafeRepairGateResult,
   type RepairTaskEvidence,
+  validateExperimentAttemptBudget,
+  validateShadowAttemptBudget,
 } from "../../src/evaluation/index.js";
 import { digest, taskId } from "./fixtures.js";
 

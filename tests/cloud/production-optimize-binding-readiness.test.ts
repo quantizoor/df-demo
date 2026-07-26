@@ -3,32 +3,24 @@ import { describe, expect, it } from "vitest";
 import {
   inspectProductionOptimizeBindingReadiness,
   PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS,
-  releaseSafeProductionOptimizeBindingReport,
   type ProductionOptimizeExternalBinding,
+  releaseSafeProductionOptimizeBindingReport,
 } from "../../src/cloud/production-optimize-binding-readiness.js";
 import { PRODUCTION_RUNTIME_PORT_IDS } from "../../src/orchestrator/production-runtime.js";
 
-function sourceReadiness(
-  status: "ready" | "missing" | "invalid" = "ready",
-) {
+function sourceReadiness(status: "ready" | "missing" | "invalid" = "ready") {
   return {
     ready: status === "ready",
-    missing:
-      status === "missing" ? ["DF_PI_PRIVATE_VALUE"] : [],
-    invalid:
-      status === "invalid" ? ["DF_PI_PRIVATE_VALUE"] : [],
+    missing: status === "missing" ? ["DF_PI_PRIVATE_VALUE"] : [],
+    invalid: status === "invalid" ? ["DF_PI_PRIVATE_VALUE"] : [],
   };
 }
 
 function completeBindings(
   attestation = "a".repeat(64),
 ): Record<string, ProductionOptimizeExternalBinding> {
-  const result: Record<
-    string,
-    ProductionOptimizeExternalBinding
-  > = {};
-  for (const specification of
-    PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS) {
+  const result: Record<string, ProductionOptimizeExternalBinding> = {};
+  for (const specification of PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS) {
     result[specification.bindingId] = {
       bindingId: specification.bindingId,
       boundary: "trusted-cloud",
@@ -47,10 +39,7 @@ describe("production optimize binding readiness", () => {
       PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.slice(0, 2).map(
         (specification) => specification.bindingId,
       ),
-    ).toEqual([
-      "composition.manifest",
-      "composition.attestation-verifier",
-    ]);
+    ).toEqual(["composition.manifest", "composition.attestation-verifier"]);
     expect(
       PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.slice(2).map(
         (specification) => specification.bindingId,
@@ -65,14 +54,11 @@ describe("production optimize binding readiness", () => {
     });
 
     expect(receipt.missingBindings).toEqual(
-      PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map(
-        (specification) => specification.bindingId,
-      ),
+      PRODUCTION_OPTIMIZE_BINDING_SPECIFICATIONS.map((specification) => specification.bindingId),
     );
     expect(receipt.invalidBindings).toEqual([]);
     expect(receipt).toMatchObject({
-      domain:
-        "dark-factory.production-optimize-binding-readiness.v1",
+      domain: "dark-factory.production-optimize-binding-readiness.v1",
       sourceConfigurationStatus: "ready",
       bindingsReady: false,
       runtimeCompositionVerified: false,
@@ -81,13 +67,11 @@ describe("production optimize binding readiness", () => {
       unexpectedBindingsPresent: false,
     });
     expect(receipt.bindingSetHash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(receipt.bindingCommitmentHash).toMatch(
-      /^[a-f0-9]{64}$/u,
-    );
+    expect(receipt.bindingCommitmentHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(receipt.receiptHash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(
-      releaseSafeProductionOptimizeBindingReport(receipt).code,
-    ).toBe("DF_PRODUCTION_OPTIMIZE_BINDINGS_INCOMPLETE");
+    expect(releaseSafeProductionOptimizeBindingReport(receipt).code).toBe(
+      "DF_PRODUCTION_OPTIMIZE_BINDINGS_INCOMPLETE",
+    );
   });
 
   it("keeps complete attested bindings non-runnable until composition verification", () => {
@@ -95,8 +79,7 @@ describe("production optimize binding readiness", () => {
       bindings: completeBindings(),
       piSourceConfiguration: sourceReadiness(),
     });
-    const report =
-      releaseSafeProductionOptimizeBindingReport(receipt);
+    const report = releaseSafeProductionOptimizeBindingReport(receipt);
 
     expect(receipt).toMatchObject({
       bindingsReady: true,
@@ -105,13 +88,9 @@ describe("production optimize binding readiness", () => {
       missingBindings: [],
       invalidBindings: [],
     });
-    expect(report.code).toBe(
-      "DF_PRODUCTION_OPTIMIZE_COMPOSITION_UNVERIFIED",
-    );
+    expect(report.code).toBe("DF_PRODUCTION_OPTIMIZE_COMPOSITION_UNVERIFIED");
     expect(report.runnable).toBe(false);
-    expect(JSON.stringify({ receipt, report })).not.toContain(
-      "never-release",
-    );
+    expect(JSON.stringify({ receipt, report })).not.toContain("never-release");
   });
 
   it("fails closed on invalid and unexpected entries without reflecting arbitrary keys", () => {
@@ -130,14 +109,10 @@ describe("production optimize binding readiness", () => {
       piSourceConfiguration: sourceReadiness(),
     });
 
-    expect(receipt.invalidBindings).toEqual([
-      "optimizer.adapter",
-    ]);
+    expect(receipt.invalidBindings).toEqual(["optimizer.adapter"]);
     expect(receipt.unexpectedBindingsPresent).toBe(true);
     expect(receipt.bindingsReady).toBe(false);
-    const released = JSON.stringify(
-      releaseSafeProductionOptimizeBindingReport(receipt),
-    );
+    const released = JSON.stringify(releaseSafeProductionOptimizeBindingReport(receipt));
     expect(released).not.toContain("hidden-task-name");
     expect(released).not.toContain("grader-output");
   });
@@ -153,12 +128,8 @@ describe("production optimize binding readiness", () => {
     };
 
     expect(() =>
-      releaseSafeProductionOptimizeBindingReport(
-        forged as unknown as typeof receipt,
-      ),
-    ).toThrow(
-      "Production optimize binding readiness failed closed.",
-    );
+      releaseSafeProductionOptimizeBindingReport(forged as unknown as typeof receipt),
+    ).toThrow("Production optimize binding readiness failed closed.");
   });
 
   it("summarizes source and registry failures without releasing environment names", () => {
@@ -177,9 +148,7 @@ describe("production optimize binding readiness", () => {
     );
     expect(missing.registryMalformed).toBe(false);
     expect(missing.sourceConfigurationStatus).toBe("missing");
-    expect(JSON.stringify({ malformed, missing })).not.toContain(
-      "DF_PI_PRIVATE_VALUE",
-    );
+    expect(JSON.stringify({ malformed, missing })).not.toContain("DF_PI_PRIVATE_VALUE");
   });
 
   it("binds readiness hashes to attestation commitments, not implementation contents", () => {
@@ -210,13 +179,9 @@ describe("production optimize binding readiness", () => {
       piSourceConfiguration: sourceReadiness(),
     });
 
-    expect(equivalent.bindingCommitmentHash).toBe(
-      first.bindingCommitmentHash,
-    );
+    expect(equivalent.bindingCommitmentHash).toBe(first.bindingCommitmentHash);
     expect(equivalent.receiptHash).toBe(first.receiptHash);
-    expect(changed.bindingCommitmentHash).not.toBe(
-      first.bindingCommitmentHash,
-    );
+    expect(changed.bindingCommitmentHash).not.toBe(first.bindingCommitmentHash);
     expect(changed.receiptHash).not.toBe(first.receiptHash);
   });
 });

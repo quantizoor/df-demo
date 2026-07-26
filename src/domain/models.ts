@@ -1,11 +1,7 @@
 export const RUN_MODES = ["research", "submission"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
-export const LEADERBOARD_ELIGIBILITY = [
-  "unverified",
-  "cleared",
-  "strict-score-only",
-] as const;
+export const LEADERBOARD_ELIGIBILITY = ["unverified", "cleared", "strict-score-only"] as const;
 export type LeaderboardEligibility = (typeof LEADERBOARD_ELIGIBILITY)[number];
 
 export const EXPERIMENT_STATES = [

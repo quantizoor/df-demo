@@ -40,18 +40,11 @@ describe("mounted-volume trusted artifact backend", () => {
       mediaType: "application/json",
       chunks: chunks('{"ok":', "true}"),
     });
-    expect(await collect(await bridge.openVerified(artifact))).toBe(
-      '{"ok":true}',
-    );
+    expect(await collect(await bridge.openVerified(artifact))).toBe('{"ok":true}');
 
-    const digest = createHash("sha256")
-      .update(artifact.uri)
-      .digest("hex");
+    const digest = createHash("sha256").update(artifact.uri).digest("hex");
     const metadata = JSON.parse(
-      await readFile(
-        join(root, "objects", digest.slice(0, 2), digest, "metadata.json"),
-        "utf8",
-      ),
+      await readFile(join(root, "objects", digest.slice(0, 2), digest, "metadata.json"), "utf8"),
     ) as Readonly<Record<string, unknown>>;
     expect(metadata).toMatchObject({
       schemaVersion: 1,
@@ -132,23 +125,16 @@ describe("mounted-volume trusted artifact backend", () => {
       .update(initialized.uri)
       .digest("hex")
       .slice(0, 2);
-    let maliciousUri: `trusted://${string}` =
-      "trusted://campaign/001/shard-0";
+    let maliciousUri: `trusted://${string}` = "trusted://campaign/001/shard-0";
     for (let index = 1; index < 1_000; index += 1) {
       const candidate = `trusted://campaign/001/shard-${index}` as const;
-      const prefix = createHash("sha256")
-        .update(candidate)
-        .digest("hex")
-        .slice(0, 2);
+      const prefix = createHash("sha256").update(candidate).digest("hex").slice(0, 2);
       if (prefix !== initializedPrefix) {
         maliciousUri = candidate;
         break;
       }
     }
-    const maliciousPrefix = createHash("sha256")
-      .update(maliciousUri)
-      .digest("hex")
-      .slice(0, 2);
+    const maliciousPrefix = createHash("sha256").update(maliciousUri).digest("hex").slice(0, 2);
     const outside = join(root, "outside");
     await mkdir(outside, { mode: 0o700 });
     await symlink(outside, join(root, "objects", maliciousPrefix));

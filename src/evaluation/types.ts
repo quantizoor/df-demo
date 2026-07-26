@@ -12,12 +12,7 @@ export type HiddenPanelId = string & { readonly [hiddenPanelIdBrand]: true };
 
 export type SelectionBucket = "hard" | "uncertain" | "easy" | "coverage";
 export type EvaluationStage = "repair" | "validation" | "shadow";
-export type GateDisposition =
-  | "pass"
-  | "fail"
-  | "promote"
-  | "reject"
-  | "inconclusive";
+export type GateDisposition = "pass" | "fail" | "promote" | "reject" | "inconclusive";
 export type ArmOrder = "AB" | "BA";
 
 export interface HiddenTaskEstimates {

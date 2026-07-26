@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { TrustedArtifactBridge } from "../cloud/artifact-bridge.js";
-import type {
-  RemoteExecutionReceipt,
-  TrustedCloudArtifactRef,
-} from "../cloud/types.js";
+import type { RemoteExecutionReceipt, TrustedCloudArtifactRef } from "../cloud/types.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import {
   assertTrustedHarborJobArtifact,
@@ -12,16 +9,16 @@ import {
   type TrustedHarborJobArtifact,
   type TrustedHarborUpload,
 } from "../terminal-bench/harbor.js";
-import {
-  assertTrustedMatchedPanel,
-  type TrustedMatchedArmSchedule,
-  type TrustedMatchedPanel,
-} from "../terminal-bench/trusted.js";
 import type {
   TrustedRawRun,
   TrustedRawRunIngress,
   TrustedRuntimeVerificationReceipt,
 } from "../terminal-bench/runner.js";
+import {
+  assertTrustedMatchedPanel,
+  type TrustedMatchedArmSchedule,
+  type TrustedMatchedPanel,
+} from "../terminal-bench/trusted.js";
 import {
   assertTrustedHarbor020DecodingPlan,
   type TrustedHarbor020DecodingPlan,
@@ -35,9 +32,9 @@ import type {
 } from "./harbor-v020-normalizer.js";
 import {
   rawArtifactAdditionalAuthenticatedDataHashFromContext,
-  trustedRawSourceEvidenceHash,
   type TrustedEncryptedRawArtifactSource,
   type TrustedEvaluatorPortBoundary,
+  trustedRawSourceEvidenceHash,
 } from "./raw-reader.js";
 import {
   assertRawArtifactManifest,
@@ -56,13 +53,8 @@ import {
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_KEY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
-const MAXIMUM_HARBOR_ARCHIVE_BYTES =
-  2 * 1024 * 1024 * 1024 + 256 * 1024 * 1024;
-const RAW_KINDS = [
-  "atif",
-  "grader-output",
-  "harbor-output",
-] as const;
+const MAXIMUM_HARBOR_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024 + 256 * 1024 * 1024;
+const RAW_KINDS = ["atif", "grader-output", "harbor-output"] as const;
 
 type PlainRecord = Readonly<Record<string, unknown>>;
 
@@ -80,12 +72,8 @@ export interface TrustedHarbor020DecodingPlanCommitReceipt {
  * repeated identical plan is idempotent; the same request/job/source key with
  * different content must reject rather than return `already-committed`.
  */
-export interface TrustedHarbor020DecodingPlanStore
-  extends TrustedHarbor020DecodingPlanProvider
-{
-  commit(
-    plan: TrustedHarbor020DecodingPlan,
-  ): Promise<TrustedHarbor020DecodingPlanCommitReceipt>;
+export interface TrustedHarbor020DecodingPlanStore extends TrustedHarbor020DecodingPlanProvider {
+  commit(plan: TrustedHarbor020DecodingPlan): Promise<TrustedHarbor020DecodingPlanCommitReceipt>;
 }
 
 export interface TrustedRawArtifactClock {
@@ -221,10 +209,7 @@ function record(value: unknown): PlainRecord {
 function exactKeys(value: unknown, keys: readonly string[]): PlainRecord {
   const result = record(value);
   const actual = Object.keys(result);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
   return result;
@@ -298,13 +283,13 @@ async function collectVerified(
     }
     return result;
   } finally {
-    chunks.forEach((chunk) => chunk.fill(0));
+    chunks.forEach((chunk) => {
+      chunk.fill(0);
+    });
   }
 }
 
-function configRole(
-  order: TrustedHarborInvocation["order"],
-): TrustedHarborUpload["role"] {
+function configRole(order: TrustedHarborInvocation["order"]): TrustedHarborUpload["role"] {
   if (order === "repair") return "config-repair";
   return order === "AB" ? "config-ab" : "config-ba";
 }
@@ -332,8 +317,7 @@ function assertNormalized(
   exactKeys(normalized.plaintexts, RAW_KINDS);
   exactKeys(normalized.plaintextHashes, RAW_KINDS);
   if (
-    normalized.sensitivity !==
-      "trusted-harbor-0.20.0-normalized-evidence" ||
+    normalized.sensitivity !== "trusted-harbor-0.20.0-normalized-evidence" ||
     normalized.schemaVersion !== 1 ||
     normalized.requestId !== input.requestId ||
     normalized.jobSha256 !== input.jobSha256 ||
@@ -397,20 +381,14 @@ function assertEncryption(
     value.attestation.artifactUri !== input.uri ||
     value.attestation.plaintextSha256 !== hashBytes(input.plaintext) ||
     value.attestation.ciphertextSha256 !== hashBytes(value.ciphertext) ||
-    value.attestation.ciphertextSha256 ===
-      value.attestation.plaintextSha256 ||
+    value.attestation.ciphertextSha256 === value.attestation.plaintextSha256 ||
     value.attestation.additionalAuthenticatedDataHash !== input.aadHash ||
     !SAFE_KEY_VERSION.test(value.attestation.keyVersion)
   ) {
     fail();
   }
-  const encryptedAt = Date.parse(
-    canonicalTimestamp(value.attestation.encryptedAt),
-  );
-  if (
-    encryptedAt < Date.parse(input.createdAt) ||
-    encryptedAt > Date.parse(input.destroyBy)
-  ) {
+  const encryptedAt = Date.parse(canonicalTimestamp(value.attestation.encryptedAt));
+  if (encryptedAt < Date.parse(input.createdAt) || encryptedAt > Date.parse(input.destroyBy)) {
     fail();
   }
 }
@@ -511,9 +489,7 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
 
   constructor(options: CloudOnlyTrustedRawIngressOptions) {
     const boundary =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
     if (
       options.normalizer.boundary !== boundary ||
       options.plans.boundary !== boundary ||
@@ -524,14 +500,10 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
     ) {
       fail();
     }
-    assertRawDestructionReceiptVerifier(
-      options.destructionReceiptVerifier,
-    );
+    assertRawDestructionReceiptVerifier(options.destructionReceiptVerifier);
     assertRawRetentionPolicy(options.retentionPolicy);
-    this.#maximumArchiveBytes =
-      options.maximumArchiveBytes ?? MAXIMUM_HARBOR_ARCHIVE_BYTES;
-    this.#maximumConfigBytes =
-      options.maximumConfigBytes ?? 16 * 1024 * 1024;
+    this.#maximumArchiveBytes = options.maximumArchiveBytes ?? MAXIMUM_HARBOR_ARCHIVE_BYTES;
+    this.#maximumConfigBytes = options.maximumConfigBytes ?? 16 * 1024 * 1024;
     this.#maximumEncryptedArtifactBytes =
       options.maximumEncryptedArtifactBytes ?? 256 * 1024 * 1024;
     for (const value of [
@@ -565,10 +537,7 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
     try {
       this.#options.artifactBridge.assertTrustedRuntime();
       assertRawRetentionPolicy(input.retentionPolicy);
-      if (
-        canonicalHash(input.retentionPolicy) !==
-        canonicalHash(this.#options.retentionPolicy)
-      ) {
+      if (canonicalHash(input.retentionPolicy) !== canonicalHash(this.#options.retentionPolicy)) {
         fail();
       }
       assertTrustedHarborJobArtifact(input.job, input.job.pinHash);
@@ -581,8 +550,7 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
         input.job.stage !== input.schedule.stage ||
         input.executions.length !== input.job.invocations.length ||
         input.downloadedBundles.length !== input.job.invocations.length ||
-        input.runtimeVerification.sensitivity !==
-          "trusted-runtime-verification" ||
+        input.runtimeVerification.sensitivity !== "trusted-runtime-verification" ||
         input.runtimeVerification.pinHash !== input.job.pinHash ||
         input.runtimeVerification.passed !== true ||
         new Set(input.downloadedBundles.map((bundle) => bundle.uri)).size !==
@@ -594,15 +562,12 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
         executions: input.executions,
         rawBundles: input.downloadedBundles,
       });
-      const runtimeAttestationHash = canonicalHash(
-        input.runtimeVerification,
-      );
+      const runtimeAttestationHash = canonicalHash(input.runtimeVerification);
       digest(sourceEvidenceHash);
       digest(runtimeAttestationHash);
       createdAt = canonicalTimestamp(await this.#options.clock.now());
       destroyBy = new Date(
-        Date.parse(createdAt) +
-          input.retentionPolicy.maximumRetentionMinutes * 60_000,
+        Date.parse(createdAt) + input.retentionPolicy.maximumRetentionMinutes * 60_000,
       ).toISOString();
       manifestId = `raw-${canonicalHash({
         domain: "dark-factory.raw-manifest-id.v1",
@@ -642,10 +607,7 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
         const upload = input.job.uploads.find(
           (candidate) => candidate.role === configRole(invocation.order),
         );
-        if (
-          upload === undefined ||
-          upload.artifact.mediaType !== "application/json"
-        ) {
+        if (upload === undefined || upload.artifact.mediaType !== "application/json") {
           fail();
         }
         const configBytes = await collectVerified(
@@ -685,20 +647,18 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
       );
 
       for (const kind of RAW_KINDS) {
-        const uri =
-          `${input.retentionPolicy.storageRoot}${manifestId}/${kind}.enc` as const;
-        const aadHash =
-          rawArtifactAdditionalAuthenticatedDataHashFromContext({
-            requestId: input.requestId,
-            pinHash: input.job.pinHash,
-            jobSha256: input.job.jobSha256,
-            runtimeAttestationHash,
-            sourceEvidenceHash,
-            manifestId,
-            policyHash: input.retentionPolicy.policyHash,
-            artifactKind: kind,
-            artifactUri: uri,
-          });
+        const uri = `${input.retentionPolicy.storageRoot}${manifestId}/${kind}.enc` as const;
+        const aadHash = rawArtifactAdditionalAuthenticatedDataHashFromContext({
+          requestId: input.requestId,
+          pinHash: input.job.pinHash,
+          jobSha256: input.job.jobSha256,
+          runtimeAttestationHash,
+          sourceEvidenceHash,
+          manifestId,
+          policyHash: input.retentionPolicy.policyHash,
+          artifactKind: kind,
+          artifactUri: uri,
+        });
         const encrypted = await this.#options.encryptor.encrypt({
           artifactKind: kind,
           artifactUri: uri,
@@ -720,12 +680,11 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
           },
           this.#maximumEncryptedArtifactBytes,
         );
-        const persisted =
-          await this.#options.artifactBridge.persistVerified({
-            uri,
-            mediaType: "application/octet-stream",
-            chunks: oneChunk(encrypted.ciphertext),
-          });
+        const persisted = await this.#options.artifactBridge.persistVerified({
+          uri,
+          mediaType: "application/octet-stream",
+          chunks: oneChunk(encrypted.ciphertext),
+        });
         if (
           persisted.uri !== uri ||
           persisted.sha256 !== encrypted.attestation.ciphertextSha256 ||
@@ -743,19 +702,14 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
         });
         encrypted.ciphertext.fill(0);
       }
-      const manifest = createTrustedRawArtifactManifest(
-        input.retentionPolicy,
-        {
-          manifestId,
-          createdAt,
-          destroyBy,
-          artifacts: persistedArtifacts,
-        },
-      );
+      const manifest = createTrustedRawArtifactManifest(input.retentionPolicy, {
+        manifestId,
+        createdAt,
+        destroyBy,
+        artifacts: persistedArtifacts,
+      });
 
-      const sourceArtifacts = input.downloadedBundles.map(
-        toLifecycleArtifact,
-      );
+      const sourceArtifacts = input.downloadedBundles.map(toLifecycleArtifact);
       const sourceLifecycle = await this.#options.lifecycle.destroy({
         scope: "source-harbor-bundles",
         requestId: input.requestId,
@@ -829,9 +783,15 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
       }
       fail();
     } finally {
-      sourceBuffers.forEach((value) => value.fill(0));
-      normalizedBuffers.forEach((value) => value.fill(0));
-      ciphertextBuffers.forEach((value) => value.fill(0));
+      sourceBuffers.forEach((value) => {
+        value.fill(0);
+      });
+      normalizedBuffers.forEach((value) => {
+        value.fill(0);
+      });
+      ciphertextBuffers.forEach((value) => {
+        value.fill(0);
+      });
     }
   }
 
@@ -844,9 +804,7 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
       this.#options.artifactBridge.assertTrustedRuntime();
       const policy = this.#options.retentionPolicy;
       assertRawArtifactManifest(policy, rawRun.manifest);
-      const artifacts = rawRun.manifest.artifacts.map(
-        toLifecycleArtifact,
-      );
+      const artifacts = rawRun.manifest.artifacts.map(toLifecycleArtifact);
       const lifecycle = await this.#options.lifecycle.destroy({
         scope: "encrypted-retention-set",
         requestId: rawRun.requestId,
@@ -890,9 +848,7 @@ export class CloudOnlyTrustedRawIngress implements TrustedRawRunIngress {
  * materializes only a bounded in-memory ciphertext buffer and never touches a
  * local path.
  */
-export class BridgeTrustedEncryptedRawArtifactSource
-  implements TrustedEncryptedRawArtifactSource
-{
+export class BridgeTrustedEncryptedRawArtifactSource implements TrustedEncryptedRawArtifactSource {
   readonly boundary: TrustedEvaluatorPortBoundary;
   readonly #bridge: TrustedArtifactBridge;
   readonly #maximumBytes: number;
@@ -903,9 +859,7 @@ export class BridgeTrustedEncryptedRawArtifactSource
     readonly maximumBytes?: number;
   }) {
     this.boundary =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
     this.#bridge = options.bridge;
     this.#maximumBytes = options.maximumBytes ?? 256 * 1024 * 1024;
     if (!Number.isSafeInteger(this.#maximumBytes) || this.#maximumBytes < 1) {

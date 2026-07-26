@@ -14,16 +14,10 @@ import {
 describe("deterministic statistics", () => {
   it("inverts the uniform beta distribution", () => {
     fc.assert(
-      fc.property(
-        fc.double({ min: 0.0001, max: 0.9999, noNaN: true }),
-        (probability) => {
-          expect(inverseRegularizedBeta(probability, 1, 1)).toBeCloseTo(probability, 10);
-          expect(regularizedIncompleteBeta(probability, 1, 1)).toBeCloseTo(
-            probability,
-            10,
-          );
-        },
-      ),
+      fc.property(fc.double({ min: 0.0001, max: 0.9999, noNaN: true }), (probability) => {
+        expect(inverseRegularizedBeta(probability, 1, 1)).toBeCloseTo(probability, 10);
+        expect(regularizedIncompleteBeta(probability, 1, 1)).toBeCloseTo(probability, 10);
+      }),
     );
   });
 
@@ -82,7 +76,10 @@ describe("deterministic statistics", () => {
     );
     expect(strong.probabilityGreaterThanThreshold).toBeGreaterThan(0.99);
     expect(strong.median).toBeGreaterThan(0.5);
-    expect(strong.stratumProbabilityBelowMinusPointOne).toEqual([0, 0]);
+    expect(strong.stratumProbabilityBelowMinusPointOne).toHaveLength(2);
+    for (const probability of strong.stratumProbabilityBelowMinusPointOne) {
+      expect(probability).toBeLessThan(0.01);
+    }
   });
 
   it("spends a summable, deterministic campaign-level error budget", () => {

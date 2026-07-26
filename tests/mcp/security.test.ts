@@ -58,10 +58,7 @@ describe("MCP evidence security", () => {
     ).toThrow(/protected literal/u);
     expect(() =>
       assertTaskAgnosticSubmission({
-        causalClaim: Buffer.from(
-          "/root/grader/answer.txt",
-          "utf8",
-        ).toString("base64url"),
+        causalClaim: Buffer.from("/root/grader/answer.txt", "utf8").toString("base64url"),
       }),
     ).toThrow(/protected literal/u);
     expect(() =>

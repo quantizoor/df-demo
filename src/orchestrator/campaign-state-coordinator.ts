@@ -6,40 +6,26 @@ import {
   type ExperimentAllocation,
   type SealExperimentInput,
 } from "../campaign/index.js";
-import {
-  remainingBudget,
-  validateBudgetSnapshot,
-} from "../core/budget.js";
-import type {
-  BudgetSnapshot,
-  ChampionPointers,
-} from "../domain/models.js";
+import { remainingBudget, validateBudgetSnapshot } from "../core/budget.js";
+import type { BudgetSnapshot, ChampionPointers } from "../domain/models.js";
 import {
   assertTrustedOnlineErrorBudgetReconciliation,
   onlineErrorBudgetCampaignIdHash,
   type TrustedOnlineErrorBudgetReconciliation,
 } from "../evaluator/online-error-authority.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import type {
-  CampaignPauseReason,
-  CampaignState,
-  CampaignStopReason,
-} from "../schemas/control.js";
+import type { CampaignPauseReason, CampaignState, CampaignStopReason } from "../schemas/control.js";
 import type {
   ClaimedOptimizationExperiment,
   OptimizationClaim,
   OptimizationLoopSnapshot,
   ProductionOptimizationCoordinator,
 } from "./autonomous-loop.js";
-import type {
-  ExperimentRunInput,
-  ExperimentRunResult,
-} from "./contracts.js";
+import type { ExperimentRunInput, ExperimentRunResult } from "./contracts.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-const OPAQUE_DIAGNOSTIC_RELEASE_ID =
-  /^diagnostic[-:](?:[0-9]{1,12}|[a-f0-9]{16,64})$/u;
+const OPAQUE_DIAGNOSTIC_RELEASE_ID = /^diagnostic[-:](?:[0-9]{1,12}|[a-f0-9]{16,64})$/u;
 
 export type OptimizationFailureClass = Parameters<
   ProductionOptimizationCoordinator["interrupt"]
@@ -99,9 +85,7 @@ export interface PersistedOptimizationClaimBinding {
  */
 export interface TrustedOptimizationInputFactory {
   readonly boundary: "trusted-cloud";
-  prepareOrResume(
-    context: OptimizationInputPreparationContext,
-  ): Promise<ExperimentRunInput>;
+  prepareOrResume(context: OptimizationInputPreparationContext): Promise<ExperimentRunInput>;
   /**
    * Atomic create-or-exact-retry. A different binding for an existing
    * allocation must fail closed, which makes the v2 claim itself persistent.
@@ -224,9 +208,7 @@ export interface TrustedOptimizationCompletionMaterialPort {
   createInterruptedBudgetAccountingAttestation(
     request: InterruptedBudgetAccountingMaterialRequest,
   ): Promise<TrustedInterruptedBudgetAccountingMaterial>;
-  createSealMaterial(
-    request: SealMaterialRequest,
-  ): Promise<TrustedOptimizationSealMaterial>;
+  createSealMaterial(request: SealMaterialRequest): Promise<TrustedOptimizationSealMaterial>;
 }
 
 export interface OptimizationInterruptionRecordDraft {
@@ -242,8 +224,7 @@ export interface OptimizationInterruptionRecordDraft {
   readonly brokerExposureStateAttestationHash: string;
 }
 
-export interface OptimizationInterruptionRecord
-  extends OptimizationInterruptionRecordDraft {
+export interface OptimizationInterruptionRecord extends OptimizationInterruptionRecordDraft {
   readonly recordHash: string;
 }
 
@@ -266,10 +247,7 @@ export type OptimizationInterruptionControl =
 export interface TrustedOptimizationInterruptionPort {
   readonly boundary: "trusted-cloud";
   begin(
-    draft: Omit<
-      OptimizationInterruptionRecordDraft,
-      "brokerExposureStateAttestationHash"
-    >,
+    draft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
   ): Promise<OptimizationInterruptionRecord>;
   findPending(input: {
     readonly campaignId: string;
@@ -316,9 +294,7 @@ export class CampaignStateOptimizationCoordinatorError extends Error {
   }
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -332,10 +308,7 @@ function assertExactKeys(value: unknown, keys: readonly string[]): void {
     throw new CampaignStateOptimizationCoordinatorError();
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     throw new CampaignStateOptimizationCoordinatorError();
   }
 }
@@ -363,12 +336,9 @@ function domainBudget(state: CampaignState): BudgetSnapshot {
       maximumTokens: state.budget.limits.maximumTokens,
       maximumWallTimeMs: state.budget.limits.maximumWallTimeMs,
       maximumAttempts: state.budget.limits.maximumAttempts,
-      maximumPrivacyReleases:
-        state.budget.limits.maximumPrivacyReleases,
-      maximumPromotionLooks:
-        state.budget.limits.maximumPromotionLooks,
-      maximumOnlineError:
-        state.budget.limits.maximumOnlineError,
+      maximumPrivacyReleases: state.budget.limits.maximumPrivacyReleases,
+      maximumPromotionLooks: state.budget.limits.maximumPromotionLooks,
+      maximumOnlineError: state.budget.limits.maximumOnlineError,
     },
     usage: {
       spentUsd: state.budget.usage.spentUsd,
@@ -386,8 +356,7 @@ function championPointers(state: CampaignState): ChampionPointers {
   const certified = state.champions.certified;
   const certificationIsCurrent =
     certified !== null &&
-    certified.experimentNumber ===
-      state.champions.active.experimentNumber &&
+    certified.experimentNumber === state.champions.active.experimentNumber &&
     certified.commit === state.champions.active.commit;
   return {
     baselineCommit: state.champions.baseline.commit,
@@ -416,10 +385,7 @@ function hardBudgetExhausted(state: CampaignState): boolean {
 }
 
 function snapshotFromState(state: CampaignState): OptimizationLoopSnapshot {
-  if (
-    state.numbering.inFlightKind !== null &&
-    state.numbering.inFlightKind !== "optimization"
-  ) {
+  if (state.numbering.inFlightKind !== null && state.numbering.inFlightKind !== "optimization") {
     throw new CampaignStateOptimizationCoordinatorError(
       "The optimization loop cannot take ownership of shadow work.",
     );
@@ -432,21 +398,16 @@ function snapshotFromState(state: CampaignState): OptimizationLoopSnapshot {
     stateHash: state.contentHash,
     status: state.control.status,
     nextExperimentNumber: state.numbering.nextExperimentNumber,
-    inFlightExperimentNumber:
-      state.numbering.inFlightExperimentNumber,
+    inFlightExperimentNumber: state.numbering.inFlightExperimentNumber,
     inFlightKind: state.numbering.inFlightKind,
     activeChampion: championPointers(state),
     budget: domainBudget(state),
     hardBudgetExhausted: hardBudgetExhausted(state),
-    freshValidationPanelsRemaining:
-      state.holdout.freshValidationSetsRemaining,
+    freshValidationPanelsRemaining: state.holdout.freshValidationSetsRemaining,
   };
 }
 
-function assertNondecreasingBudget(
-  before: BudgetSnapshot,
-  after: BudgetSnapshot,
-): void {
+function assertNondecreasingBudget(before: BudgetSnapshot, after: BudgetSnapshot): void {
   if (
     canonicalJson(before.limits) !== canonicalJson(after.limits) ||
     after.usage.spentUsd < before.usage.spentUsd ||
@@ -480,47 +441,32 @@ function assertResumePathStructure(path: AllocationPath): void {
   for (const state of path.states) {
     const current = snapshotFromState(state);
     const stateIsRunning = state.control.status === "running";
-    const stateIsStopping =
-      state.control.status === "stop-requested";
+    const stateIsStopping = state.control.status === "stop-requested";
     if (
       state.numbering.inFlightExperimentNumber !==
         path.allocation.numbering.inFlightExperimentNumber ||
       state.numbering.inFlightKind !== "optimization" ||
-      state.numbering.nextExperimentNumber !==
-        path.allocation.numbering.nextExperimentNumber ||
+      state.numbering.nextExperimentNumber !== path.allocation.numbering.nextExperimentNumber ||
       (!stateIsRunning && !stateIsStopping) ||
       (stopObserved && stateIsRunning) ||
       state.campaignId !== path.allocation.campaignId ||
-      state.baselineLineageId !==
-        path.allocation.baselineLineageId ||
+      state.baselineLineageId !== path.allocation.baselineLineageId ||
       state.protocolHash !== path.allocation.protocolHash ||
-      canonicalJson(current.activeChampion) !==
-        canonicalJson(allocationSnapshot.activeChampion) ||
-      canonicalJson(state.holdout) !==
-        canonicalJson(path.allocation.holdout) ||
-      canonicalJson(state.budget.limits) !==
-        canonicalJson(path.allocation.budget.limits) ||
-      state.budget.policyHash !==
-        path.allocation.budget.policyHash ||
-      state.budget.authorizationHash !==
-        path.allocation.budget.authorizationHash ||
-      state.budget.usage.onlineErrorSpent <
-        path.allocation.budget.usage.onlineErrorSpent
+      canonicalJson(current.activeChampion) !== canonicalJson(allocationSnapshot.activeChampion) ||
+      canonicalJson(state.holdout) !== canonicalJson(path.allocation.holdout) ||
+      canonicalJson(state.budget.limits) !== canonicalJson(path.allocation.budget.limits) ||
+      state.budget.policyHash !== path.allocation.budget.policyHash ||
+      state.budget.authorizationHash !== path.allocation.budget.authorizationHash ||
+      state.budget.usage.onlineErrorSpent < path.allocation.budget.usage.onlineErrorSpent
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
     stopObserved ||= stateIsStopping;
-    assertNondecreasingBudget(
-      allocationSnapshot.budget,
-      current.budget,
-    );
+    assertNondecreasingBudget(allocationSnapshot.budget, current.budget);
   }
 }
 
-function allocationPath(
-  history: CampaignHistory,
-  experimentNumber: number,
-): AllocationPath {
+function allocationPath(history: CampaignHistory, experimentNumber: number): AllocationPath {
   const states = history.states;
   let allocationIndex = -1;
   for (let index = 1; index < states.length; index += 1) {
@@ -532,8 +478,7 @@ function allocationPath(
       prior.numbering.inFlightExperimentNumber === null &&
       state.numbering.inFlightExperimentNumber === experimentNumber &&
       state.numbering.inFlightKind === "optimization" &&
-      state.numbering.nextExperimentNumber ===
-        prior.numbering.nextExperimentNumber + 1
+      state.numbering.nextExperimentNumber === prior.numbering.nextExperimentNumber + 1
     ) {
       allocationIndex = index;
       break;
@@ -543,11 +488,7 @@ function allocationPath(
     throw new CampaignStateOptimizationCoordinatorError();
   }
   let lastInFlightIndex = allocationIndex;
-  for (
-    let index = allocationIndex + 1;
-    index < states.length;
-    index += 1
-  ) {
+  for (let index = allocationIndex + 1; index < states.length; index += 1) {
     const state = states[index];
     if (
       state?.numbering.inFlightExperimentNumber !== experimentNumber ||
@@ -560,11 +501,7 @@ function allocationPath(
   const prior = states[allocationIndex - 1];
   const allocation = states[allocationIndex];
   const currentInFlight = states[lastInFlightIndex];
-  if (
-    prior === undefined ||
-    allocation === undefined ||
-    currentInFlight === undefined
-  ) {
+  if (prior === undefined || allocation === undefined || currentInFlight === undefined) {
     throw new CampaignStateOptimizationCoordinatorError();
   }
   const path = {
@@ -577,29 +514,20 @@ function allocationPath(
   return path;
 }
 
-function releaseSafeCheckpoints(
-  path: AllocationPath,
-): readonly ReleaseSafeResumeCheckpoint[] {
+function releaseSafeCheckpoints(path: AllocationPath): readonly ReleaseSafeResumeCheckpoint[] {
   return path.states.slice(1).map((state) => ({
     stateHash: state.contentHash,
     previousStateHash: state.previousStateHash as string,
-    budgetAccountingAttestationHash:
-      state.budget.accountingAttestationHash,
-    brokerExposureStateAttestationHash:
-      state.reconstruction.brokerExposureStateAttestationHash,
-    repeatedTestingLedgerHash:
-      state.reconstruction.repeatedTestingLedgerHash,
+    budgetAccountingAttestationHash: state.budget.accountingAttestationHash,
+    brokerExposureStateAttestationHash: state.reconstruction.brokerExposureStateAttestationHash,
+    repeatedTestingLedgerHash: state.reconstruction.repeatedTestingLedgerHash,
     privacyLedgerHash: state.reconstruction.privacyLedgerHash,
-    cacheStateAttestationHash:
-      state.reconstruction.cacheStateAttestationHash,
-    publicationQueueHash:
-      state.reconstruction.publicationQueueHash,
+    cacheStateAttestationHash: state.reconstruction.cacheStateAttestationHash,
+    publicationQueueHash: state.reconstruction.publicationQueueHash,
   }));
 }
 
-function assertDiagnosticReference(
-  value: ExperimentRunInput["diagnosticBrief"],
-): void {
+function assertDiagnosticReference(value: ExperimentRunInput["diagnosticBrief"]): void {
   if (value === null) return;
   assertExactKeys(value, ["hash", "releaseId", "actionable"]);
   if (
@@ -611,10 +539,7 @@ function assertDiagnosticReference(
   }
 }
 
-function assertPreparedInput(
-  value: ExperimentRunInput,
-  path: AllocationPath,
-): void {
+function assertPreparedInput(value: ExperimentRunInput, path: AllocationPath): void {
   assertExactKeys(value, [
     "experiment",
     "activeChampion",
@@ -664,30 +589,23 @@ function assertPreparedInput(
   assertDiagnosticReference(value.diagnosticBrief);
 
   const allocation = snapshotFromState(path.allocation);
-  const experimentNumber =
-    path.allocation.numbering.inFlightExperimentNumber;
+  const experimentNumber = path.allocation.numbering.inFlightExperimentNumber;
   const sourceOnlyBootstrap = experimentNumber === 1;
   if (
     experimentNumber === null ||
     value.experiment.number !== experimentNumber ||
     value.experiment.slug !==
-      (sourceOnlyBootstrap
-        ? "source-only-bootstrap"
-        : "diagnostic-repair") ||
+      (sourceOnlyBootstrap ? "source-only-bootstrap" : "diagnostic-repair") ||
     value.experiment.kind !== "optimization" ||
-    value.experiment.parentExperiment !==
-      allocation.activeChampion.activeExperiment ||
+    value.experiment.parentExperiment !== allocation.activeChampion.activeExperiment ||
     value.experiment.lineageId !== allocation.lineageId ||
     value.experiment.protocolHash !== allocation.protocolHash ||
-    canonicalJson(value.activeChampion) !==
-      canonicalJson(allocation.activeChampion) ||
-    canonicalJson(value.budget) !==
-      canonicalJson(allocation.budget) ||
+    canonicalJson(value.activeChampion) !== canonicalJson(allocation.activeChampion) ||
+    canonicalJson(value.budget) !== canonicalJson(allocation.budget) ||
     ![1, 2].includes(value.repairAttemptOrdinal) ||
     value.stop.requested !== false ||
     (sourceOnlyBootstrap &&
-      (value.diagnosticBrief !== null ||
-        value.previousDiscoveryAttestationHash !== null)) ||
+      (value.diagnosticBrief !== null || value.previousDiscoveryAttestationHash !== null)) ||
     (!sourceOnlyBootstrap &&
       (value.previousDiscoveryAttestationHash === null ||
         !SHA256.test(value.previousDiscoveryAttestationHash))) ||
@@ -710,10 +628,7 @@ function claimHash(input: {
   });
 }
 
-function assertResult(
-  claim: ClaimedOptimizationExperiment,
-  result: ExperimentRunResult,
-): 0 | 1 {
+function assertResult(claim: ClaimedOptimizationExperiment, result: ExperimentRunResult): 0 | 1 {
   assertExactKeys(result, [
     "disposition",
     "activeChampion",
@@ -751,9 +666,7 @@ function assertResult(
   ]);
   assertDiagnosticReference(result.diagnosticBrief);
   if (
-    !["promoted", "rejected", "inconclusive"].includes(
-      result.disposition,
-    ) ||
+    !["promoted", "rejected", "inconclusive"].includes(result.disposition) ||
     !SHA256.test(result.sealHash)
   ) {
     throw new CampaignStateOptimizationCoordinatorError();
@@ -775,75 +688,48 @@ function assertResult(
     result.budget.usage.onlineErrorSpent,
   ];
   if (
-    numericFields.some(
-      (value) => !Number.isFinite(value) || value < 0,
-    ) ||
+    numericFields.some((value) => !Number.isFinite(value) || value < 0) ||
     !Number.isSafeInteger(result.budget.limits.maximumTokens) ||
-    !Number.isSafeInteger(
-      result.budget.limits.maximumWallTimeMs,
-    ) ||
+    !Number.isSafeInteger(result.budget.limits.maximumWallTimeMs) ||
     !Number.isSafeInteger(result.budget.limits.maximumAttempts) ||
-    !Number.isSafeInteger(
-      result.budget.limits.maximumPrivacyReleases,
-    ) ||
-    !Number.isSafeInteger(
-      result.budget.limits.maximumPromotionLooks,
-    ) ||
+    !Number.isSafeInteger(result.budget.limits.maximumPrivacyReleases) ||
+    !Number.isSafeInteger(result.budget.limits.maximumPromotionLooks) ||
     !Number.isSafeInteger(result.budget.usage.tokens) ||
     !Number.isSafeInteger(result.budget.usage.wallTimeMs) ||
     !Number.isSafeInteger(result.budget.usage.attempts) ||
-    !Number.isSafeInteger(
-      result.budget.usage.privacyReleases,
-    ) ||
+    !Number.isSafeInteger(result.budget.usage.privacyReleases) ||
     !Number.isSafeInteger(result.budget.usage.promotionLooks) ||
-    result.budget.usage.spentUsd >
-      result.budget.limits.maximumUsd ||
-    result.budget.usage.tokens >
-      result.budget.limits.maximumTokens ||
-    result.budget.usage.wallTimeMs >
-      result.budget.limits.maximumWallTimeMs ||
-    result.budget.usage.attempts >
-      result.budget.limits.maximumAttempts ||
-    result.budget.usage.privacyReleases >
-      result.budget.limits.maximumPrivacyReleases ||
-    result.budget.usage.promotionLooks >
-      result.budget.limits.maximumPromotionLooks ||
-    result.budget.usage.onlineErrorSpent >
-      result.budget.limits.maximumOnlineError ||
+    result.budget.usage.spentUsd > result.budget.limits.maximumUsd ||
+    result.budget.usage.tokens > result.budget.limits.maximumTokens ||
+    result.budget.usage.wallTimeMs > result.budget.limits.maximumWallTimeMs ||
+    result.budget.usage.attempts > result.budget.limits.maximumAttempts ||
+    result.budget.usage.privacyReleases > result.budget.limits.maximumPrivacyReleases ||
+    result.budget.usage.promotionLooks > result.budget.limits.maximumPromotionLooks ||
+    result.budget.usage.onlineErrorSpent > result.budget.limits.maximumOnlineError ||
     result.budget.limits.maximumOnlineError > 1 ||
     result.budget.usage.onlineErrorSpent > 1
   ) {
     throw new CampaignStateOptimizationCoordinatorError();
   }
   assertNondecreasingBudget(claim.input.budget, result.budget);
-  const delta =
-    result.budget.usage.promotionLooks -
-    claim.input.budget.usage.promotionLooks;
+  const delta = result.budget.usage.promotionLooks - claim.input.budget.usage.promotionLooks;
   if (delta !== 0 && delta !== 1) {
     throw new CampaignStateOptimizationCoordinatorError();
   }
   if (
     (result.disposition === "promoted" && delta !== 1) ||
     (result.disposition === "promoted" &&
-      (result.activeChampion.activeExperiment !==
-        claim.input.experiment.number ||
-        result.activeChampion.activeCommit ===
-          claim.input.activeChampion.activeCommit ||
+      (result.activeChampion.activeExperiment !== claim.input.experiment.number ||
+        result.activeChampion.activeCommit === claim.input.activeChampion.activeCommit ||
         !GIT_OBJECT.test(result.activeChampion.activeCommit) ||
-        result.activeChampion.baselineCommit !==
-          claim.input.activeChampion.baselineCommit ||
+        result.activeChampion.baselineCommit !== claim.input.activeChampion.baselineCommit ||
         result.activeChampion.certifiedExperiment !==
           claim.input.activeChampion.certifiedExperiment ||
-        result.activeChampion.certifiedCommit !==
-          claim.input.activeChampion.certifiedCommit ||
-        result.activeChampion.sourceSealHash !==
-          result.sealHash ||
-        !Number.isFinite(
-          Date.parse(result.activeChampion.updatedAt),
-        ))) ||
+        result.activeChampion.certifiedCommit !== claim.input.activeChampion.certifiedCommit ||
+        result.activeChampion.sourceSealHash !== result.sealHash ||
+        !Number.isFinite(Date.parse(result.activeChampion.updatedAt)))) ||
     (result.disposition !== "promoted" &&
-      canonicalJson(result.activeChampion) !==
-        canonicalJson(claim.input.activeChampion))
+      canonicalJson(result.activeChampion) !== canonicalJson(claim.input.activeChampion))
   ) {
     throw new CampaignStateOptimizationCoordinatorError();
   }
@@ -874,10 +760,7 @@ function assertBudgetAccountingMaterial(
   state: CampaignState,
   result: ExperimentRunResult,
 ): void {
-  assertExactKeys(value, [
-    "accountingAttestationHash",
-    "nextUsage",
-  ]);
+  assertExactKeys(value, ["accountingAttestationHash", "nextUsage"]);
   assertHash(value.accountingAttestationHash);
   assertExactKeys(value.nextUsage, [
     "spentUsd",
@@ -898,13 +781,10 @@ function assertBudgetAccountingMaterial(
     onlineErrorSpent: value.nextUsage.onlineErrorSpent,
   };
   if (
-    canonicalJson(nextDomainUsage) !==
-      canonicalJson(result.budget.usage) ||
+    canonicalJson(nextDomainUsage) !== canonicalJson(result.budget.usage) ||
     !Number.isFinite(value.nextUsage.onlineErrorSpent) ||
-    value.nextUsage.onlineErrorSpent <
-      state.budget.usage.onlineErrorSpent ||
-    value.nextUsage.onlineErrorSpent >
-      state.budget.limits.maximumOnlineError
+    value.nextUsage.onlineErrorSpent < state.budget.usage.onlineErrorSpent ||
+    value.nextUsage.onlineErrorSpent > state.budget.limits.maximumOnlineError
   ) {
     throw new CampaignStateOptimizationCoordinatorError();
   }
@@ -914,11 +794,7 @@ function assertInterruptedBudgetAccountingMaterial(
   value: TrustedInterruptedBudgetAccountingMaterial,
   state: CampaignState,
 ): void {
-  assertExactKeys(value, [
-    "accountingAttestationHash",
-    "nextUsage",
-    "onlineErrorReconciliation",
-  ]);
+  assertExactKeys(value, ["accountingAttestationHash", "nextUsage", "onlineErrorReconciliation"]);
   assertHash(value.accountingAttestationHash);
   assertExactKeys(value.nextUsage, [
     "spentUsd",
@@ -929,10 +805,7 @@ function assertInterruptedBudgetAccountingMaterial(
     "promotionLooks",
     "onlineErrorSpent",
   ]);
-  assertTrustedOnlineErrorBudgetReconciliation(
-    value.onlineErrorReconciliation,
-    state.campaignId,
-  );
+  assertTrustedOnlineErrorBudgetReconciliation(value.onlineErrorReconciliation, state.campaignId);
   const receipt = value.onlineErrorReconciliation;
   const nextBudget: BudgetSnapshot = {
     limits: domainBudget(state).limits,
@@ -941,14 +814,10 @@ function assertInterruptedBudgetAccountingMaterial(
   validateBudgetSnapshot(nextBudget);
   assertNondecreasingBudget(domainBudget(state), nextBudget);
   if (
-    receipt.campaignIdHash !==
-      onlineErrorBudgetCampaignIdHash(state.campaignId) ||
-    receipt.maximumOnlineError !==
-      state.budget.limits.maximumOnlineError ||
-    receipt.onlineErrorSpent <
-      state.budget.usage.onlineErrorSpent ||
-    receipt.onlineErrorSpent >
-      state.budget.limits.maximumOnlineError ||
+    receipt.campaignIdHash !== onlineErrorBudgetCampaignIdHash(state.campaignId) ||
+    receipt.maximumOnlineError !== state.budget.limits.maximumOnlineError ||
+    receipt.onlineErrorSpent < state.budget.usage.onlineErrorSpent ||
+    receipt.onlineErrorSpent > state.budget.limits.maximumOnlineError ||
     receipt.storeRevision !== receipt.gatesSpent ||
     value.nextUsage.onlineErrorSpent !== receipt.onlineErrorSpent
   ) {
@@ -976,18 +845,13 @@ function assertSealMaterial(
     }
   } else {
     assertHash(value.holdoutAvailabilityAttestationHash);
-    if (
-      value.holdoutAvailabilityAttestationHash ===
-      state.holdout.availabilityAttestationHash
-    ) {
+    if (value.holdoutAvailabilityAttestationHash === state.holdout.availabilityAttestationHash) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
   }
 }
 
-function interruptionRecordHash(
-  draft: OptimizationInterruptionRecordDraft,
-): string {
+function interruptionRecordHash(draft: OptimizationInterruptionRecordDraft): string {
   return canonicalHash(draft);
 }
 
@@ -1022,29 +886,20 @@ function assertInterruptionRecord(
     claimHash: record.claimHash,
     allocationStateHash: record.allocationStateHash,
     failureClass: record.failureClass,
-    brokerExposureStateAttestationHash:
-      record.brokerExposureStateAttestationHash,
+    brokerExposureStateAttestationHash: record.brokerExposureStateAttestationHash,
   };
   if (
     record.schemaVersion !== 1 ||
-    record.domain !==
-      "dark-factory.optimization-interruption.v1" ||
+    record.domain !== "dark-factory.optimization-interruption.v1" ||
     record.campaignId !== expected.campaignId ||
     record.lineageId !== expected.lineageId ||
     record.protocolHash !== expected.protocolHash ||
     !Number.isSafeInteger(record.experimentNumber) ||
     record.experimentNumber < 1 ||
-    ![
-      "integrity",
-      "infrastructure",
-      "budget",
-      "operator-stop",
-    ].includes(record.failureClass) ||
+    !["integrity", "infrastructure", "budget", "operator-stop"].includes(record.failureClass) ||
     !SHA256.test(record.claimHash) ||
     !SHA256.test(record.allocationStateHash) ||
-    !SHA256.test(
-      record.brokerExposureStateAttestationHash,
-    ) ||
+    !SHA256.test(record.brokerExposureStateAttestationHash) ||
     record.recordHash !== interruptionRecordHash(draft)
   ) {
     throw new CampaignStateOptimizationCoordinatorError();
@@ -1059,25 +914,16 @@ function assertInterruptionControl(
     assertExactKeys(control, ["kind", "reason"]);
     if (
       failure !== "operator-stop" ||
-      !["operator", "sigint", "sigterm", "system-shutdown"].includes(
-        control.reason,
-      )
+      !["operator", "sigint", "sigterm", "system-shutdown"].includes(control.reason)
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
     return;
   }
-  assertExactKeys(control, [
-    "kind",
-    "reason",
-    "attestationHash",
-  ]);
+  assertExactKeys(control, ["kind", "reason", "attestationHash"]);
   assertHash(control.attestationHash);
   const allowed: Readonly<
-    Record<
-      Exclude<OptimizationFailureClass, "operator-stop">,
-      readonly CampaignPauseReason[]
-    >
+    Record<Exclude<OptimizationFailureClass, "operator-stop">, readonly CampaignPauseReason[]>
   > = {
     integrity: ["integrity", "policy"],
     infrastructure: ["infrastructure", "publication", "policy"],
@@ -1098,10 +944,8 @@ function sameControlDisposition(
   return control.kind === "pause"
     ? state.control.status === "paused" &&
         state.control.pauseReason === control.reason &&
-        state.control.pauseAttestationHash ===
-          control.attestationHash
-    : (state.control.status === "stop-requested" ||
-        state.control.status === "stopped") &&
+        state.control.pauseAttestationHash === control.attestationHash
+    : (state.control.status === "stop-requested" || state.control.status === "stopped") &&
         state.control.stopReason === control.reason;
 }
 
@@ -1117,22 +961,17 @@ function interruptedArchiveStateHash(
       previous === undefined ||
       state === undefined ||
       state.previousStateHash !== previous.contentHash ||
-      previous.numbering.inFlightExperimentNumber !==
-        record.experimentNumber ||
+      previous.numbering.inFlightExperimentNumber !== record.experimentNumber ||
       previous.numbering.inFlightKind !== "optimization" ||
       state.numbering.inFlightExperimentNumber !== null ||
       state.numbering.inFlightKind !== null ||
-      state.numbering.lastInterruptedExperimentNumber !==
-        record.experimentNumber ||
+      state.numbering.lastInterruptedExperimentNumber !== record.experimentNumber ||
       state.reconstruction.brokerExposureStateAttestationHash !==
         record.brokerExposureStateAttestationHash
     ) {
       continue;
     }
-    if (
-      archiveStateHash !== null &&
-      archiveStateHash !== state.contentHash
-    ) {
+    if (archiveStateHash !== null && archiveStateHash !== state.contentHash) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
     archiveStateHash = state.contentHash;
@@ -1140,17 +979,12 @@ function interruptedArchiveStateHash(
   return archiveStateHash;
 }
 
-function terminalClaim(
-  state: CampaignState,
-): OptimizationClaim | null {
+function terminalClaim(state: CampaignState): OptimizationClaim | null {
   const snapshot = snapshotFromState(state);
   if (snapshot.status !== "running") {
     return {
       kind: "terminal",
-      reason:
-        snapshot.status === "stop-requested"
-          ? "stop-requested"
-          : snapshot.status,
+      reason: snapshot.status === "stop-requested" ? "stop-requested" : snapshot.status,
       snapshot,
     };
   }
@@ -1163,8 +997,7 @@ function terminalClaim(
     };
   }
   const remaining = remainingBudget(snapshot.budget);
-  const minimumAttempts =
-    snapshot.nextExperimentNumber === 1 ? 28 : 37;
+  const minimumAttempts = snapshot.nextExperimentNumber === 1 ? 28 : 37;
   if (
     snapshot.hardBudgetExhausted ||
     remaining.attempts < minimumAttempts ||
@@ -1183,14 +1016,10 @@ function terminalClaim(
   return null;
 }
 
-export class CampaignStateOptimizationCoordinator
-  implements ProductionOptimizationCoordinator
-{
+export class CampaignStateOptimizationCoordinator implements ProductionOptimizationCoordinator {
   readonly #options: CampaignStateOptimizationCoordinatorOptions;
 
-  public constructor(
-    options: CampaignStateOptimizationCoordinatorOptions,
-  ) {
+  public constructor(options: CampaignStateOptimizationCoordinatorOptions) {
     if (
       options.inputFactory.boundary !== "trusted-cloud" ||
       options.resumeVerifier.boundary !== "trusted-cloud" ||
@@ -1204,10 +1033,7 @@ export class CampaignStateOptimizationCoordinator
     this.#options = options;
   }
 
-  async #resolveClaim(
-    history: CampaignHistory,
-    experimentNumber: number,
-  ): Promise<ResolvedClaim> {
+  async #resolveClaim(history: CampaignHistory, experimentNumber: number): Promise<ResolvedClaim> {
     const path = allocationPath(history, experimentNumber);
     await this.#options.resumeVerifier.verify({
       schemaVersion: 1,
@@ -1250,8 +1076,7 @@ export class CampaignStateOptimizationCoordinator
       allocationStateHash: path.allocation.contentHash,
       claimHash: hash,
       inputHash: canonicalHash(input),
-      previousDiscoveryAttestationHash:
-        input.previousDiscoveryAttestationHash,
+      previousDiscoveryAttestationHash: input.previousDiscoveryAttestationHash,
       repairAttemptOrdinal: input.repairAttemptOrdinal,
     });
     return {
@@ -1265,9 +1090,7 @@ export class CampaignStateOptimizationCoordinator
         input,
       },
       path,
-      allowedCurrentStateHashes: new Set(
-        path.states.map((state) => state.contentHash),
-      ),
+      allowedCurrentStateHashes: new Set(path.states.map((state) => state.contentHash)),
     };
   }
 
@@ -1281,52 +1104,35 @@ export class CampaignStateOptimizationCoordinator
       protocolHash: history.current.protocolHash,
     };
     assertInterruptionRecord(record, identity);
-    const resolved = await this.#resolveClaim(
-      history,
-      record.experimentNumber,
-    );
+    const resolved = await this.#resolveClaim(history, record.experimentNumber);
     if (
       resolved.publicClaim.claimHash !== record.claimHash ||
-      resolved.publicClaim.allocationStateHash !==
-        record.allocationStateHash
+      resolved.publicClaim.allocationStateHash !== record.allocationStateHash
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
 
     let current = history.current;
-    let archiveStateHash = interruptedArchiveStateHash(
-      history,
-      record,
-    );
+    let archiveStateHash = interruptedArchiveStateHash(history, record);
     const externallyStopping =
-      current.control.status === "stop-requested" ||
-      current.control.status === "stopped";
+      current.control.status === "stop-requested" || current.control.status === "stopped";
     if (current.control.status === "running" || externallyStopping) {
-      if (
-        current.numbering.inFlightExperimentNumber ===
-        record.experimentNumber
-      ) {
+      if (current.numbering.inFlightExperimentNumber === record.experimentNumber) {
         const interruptedAccounting =
-          await this.#options.completionMaterial
-            .createInterruptedBudgetAccountingAttestation({
-              schemaVersion: 1,
-              domain:
-                "dark-factory.interrupted-budget-accounting.v1",
-              campaignId: current.campaignId,
-              lineageId: current.baselineLineageId,
-              protocolHash: current.protocolHash,
-              claimHash: record.claimHash,
-              experimentNumber: record.experimentNumber,
-              currentStateHash: current.contentHash,
-              previousUsage: current.budget.usage,
-            });
-        assertInterruptedBudgetAccountingMaterial(
-          interruptedAccounting,
-          current,
-        );
+          await this.#options.completionMaterial.createInterruptedBudgetAccountingAttestation({
+            schemaVersion: 1,
+            domain: "dark-factory.interrupted-budget-accounting.v1",
+            campaignId: current.campaignId,
+            lineageId: current.baselineLineageId,
+            protocolHash: current.protocolHash,
+            claimHash: record.claimHash,
+            experimentNumber: record.experimentNumber,
+            currentStateHash: current.contentHash,
+            previousUsage: current.budget.usage,
+          });
+        assertInterruptedBudgetAccountingMaterial(interruptedAccounting, current);
         if (
-          canonicalJson(interruptedAccounting.nextUsage) !==
-          canonicalJson(current.budget.usage)
+          canonicalJson(interruptedAccounting.nextUsage) !== canonicalJson(current.budget.usage)
         ) {
           current = await this.#options.store.recordBudgetUsage(
             current.contentHash,
@@ -1334,34 +1140,29 @@ export class CampaignStateOptimizationCoordinator
             interruptedAccounting.accountingAttestationHash,
           );
         }
-        current =
-          await this.#options.store.archiveInterruptedExperiment(
-            current.contentHash,
-            record.experimentNumber,
-            record.brokerExposureStateAttestationHash,
-          );
+        current = await this.#options.store.archiveInterruptedExperiment(
+          current.contentHash,
+          record.experimentNumber,
+          record.brokerExposureStateAttestationHash,
+        );
         archiveStateHash = current.contentHash;
       } else if (
         current.numbering.inFlightExperimentNumber !== null ||
-        current.numbering.lastInterruptedExperimentNumber !==
-          record.experimentNumber
+        current.numbering.lastInterruptedExperimentNumber !== record.experimentNumber
       ) {
         throw new CampaignStateOptimizationCoordinatorError();
       }
-    } else if (
-      current.numbering.inFlightExperimentNumber !== null
-    ) {
+    } else if (current.numbering.inFlightExperimentNumber !== null) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
 
     if (archiveStateHash === null) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    const control =
-      await this.#options.interruption.prepareControl({
-        record,
-        currentStateHash: archiveStateHash,
-      });
+    const control = await this.#options.interruption.prepareControl({
+      record,
+      currentStateHash: archiveStateHash,
+    });
     assertInterruptionControl(control, record.failureClass);
     if (current.control.status === "running") {
       current =
@@ -1371,18 +1172,12 @@ export class CampaignStateOptimizationCoordinator
               control.reason,
               control.attestationHash,
             )
-          : await this.#options.store.requestStop(
-              current.contentHash,
-              control.reason,
-            );
+          : await this.#options.store.requestStop(current.contentHash, control.reason);
     } else if (
       current.control.status === "stop-requested" ||
       current.control.status === "stopped"
     ) {
-      if (
-        control.kind === "stop" &&
-        !sameControlDisposition(current, control)
-      ) {
+      if (control.kind === "stop" && !sameControlDisposition(current, control)) {
         throw new CampaignStateOptimizationCoordinatorError();
       }
       // A durable external stop has higher precedence than a previously
@@ -1391,12 +1186,8 @@ export class CampaignStateOptimizationCoordinator
     } else if (!sameControlDisposition(current, control)) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    if (
-      current.control.status === "stop-requested"
-    ) {
-      current = await this.#options.store.acknowledgeStopped(
-        current.contentHash,
-      );
+    if (current.control.status === "stop-requested") {
+      current = await this.#options.store.acknowledgeStopped(current.contentHash);
     }
     await this.#options.interruption.markApplied({
       recordHash: record.recordHash,
@@ -1405,17 +1196,14 @@ export class CampaignStateOptimizationCoordinator
     return current;
   }
 
-  async #recoverPending(
-    history: CampaignHistory,
-  ): Promise<CampaignState> {
+  async #recoverPending(history: CampaignHistory): Promise<CampaignState> {
     const current = history.current;
-    const pending =
-      await this.#options.interruption.findPending({
-        campaignId: current.campaignId,
-        lineageId: current.baselineLineageId,
-        protocolHash: current.protocolHash,
-        currentStateHash: current.contentHash,
-      });
+    const pending = await this.#options.interruption.findPending({
+      campaignId: current.campaignId,
+      lineageId: current.baselineLineageId,
+      protocolHash: current.protocolHash,
+      currentStateHash: current.contentHash,
+    });
     if (pending !== null) {
       return this.#applyInterruption(history, pending);
     }
@@ -1423,9 +1211,7 @@ export class CampaignStateOptimizationCoordinator
       current.control.status === "stop-requested" &&
       current.numbering.inFlightExperimentNumber === null
     ) {
-      return this.#options.store.acknowledgeStopped(
-        current.contentHash,
-      );
+      return this.#options.store.acknowledgeStopped(current.contentHash);
     }
     if (
       current.control.status !== "stop-requested" ||
@@ -1434,22 +1220,16 @@ export class CampaignStateOptimizationCoordinator
     ) {
       return current;
     }
-    const resolved = await this.#resolveClaim(
-      history,
-      current.numbering.inFlightExperimentNumber,
-    );
+    const resolved = await this.#resolveClaim(history, current.numbering.inFlightExperimentNumber);
     const draft = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.optimization-interruption.v1" as const,
+      domain: "dark-factory.optimization-interruption.v1" as const,
       campaignId: current.campaignId,
       lineageId: current.baselineLineageId,
       protocolHash: current.protocolHash,
-      experimentNumber:
-        current.numbering.inFlightExperimentNumber,
+      experimentNumber: current.numbering.inFlightExperimentNumber,
       claimHash: resolved.publicClaim.claimHash,
-      allocationStateHash:
-        resolved.publicClaim.allocationStateHash,
+      allocationStateHash: resolved.publicClaim.allocationStateHash,
       failureClass: "operator-stop" as const,
     };
     const record = await this.#options.interruption.begin(draft);
@@ -1461,8 +1241,7 @@ export class CampaignStateOptimizationCoordinator
     if (
       record.experimentNumber !== draft.experimentNumber ||
       record.claimHash !== draft.claimHash ||
-      record.allocationStateHash !==
-        draft.allocationStateHash ||
+      record.allocationStateHash !== draft.allocationStateHash ||
       record.failureClass !== draft.failureClass
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
@@ -1475,16 +1254,11 @@ export class CampaignStateOptimizationCoordinator
     return snapshotFromState(await this.#recoverPending(history));
   }
 
-  public async claimNext(
-    expectedStateHash: string,
-  ): Promise<OptimizationClaim> {
+  public async claimNext(expectedStateHash: string): Promise<OptimizationClaim> {
     assertHash(expectedStateHash);
     let history = await this.#options.store.reconstruct();
     if (history.current.contentHash !== expectedStateHash) {
-      throw new CampaignConflictError(
-        expectedStateHash,
-        history.current.contentHash,
-      );
+      throw new CampaignConflictError(expectedStateHash, history.current.contentHash);
     }
     const recovered = await this.#recoverPending(history);
     if (recovered.contentHash !== history.current.contentHash) {
@@ -1497,43 +1271,27 @@ export class CampaignStateOptimizationCoordinator
     const existingTerminal = terminalClaim(history.current);
     if (existingTerminal !== null) return existingTerminal;
 
-    if (
-      history.current.numbering.inFlightExperimentNumber === null
-    ) {
-      const allocation: ExperimentAllocation =
-        await this.#options.store.allocateExperiment(
-          history.current.contentHash,
-          "optimization",
-        );
+    if (history.current.numbering.inFlightExperimentNumber === null) {
+      const allocation: ExperimentAllocation = await this.#options.store.allocateExperiment(
+        history.current.contentHash,
+        "optimization",
+      );
       if (
-        allocation.experimentNumber !==
-          history.current.numbering.nextExperimentNumber ||
-        allocation.state.numbering.inFlightExperimentNumber !==
-          allocation.experimentNumber
+        allocation.experimentNumber !== history.current.numbering.nextExperimentNumber ||
+        allocation.state.numbering.inFlightExperimentNumber !== allocation.experimentNumber
       ) {
         throw new CampaignStateOptimizationCoordinatorError();
       }
       history = await this.#options.store.reconstruct();
-      if (
-        history.current.contentHash !==
-        allocation.state.contentHash
-      ) {
-        throw new CampaignConflictError(
-          allocation.state.contentHash,
-          history.current.contentHash,
-        );
+      if (history.current.contentHash !== allocation.state.contentHash) {
+        throw new CampaignConflictError(allocation.state.contentHash, history.current.contentHash);
       }
     }
-    const experimentNumber =
-      history.current.numbering.inFlightExperimentNumber;
-    if (
-      experimentNumber === null ||
-      history.current.numbering.inFlightKind !== "optimization"
-    ) {
+    const experimentNumber = history.current.numbering.inFlightExperimentNumber;
+    if (experimentNumber === null || history.current.numbering.inFlightKind !== "optimization") {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    return (await this.#resolveClaim(history, experimentNumber))
-      .publicClaim;
+    return (await this.#resolveClaim(history, experimentNumber)).publicClaim;
   }
 
   public async complete(input: {
@@ -1548,17 +1306,10 @@ export class CampaignStateOptimizationCoordinator
     const experimentNumber =
       current.numbering.inFlightExperimentNumber ??
       current.reconstruction.lastSealedDecision?.experimentNumber;
-    if (
-      experimentNumber === null ||
-      experimentNumber === undefined ||
-      experimentNumber < 1
-    ) {
+    if (experimentNumber === null || experimentNumber === undefined || experimentNumber < 1) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    const resolved = await this.#resolveClaim(
-      history,
-      experimentNumber,
-    );
+    const resolved = await this.#resolveClaim(history, experimentNumber);
     if (
       resolved.publicClaim.claimHash !== input.claimHash ||
       !resolved.allowedCurrentStateHashes.has(input.currentStateHash)
@@ -1567,12 +1318,8 @@ export class CampaignStateOptimizationCoordinator
         "The completion claim is stale or detached.",
       );
     }
-    const promotionLookDelta = assertResult(
-      resolved.publicClaim,
-      input.result,
-    );
-    const stage =
-      promotionLookDelta === 1 ? "validation" : "pre-validation";
+    const promotionLookDelta = assertResult(resolved.publicClaim, input.result);
+    const stage = promotionLookDelta === 1 ? "validation" : "pre-validation";
 
     if (current.numbering.inFlightExperimentNumber === null) {
       const last = current.reconstruction.lastSealedDecision;
@@ -1580,12 +1327,9 @@ export class CampaignStateOptimizationCoordinator
         last?.experimentNumber !== experimentNumber ||
         last.stage !== stage ||
         last.disposition !== input.result.disposition ||
-        current.reconstruction.experimentSealChainHead !==
-          input.result.sealHash ||
-        canonicalJson(domainBudget(current)) !==
-          canonicalJson(input.result.budget) ||
-        canonicalJson(championPointers(current)) !==
-          canonicalJson(input.result.activeChampion)
+        current.reconstruction.experimentSealChainHead !== input.result.sealHash ||
+        canonicalJson(domainBudget(current)) !== canonicalJson(input.result.budget) ||
+        canonicalJson(championPointers(current)) !== canonicalJson(input.result.activeChampion)
       ) {
         throw new CampaignStateOptimizationCoordinatorError(
           "A sealed completion retry does not reproduce.",
@@ -1593,44 +1337,28 @@ export class CampaignStateOptimizationCoordinator
       }
       return snapshotFromState(current);
     }
-    if (
-      current.contentHash !==
-      resolved.path.currentInFlight.contentHash
-    ) {
+    if (current.contentHash !== resolved.path.currentInFlight.contentHash) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    assertNondecreasingBudget(
-      domainBudget(current),
-      input.result.budget,
-    );
+    assertNondecreasingBudget(domainBudget(current), input.result.budget);
 
     let state = current;
-    if (
-      canonicalJson(domainBudget(state)) !==
-      canonicalJson(input.result.budget)
-    ) {
+    if (canonicalJson(domainBudget(state)) !== canonicalJson(input.result.budget)) {
       const accountingMaterial =
-        await this.#options.completionMaterial.createBudgetAccountingAttestation(
-          {
-            schemaVersion: 1,
-            domain:
-              "dark-factory.optimization-budget-accounting.v1",
-            campaignId: state.campaignId,
-            lineageId: state.baselineLineageId,
-            protocolHash: state.protocolHash,
-            claimHash: input.claimHash,
-            experimentNumber,
-            currentStateHash: state.contentHash,
-            previousUsage: state.budget.usage,
-            reportedUsage: input.result.budget.usage,
-            resultSealHash: input.result.sealHash,
-          },
-        );
-      assertBudgetAccountingMaterial(
-        accountingMaterial,
-        state,
-        input.result,
-      );
+        await this.#options.completionMaterial.createBudgetAccountingAttestation({
+          schemaVersion: 1,
+          domain: "dark-factory.optimization-budget-accounting.v1",
+          campaignId: state.campaignId,
+          lineageId: state.baselineLineageId,
+          protocolHash: state.protocolHash,
+          claimHash: input.claimHash,
+          experimentNumber,
+          currentStateHash: state.contentHash,
+          previousUsage: state.budget.usage,
+          reportedUsage: input.result.budget.usage,
+          resultSealHash: input.result.sealHash,
+        });
+      assertBudgetAccountingMaterial(accountingMaterial, state, input.result);
       state = await this.#options.store.recordBudgetUsage(
         state.contentHash,
         accountingMaterial.nextUsage,
@@ -1639,9 +1367,7 @@ export class CampaignStateOptimizationCoordinator
     }
 
     const candidateCommit =
-      input.result.disposition === "promoted"
-        ? input.result.activeChampion.activeCommit
-        : null;
+      input.result.disposition === "promoted" ? input.result.activeChampion.activeCommit : null;
     const sealRequest: SealMaterialRequest = {
       schemaVersion: 1,
       domain: "dark-factory.optimization-seal-material.v1",
@@ -1657,15 +1383,11 @@ export class CampaignStateOptimizationCoordinator
       resultSealHash: input.result.sealHash,
       promotionLookDelta,
     };
-    const material =
-      await this.#options.completionMaterial.createSealMaterial(
-        sealRequest,
-      );
+    const material = await this.#options.completionMaterial.createSealMaterial(sealRequest);
     assertSealMaterial(material, stage, state);
     if (
       input.result.disposition === "promoted" &&
-      material.sealedAt !==
-        input.result.activeChampion.updatedAt
+      material.sealedAt !== input.result.activeChampion.updatedAt
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
@@ -1675,28 +1397,19 @@ export class CampaignStateOptimizationCoordinator
       disposition: input.result.disposition,
       candidateCommit,
       sealHash: input.result.sealHash,
-      decisionAttestationHash:
-        material.decisionAttestationHash,
-      holdoutAvailabilityAttestationHash:
-        material.holdoutAvailabilityAttestationHash,
+      decisionAttestationHash: material.decisionAttestationHash,
+      holdoutAvailabilityAttestationHash: material.holdoutAvailabilityAttestationHash,
       sealedAt: material.sealedAt,
       ledgers: material.ledgers,
     };
-    state = await this.#options.store.sealExperiment(
-      state.contentHash,
-      seal,
-    );
+    state = await this.#options.store.sealExperiment(state.contentHash, seal);
     if (state.control.status === "stop-requested") {
-      state = await this.#options.store.acknowledgeStopped(
-        state.contentHash,
-      );
+      state = await this.#options.store.acknowledgeStopped(state.contentHash);
     }
     const completed = snapshotFromState(state);
     if (
-      canonicalJson(completed.budget) !==
-        canonicalJson(input.result.budget) ||
-      canonicalJson(completed.activeChampion) !==
-        canonicalJson(input.result.activeChampion)
+      canonicalJson(completed.budget) !== canonicalJson(input.result.budget) ||
+      canonicalJson(completed.activeChampion) !== canonicalJson(input.result.activeChampion)
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
@@ -1711,13 +1424,12 @@ export class CampaignStateOptimizationCoordinator
     assertHash(input.claimHash);
     assertHash(input.currentStateHash);
     const history = await this.#options.store.reconstruct();
-    const pending =
-      await this.#options.interruption.findPending({
-        campaignId: history.current.campaignId,
-        lineageId: history.current.baselineLineageId,
-        protocolHash: history.current.protocolHash,
-        currentStateHash: history.current.contentHash,
-      });
+    const pending = await this.#options.interruption.findPending({
+      campaignId: history.current.campaignId,
+      lineageId: history.current.baselineLineageId,
+      protocolHash: history.current.protocolHash,
+      currentStateHash: history.current.contentHash,
+    });
     if (pending !== null) {
       if (
         pending.claimHash !== input.claimHash ||
@@ -1727,19 +1439,13 @@ export class CampaignStateOptimizationCoordinator
       ) {
         throw new CampaignStateOptimizationCoordinatorError();
       }
-      return snapshotFromState(
-        await this.#applyInterruption(history, pending),
-      );
+      return snapshotFromState(await this.#applyInterruption(history, pending));
     }
-    const experimentNumber =
-      history.current.numbering.inFlightExperimentNumber;
+    const experimentNumber = history.current.numbering.inFlightExperimentNumber;
     if (experimentNumber === null) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    const resolved = await this.#resolveClaim(
-      history,
-      experimentNumber,
-    );
+    const resolved = await this.#resolveClaim(history, experimentNumber);
     if (
       resolved.publicClaim.claimHash !== input.claimHash ||
       !resolved.allowedCurrentStateHashes.has(input.currentStateHash)
@@ -1750,19 +1456,16 @@ export class CampaignStateOptimizationCoordinator
     }
     const draft = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.optimization-interruption.v1" as const,
+      domain: "dark-factory.optimization-interruption.v1" as const,
       campaignId: history.current.campaignId,
       lineageId: history.current.baselineLineageId,
       protocolHash: history.current.protocolHash,
       experimentNumber,
       claimHash: input.claimHash,
-      allocationStateHash:
-        resolved.publicClaim.allocationStateHash,
+      allocationStateHash: resolved.publicClaim.allocationStateHash,
       failureClass: input.failureClass,
     };
-    const record =
-      await this.#options.interruption.begin(draft);
+    const record = await this.#options.interruption.begin(draft);
     assertInterruptionRecord(record, {
       campaignId: draft.campaignId,
       lineageId: draft.lineageId,
@@ -1771,14 +1474,11 @@ export class CampaignStateOptimizationCoordinator
     if (
       record.experimentNumber !== draft.experimentNumber ||
       record.claimHash !== draft.claimHash ||
-      record.allocationStateHash !==
-        draft.allocationStateHash ||
+      record.allocationStateHash !== draft.allocationStateHash ||
       record.failureClass !== draft.failureClass
     ) {
       throw new CampaignStateOptimizationCoordinatorError();
     }
-    return snapshotFromState(
-      await this.#applyInterruption(history, record),
-    );
+    return snapshotFromState(await this.#applyInterruption(history, record));
   }
 }

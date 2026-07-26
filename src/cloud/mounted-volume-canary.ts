@@ -1,39 +1,21 @@
 import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import {
-  lstat,
-  mkdir,
-  open,
-  realpath,
-  rename,
-  rm,
-  type FileHandle,
-} from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import type { TrustedArtifactRuntimeGuard } from "./artifact-bridge.js";
 import type { MountedVolumeStateSemanticsGuard } from "./mounted-volume-state.js";
-import type {
-  CloudExecutionMarker,
-  CloudProviderName,
-} from "./types.js";
+import type { CloudExecutionMarker, CloudProviderName } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SAFE_VOLUME_COMPONENT =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const SAFE_VOLUME_SUBPATH =
-  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$/u;
+const SAFE_VOLUME_COMPONENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SAFE_VOLUME_SUBPATH = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$/u;
 const SAFE_NAMESPACE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u;
 const SAFE_RUNTIME_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/u;
-const ISO_TIMESTAMP =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const RECEIPT_POLICY_VERSION = "mounted-volume-semantics-v1";
 const RECEIPT_VALIDITY_MS = 6 * 60 * 60_000;
 const MAXIMUM_RECEIPT_VALIDITY_MS = 24 * 60 * 60_000;
@@ -88,10 +70,7 @@ export interface MountedVolumeCanaryFileSystemPort {
   ): Promise<"created" | "exists">;
   inspect(path: string): Promise<CanaryPathObservation>;
   resolveRealPath(path: string): Promise<string>;
-  createExclusiveSyncedFile(
-    path: string,
-    bytes: Uint8Array,
-  ): Promise<"created" | "exists">;
+  createExclusiveSyncedFile(path: string, bytes: Uint8Array): Promise<"created" | "exists">;
   readRegularFile(path: string): Promise<Uint8Array>;
   rename(source: string, target: string): Promise<void>;
   syncDirectory(path: string): Promise<void>;
@@ -227,10 +206,7 @@ function isErrno(error: unknown, code: string): boolean {
 }
 
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return (
-    left.byteLength === right.byteLength &&
-    Buffer.from(left).equals(Buffer.from(right))
-  );
+  return left.byteLength === right.byteLength && Buffer.from(left).equals(Buffer.from(right));
 }
 
 function assertExactKeys(
@@ -239,17 +215,12 @@ function assertExactKeys(
   label: string,
 ): void {
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.length ||
-    keys.some((key) => !expected.includes(key))
-  ) {
+  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
     fail(`${label} contains unsupported fields.`);
   }
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -328,8 +299,7 @@ export function computeMountedVolumeRuntimeIdentityHash(input: {
     domain: "dark-factory.mounted-volume-runtime.v1",
     provider: input.provider,
     sandboxId: input.runtimeIdentity.marker.sandboxId,
-    markerEnvironmentName:
-      input.runtimeIdentity.marker.markerEnvironmentName,
+    markerEnvironmentName: input.runtimeIdentity.marker.markerEnvironmentName,
     controlImageDigest: input.controlImageDigest,
     nodeVersion: input.runtimeIdentity.nodeVersion,
     platform: input.runtimeIdentity.platform,
@@ -349,18 +319,17 @@ function assertSafeDirectory(
   path: string,
   label: string,
 ): Promise<void> {
-  return Promise.all([
-    filesystem.inspect(path),
-    filesystem.resolveRealPath(path),
-  ]).then(([observation, actualPath]) => {
-    if (
-      observation.kind !== "directory" ||
-      observation.symbolicLink ||
-      actualPath !== resolve(path)
-    ) {
-      fail(`${label} is not a real, non-symlink directory.`);
-    }
-  });
+  return Promise.all([filesystem.inspect(path), filesystem.resolveRealPath(path)]).then(
+    ([observation, actualPath]) => {
+      if (
+        observation.kind !== "directory" ||
+        observation.symbolicLink ||
+        actualPath !== resolve(path)
+      ) {
+        fail(`${label} is not a real, non-symlink directory.`);
+      }
+    },
+  );
 }
 
 async function ensureSafeVolumeRoot(
@@ -368,21 +337,13 @@ async function ensureSafeVolumeRoot(
   root: string,
 ): Promise<void> {
   try {
-    await assertSafeDirectory(
-      filesystem,
-      root,
-      "Mounted-volume root",
-    );
+    await assertSafeDirectory(filesystem, root, "Mounted-volume root");
     return;
   } catch (error) {
     if (!isErrno(error, "ENOENT")) throw error;
   }
   const parent = dirname(root);
-  await assertSafeDirectory(
-    filesystem,
-    parent,
-    "Mounted-volume parent",
-  );
+  await assertSafeDirectory(filesystem, parent, "Mounted-volume parent");
   const created = await filesystem.createDirectory(root, {
     recursive: false,
     exclusive: true,
@@ -391,11 +352,7 @@ async function ensureSafeVolumeRoot(
     fail("Mounted-volume root creation lost its exclusive race.");
   }
   await filesystem.syncDirectory(parent);
-  await assertSafeDirectory(
-    filesystem,
-    root,
-    "Mounted-volume root",
-  );
+  await assertSafeDirectory(filesystem, root, "Mounted-volume root");
 }
 
 async function assertRegularFile(
@@ -448,14 +405,7 @@ function parseHead(bytes: Uint8Array): CanaryHead {
   }
   assertExactKeys(
     value,
-    [
-      "schemaVersion",
-      "domain",
-      "generation",
-      "previousHeadHash",
-      "payloadHash",
-      "contentHash",
-    ],
+    ["schemaVersion", "domain", "generation", "previousHeadHash", "payloadHash", "contentHash"],
     "Canary head",
   );
   if (
@@ -464,8 +414,7 @@ function parseHead(bytes: Uint8Array): CanaryHead {
     !Number.isSafeInteger(value.generation) ||
     (value.generation as number) <= 0 ||
     (value.previousHeadHash !== null &&
-      (typeof value.previousHeadHash !== "string" ||
-        !SHA256.test(value.previousHeadHash))) ||
+      (typeof value.previousHeadHash !== "string" || !SHA256.test(value.previousHeadHash))) ||
     typeof value.payloadHash !== "string" ||
     !SHA256.test(value.payloadHash) ||
     typeof value.contentHash !== "string" ||
@@ -478,10 +427,7 @@ function parseHead(bytes: Uint8Array): CanaryHead {
   return value as unknown as CanaryHead;
 }
 
-function assertExpectedHead(
-  observed: CanaryHead,
-  expected: CanaryHead,
-): void {
+function assertExpectedHead(observed: CanaryHead, expected: CanaryHead): void {
   if (
     observed.generation !== expected.generation ||
     observed.contentHash !== expected.contentHash ||
@@ -499,25 +445,16 @@ async function atomicReplace(input: {
   readonly bytes: Uint8Array;
 }): Promise<void> {
   const stagingPath = join(input.directory, input.stagingName);
-  const created = await input.filesystem.createExclusiveSyncedFile(
-    stagingPath,
-    input.bytes,
-  );
+  const created = await input.filesystem.createExclusiveSyncedFile(stagingPath, input.bytes);
   if (created !== "created") {
     fail("Canary staging file unexpectedly already exists.");
   }
-  await assertRegularFile(
-    input.filesystem,
-    stagingPath,
-    "Canary staging file",
-  );
+  await assertRegularFile(input.filesystem, stagingPath, "Canary staging file");
   await input.filesystem.rename(stagingPath, input.target);
   await input.filesystem.syncDirectory(input.directory);
 }
 
-function strictReceipt(
-  value: unknown,
-): asserts value is MountedVolumeSemanticsCanaryReceipt {
+function strictReceipt(value: unknown): asserts value is MountedVolumeSemanticsCanaryReceipt {
   if (!isPlainRecord(value)) {
     fail("Mounted-volume semantics receipt is not an object.");
   }
@@ -525,16 +462,11 @@ function strictReceipt(
   if (!isPlainRecord(value.observations)) {
     fail("Mounted-volume semantics observations are not an object.");
   }
-  assertExactKeys(
-    value.observations,
-    OBSERVATION_KEYS,
-    "Mounted-volume semantics observations",
-  );
+  assertExactKeys(value.observations, OBSERVATION_KEYS, "Mounted-volume semantics observations");
   const observations = value.observations;
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.mounted-volume-semantics-canary.v1" ||
+    value.domain !== "dark-factory.mounted-volume-semantics-canary.v1" ||
     value.policyVersion !== RECEIPT_POLICY_VERSION ||
     !["daytona", "e2b", "modal"].includes(String(value.provider)) ||
     typeof value.volumeRootHash !== "string" ||
@@ -554,15 +486,11 @@ function strictReceipt(
     !ISO_TIMESTAMP.test(value.expiresAt) ||
     !Number.isFinite(Date.parse(value.expiresAt)) ||
     Date.parse(value.expiresAt) <= Date.parse(value.observedAt) ||
-    Date.parse(value.expiresAt) - Date.parse(value.observedAt) >
-      MAXIMUM_RECEIPT_VALIDITY_MS ||
+    Date.parse(value.expiresAt) - Date.parse(value.observedAt) > MAXIMUM_RECEIPT_VALIDITY_MS ||
     observations.regularNonSymlinkPaths !== true ||
     observations.exclusiveCreationUnderContention !== true ||
-    !Number.isSafeInteger(
-      observations.exclusiveCreationContenderCount,
-    ) ||
-    observations.exclusiveCreationContenderCount !==
-      EXCLUSIVE_CONTENDER_COUNT ||
+    !Number.isSafeInteger(observations.exclusiveCreationContenderCount) ||
+    observations.exclusiveCreationContenderCount !== EXCLUSIVE_CONTENDER_COUNT ||
     observations.exclusiveCreationWinnerCount !== 1 ||
     observations.sameVolumeAtomicRenameVisibility !== true ||
     !Number.isSafeInteger(observations.renameVisibilitySampleCount) ||
@@ -581,9 +509,7 @@ function strictReceipt(
   }
 }
 
-export class NodeMountedVolumeCanaryFileSystem
-  implements MountedVolumeCanaryFileSystemPort
-{
+export class NodeMountedVolumeCanaryFileSystem implements MountedVolumeCanaryFileSystemPort {
   async createDirectory(
     path: string,
     options: {
@@ -606,11 +532,7 @@ export class NodeMountedVolumeCanaryFileSystem
   async inspect(path: string): Promise<CanaryPathObservation> {
     const info = await lstat(path);
     return {
-      kind: info.isDirectory()
-        ? "directory"
-        : info.isFile()
-          ? "regular-file"
-          : "other",
+      kind: info.isDirectory() ? "directory" : info.isFile() ? "regular-file" : "other",
       symbolicLink: info.isSymbolicLink(),
       linkCount: info.nlink,
     };
@@ -620,14 +542,8 @@ export class NodeMountedVolumeCanaryFileSystem
     return realpath(path);
   }
 
-  async createExclusiveSyncedFile(
-    path: string,
-    bytes: Uint8Array,
-  ): Promise<"created" | "exists"> {
-    if (
-      bytes.byteLength <= 0 ||
-      bytes.byteLength > MAXIMUM_CANARY_FILE_BYTES
-    ) {
+  async createExclusiveSyncedFile(path: string, bytes: Uint8Array): Promise<"created" | "exists"> {
+    if (bytes.byteLength <= 0 || bytes.byteLength > MAXIMUM_CANARY_FILE_BYTES) {
       fail("Canary file size is outside policy.");
     }
     let handle: FileHandle | undefined;
@@ -635,10 +551,7 @@ export class NodeMountedVolumeCanaryFileSystem
       try {
         handle = await open(
           path,
-          constants.O_CREAT |
-            constants.O_EXCL |
-            constants.O_WRONLY |
-            constants.O_NOFOLLOW,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
           0o600,
         );
       } catch (error) {
@@ -656,14 +569,13 @@ export class NodeMountedVolumeCanaryFileSystem
   async readRegularFile(path: string): Promise<Uint8Array> {
     let handle: FileHandle | undefined;
     try {
-      handle = await open(
-        path,
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
+      handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
       const opened = await handle.stat();
       if (
         !opened.isFile() ||
-        opened.nlink !== 1 ||
+        // An atomic replacement may unlink the opened target before this
+        // descriptor is inspected; link count zero is still a safe snapshot.
+        opened.nlink > 1 ||
         opened.size <= 0 ||
         opened.size > MAXIMUM_CANARY_FILE_BYTES
       ) {
@@ -692,12 +604,7 @@ export class NodeMountedVolumeCanaryFileSystem
   async syncDirectory(path: string): Promise<void> {
     let handle: FileHandle | undefined;
     try {
-      handle = await open(
-        path,
-        constants.O_RDONLY |
-          constants.O_DIRECTORY |
-          constants.O_NOFOLLOW,
-      );
+      handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
       await handle.sync();
     } finally {
       await handle?.close();
@@ -709,9 +616,7 @@ export class NodeMountedVolumeCanaryFileSystem
   }
 }
 
-export class InProcessMountedVolumeCanaryWorkers
-  implements MountedVolumeCanaryWorkerPort
-{
+export class InProcessMountedVolumeCanaryWorkers implements MountedVolumeCanaryWorkerPort {
   async raceExclusiveCreation(input: {
     readonly filesystem: MountedVolumeCanaryFileSystemPort;
     readonly path: string;
@@ -720,17 +625,13 @@ export class InProcessMountedVolumeCanaryWorkers
   }): Promise<ExclusiveCreationRaceObservation> {
     const outcomes = await Promise.all(
       Array.from({ length: input.contenderCount }, async () =>
-        input.filesystem.createExclusiveSyncedFile(
-          input.path,
-          input.payload,
-        ),
+        input.filesystem.createExclusiveSyncedFile(input.path, input.payload),
       ),
     );
     return {
       contenderCount: outcomes.length,
       winnerCount: outcomes.filter((value) => value === "created").length,
-      alreadyExistsCount: outcomes.filter((value) => value === "exists")
-        .length,
+      alreadyExistsCount: outcomes.filter((value) => value === "exists").length,
     };
   }
 
@@ -750,9 +651,7 @@ export class InProcessMountedVolumeCanaryWorkers
 
     const observe = async (): Promise<void> => {
       try {
-        const value = await input.filesystem.readRegularFile(
-          input.targetPath,
-        );
+        const value = await input.filesystem.readRegularFile(input.targetPath);
         if (equalBytes(value, input.before)) beforeCount += 1;
         else if (equalBytes(value, input.after)) afterCount += 1;
         else invalidCount += 1;
@@ -778,8 +677,7 @@ export class InProcessMountedVolumeCanaryWorkers
     await observe();
 
     return {
-      sampleCount:
-        beforeCount + afterCount + missingCount + invalidCount,
+      sampleCount: beforeCount + afterCount + missingCount + invalidCount,
       beforeCount,
       afterCount,
       missingCount,
@@ -793,13 +691,10 @@ export async function runMountedVolumeSemanticsCanary(
 ): Promise<MountedVolumeSemanticsCanaryReceipt> {
   options.runtimeGuard.assertTrustedCloudRuntime();
   const root = boundedVolumeRoot(options.volumeRoot);
-  const filesystem =
-    options.filesystem ?? new NodeMountedVolumeCanaryFileSystem();
-  const workers =
-    options.workers ?? new InProcessMountedVolumeCanaryWorkers();
+  const filesystem = options.filesystem ?? new NodeMountedVolumeCanaryFileSystem();
+  const workers = options.workers ?? new InProcessMountedVolumeCanaryWorkers();
   const now = options.now ?? (() => new Date());
-  const validityMs =
-    options.receiptValidityMs ?? RECEIPT_VALIDITY_MS;
+  const validityMs = options.receiptValidityMs ?? RECEIPT_VALIDITY_MS;
   if (
     !Number.isSafeInteger(validityMs) ||
     validityMs <= 0 ||
@@ -810,22 +705,20 @@ export async function runMountedVolumeSemanticsCanary(
   }
   assertRuntimeIdentity(options.provider, options.runtimeIdentity);
   const observedDate = now();
-  const observedAt = canonicalTimestamp(
-    observedDate,
-    "Canary observation time",
-  );
+  const observedAt = canonicalTimestamp(observedDate, "Canary observation time");
   const expiresAt = canonicalTimestamp(
     new Date(observedDate.getTime() + validityMs),
     "Canary expiry time",
   );
-  const nonce = (options.nonceFactory ?? (() =>
-    randomBytes(24).toString("hex")))();
+  const nonce = (options.nonceFactory ?? (() => randomBytes(24).toString("hex")))();
   if (!/^[a-f0-9]{48}$/u.test(nonce)) {
     fail("Mounted-volume canary nonce is malformed.");
   }
   const canaryRoot = join(root, `.df-volume-canary-${nonce}`);
   let canaryRootCreated = false;
-  let primaryFailure: unknown;
+  let receipt: MountedVolumeSemanticsCanaryReceipt | undefined;
+  let primaryFailure: { readonly error: unknown } | undefined;
+  let cleanupFailure: { readonly error: unknown } | undefined;
 
   try {
     await ensureSafeVolumeRoot(filesystem, root);
@@ -837,19 +730,12 @@ export async function runMountedVolumeSemanticsCanary(
       fail("Mounted-volume canary directory already exists.");
     }
     canaryRootCreated = true;
-    await assertSafeDirectory(
-      filesystem,
-      canaryRoot,
-      "Mounted-volume canary directory",
-    );
+    await assertSafeDirectory(filesystem, canaryRoot, "Mounted-volume canary directory");
     await filesystem.syncDirectory(root);
     await filesystem.syncDirectory(canaryRoot);
 
     const exclusivePath = join(canaryRoot, "exclusive-create");
-    const exclusivePayload = Buffer.from(
-      "dark-factory-exclusive-create-v1\n",
-      "utf8",
-    );
+    const exclusivePayload = Buffer.from("dark-factory-exclusive-create-v1\n", "utf8");
     const exclusive = await workers.raceExclusiveCreation({
       filesystem,
       path: exclusivePath,
@@ -859,52 +745,27 @@ export async function runMountedVolumeSemanticsCanary(
     if (
       exclusive.contenderCount !== EXCLUSIVE_CONTENDER_COUNT ||
       exclusive.winnerCount !== 1 ||
-      exclusive.alreadyExistsCount !==
-        EXCLUSIVE_CONTENDER_COUNT - 1 ||
-      exclusive.winnerCount + exclusive.alreadyExistsCount !==
-        exclusive.contenderCount
+      exclusive.alreadyExistsCount !== EXCLUSIVE_CONTENDER_COUNT - 1 ||
+      exclusive.winnerCount + exclusive.alreadyExistsCount !== exclusive.contenderCount
     ) {
-      fail(
-        "Mounted volume did not demonstrate exclusive creation under contention.",
-      );
+      fail("Mounted volume did not demonstrate exclusive creation under contention.");
     }
-    await assertRegularFile(
-      filesystem,
-      exclusivePath,
-      "Exclusive-creation winner",
-    );
-    if (
-      !equalBytes(
-        await filesystem.readRegularFile(exclusivePath),
-        exclusivePayload,
-      )
-    ) {
+    await assertRegularFile(filesystem, exclusivePath, "Exclusive-creation winner");
+    if (!equalBytes(await filesystem.readRegularFile(exclusivePath), exclusivePayload)) {
       fail("Exclusive-creation winner contains unexpected bytes.");
     }
     await filesystem.syncDirectory(canaryRoot);
 
-    const before = Buffer.from(
-      "dark-factory-rename-state-before-v1\n",
-      "utf8",
-    );
-    const after = Buffer.from(
-      "dark-factory-rename-state-after-v1-\n",
-      "utf8",
-    );
+    const before = Buffer.from("dark-factory-rename-state-before-v1\n", "utf8");
+    const after = Buffer.from("dark-factory-rename-state-after-v1-\n", "utf8");
     if (before.byteLength !== after.byteLength) {
       fail("Atomic-rename canary payloads are not size-matched.");
     }
     const renameTarget = join(canaryRoot, "rename-target");
     const renameSource = join(canaryRoot, "rename-source");
     if (
-      (await filesystem.createExclusiveSyncedFile(
-        renameTarget,
-        before,
-      )) !== "created" ||
-      (await filesystem.createExclusiveSyncedFile(
-        renameSource,
-        after,
-      )) !== "created"
+      (await filesystem.createExclusiveSyncedFile(renameTarget, before)) !== "created" ||
+      (await filesystem.createExclusiveSyncedFile(renameSource, after)) !== "created"
     ) {
       fail("Atomic-rename canary files were not created exclusively.");
     }
@@ -919,36 +780,25 @@ export async function runMountedVolumeSemanticsCanary(
       readsPerReader: RENAME_READS_PER_READER,
     });
     if (
-      visibility.sampleCount !==
-        RENAME_READER_COUNT * RENAME_READS_PER_READER + 2 ||
+      visibility.sampleCount !== RENAME_READER_COUNT * RENAME_READS_PER_READER + 2 ||
       visibility.beforeCount < 1 ||
       visibility.afterCount < 1 ||
       visibility.missingCount !== 0 ||
       visibility.invalidCount !== 0 ||
       visibility.beforeCount +
-          visibility.afterCount +
-          visibility.missingCount +
-          visibility.invalidCount !==
+        visibility.afterCount +
+        visibility.missingCount +
+        visibility.invalidCount !==
         visibility.sampleCount
     ) {
-      fail(
-        "Mounted volume did not demonstrate same-volume atomic rename visibility.",
-      );
+      fail("Mounted volume did not demonstrate same-volume atomic rename visibility.");
     }
-    await assertRegularFile(
-      filesystem,
-      renameTarget,
-      "Atomic-rename target",
-    );
+    await assertRegularFile(filesystem, renameTarget, "Atomic-rename target");
     await filesystem.syncDirectory(canaryRoot);
 
     const headPath = join(canaryRoot, "head.json");
     const firstHead = canaryHead(1, null, "first");
-    const secondHead = canaryHead(
-      2,
-      firstHead.contentHash,
-      "second",
-    );
+    const secondHead = canaryHead(2, firstHead.contentHash, "second");
     await atomicReplace({
       filesystem,
       directory: canaryRoot,
@@ -956,10 +806,7 @@ export async function runMountedVolumeSemanticsCanary(
       stagingName: "head-1.staging",
       bytes: headBytes(firstHead),
     });
-    assertExpectedHead(
-      parseHead(await filesystem.readRegularFile(headPath)),
-      firstHead,
-    );
+    assertExpectedHead(parseHead(await filesystem.readRegularFile(headPath)), firstHead);
     await atomicReplace({
       filesystem,
       directory: canaryRoot,
@@ -967,10 +814,7 @@ export async function runMountedVolumeSemanticsCanary(
       stagingName: "head-2.staging",
       bytes: headBytes(secondHead),
     });
-    assertExpectedHead(
-      parseHead(await filesystem.readRegularFile(headPath)),
-      secondHead,
-    );
+    assertExpectedHead(parseHead(await filesystem.readRegularFile(headPath)), secondHead);
     await atomicReplace({
       filesystem,
       directory: canaryRoot,
@@ -980,15 +824,9 @@ export async function runMountedVolumeSemanticsCanary(
     });
     let rollbackDetected = false;
     try {
-      assertExpectedHead(
-        parseHead(await filesystem.readRegularFile(headPath)),
-        secondHead,
-      );
+      assertExpectedHead(parseHead(await filesystem.readRegularFile(headPath)), secondHead);
     } catch (error) {
-      if (
-        error instanceof MountedVolumeSemanticsCanaryError &&
-        /rollback/u.test(error.message)
-      ) {
+      if (error instanceof MountedVolumeSemanticsCanaryError && /rollback/u.test(error.message)) {
         rollbackDetected = true;
       } else {
         throw error;
@@ -1004,16 +842,12 @@ export async function runMountedVolumeSemanticsCanary(
       stagingName: "head-restore.staging",
       bytes: headBytes(secondHead),
     });
-    assertExpectedHead(
-      parseHead(await filesystem.readRegularFile(headPath)),
-      secondHead,
-    );
+    assertExpectedHead(parseHead(await filesystem.readRegularFile(headPath)), secondHead);
 
     options.runtimeGuard.assertTrustedCloudRuntime();
     const draft = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.mounted-volume-semantics-canary.v1" as const,
+      domain: "dark-factory.mounted-volume-semantics-canary.v1" as const,
       policyVersion: RECEIPT_POLICY_VERSION,
       provider: options.provider,
       volumeRootHash: computeMountedVolumeRootHash(root),
@@ -1023,9 +857,7 @@ export async function runMountedVolumeSemanticsCanary(
         volumeSubpath: options.volumeSubpath,
         volumeRoot: root,
       }),
-      controllerInstanceIdHash: hash(
-        options.runtimeIdentity.marker.sandboxId,
-      ),
+      controllerInstanceIdHash: hash(options.runtimeIdentity.marker.sandboxId),
       controlImageDigest: options.controlImageDigest,
       runtimeIdentityHash: computeMountedVolumeRuntimeIdentityHash({
         provider: options.provider,
@@ -1048,26 +880,36 @@ export async function runMountedVolumeSemanticsCanary(
       crashDurabilityTested: false as const,
       crashDurabilityClaimed: false as const,
       contentHash: "",
-    };
-    const receipt: MountedVolumeSemanticsCanaryReceipt = {
+    } satisfies MountedVolumeSemanticsCanaryReceipt;
+    receipt = {
       ...draft,
       contentHash: computeContentHash(draft),
     };
     strictReceipt(receipt);
-    return receipt;
   } catch (error) {
-    primaryFailure = error;
-    throw error;
+    primaryFailure = { error };
   } finally {
     if (canaryRootCreated) {
       try {
         await filesystem.removeTree(canaryRoot);
         await filesystem.syncDirectory(root);
-      } catch (cleanupError) {
-        if (primaryFailure === undefined) throw cleanupError;
+      } catch (error) {
+        cleanupFailure = { error };
       }
     }
   }
+  if (cleanupFailure !== undefined) {
+    if (primaryFailure === undefined) throw cleanupFailure.error;
+    throw new AggregateError(
+      [primaryFailure.error, cleanupFailure.error],
+      "Mounted-volume canary failed and its cleanup also failed.",
+    );
+  }
+  if (primaryFailure !== undefined) throw primaryFailure.error;
+  if (receipt === undefined) {
+    fail("Mounted-volume canary completed without an attested receipt.");
+  }
+  return receipt;
 }
 
 /**
@@ -1075,9 +917,7 @@ export async function runMountedVolumeSemanticsCanary(
  * canonical observation receipt from this exact mounted-volume binding. It is
  * deliberately not a provider-crash durability certificate.
  */
-export class AttestedMountedVolumeStateSemanticsGuard
-  implements MountedVolumeStateSemanticsGuard
-{
+export class AttestedMountedVolumeStateSemanticsGuard implements MountedVolumeStateSemanticsGuard {
   readonly #receipt: MountedVolumeSemanticsCanaryReceipt;
   readonly #provider: CloudProviderName;
   readonly #volumeRoot: string;
@@ -1097,25 +937,20 @@ export class AttestedMountedVolumeStateSemanticsGuard
     ) as MountedVolumeSemanticsCanaryReceipt;
     this.#provider = options.provider;
     this.#volumeRoot = boundedVolumeRoot(options.volumeRoot);
-    this.#volumeRootHash = computeMountedVolumeRootHash(
-      this.#volumeRoot,
-    );
+    this.#volumeRootHash = computeMountedVolumeRootHash(this.#volumeRoot);
     this.#volumeBindingHash = computeMountedVolumeBindingHash({
       provider: options.provider,
       volumeId: options.volumeId,
       volumeSubpath: options.volumeSubpath,
       volumeRoot: this.#volumeRoot,
     });
-    this.#controllerInstanceIdHash = hash(
-      options.runtimeIdentity.marker.sandboxId,
-    );
+    this.#controllerInstanceIdHash = hash(options.runtimeIdentity.marker.sandboxId);
     this.#controlImageDigest = options.controlImageDigest;
-    this.#runtimeIdentityHash =
-      computeMountedVolumeRuntimeIdentityHash({
-        provider: options.provider,
-        controlImageDigest: options.controlImageDigest,
-        runtimeIdentity: options.runtimeIdentity,
-      });
+    this.#runtimeIdentityHash = computeMountedVolumeRuntimeIdentityHash({
+      provider: options.provider,
+      controlImageDigest: options.controlImageDigest,
+      runtimeIdentity: options.runtimeIdentity,
+    });
     this.#runtimeGuard = options.runtimeGuard;
     this.#now = options.now ?? (() => new Date());
     this.#assertReceipt();
@@ -1133,8 +968,7 @@ export class AttestedMountedVolumeStateSemanticsGuard
       this.#receipt.provider !== this.#provider ||
       this.#receipt.volumeRootHash !== this.#volumeRootHash ||
       this.#receipt.volumeBindingHash !== this.#volumeBindingHash ||
-      this.#receipt.controllerInstanceIdHash !==
-        this.#controllerInstanceIdHash ||
+      this.#receipt.controllerInstanceIdHash !== this.#controllerInstanceIdHash ||
       this.#receipt.controlImageDigest !== this.#controlImageDigest ||
       this.#receipt.runtimeIdentityHash !== this.#runtimeIdentityHash
     ) {
@@ -1153,9 +987,7 @@ export class AttestedMountedVolumeStateSemanticsGuard
       boundedVolumeRoot(input.volumeRoot) !== this.#volumeRoot ||
       !SAFE_NAMESPACE.test(input.namespace)
     ) {
-      fail(
-        "Mutable state request does not match the attested volume or has an unsafe namespace.",
-      );
+      fail("Mutable state request does not match the attested volume or has an unsafe namespace.");
     }
   }
 }

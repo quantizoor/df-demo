@@ -1,8 +1,4 @@
-import type {
-  ChampionPointers,
-  ExperimentKind,
-  ExperimentState,
-} from "../domain/models.js";
+import type { ChampionPointers, ExperimentKind, ExperimentState } from "../domain/models.js";
 import { DarkFactoryError } from "./errors.js";
 
 const OPTIMIZATION_TRANSITIONS: Readonly<Record<ExperimentState, readonly ExperimentState[]>> = {
@@ -176,4 +172,3 @@ export class RepairAttemptLedger {
     );
   }
 }
-

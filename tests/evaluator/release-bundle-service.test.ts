@@ -8,17 +8,15 @@ import {
 } from "../../src/evaluator/contracts.js";
 import {
   ArtifactBackedEvaluationReleaseBundleService,
-  evaluationReleaseSignatureVerificationAttestationHash,
   type EvaluationReleaseArtifactPurpose,
   type EvaluationReleaseArtifactQuery,
   type EvaluationReleaseSignatureVerificationRequest,
+  evaluationReleaseSignatureVerificationAttestationHash,
   type TrustedEvaluationReleaseArtifactReader,
   type TrustedEvaluationReleaseArtifactSource,
   type TrustedEvaluationReleaseSignatureVerifier,
 } from "../../src/evaluator/release-bundle-service.js";
-import {
-  resultEnvelopeBehavioralSourceCommitmentHash,
-} from "../../src/evaluator/release-lineage.js";
+import { resultEnvelopeBehavioralSourceCommitmentHash } from "../../src/evaluator/release-lineage.js";
 import type {
   BehavioralEvidence,
   CacheAttestation,
@@ -31,10 +29,7 @@ import {
   sha256,
   withContentHash,
 } from "../../src/schemas/canonical.js";
-import type {
-  SignedBehavioralRelease,
-  SignedResultEnvelope,
-} from "../../src/schemas/trusted.js";
+import type { SignedBehavioralRelease, SignedResultEnvelope } from "../../src/schemas/trusted.js";
 
 const PROTOCOL_HASH = "a".repeat(64);
 const COMPLIANCE_HASH = "b".repeat(64);
@@ -155,7 +150,7 @@ function resultEnvelope(
 ): SignedResultEnvelope {
   return withContentHash({
     schemaVersion: "1.0.0",
-    createdAt: SUBMITTED_AT,
+    createdAt: DERIVED_AT,
     provenanceRefs: [],
     envelopeId: "envelope-001",
     experimentNumber: 1,
@@ -274,16 +269,10 @@ function fixture(input: {
     };
   }
 
-  const provisionalResult = resultEnvelope(
-    evaluationRequest,
-    cache.contentHash,
-    "f".repeat(64),
-  );
+  const provisionalResult = resultEnvelope(evaluationRequest, cache.contentHash, "f".repeat(64));
   const sourceHash = input.legacySourceReference
     ? provisionalResult.contentHash
-    : resultEnvelopeBehavioralSourceCommitmentHash(
-        provisionalResult,
-      );
+    : resultEnvelopeBehavioralSourceCommitmentHash(provisionalResult);
   const policyVersions = {
     protocol: "protocol-v1",
     broker: "broker-v1",
@@ -369,11 +358,7 @@ function fixture(input: {
   store(artifact("behavioral-evidence", evidence));
   store(artifact("failure-cards", cards));
   store(artifact("diagnostic-brief", brief));
-  const result = resultEnvelope(
-    evaluationRequest,
-    cache.contentHash,
-    release.contentHash,
-  );
+  const result = resultEnvelope(evaluationRequest, cache.contentHash, release.contentHash);
   return { request: evaluationRequest, result, artifacts };
 }
 
@@ -382,45 +367,41 @@ function dependencies(value: ReleaseFixture): {
   readonly source: TrustedEvaluationReleaseArtifactSource;
   readonly reader: TrustedEvaluationReleaseArtifactReader;
   readonly verifier: TrustedEvaluationReleaseSignatureVerifier;
-  readonly evaluate: ReturnType<typeof vi.fn>;
-  readonly locate: ReturnType<typeof vi.fn>;
-  readonly readUtf8: ReturnType<typeof vi.fn>;
-  readonly verify: ReturnType<typeof vi.fn>;
+  readonly evaluate: ReturnType<typeof vi.fn<TrustedEvaluationService["evaluate"]>>;
+  readonly locate: ReturnType<typeof vi.fn<TrustedEvaluationReleaseArtifactSource["locate"]>>;
+  readonly readUtf8: ReturnType<typeof vi.fn<TrustedEvaluationReleaseArtifactReader["readUtf8"]>>;
+  readonly verify: ReturnType<typeof vi.fn<TrustedEvaluationReleaseSignatureVerifier["verify"]>>;
 } {
   const evaluate = vi.fn(async () => value.result);
   const locate = vi.fn(async (query: EvaluationReleaseArtifactQuery) => {
-    return value.artifacts.get(`${query.purpose}:${query.contentHash}`)
-      ?.reference;
+    return value.artifacts.get(`${query.purpose}:${query.contentHash}`)?.reference;
   });
   const readUtf8 = vi.fn(async (reference: TrustedCloudArtifactRef) => {
-    return [...value.artifacts.values()].find(
-      (entry) => entry.reference.uri === reference.uri,
-    )?.raw ?? "";
+    return (
+      [...value.artifacts.values()].find((entry) => entry.reference.uri === reference.uri)?.raw ??
+      ""
+    );
   });
-  const verify = vi.fn(
-    async (input: EvaluationReleaseSignatureVerificationRequest) => {
-      const keyVersion = `${input.purpose}-2026-07`;
-      return {
-        schemaVersion: 1 as const,
-        domain:
-          "dark-factory.evaluation-release-signature-verification.v1" as const,
+  const verify = vi.fn(async (input: EvaluationReleaseSignatureVerificationRequest) => {
+    const keyVersion = `${input.purpose}-2026-07`;
+    return {
+      schemaVersion: 1 as const,
+      domain: "dark-factory.evaluation-release-signature-verification.v1" as const,
+      purpose: input.purpose,
+      documentHash: input.documentHash,
+      keyId: input.keyId,
+      keyVersion,
+      signedAt: input.signedAt,
+      verifierAttestationHash: evaluationReleaseSignatureVerificationAttestationHash({
         purpose: input.purpose,
         documentHash: input.documentHash,
         keyId: input.keyId,
         keyVersion,
         signedAt: input.signedAt,
-        verifierAttestationHash:
-          evaluationReleaseSignatureVerificationAttestationHash({
-            purpose: input.purpose,
-            documentHash: input.documentHash,
-            keyId: input.keyId,
-            keyVersion,
-            signedAt: input.signedAt,
-          }),
-        verified: true as const,
-      };
-    },
-  );
+      }),
+      verified: true as const,
+    };
+  });
   return {
     service: {
       boundary: "trusted-cloud-evaluator-service",
@@ -435,8 +416,7 @@ function dependencies(value: ReleaseFixture): {
       readUtf8,
     },
     verifier: {
-      boundary:
-        "trusted-cloud-evaluation-release-signature-verifier",
+      boundary: "trusted-cloud-evaluation-release-signature-verifier",
       verify,
     },
     evaluate,
@@ -509,19 +489,9 @@ describe("artifact-backed evaluation release bundle service", () => {
     expect(
       ports.verify.mock.calls
         .slice(0, 3)
-        .map(
-          ([input]) =>
-            (input as EvaluationReleaseSignatureVerificationRequest)
-              .purpose,
-        ),
-    ).toEqual([
-      "result-envelope",
-      "cache-attestation",
-      "behavioral-release",
-    ]);
-    expect(
-      resultEnvelopeBehavioralSourceCommitmentHash(replay.result),
-    ).toBe(
+        .map(([input]) => (input as EvaluationReleaseSignatureVerificationRequest).purpose),
+    ).toEqual(["result-envelope", "cache-attestation", "behavioral-release"]);
+    expect(resultEnvelopeBehavioralSourceCommitmentHash(replay.result)).toBe(
       replay.behavioralRelease?.sourceResultEnvelopeHash,
     );
     expect(ports.evaluate).toHaveBeenCalledTimes(2);
@@ -540,19 +510,14 @@ describe("artifact-backed evaluation release bundle service", () => {
     expect(ports.locate).toHaveBeenCalledTimes(1);
     expect(
       ports.verify.mock.calls.map(
-        ([input]) =>
-          (input as EvaluationReleaseSignatureVerificationRequest)
-            .purpose,
+        ([input]) => (input as EvaluationReleaseSignatureVerificationRequest).purpose,
       ),
     ).toEqual(["result-envelope", "cache-attestation"]);
   });
 
   it("fails closed when a completed request replays different release bytes", async () => {
     const value = fixture({ diagnostics: false });
-    const {
-      contentHash: _contentHash,
-      ...resultWithoutContentHash
-    } = value.result;
+    const { contentHash: _contentHash, ...resultWithoutContentHash } = value.result;
     const changedResult = withContentHash({
       ...resultWithoutContentHash,
       envelopeId: "envelope-replayed-differently",
@@ -574,9 +539,7 @@ describe("artifact-backed evaluation release bundle service", () => {
     });
 
     await expect(evaluator.evaluate(value.request)).resolves.toBeDefined();
-    await expect(evaluator.evaluate(value.request)).rejects.toThrow(
-      "failed closed",
-    );
+    await expect(evaluator.evaluate(value.request)).rejects.toThrow("failed closed");
   });
 
   it("rejects legacy full-envelope source references and partial releases", async () => {
@@ -585,21 +548,17 @@ describe("artifact-backed evaluation release bundle service", () => {
       legacySourceReference: true,
     });
     const legacyService = releaseService(legacy).evaluator;
-    await expect(legacyService.evaluate(legacy.request)).rejects.toThrow(
-      "failed closed",
-    );
+    await expect(legacyService.evaluate(legacy.request)).rejects.toThrow("failed closed");
 
     const partial = fixture({ diagnostics: true });
     const release = [...partial.artifacts.values()].find(
       (entry) => entry.purpose === "diagnostic-brief",
     );
     if (release === undefined) throw new Error("Missing test brief");
-    partial.artifacts.delete(
-      `${release.purpose}:${release.contentHash}`,
+    partial.artifacts.delete(`${release.purpose}:${release.contentHash}`);
+    await expect(releaseService(partial).evaluator.evaluate(partial.request)).rejects.toThrow(
+      "failed closed",
     );
-    await expect(
-      releaseService(partial).evaluator.evaluate(partial.request),
-    ).rejects.toThrow("failed closed");
   });
 
   it("rejects byte-valid but noncanonical JSON and forged verifier receipts", async () => {
@@ -608,52 +567,43 @@ describe("artifact-backed evaluation release bundle service", () => {
     if (cache === undefined) throw new Error("Missing test cache");
     const parsed = JSON.parse(cache.raw) as Readonly<Record<string, unknown>>;
     const raw = `${JSON.stringify(parsed, null, 2)}\n`;
-    noncanonical.artifacts.set(
-      `${cache.purpose}:${cache.contentHash}`,
-      {
-        ...cache,
-        raw,
-        reference: {
-          ...cache.reference,
-          sha256: sha256(raw),
-          byteLength: Buffer.byteLength(raw, "utf8"),
-        },
+    noncanonical.artifacts.set(`${cache.purpose}:${cache.contentHash}`, {
+      ...cache,
+      raw,
+      reference: {
+        ...cache.reference,
+        sha256: sha256(raw),
+        byteLength: Buffer.byteLength(raw, "utf8"),
       },
-    );
+    });
     await expect(
       releaseService(noncanonical).evaluator.evaluate(noncanonical.request),
     ).rejects.toThrow("failed closed");
 
     const forged = fixture({ diagnostics: false });
     const ports = dependencies(forged);
-    const verify = vi.fn(
-      async (input: EvaluationReleaseSignatureVerificationRequest) => ({
-        schemaVersion: 1 as const,
-        domain:
-          "dark-factory.evaluation-release-signature-verification.v1" as const,
-        purpose: input.purpose,
-        documentHash: input.documentHash,
-        keyId: input.keyId,
-        keyVersion: "wrong-version",
-        signedAt: input.signedAt,
-        verifierAttestationHash: "f".repeat(64),
-        verified: true as const,
-      }),
-    );
+    const verify = vi.fn(async (input: EvaluationReleaseSignatureVerificationRequest) => ({
+      schemaVersion: 1 as const,
+      domain: "dark-factory.evaluation-release-signature-verification.v1" as const,
+      purpose: input.purpose,
+      documentHash: input.documentHash,
+      keyId: input.keyId,
+      keyVersion: "wrong-version",
+      signedAt: input.signedAt,
+      verifierAttestationHash: "f".repeat(64),
+      verified: true as const,
+    }));
     const evaluator = new ArtifactBackedEvaluationReleaseBundleService({
       service: ports.service,
       source: ports.source,
       reader: ports.reader,
       signatureVerifier: {
-        boundary:
-          "trusted-cloud-evaluation-release-signature-verifier",
+        boundary: "trusted-cloud-evaluation-release-signature-verifier",
         verify,
       },
       now: () => NOW,
     });
-    await expect(evaluator.evaluate(forged.request)).rejects.toThrow(
-      "failed closed",
-    );
+    await expect(evaluator.evaluate(forged.request)).rejects.toThrow("failed closed");
   });
 
   it("captures methods and detects dependency mutation of sealed inputs", async () => {
@@ -677,63 +627,50 @@ describe("artifact-backed evaluation release bundle service", () => {
 
     const mutated = fixture({ diagnostics: false });
     const ports = dependencies(mutated);
-    const mutatingLocate = vi.fn(
-      async (query: EvaluationReleaseArtifactQuery) => {
-        const reference = mutated.artifacts.get(
-          `${query.purpose}:${query.contentHash}`,
-        )?.reference;
-        (
-          query as unknown as {
-            purpose: EvaluationReleaseArtifactPurpose;
-          }
-        ).purpose = "diagnostic-brief";
-        return reference;
+    const mutatingLocate = vi.fn(async (query: EvaluationReleaseArtifactQuery) => {
+      const reference = mutated.artifacts.get(`${query.purpose}:${query.contentHash}`)?.reference;
+      (
+        query as unknown as {
+          purpose: EvaluationReleaseArtifactPurpose;
+        }
+      ).purpose = "diagnostic-brief";
+      return reference;
+    });
+    const mutatingEvaluator = new ArtifactBackedEvaluationReleaseBundleService({
+      service: ports.service,
+      source: {
+        boundary: "trusted-cloud",
+        locate: mutatingLocate,
       },
-    );
-    const mutatingEvaluator =
-      new ArtifactBackedEvaluationReleaseBundleService({
-        service: ports.service,
-        source: {
-          boundary: "trusted-cloud",
-          locate: mutatingLocate,
-        },
-        reader: ports.reader,
-        signatureVerifier: ports.verifier,
-        now: () => NOW,
-      });
-    await expect(
-      mutatingEvaluator.evaluate(mutated.request),
-    ).rejects.toThrow("failed closed");
+      reader: ports.reader,
+      signatureVerifier: ports.verifier,
+      now: () => NOW,
+    });
+    await expect(mutatingEvaluator.evaluate(mutated.request)).rejects.toThrow("failed closed");
 
     const verifierMutation = fixture({ diagnostics: false });
     const verifierPorts = dependencies(verifierMutation);
-    const mutatingVerify = vi.fn(
-      async (
-        input: EvaluationReleaseSignatureVerificationRequest,
-      ) => {
-        const response = await verifierPorts.verify(input);
-        (
-          input as unknown as {
-            purpose: "cache-attestation";
-          }
-        ).purpose = "cache-attestation";
-        return response;
+    const mutatingVerify = vi.fn(async (input: EvaluationReleaseSignatureVerificationRequest) => {
+      const response = await verifierPorts.verify(input);
+      (
+        input as unknown as {
+          purpose: "cache-attestation";
+        }
+      ).purpose = "cache-attestation";
+      return response;
+    });
+    const verifierMutationEvaluator = new ArtifactBackedEvaluationReleaseBundleService({
+      service: verifierPorts.service,
+      source: verifierPorts.source,
+      reader: verifierPorts.reader,
+      signatureVerifier: {
+        boundary: "trusted-cloud-evaluation-release-signature-verifier",
+        verify: mutatingVerify,
       },
+      now: () => NOW,
+    });
+    await expect(verifierMutationEvaluator.evaluate(verifierMutation.request)).rejects.toThrow(
+      "failed closed",
     );
-    const verifierMutationEvaluator =
-      new ArtifactBackedEvaluationReleaseBundleService({
-        service: verifierPorts.service,
-        source: verifierPorts.source,
-        reader: verifierPorts.reader,
-        signatureVerifier: {
-          boundary:
-            "trusted-cloud-evaluation-release-signature-verifier",
-          verify: mutatingVerify,
-        },
-        now: () => NOW,
-      });
-    await expect(
-      verifierMutationEvaluator.evaluate(verifierMutation.request),
-    ).rejects.toThrow("failed closed");
   });
 });

@@ -1,9 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  betaCredibleInterval,
-  jeffreysPosterior,
-  type CredibleInterval,
-} from "./statistics.js";
+import { betaCredibleInterval, type CredibleInterval, jeffreysPosterior } from "./statistics.js";
 import type { HiddenTaskId } from "./types.js";
 
 export const CACHE_POLICY_VERSION = "champion-cache-v1";
@@ -61,10 +57,7 @@ export interface CacheObservationSignature {
   readonly signature: string;
 }
 
-export type UnsignedCacheObservation = Omit<
-  SignedCacheObservation,
-  "evaluatorSignature"
->;
+export type UnsignedCacheObservation = Omit<SignedCacheObservation, "evaluatorSignature">;
 
 export interface CacheObservationSignatureVerifier {
   readonly verify: (
@@ -188,18 +181,13 @@ export function evaluateCacheEntry(
       throw new Error("Signed cache observation is detached from its entry task");
     }
     if (observation.taskRevisionDigest !== entry.key.taskRevisionDigest) {
-      throw new Error(
-        "Signed cache observation is detached from its entry task revision",
-      );
+      throw new Error("Signed cache observation is detached from its entry task revision");
     }
     if (observation.cacheKeyDigest !== expectedDigest) {
       throw new Error("Signed cache observation is detached from its entry key");
     }
     const signedDuplicate = signedAttempts.get(observation.attemptDigest);
-    if (
-      signedDuplicate !== undefined &&
-      !sameObservation(signedDuplicate, observation)
-    ) {
+    if (signedDuplicate !== undefined && !sameObservation(signedDuplicate, observation)) {
       throw new Error("Conflicting observations share a signed attempt digest");
     }
     signedAttempts.set(observation.attemptDigest, observation);
@@ -308,7 +296,9 @@ export function evaluateDrift(
   const observedSurprisal = anchors.reduce(
     (sum, anchor) =>
       sum -
-      Math.log(anchor.freshPass ? anchor.predictedPassProbability : 1 - anchor.predictedPassProbability),
+      Math.log(
+        anchor.freshPass ? anchor.predictedPassProbability : 1 - anchor.predictedPassProbability,
+      ),
     0,
   );
   let exactTailProbability = 0;
@@ -372,8 +362,7 @@ function buildDistribution(
   const rewardVariance =
     rewards.length < 2
       ? 0
-      : rewards.reduce((sum, reward) => sum + (reward - rewardMean) ** 2, 0) /
-        (rewards.length - 1);
+      : rewards.reduce((sum, reward) => sum + (reward - rewardMean) ** 2, 0) / (rewards.length - 1);
   const bands = observations.map((observation) =>
     freshnessBand(nowMs - Date.parse(observation.observedAt)),
   );
@@ -389,9 +378,7 @@ function buildDistribution(
     passRate: passes / observations.length,
     rewardMean,
     rewardVariance,
-    interval95: betaCredibleInterval(
-      jeffreysPosterior(passes, observations.length - passes),
-    ),
+    interval95: betaCredibleInterval(jeffreysPosterior(passes, observations.length - passes)),
     oldestFreshnessBand: bands.reduce((oldest, band) =>
       freshnessRank(band) > freshnessRank(oldest) ? band : oldest,
     ),
@@ -425,7 +412,6 @@ function driftCohortDigest(hit: HiddenCacheHit): string {
     regionClass: key.regionClass,
     networkPolicyHash: key.networkPolicyHash,
     protocolHash: key.protocolHash,
-    freshnessBand: hit.distribution.oldestFreshnessBand,
     difficultyStratum: hit.difficultyStratum,
     capabilityStratum: hit.capabilityStratum,
   };
@@ -480,9 +466,7 @@ function validateCacheKey(key: CacheKeyMaterial): void {
     );
   }
   if (!/^sha256:[a-f0-9]{64}$/u.test(key.imageDigest)) {
-    throw new Error(
-      "Cache key field imageDigest must be a lowercase OCI sha256 digest",
-    );
+    throw new Error("Cache key field imageDigest must be a lowercase OCI sha256 digest");
   }
 }
 
@@ -499,12 +483,8 @@ function validateObservation(observation: SignedCacheObservation): void {
     !Number.isFinite(signedAt) ||
     signedAt < observedAt ||
     signedAt - observedAt > 5 * 60_000 ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(
-      observation.observedAt,
-    ) ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(
-      signature.signedAt,
-    ) ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(observation.observedAt) ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(signature.signedAt) ||
     !/^[a-f0-9]{64}$/u.test(observation.taskId) ||
     !/^[a-f0-9]{64}$/u.test(observation.taskRevisionDigest) ||
     !/^[a-f0-9]{64}$/u.test(observation.cacheKeyDigest) ||
@@ -526,9 +506,7 @@ function validateObservation(observation: SignedCacheObservation): void {
   }
 }
 
-function isCacheObservationSignature(
-  value: unknown,
-): value is CacheObservationSignature {
+function isCacheObservationSignature(value: unknown): value is CacheObservationSignature {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
@@ -536,9 +514,7 @@ function isCacheObservationSignature(
   const keys = Object.keys(signature);
   return (
     keys.length === 4 &&
-    keys.every((key) =>
-      ["algorithm", "keyId", "signedAt", "signature"].includes(key),
-    ) &&
+    keys.every((key) => ["algorithm", "keyId", "signedAt", "signature"].includes(key)) &&
     signature.algorithm === "ed25519" &&
     typeof signature.keyId === "string" &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(signature.keyId) &&
@@ -556,9 +532,7 @@ function verifyObservationSignature(
 ): boolean {
   const { evaluatorSignature, ...unsignedObservation } = observation;
   try {
-    return (
-      signatureVerifier.verify(unsignedObservation, evaluatorSignature) === true
-    );
+    return signatureVerifier.verify(unsignedObservation, evaluatorSignature) === true;
   } catch {
     return false;
   }
@@ -585,10 +559,7 @@ function mean(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function sameObservation(
-  left: SignedCacheObservation,
-  right: SignedCacheObservation,
-): boolean {
+function sameObservation(left: SignedCacheObservation, right: SignedCacheObservation): boolean {
   return (
     left.taskId === right.taskId &&
     left.taskRevisionDigest === right.taskRevisionDigest &&

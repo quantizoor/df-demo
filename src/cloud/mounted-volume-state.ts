@@ -1,15 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import {
-  lstat,
-  mkdir,
-  open,
-  realpath,
-  rename,
-  rm,
-  stat,
-  type FileHandle,
-} from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type {
@@ -19,9 +10,9 @@ import type {
   TrustedStoredHiddenTask,
 } from "../broker/catalog.js";
 import {
-  emptyOneUseLedgerState,
   type AtomicOneUseLedgerStore,
   type BrokerFailureCode,
+  emptyOneUseLedgerState,
   type OneUseLedgerRecord,
   type OneUseLedgerState,
 } from "../broker/ledger.js";
@@ -32,36 +23,25 @@ import type {
   CloudOptimizerProposalResult,
   CloudOptimizerSessionRecordStore,
 } from "../optimizer/cloud-session.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import { assertTrustedMatchedPanel } from "../terminal-bench/trusted.js";
 import type { TrustedArtifactRuntimeGuard } from "./artifact-bridge.js";
-import type {
-  RemoteExecutionReceipt,
-  TrustedCloudArtifactRef,
-} from "./types.js";
+import type { RemoteExecutionReceipt, TrustedCloudArtifactRef } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const SAFE_PROVIDER_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,511}$/u;
+const SAFE_PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,511}$/u;
 const SAFE_STORE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
-const SAFE_STORE_NAMESPACE =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const SAFE_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_STORE_NAMESPACE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SAFE_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const SAFE_MEDIA_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/u;
 const SAFE_PACKAGE_TASK_NAME =
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_CHANGED_FILE =
   /^(?:packages\/coding-agent|packages\/agent|packages\/ai|packages\/tui|packages\/utils)\/[A-Za-z0-9._/-]+$/u;
-const ISO_TIMESTAMP =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const DEFAULT_MAXIMUM_STATE_BYTES = 128 * 1024 * 1024;
 const MAXIMUM_JSON_DEPTH = 64;
 const MAXIMUM_JSON_NODES = 1_000_000;
@@ -75,12 +55,7 @@ const BROKER_FAILURE_CODES = new Set<BrokerFailureCode>([
   "raw-destruction-failed",
   "release-validation-failed",
 ]);
-const SELECTION_BUCKETS = new Set([
-  "hard",
-  "uncertain",
-  "easy",
-  "coverage",
-]);
+const SELECTION_BUCKETS = new Set(["hard", "uncertain", "easy", "coverage"]);
 const CLOUD_PROVIDERS = new Set(["daytona", "e2b", "modal"]);
 
 const LOCK_KEYS = [
@@ -226,11 +201,7 @@ const OPTIMIZER_STATE_KEYS = [
   "proposals",
   "analyses",
 ] as const;
-const OPTIMIZER_RECORD_KEYS = [
-  "experiment",
-  "resultHash",
-  "result",
-] as const;
+const OPTIMIZER_RECORD_KEYS = ["experiment", "resultHash", "result"] as const;
 const EXPERIMENT_KEYS = [
   "number",
   "slug",
@@ -355,12 +326,8 @@ interface OptimizerSessionRecordState {
   readonly schemaVersion: 1;
   readonly sensitivity: "trusted-optimizer-session-records";
   readonly revision: number;
-  readonly proposals: Readonly<
-    Record<string, OptimizerStoredRecord<CloudOptimizerProposalResult>>
-  >;
-  readonly analyses: Readonly<
-    Record<string, OptimizerStoredRecord<CloudOptimizerAnalysisResult>>
-  >;
+  readonly proposals: Readonly<Record<string, OptimizerStoredRecord<CloudOptimizerProposalResult>>>;
+  readonly analyses: Readonly<Record<string, OptimizerStoredRecord<CloudOptimizerAnalysisResult>>>;
 }
 
 function isErrno(error: unknown, ...codes: readonly string[]): boolean {
@@ -375,9 +342,7 @@ function fail(message: string): never {
   throw new MountedVolumeStateStoreError(message);
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -386,24 +351,15 @@ function isPlainRecord(
   );
 }
 
-function assertExactKeys(
-  value: object,
-  expected: readonly string[],
-  label: string,
-): void {
+function assertExactKeys(value: object, expected: readonly string[], label: string): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail(`${label} contains unsupported fields.`);
   }
 }
 
 function assertCanonicalJsonTree(value: unknown, label: string): void {
-  const pending: Array<{ readonly value: unknown; readonly depth: number }> = [
-    { value, depth: 0 },
-  ];
+  const pending: Array<{ readonly value: unknown; readonly depth: number }> = [{ value, depth: 0 }];
   let nodes = 0;
   while (pending.length > 0) {
     const entry = pending.pop();
@@ -412,10 +368,7 @@ function assertCanonicalJsonTree(value: unknown, label: string): void {
     if (nodes > MAXIMUM_JSON_NODES || entry.depth > MAXIMUM_JSON_DEPTH) {
       fail(`${label} exceeds the bounded JSON shape policy.`);
     }
-    if (
-      entry.value === null ||
-      typeof entry.value === "boolean"
-    ) {
+    if (entry.value === null || typeof entry.value === "boolean") {
       continue;
     }
     if (typeof entry.value === "number") {
@@ -425,10 +378,7 @@ function assertCanonicalJsonTree(value: unknown, label: string): void {
       continue;
     }
     if (typeof entry.value === "string") {
-      if (
-        Buffer.byteLength(entry.value, "utf8") >
-        MAXIMUM_JSON_STRING_BYTES
-      ) {
+      if (Buffer.byteLength(entry.value, "utf8") > MAXIMUM_JSON_STRING_BYTES) {
         fail(`${label} contains an oversized string.`);
       }
       continue;
@@ -474,19 +424,13 @@ function assertTimestamp(value: unknown, label: string): asserts value is string
 
 function nowTimestamp(now: () => Date): string {
   const value = now();
-  if (
-    !(value instanceof Date) ||
-    !Number.isFinite(value.getTime())
-  ) {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
     fail("Mounted-volume state clock returned an invalid date.");
   }
   return value.toISOString();
 }
 
-function assertContentHash(
-  value: Readonly<Record<string, unknown>>,
-  label: string,
-): void {
+function assertContentHash(value: Readonly<Record<string, unknown>>, label: string): void {
   if (
     typeof value.contentHash !== "string" ||
     !SHA256.test(value.contentHash) ||
@@ -516,21 +460,14 @@ function assertBoundedRoot(volumeRoot: string): string {
   return root;
 }
 
-async function assertSafeDirectory(
-  path: string,
-  label: string,
-): Promise<void> {
+async function assertSafeDirectory(path: string, label: string): Promise<void> {
   let info: Stats;
   try {
     info = await lstat(path);
   } catch {
     fail(`${label} is missing or unreadable.`);
   }
-  if (
-    !info.isDirectory() ||
-    info.isSymbolicLink() ||
-    (await realpath(path)) !== path
-  ) {
+  if (!info.isDirectory() || info.isSymbolicLink() || (await realpath(path)) !== path) {
     fail(`${label} is not a real directory.`);
   }
 }
@@ -563,20 +500,13 @@ async function readBoundedCanonicalFile(
 ): Promise<unknown> {
   await assertRegularFile(path, label);
   const before = await stat(path);
-  if (
-    !Number.isSafeInteger(before.size) ||
-    before.size <= 0 ||
-    before.size > maximumBytes
-  ) {
+  if (!Number.isSafeInteger(before.size) || before.size <= 0 || before.size > maximumBytes) {
     fail(`${label} size is outside policy.`);
   }
   let handle: FileHandle | undefined;
   let raw: string;
   try {
-    handle = await open(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW,
-    );
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const opened = await handle.stat();
     if (
       !opened.isFile() ||
@@ -615,10 +545,7 @@ async function readBoundedCanonicalFile(
 async function syncDirectory(path: string, label: string): Promise<void> {
   let handle: FileHandle | undefined;
   try {
-    handle = await open(
-      path,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-    );
+    handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
     await handle.sync();
   } catch {
     fail(`${label} could not be durably synchronized.`);
@@ -627,16 +554,14 @@ async function syncDirectory(path: string, label: string): Promise<void> {
   }
 }
 
-async function atomicWriteCanonicalFile(
-  input: {
-    readonly target: string;
-    readonly stagingRoot: string;
-    readonly stagingName: string;
-    readonly value: unknown;
-    readonly maximumBytes: number;
-    readonly label: string;
-  },
-): Promise<void> {
+async function atomicWriteCanonicalFile(input: {
+  readonly target: string;
+  readonly stagingRoot: string;
+  readonly stagingName: string;
+  readonly value: unknown;
+  readonly maximumBytes: number;
+  readonly label: string;
+}): Promise<void> {
   const serialized = `${canonicalJson(input.value)}\n`;
   if (
     Buffer.byteLength(serialized, "utf8") <= 0 ||
@@ -653,10 +578,7 @@ async function atomicWriteCanonicalFile(
   try {
     handle = await open(
       temporary,
-      constants.O_CREAT |
-        constants.O_EXCL |
-        constants.O_WRONLY |
-        constants.O_NOFOLLOW,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
       0o600,
     );
     await handle.writeFile(serialized, "utf8");
@@ -665,11 +587,7 @@ async function atomicWriteCanonicalFile(
     handle = undefined;
     try {
       const targetInfo = await lstat(input.target);
-      if (
-        !targetInfo.isFile() ||
-        targetInfo.isSymbolicLink() ||
-        targetInfo.nlink !== 1
-      ) {
+      if (!targetInfo.isFile() || targetInfo.isSymbolicLink() || targetInfo.nlink !== 1) {
         fail(`${input.label} target is unsafe.`);
       }
     } catch (error) {
@@ -679,10 +597,7 @@ async function atomicWriteCanonicalFile(
     renamed = true;
     const separator = input.target.lastIndexOf(sep);
     if (separator <= 0) fail(`${input.label} has no bounded parent.`);
-    await syncDirectory(
-      input.target.slice(0, separator),
-      `${input.label} parent`,
-    );
+    await syncDirectory(input.target.slice(0, separator), `${input.label} parent`);
   } finally {
     await handle?.close();
     if (!renamed) {
@@ -718,10 +633,7 @@ function assertLockObservation(
   assertContentHash(value, "Controller lock metadata");
 }
 
-function assertFenceState(
-  value: unknown,
-  namespace: string,
-): asserts value is LockFenceState {
+function assertFenceState(value: unknown, namespace: string): asserts value is LockFenceState {
   if (!isPlainRecord(value)) fail("Controller fence state is not an object.");
   assertExactKeys(value, FENCE_KEYS, "Controller fence state");
   if (
@@ -734,15 +646,12 @@ function assertFenceState(
     !SHA256.test(value.lockHash) ||
     !Number.isSafeInteger(value.authorizedRecoveryThroughEpoch) ||
     (value.authorizedRecoveryThroughEpoch as number) < 0 ||
-    (value.authorizedRecoveryThroughEpoch as number) >=
-      (value.fenceEpoch as number) ||
+    (value.authorizedRecoveryThroughEpoch as number) >= (value.fenceEpoch as number) ||
     !Number.isSafeInteger(value.stateGeneration) ||
     (value.stateGeneration as number) < 0 ||
     (value.stateEnvelopeHash !== null &&
-      (typeof value.stateEnvelopeHash !== "string" ||
-        !SHA256.test(value.stateEnvelopeHash))) ||
-    ((value.stateGeneration as number) === 0) !==
-      (value.stateEnvelopeHash === null)
+      (typeof value.stateEnvelopeHash !== "string" || !SHA256.test(value.stateEnvelopeHash))) ||
+    ((value.stateGeneration as number) === 0) !== (value.stateEnvelopeHash === null)
   ) {
     fail("Controller fence state is malformed.");
   }
@@ -784,9 +693,7 @@ class MountedVolumeSingleWriterCoordinator {
   readonly #controllerInstanceIdHash: string;
   readonly #runtimeGuard: TrustedArtifactRuntimeGuard;
   readonly #semanticsGuard: MountedVolumeStateSemanticsGuard;
-  readonly #recoveryAuthority:
-    | TrustedMountedVolumeLockRecoveryAuthority
-    | undefined;
+  readonly #recoveryAuthority: TrustedMountedVolumeLockRecoveryAuthority | undefined;
   readonly #now: () => Date;
   readonly #nonceFactory: () => string;
   readonly #stateRoot: string;
@@ -803,10 +710,7 @@ class MountedVolumeSingleWriterCoordinator {
   #tail: Promise<void> = Promise.resolve();
   #closePromise: Promise<void> | null = null;
 
-  constructor(
-    options: MountedVolumeDurableStateOptions,
-    namespace: string,
-  ) {
+  constructor(options: MountedVolumeDurableStateOptions, namespace: string) {
     this.#root = assertBoundedRoot(options.volumeRoot);
     this.#namespace = namespace;
     this.#controllerInstanceIdHash = options.controllerInstanceIdHash;
@@ -814,16 +718,12 @@ class MountedVolumeSingleWriterCoordinator {
     this.#semanticsGuard = options.semanticsGuard;
     this.#recoveryAuthority = options.recoveryAuthority;
     this.#now = options.now ?? (() => new Date());
-    this.#nonceFactory =
-      options.nonceFactory ?? (() => randomBytes(24).toString("hex"));
+    this.#nonceFactory = options.nonceFactory ?? (() => randomBytes(24).toString("hex"));
     this.#stateRoot = join(this.#root, "mutable-state");
     this.#locksRoot = join(this.#stateRoot, "locks");
     this.#activeLockPath = join(this.#locksRoot, namespace);
     this.#releasedLocksRoot = join(this.#stateRoot, "released-locks");
-    this.#quarantinedLocksRoot = join(
-      this.#stateRoot,
-      "quarantined-locks",
-    );
+    this.#quarantinedLocksRoot = join(this.#stateRoot, "quarantined-locks");
     this.#recoveriesRoot = join(this.#stateRoot, "recovery-authorizations");
     this.#stagingRoot = join(this.#stateRoot, ".staging");
     this.#fencePath = join(this.#stateRoot, `fence-${namespace}.json`);
@@ -854,16 +754,8 @@ class MountedVolumeSingleWriterCoordinator {
       namespace: this.#namespace,
     });
     if (this.#initialized) return;
-    await createAndAssertDirectory(
-      this.#root,
-      "Mutable state volume root",
-      true,
-    );
-    await createAndAssertDirectory(
-      this.#stateRoot,
-      "Mutable state root",
-      true,
-    );
+    await createAndAssertDirectory(this.#root, "Mutable state volume root", true);
+    await createAndAssertDirectory(this.#stateRoot, "Mutable state root", true);
     for (const [path, label] of [
       [this.#locksRoot, "Mutable state locks root"],
       [this.#releasedLocksRoot, "Released locks root"],
@@ -907,11 +799,7 @@ class MountedVolumeSingleWriterCoordinator {
       if (isErrno(error, "ENOENT")) return null;
       throw error;
     }
-    const parsed = await readBoundedCanonicalFile(
-      this.#fencePath,
-      8_192,
-      "Controller fence state",
-    );
+    const parsed = await readBoundedCanonicalFile(this.#fencePath, 8_192, "Controller fence state");
     assertFenceState(parsed, this.#namespace);
     return parsed;
   }
@@ -920,10 +808,7 @@ class MountedVolumeSingleWriterCoordinator {
     authorization: TrustedMountedVolumeLockRecoveryAuthorization,
   ): Promise<void> {
     const hash = canonicalHash(authorization);
-    const target = join(
-      this.#recoveriesRoot,
-      `${authorization.priorLockHash}-${hash}.json`,
-    );
+    const target = join(this.#recoveriesRoot, `${authorization.priorLockHash}-${hash}.json`);
     let exists = true;
     try {
       await lstat(target);
@@ -952,29 +837,20 @@ class MountedVolumeSingleWriterCoordinator {
     });
   }
 
-  async #quarantinePriorLock(
-    observed: MountedVolumeStateLockObservation,
-  ): Promise<number> {
+  async #quarantinePriorLock(observed: MountedVolumeStateLockObservation): Promise<number> {
     if (this.#recoveryAuthority === undefined) {
-      fail(
-        "A prior controller lock exists; provider-attested recovery is required.",
-      );
+      fail("A prior controller lock exists; provider-attested recovery is required.");
     }
     const authorization = await this.#recoveryAuthority.authorize({
       observedLock: canonicalClone(observed, "Observed controller lock"),
       observedLockHash: observed.contentHash,
     });
     if (authorization === null) {
-      fail(
-        "The recovery authority did not prove prior controller destruction.",
-      );
+      fail("The recovery authority did not prove prior controller destruction.");
     }
     assertRecoveryAuthorization(authorization, observed);
     const current = await this.#readActiveLock();
-    if (
-      current === null ||
-      canonicalJson(current) !== canonicalJson(observed)
-    ) {
+    if (current === null || canonicalJson(current) !== canonicalJson(observed)) {
       fail("The active controller lock changed during recovery.");
     }
     await this.#persistRecoveryAuthorization(authorization);
@@ -991,10 +867,7 @@ class MountedVolumeSingleWriterCoordinator {
       throw error;
     }
     await syncDirectory(this.#locksRoot, "Mutable state locks root");
-    await syncDirectory(
-      this.#quarantinedLocksRoot,
-      "Quarantined locks root",
-    );
+    await syncDirectory(this.#quarantinedLocksRoot, "Quarantined locks root");
     return observed.fenceEpoch;
   }
 
@@ -1008,15 +881,11 @@ class MountedVolumeSingleWriterCoordinator {
     for (let attempt = 0; attempt < 4; attempt += 1) {
       const existing = await this.#readActiveLock();
       if (existing !== null) {
-        recoveredEpoch = Math.max(
-          recoveredEpoch,
-          await this.#quarantinePriorLock(existing),
-        );
+        recoveredEpoch = Math.max(recoveredEpoch, await this.#quarantinePriorLock(existing));
         continue;
       }
       const fence = await this.#readFence();
-      const fenceEpoch =
-        Math.max(fence?.fenceEpoch ?? 0, recoveredEpoch) + 1;
+      const fenceEpoch = Math.max(fence?.fenceEpoch ?? 0, recoveredEpoch) + 1;
       if (!Number.isSafeInteger(fenceEpoch) || fenceEpoch <= 0) {
         fail("Controller fence epoch is exhausted.");
       }
@@ -1033,10 +902,7 @@ class MountedVolumeSingleWriterCoordinator {
         fenceEpoch,
         acquiredAt: nowTimestamp(this.#now),
       });
-      const stagingDirectory = join(
-        this.#stagingRoot,
-        `lock-${this.#namespace}-${lockNonce}`,
-      );
+      const stagingDirectory = join(this.#stagingRoot, `lock-${this.#namespace}-${lockNonce}`);
       await mkdir(stagingDirectory, { recursive: false, mode: 0o700 });
       try {
         await atomicWriteCanonicalFile({
@@ -1066,10 +932,7 @@ class MountedVolumeSingleWriterCoordinator {
       }
       await syncDirectory(this.#locksRoot, "Mutable state locks root");
       const observed = await this.#readActiveLock();
-      if (
-        observed === null ||
-        canonicalJson(observed) !== canonicalJson(lock)
-      ) {
+      if (observed === null || canonicalJson(observed) !== canonicalJson(lock)) {
         fail("Controller lock ownership could not be verified.");
       }
       this.#ownedLock = lock;
@@ -1123,22 +986,21 @@ class MountedVolumeSingleWriterCoordinator {
     }
   }
 
-  async reconcileStateHead(input: {
-    readonly generation: number;
-    readonly contentHash: string;
-    readonly previousEnvelopeHash: string | null;
-    readonly writerFenceEpoch: number;
-  } | null): Promise<void> {
+  async reconcileStateHead(
+    input: {
+      readonly generation: number;
+      readonly contentHash: string;
+      readonly previousEnvelopeHash: string | null;
+      readonly writerFenceEpoch: number;
+    } | null,
+  ): Promise<void> {
     await this.assertOwnership();
     const fence = await this.#readFence();
     if (fence === null || this.#ownedLock === null) {
       fail("Mutable-state fence disappeared during head reconciliation.");
     }
     if (input === null) {
-      if (
-        fence.stateGeneration !== 0 ||
-        fence.stateEnvelopeHash !== null
-      ) {
+      if (fence.stateGeneration !== 0 || fence.stateEnvelopeHash !== null) {
         fail("Mutable state payload was rolled back behind its durable head.");
       }
       return;
@@ -1147,8 +1009,7 @@ class MountedVolumeSingleWriterCoordinator {
       !Number.isSafeInteger(input.generation) ||
       input.generation <= 0 ||
       !SHA256.test(input.contentHash) ||
-      (input.previousEnvelopeHash !== null &&
-        !SHA256.test(input.previousEnvelopeHash)) ||
+      (input.previousEnvelopeHash !== null && !SHA256.test(input.previousEnvelopeHash)) ||
       !Number.isSafeInteger(input.writerFenceEpoch) ||
       input.writerFenceEpoch <= 0 ||
       input.writerFenceEpoch > this.#ownedLock.fenceEpoch
@@ -1177,8 +1038,7 @@ class MountedVolumeSingleWriterCoordinator {
       namespace: this.#namespace,
       fenceEpoch: this.#ownedLock.fenceEpoch,
       lockHash: this.#ownedLock.contentHash,
-      authorizedRecoveryThroughEpoch:
-        fence.authorizedRecoveryThroughEpoch,
+      authorizedRecoveryThroughEpoch: fence.authorizedRecoveryThroughEpoch,
       stateGeneration: input.generation,
       stateEnvelopeHash: input.contentHash,
       updatedAt: nowTimestamp(this.#now),
@@ -1267,19 +1127,11 @@ export class MountedVolumeTransactionalJsonStore<State> {
     if (!SAFE_STORE_NAMESPACE.test(namespace)) {
       fail("Mounted-volume state namespace is malformed.");
     }
-    this.#coordinator = new MountedVolumeSingleWriterCoordinator(
-      options,
-      namespace,
-    );
+    this.#coordinator = new MountedVolumeSingleWriterCoordinator(options, namespace);
     this.#codec = codec;
-    this.#storeDirectory = join(
-      this.#coordinator.root,
-      "stores",
-      namespace,
-    );
+    this.#storeDirectory = join(this.#coordinator.root, "stores", namespace);
     this.#statePath = join(this.#storeDirectory, "state.json");
-    this.#maximumStateBytes =
-      options.maximumStateBytes ?? DEFAULT_MAXIMUM_STATE_BYTES;
+    this.#maximumStateBytes = options.maximumStateBytes ?? DEFAULT_MAXIMUM_STATE_BYTES;
     this.#now = options.now ?? (() => new Date());
     if (
       !Number.isSafeInteger(this.#maximumStateBytes) ||
@@ -1292,11 +1144,7 @@ export class MountedVolumeTransactionalJsonStore<State> {
 
   async #initializeStoreDirectory(): Promise<void> {
     const storesRoot = join(this.#coordinator.root, "stores");
-    await createAndAssertDirectory(
-      storesRoot,
-      "Mutable state stores root",
-      true,
-    );
+    await createAndAssertDirectory(storesRoot, "Mutable state stores root", true);
     try {
       await mkdir(this.#storeDirectory, {
         recursive: false,
@@ -1305,15 +1153,10 @@ export class MountedVolumeTransactionalJsonStore<State> {
     } catch (error) {
       if (!isErrno(error, "EEXIST")) throw error;
     }
-    await assertSafeDirectory(
-      this.#storeDirectory,
-      "Mutable state store directory",
-    );
+    await assertSafeDirectory(this.#storeDirectory, "Mutable state store directory");
   }
 
-  #assertEnvelope(
-    value: unknown,
-  ): asserts value is MountedVolumeStateEnvelope<State> {
+  #assertEnvelope(value: unknown): asserts value is MountedVolumeStateEnvelope<State> {
     if (!isPlainRecord(value)) fail("Mutable state envelope is not an object.");
     assertExactKeys(value, STATE_ENVELOPE_KEYS, "Mutable state envelope");
     if (
@@ -1324,8 +1167,7 @@ export class MountedVolumeTransactionalJsonStore<State> {
       (value.previousEnvelopeHash !== null &&
         (typeof value.previousEnvelopeHash !== "string" ||
           !SHA256.test(value.previousEnvelopeHash))) ||
-      (((value.generation as number) === 1) !==
-        (value.previousEnvelopeHash === null)) ||
+      ((value.generation as number) === 1) !== (value.previousEnvelopeHash === null) ||
       !Number.isSafeInteger(value.writerFenceEpoch) ||
       (value.writerFenceEpoch as number) <= 0 ||
       typeof value.stateHash !== "string" ||
@@ -1403,25 +1245,17 @@ export class MountedVolumeTransactionalJsonStore<State> {
       ) {
         fail("Mutable state transaction returned an invalid transition.");
       }
-      const next = canonicalClone(
-        transition.next,
-        "Mutable transaction output",
-      );
+      const next = canonicalClone(transition.next, "Mutable transaction output");
       this.#codec.assertState(next);
       const nextCanonical = canonicalJson(next);
       const nextRevision = this.#codec.revision(next);
       if (
-        (nextCanonical === currentCanonical &&
-          nextRevision !== currentRevision) ||
-        (nextCanonical !== currentCanonical &&
-          nextRevision !== currentRevision + 1)
+        (nextCanonical === currentCanonical && nextRevision !== currentRevision) ||
+        (nextCanonical !== currentCanonical && nextRevision !== currentRevision + 1)
       ) {
         fail("Mutable state revision is not a single linearized transition.");
       }
-      if (
-        currentEnvelope !== null &&
-        nextCanonical === currentCanonical
-      ) {
+      if (currentEnvelope !== null && nextCanonical === currentCanonical) {
         await this.#coordinator.assertOwnership();
         return transition.result;
       }
@@ -1452,10 +1286,7 @@ export class MountedVolumeTransactionalJsonStore<State> {
         writerFenceEpoch: envelope.writerFenceEpoch,
       });
       const committed = await this.#readEnvelope();
-      if (
-        committed === null ||
-        canonicalJson(committed) !== canonicalJson(envelope)
-      ) {
+      if (committed === null || canonicalJson(committed) !== canonicalJson(envelope)) {
         fail("Mutable state commit could not be read back exactly.");
       }
       return transition.result;
@@ -1479,9 +1310,7 @@ function assertLedgerRecord(
     !SHA256.test(value.requestHash) ||
     typeof value.claimToken !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value.claimToken) ||
-    (value.status !== "in-flight" &&
-      value.status !== "completed" &&
-      value.status !== "consumed") ||
+    (value.status !== "in-flight" && value.status !== "completed" && value.status !== "consumed") ||
     (value.dispositionAttestationHash !== null &&
       (typeof value.dispositionAttestationHash !== "string" ||
         !SHA256.test(value.dispositionAttestationHash))) ||
@@ -1490,8 +1319,7 @@ function assertLedgerRecord(
     !Number.isSafeInteger(value.claimEpoch) ||
     (value.claimEpoch as number) <= 0 ||
     (value.recoveryRecordHash !== null &&
-      (typeof value.recoveryRecordHash !== "string" ||
-        !SHA256.test(value.recoveryRecordHash))) ||
+      (typeof value.recoveryRecordHash !== "string" || !SHA256.test(value.recoveryRecordHash))) ||
     (value.recoveryAuthorizationHash !== null &&
       (typeof value.recoveryAuthorizationHash !== "string" ||
         !SHA256.test(value.recoveryAuthorizationHash))) ||
@@ -1506,19 +1334,15 @@ function assertLedgerRecord(
   }
   if (
     ((value.claimEpoch as number) === 1 &&
-      (value.recoveryRecordHash !== null ||
-        value.recoveryAuthorizationHash !== null)) ||
+      (value.recoveryRecordHash !== null || value.recoveryAuthorizationHash !== null)) ||
     ((value.claimEpoch as number) > 1 &&
-      (value.recoveryRecordHash === null ||
-        value.recoveryAuthorizationHash === null)) ||
-    (value.status === "in-flight" &&
-      (value.envelope !== null || value.failureCode !== null)) ||
+      (value.recoveryRecordHash === null || value.recoveryAuthorizationHash === null)) ||
+    (value.status === "in-flight" && (value.envelope !== null || value.failureCode !== null)) ||
     (value.status === "completed" &&
       (value.envelope === null ||
         value.failureCode !== null ||
         value.dispositionAttestationHash === null)) ||
-    (value.status === "consumed" &&
-      (value.envelope !== null || value.failureCode === null))
+    (value.status === "consumed" && (value.envelope !== null || value.failureCode === null))
   ) {
     fail("One-use ledger record status fields are inconsistent.");
   }
@@ -1527,16 +1351,13 @@ function assertLedgerRecord(
     value.envelope !== null &&
     (value.envelope.oneUseRequest.requestId !== requestId ||
       value.envelope.oneUseRequest.requestHash !== value.requestHash ||
-      value.envelope.oneUseRequest.dispositionAttestationHash !==
-        value.dispositionAttestationHash)
+      value.envelope.oneUseRequest.dispositionAttestationHash !== value.dispositionAttestationHash)
   ) {
     fail("Completed one-use ledger envelope is detached from its record.");
   }
 }
 
-function assertOneUseLedgerState(
-  value: unknown,
-): asserts value is OneUseLedgerState {
+function assertOneUseLedgerState(value: unknown): asserts value is OneUseLedgerState {
   if (!isPlainRecord(value)) fail("One-use ledger state is not an object.");
   assertExactKeys(value, LEDGER_STATE_KEYS, "One-use ledger state");
   if (
@@ -1564,66 +1385,38 @@ function assertOneUseLedgerState(
       boundAttestations.add(record.dispositionAttestationHash);
     }
     if (record.recoveryAuthorizationHash !== null) {
-      if (
-        boundRecoveryAuthorizations.has(
-          record.recoveryAuthorizationHash,
-        )
-      ) {
-        fail(
-          "One-use claim recovery authorization was bound more than once.",
-        );
+      if (boundRecoveryAuthorizations.has(record.recoveryAuthorizationHash)) {
+        fail("One-use claim recovery authorization was bound more than once.");
       }
-      boundRecoveryAuthorizations.add(
-        record.recoveryAuthorizationHash,
-      );
+      boundRecoveryAuthorizations.add(record.recoveryAuthorizationHash);
     }
   }
   const usedAttestations = value.usedDispositionAttestations;
   if (
-    usedAttestations.some(
-      (hash) => typeof hash !== "string" || !SHA256.test(hash),
-    ) ||
+    usedAttestations.some((hash) => typeof hash !== "string" || !SHA256.test(hash)) ||
     new Set(usedAttestations).size !== usedAttestations.length ||
     usedAttestations.length !== boundAttestations.size ||
-    usedAttestations.some(
-      (hash) => !boundAttestations.has(hash as string),
-    )
+    usedAttestations.some((hash) => !boundAttestations.has(hash as string))
   ) {
     fail("One-use disposition attestation index is inconsistent.");
   }
-  const usedRecoveryAuthorizations =
-    value.usedRecoveryAuthorizations;
+  const usedRecoveryAuthorizations = value.usedRecoveryAuthorizations;
   if (
-    usedRecoveryAuthorizations.some(
-      (hash) => typeof hash !== "string" || !SHA256.test(hash),
-    ) ||
-    new Set(usedRecoveryAuthorizations).size !==
-      usedRecoveryAuthorizations.length ||
-    [...boundRecoveryAuthorizations].some(
-      (hash) => !usedRecoveryAuthorizations.includes(hash),
-    )
+    usedRecoveryAuthorizations.some((hash) => typeof hash !== "string" || !SHA256.test(hash)) ||
+    new Set(usedRecoveryAuthorizations).size !== usedRecoveryAuthorizations.length ||
+    [...boundRecoveryAuthorizations].some((hash) => !usedRecoveryAuthorizations.includes(hash))
   ) {
-    fail(
-      "One-use claim recovery authorization index is inconsistent.",
-    );
+    fail("One-use claim recovery authorization index is inconsistent.");
   }
 }
 
-function assertProbabilityRecord(
-  value: unknown,
-  label: string,
-): void {
+function assertProbabilityRecord(value: unknown, label: string): void {
   if (!isPlainRecord(value)) fail(`${label} is not an object.`);
   assertExactKeys(value, ESTIMATE_KEYS, label);
   if (
     ESTIMATE_KEYS.some((key) => {
       const number = value[key];
-      return (
-        typeof number !== "number" ||
-        !Number.isFinite(number) ||
-        number < 0 ||
-        number > 1
-      );
+      return typeof number !== "number" || !Number.isFinite(number) || number < 0 || number > 1;
     })
   ) {
     fail(`${label} contains an invalid normalized estimate.`);
@@ -1652,10 +1445,7 @@ function assertStoredTask(
     !SAFE_ID.test(value.difficultyStratum) ||
     !Array.isArray(value.buckets) ||
     value.buckets.length === 0 ||
-    value.buckets.some(
-      (bucket) =>
-        typeof bucket !== "string" || !SELECTION_BUCKETS.has(bucket),
-    ) ||
+    value.buckets.some((bucket) => typeof bucket !== "string" || !SELECTION_BUCKETS.has(bucket)) ||
     new Set(value.buckets).size !== value.buckets.length ||
     typeof value.shadowReserved !== "boolean" ||
     typeof value.regressionCanary !== "boolean" ||
@@ -1665,18 +1455,11 @@ function assertStoredTask(
     fail("Trusted hidden task immutable shape is malformed.");
   }
   assertProbabilityRecord(value.estimates, "Trusted hidden task estimates");
-  assertProbabilityRecord(
-    value.seedEstimates,
-    "Trusted hidden task seed estimates",
-  );
+  assertProbabilityRecord(value.seedEstimates, "Trusted hidden task seed estimates");
   if (!isPlainRecord(value.exposure)) {
     fail("Trusted hidden task exposure is not an object.");
   }
-  assertExactKeys(
-    value.exposure,
-    EXPOSURE_KEYS,
-    "Trusted hidden task exposure",
-  );
+  assertExactKeys(value.exposure, EXPOSURE_KEYS, "Trusted hidden task exposure");
   if (
     !Number.isSafeInteger(value.exposure.total) ||
     (value.exposure.total as number) < 0 ||
@@ -1688,9 +1471,7 @@ function assertStoredTask(
     typeof value.exposure.feedbackReleased !== "boolean" ||
     typeof value.exposure.positiveValidationConsumed !== "boolean" ||
     (value.exposure.repairCooldownThroughExperiment !== null &&
-      (!Number.isSafeInteger(
-        value.exposure.repairCooldownThroughExperiment,
-      ) ||
+      (!Number.isSafeInteger(value.exposure.repairCooldownThroughExperiment) ||
         (value.exposure.repairCooldownThroughExperiment as number) < 0)) ||
     !Array.isArray(value.exposure.informedHypothesisDigests) ||
     value.exposure.informedHypothesisDigests.some(
@@ -1704,13 +1485,8 @@ function assertStoredTask(
   if (!isPlainRecord(value.outcomeStats)) {
     fail("Trusted hidden task outcome stats are not an object.");
   }
-  assertExactKeys(
-    value.outcomeStats,
-    OUTCOME_STATS_KEYS,
-    "Trusted hidden task outcome stats",
-  );
-  const stats =
-    value.outcomeStats as unknown as TrustedHiddenTaskOutcomeStats;
+  assertExactKeys(value.outcomeStats, OUTCOME_STATS_KEYS, "Trusted hidden task outcome stats");
+  const stats = value.outcomeStats as unknown as TrustedHiddenTaskOutcomeStats;
   const integerCounts = [
     stats.candidateObservationCount,
     stats.candidateFailureCount,
@@ -1726,38 +1502,24 @@ function assertStoredTask(
     stats.normalizedCostSignalSum,
   ];
   if (
-    integerCounts.some(
-      (count) =>
-        !Number.isSafeInteger(count) || (count as number) < 0,
-    ) ||
-    sums.some(
-      (sum) =>
-        typeof sum !== "number" || !Number.isFinite(sum) || sum < 0,
-    ) ||
+    integerCounts.some((count) => !Number.isSafeInteger(count) || (count as number) < 0) ||
+    sums.some((sum) => typeof sum !== "number" || !Number.isFinite(sum) || sum < 0) ||
     stats.candidateFailureCount > stats.candidateObservationCount ||
     stats.championFailureCount > stats.championObservationCount ||
     stats.matchedObservationCount > stats.candidateObservationCount ||
     stats.matchedObservationCount > stats.championObservationCount ||
     stats.costObservationCount !==
-      stats.candidateObservationCount +
-        stats.championObservationCount ||
-    (stats.lastObservedAt !== null &&
-      !Number.isFinite(Date.parse(stats.lastObservedAt)))
+      stats.candidateObservationCount + stats.championObservationCount ||
+    (stats.lastObservedAt !== null && !Number.isFinite(Date.parse(stats.lastObservedAt)))
   ) {
     fail("Trusted hidden task outcome stats are malformed.");
   }
 }
 
-function hiddenCatalogExperimentOrdinal(
-  experimentId: string,
-): number {
+function hiddenCatalogExperimentOrdinal(experimentId: string): number {
   const prefix = experimentId.split("-", 1)[0] ?? "";
   const ordinal = Number.parseInt(prefix, 10);
-  if (
-    !/^\d+$/u.test(prefix) ||
-    !Number.isSafeInteger(ordinal) ||
-    ordinal < 0
-  ) {
+  if (!/^\d+$/u.test(prefix) || !Number.isSafeInteger(ordinal) || ordinal < 0) {
     fail("Trusted hidden catalog experiment identity is malformed.");
   }
   return ordinal;
@@ -1790,9 +1552,7 @@ function assertTrustedHiddenCatalogStorageState(
     (value.repairEpoch as number) < 0 ||
     !Array.isArray(value.taskOrder) ||
     value.taskOrder.length !== 89 ||
-    value.taskOrder.some(
-      (taskId) => typeof taskId !== "string" || !SHA256.test(taskId),
-    ) ||
+    value.taskOrder.some((taskId) => typeof taskId !== "string" || !SHA256.test(taskId)) ||
     new Set(value.taskOrder).size !== 89 ||
     !isPlainRecord(value.tasks) ||
     Object.keys(value.tasks).length !== 89 ||
@@ -1806,18 +1566,11 @@ function assertTrustedHiddenCatalogStorageState(
   }
   const catalog = value as unknown as TrustedHiddenCatalogState;
   for (const taskId of catalog.taskOrder) {
-    assertStoredTask(
-      catalog.tasks[taskId],
-      taskId,
-      catalog.datasetPinHash,
-    );
+    assertStoredTask(catalog.tasks[taskId], taskId, catalog.datasetPinHash);
   }
   if (
     Object.keys(catalog.tasks).some(
-      (taskId) =>
-        !catalog.taskOrder.includes(
-          taskId as (typeof catalog.taskOrder)[number],
-        ),
+      (taskId) => !catalog.taskOrder.includes(taskId as (typeof catalog.taskOrder)[number]),
     )
   ) {
     fail("Trusted hidden catalog task index is inconsistent.");
@@ -1835,10 +1588,7 @@ function assertTrustedHiddenCatalogStorageState(
   ];
   if (
     carryValues.some(
-      (carry) =>
-        !Number.isSafeInteger(carry) ||
-        (carry as number) < -9 ||
-        (carry as number) > 9,
+      (carry) => !Number.isSafeInteger(carry) || (carry as number) < -9 || (carry as number) > 9,
     ) ||
     carryValues.reduce((sum, carry) => sum + (carry as number), 0) !== 0
   ) {
@@ -1850,13 +1600,7 @@ function assertTrustedHiddenCatalogStorageState(
     }
     assertExactKeys(
       slice,
-      [
-        "slice",
-        "taskIds",
-        "selectedBuckets",
-        "consumed",
-        "consumedByRequestHash",
-      ],
+      ["slice", "taskIds", "selectedBuckets", "consumed", "consumedByRequestHash"],
       "Trusted shadow slice",
     );
     if (
@@ -1873,9 +1617,7 @@ function assertTrustedHiddenCatalogStorageState(
       !Array.isArray(slice.selectedBuckets) ||
       slice.selectedBuckets.length !== 12 ||
       slice.selectedBuckets.some(
-        (bucket) =>
-          typeof bucket !== "string" ||
-          !SELECTION_BUCKETS.has(bucket),
+        (bucket) => typeof bucket !== "string" || !SELECTION_BUCKETS.has(bucket),
       ) ||
       typeof slice.consumed !== "boolean" ||
       (slice.consumedByRequestHash !== null &&
@@ -1891,9 +1633,7 @@ function assertTrustedHiddenCatalogStorageState(
   const allocationClaimCommitments = new Set<string>();
   const allocationLeaseIds = new Set<string>();
   let repairAllocationCount = 0;
-  for (const [requestHash, allocation] of Object.entries(
-    catalog.allocations,
-  )) {
+  for (const [requestHash, allocation] of Object.entries(catalog.allocations)) {
     if (!isPlainRecord(allocation)) {
       fail("Trusted panel allocation is not an object.");
     }
@@ -1936,9 +1676,7 @@ function assertTrustedHiddenCatalogStorageState(
       typeof allocation.claimTokenCommitment !== "string" ||
       !SHA256.test(allocation.claimTokenCommitment) ||
       typeof allocation.dispositionNonce !== "string" ||
-      !/^[A-Za-z0-9_-]{32,128}$/u.test(
-        allocation.dispositionNonce,
-      ) ||
+      !/^[A-Za-z0-9_-]{32,128}$/u.test(allocation.dispositionNonce) ||
       typeof allocation.frozenHypothesisDigest !== "string" ||
       !SHA256.test(allocation.frozenHypothesisDigest) ||
       typeof allocation.candidateArchiveSha256 !== "string" ||
@@ -1956,9 +1694,7 @@ function assertTrustedHiddenCatalogStorageState(
         allocation.repairAttemptOrdinal !== 2) ||
       !Array.isArray(allocation.selectedBuckets) ||
       allocation.selectedBuckets.some(
-        (bucket) =>
-          typeof bucket !== "string" ||
-          !SELECTION_BUCKETS.has(bucket),
+        (bucket) => typeof bucket !== "string" || !SELECTION_BUCKETS.has(bucket),
       ) ||
       !isPlainRecord(allocation.panel)
     ) {
@@ -1969,34 +1705,25 @@ function assertTrustedHiddenCatalogStorageState(
     const repairBucketCounts = Object.fromEntries(
       [...SELECTION_BUCKETS].map((bucket) => [
         bucket,
-        allocation.selectedBuckets.filter(
-          (selected) => selected === bucket,
-        ).length,
+        allocation.selectedBuckets.filter((selected) => selected === bucket).length,
       ]),
-    ) as unknown as Readonly<
-      Record<"hard" | "uncertain" | "easy" | "coverage", number>
-    >;
+    ) as unknown as Readonly<Record<"hard" | "uncertain" | "easy" | "coverage", number>>;
     if (
       allocation.panel.requestId !== allocation.requestId ||
       (allocation.panel.stage !== "repair" &&
         allocation.panel.stage !== "validation" &&
         allocation.panel.stage !== "shadow") ||
-      allocation.selectedBuckets.length !==
-        (repair ? 5 : 12) ||
+      allocation.selectedBuckets.length !== (repair ? 5 : 12) ||
       (repair &&
         (repairBucketCounts.hard !== 3 ||
           repairBucketCounts.uncertain !== 1 ||
-          repairBucketCounts.easy +
-            repairBucketCounts.coverage !==
-            1)) ||
+          repairBucketCounts.easy + repairBucketCounts.coverage !== 1)) ||
       repair !==
         (allocation.repairSourceExperimentId !== null &&
           allocation.repairSourceRequestHash !== null &&
           allocation.repairAttemptOrdinal !== null) ||
       allocationRequestIds.has(allocation.requestId) ||
-      allocationClaimCommitments.has(
-        allocation.claimTokenCommitment,
-      ) ||
+      allocationClaimCommitments.has(allocation.claimTokenCommitment) ||
       allocationLeaseIds.has(allocation.panel.leaseId) ||
       allocation.panel.cells.some((cell, index) => {
         const task = catalog.tasks[cell.taskId];
@@ -2006,17 +1733,14 @@ function assertTrustedHiddenCatalogStorageState(
           task.taskRevisionDigest !== cell.taskRevisionDigest ||
           task.capabilityStratum !== cell.capabilityStratum ||
           selectedBucket === undefined ||
-          (allocation.panel.stage !== "shadow" &&
-            !task.buckets.includes(selectedBucket))
+          (allocation.panel.stage !== "shadow" && !task.buckets.includes(selectedBucket))
         );
       })
     ) {
       fail("Trusted panel allocation source lineage is malformed.");
     }
     allocationRequestIds.add(allocation.requestId);
-    allocationClaimCommitments.add(
-      allocation.claimTokenCommitment,
-    );
+    allocationClaimCommitments.add(allocation.claimTokenCommitment);
     allocationLeaseIds.add(allocation.panel.leaseId);
     if (repair) repairAllocationCount += 1;
   }
@@ -2024,9 +1748,7 @@ function assertTrustedHiddenCatalogStorageState(
     fail("Trusted repair epoch is inconsistent.");
   }
   const committedRequestHashes = new Set<string>();
-  for (const [updateId, commitment] of Object.entries(
-    catalog.outcomeUpdates,
-  )) {
+  for (const [updateId, commitment] of Object.entries(catalog.outcomeUpdates)) {
     if (!isPlainRecord(commitment)) {
       fail("Trusted outcome commitment is not an object.");
     }
@@ -2045,8 +1767,7 @@ function assertTrustedHiddenCatalogStorageState(
       "Trusted outcome commitment",
     );
     if (
-      commitment.sensitivity !==
-        "trusted-hidden-catalog-outcome-commitment" ||
+      commitment.sensitivity !== "trusted-hidden-catalog-outcome-commitment" ||
       commitment.updateId !== updateId ||
       !/^catalog-[a-f0-9]{48}$/u.test(updateId) ||
       typeof commitment.requestHash !== "string" ||
@@ -2061,35 +1782,27 @@ function assertTrustedHiddenCatalogStorageState(
       !Number.isFinite(Date.parse(commitment.observedAt)) ||
       (commitment.taskCount !== 5 && commitment.taskCount !== 12) ||
       catalog.allocations[commitment.requestHash] === undefined ||
-      catalog.allocations[commitment.requestHash]?.panel.cells
-        .length !== commitment.taskCount ||
+      catalog.allocations[commitment.requestHash]?.panel.cells.length !== commitment.taskCount ||
       committedRequestHashes.has(commitment.requestHash)
     ) {
       fail("Trusted outcome commitment is malformed.");
     }
     committedRequestHashes.add(commitment.requestHash);
   }
-  const repairsBySource = new Map<
-    string,
-    typeof allocationRecords
-  >();
+  const repairsBySource = new Map<string, typeof allocationRecords>();
   for (const allocation of allocationRecords) {
     if (allocation.panel.stage !== "repair") continue;
     const sourceHash = allocation.repairSourceRequestHash;
-    const sourceExperimentId =
-      allocation.repairSourceExperimentId;
+    const sourceExperimentId = allocation.repairSourceExperimentId;
     if (sourceHash === null || sourceExperimentId === null) {
       fail("Trusted repair source is absent.");
     }
     const source = catalog.allocations[sourceHash];
     const namedSources = allocationRecords.filter(
       (candidate) =>
-        candidate.experimentId === sourceExperimentId &&
-        candidate.panel.stage === "validation",
+        candidate.experimentId === sourceExperimentId && candidate.panel.stage === "validation",
     );
-    const sourceTaskIds = new Set(
-      source?.panel.cells.map((cell) => cell.taskId) ?? [],
-    );
+    const sourceTaskIds = new Set(source?.panel.cells.map((cell) => cell.taskId) ?? []);
     if (
       source === undefined ||
       namedSources.length !== 1 ||
@@ -2101,24 +1814,16 @@ function assertTrustedHiddenCatalogStorageState(
       hiddenCatalogExperimentOrdinal(source.experimentId) >=
         hiddenCatalogExperimentOrdinal(allocation.experimentId) ||
       !committedRequestHashes.has(source.requestHash) ||
-      source.championArchiveSha256 !==
-        allocation.championArchiveSha256 ||
-      allocation.panel.cells.some(
-        (cell) => !sourceTaskIds.has(cell.taskId),
-      )
+      source.championArchiveSha256 !== allocation.championArchiveSha256 ||
+      allocation.panel.cells.some((cell) => !sourceTaskIds.has(cell.taskId))
     ) {
       fail("Trusted repair source lineage is inconsistent.");
     }
-    repairsBySource.set(sourceHash, [
-      ...(repairsBySource.get(sourceHash) ?? []),
-      allocation,
-    ]);
+    repairsBySource.set(sourceHash, [...(repairsBySource.get(sourceHash) ?? []), allocation]);
   }
   for (const attempts of repairsBySource.values()) {
     attempts.sort(
-      (left, right) =>
-        (left.repairAttemptOrdinal ?? 0) -
-        (right.repairAttemptOrdinal ?? 0),
+      (left, right) => (left.repairAttemptOrdinal ?? 0) - (right.repairAttemptOrdinal ?? 0),
     );
     const first = attempts[0];
     const second = attempts[1];
@@ -2128,17 +1833,13 @@ function assertTrustedHiddenCatalogStorageState(
       (second !== undefined &&
         (second.repairAttemptOrdinal !== 2 ||
           !committedRequestHashes.has(first.requestHash) ||
-          second.candidateArchiveSha256 ===
-            first.candidateArchiveSha256 ||
-          canonicalJson(second.selectedBuckets) !==
-            canonicalJson(first.selectedBuckets) ||
+          second.candidateArchiveSha256 === first.candidateArchiveSha256 ||
+          canonicalJson(second.selectedBuckets) !== canonicalJson(first.selectedBuckets) ||
           second.panel.cells.some(
             (cell, index) =>
               cell.taskId !== first.panel.cells[index]?.taskId ||
-              cell.taskRevisionDigest !==
-                first.panel.cells[index]?.taskRevisionDigest ||
-              cell.capabilityStratum !==
-                first.panel.cells[index]?.capabilityStratum ||
+              cell.taskRevisionDigest !== first.panel.cells[index]?.taskRevisionDigest ||
+              cell.capabilityStratum !== first.panel.cells[index]?.capabilityStratum ||
               cell.order !== first.panel.cells[index]?.order,
           )))
     ) {
@@ -2147,9 +1848,7 @@ function assertTrustedHiddenCatalogStorageState(
   }
   if (
     catalog.revision !==
-    Object.keys(catalog.allocations).length +
-      Object.keys(catalog.outcomeUpdates).length +
-      1
+    Object.keys(catalog.allocations).length + Object.keys(catalog.outcomeUpdates).length + 1
   ) {
     fail("Trusted hidden catalog revision is inconsistent.");
   }
@@ -2163,9 +1862,7 @@ function assertNullableTrustedHiddenCatalogStorageState(
   }
 }
 
-function assertExperimentIdentity(
-  value: unknown,
-): asserts value is ExperimentIdentity {
+function assertExperimentIdentity(value: unknown): asserts value is ExperimentIdentity {
   if (!isPlainRecord(value)) fail("Optimizer experiment is not an object.");
   assertExactKeys(value, EXPERIMENT_KEYS, "Optimizer experiment");
   if (
@@ -2173,9 +1870,7 @@ function assertExperimentIdentity(
     (value.number as number) <= 0 ||
     typeof value.slug !== "string" ||
     !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value.slug) ||
-    (value.kind !== "baseline" &&
-      value.kind !== "optimization" &&
-      value.kind !== "shadow") ||
+    (value.kind !== "baseline" && value.kind !== "optimization" && value.kind !== "shadow") ||
     (value.parentExperiment !== null &&
       (!Number.isSafeInteger(value.parentExperiment) ||
         (value.parentExperiment as number) < 0 ||
@@ -2202,11 +1897,7 @@ function assertArtifactReference(
   label: string,
 ): asserts value is TrustedCloudArtifactRef {
   if (!isPlainRecord(value)) fail(`${label} is not an object.`);
-  assertExactKeys(
-    value,
-    ["uri", "sha256", "mediaType", "byteLength"],
-    label,
-  );
+  assertExactKeys(value, ["uri", "sha256", "mediaType", "byteLength"], label);
   if (
     typeof value.uri !== "string" ||
     !SAFE_URI.test(value.uri) ||
@@ -2268,11 +1959,7 @@ function assertExecutionReceipt(
   ) {
     fail(`${label} does not describe a successful bounded execution.`);
   }
-  assertExactKeys(
-    value.resourceReport,
-    ["peakMemoryMiB", "cpuTimeMs"],
-    `${label} resource report`,
-  );
+  assertExactKeys(value.resourceReport, ["peakMemoryMiB", "cpuTimeMs"], `${label} resource report`);
   if (
     typeof value.resourceReport.peakMemoryMiB !== "number" ||
     !Number.isFinite(value.resourceReport.peakMemoryMiB) ||
@@ -2291,32 +1978,22 @@ function assertExecutionReceipt(
   }
 }
 
-function assertExecutionReceipts(
-  value: unknown,
-): void {
+function assertExecutionReceipts(value: unknown): void {
   if (!isPlainRecord(value)) {
     fail("Optimizer execution receipts are not an object.");
   }
-  assertExactKeys(
-    value,
-    ["setup", "claude", "seal"],
-    "Optimizer execution receipts",
-  );
+  assertExactKeys(value, ["setup", "claude", "seal"], "Optimizer execution receipts");
   assertExecutionReceipt(value.setup, "Optimizer setup receipt");
   assertExecutionReceipt(value.claude, "Optimizer Claude receipt");
   assertExecutionReceipt(value.seal, "Optimizer seal receipt");
-  const receipts =
-    value as unknown as CloudOptimizerExecutionReceipts;
+  const receipts = value as unknown as CloudOptimizerExecutionReceipts;
   if (
     receipts.setup.provider !== receipts.claude.provider ||
     receipts.setup.provider !== receipts.seal.provider ||
     receipts.setup.sandboxId !== receipts.claude.sandboxId ||
     receipts.setup.sandboxId !== receipts.seal.sandboxId ||
-    new Set([
-      receipts.setup.executionId,
-      receipts.claude.executionId,
-      receipts.seal.executionId,
-    ]).size !== 3
+    new Set([receipts.setup.executionId, receipts.claude.executionId, receipts.seal.executionId])
+      .size !== 3
   ) {
     fail("Optimizer execution receipts do not share one unique sandbox lineage.");
   }
@@ -2411,8 +2088,7 @@ function assertManifest(
   }
   if (input.domain === "dark-factory.optimizer-setup.v1") {
     if (
-      (value.sourceMode !== "private-github" &&
-        value.sourceMode !== "trusted-bundle") ||
+      (value.sourceMode !== "private-github" && value.sourceMode !== "trusted-bundle") ||
       typeof value.registrationId !== "string" ||
       !SHA256.test(value.registrationId) ||
       typeof value.originRepositoryHash !== "string" ||
@@ -2428,8 +2104,7 @@ function assertManifest(
       typeof value.evidenceArchiveSha256 !== "string" ||
       !SHA256.test(value.evidenceArchiveSha256) ||
       (value.inputStateSha256 !== null &&
-        (typeof value.inputStateSha256 !== "string" ||
-          !SHA256.test(value.inputStateSha256)))
+        (typeof value.inputStateSha256 !== "string" || !SHA256.test(value.inputStateSha256)))
     ) {
       fail(`${label} source binding is malformed.`);
     }
@@ -2462,8 +2137,7 @@ function assertManifest(
       !Array.isArray(value.summary.pluginErrors) ||
       value.summary.pluginErrors.length !== 0 ||
       (value.summary.sessionId !== null &&
-        (typeof value.summary.sessionId !== "string" ||
-          value.summary.sessionId.length === 0)) ||
+        (typeof value.summary.sessionId !== "string" || value.summary.sessionId.length === 0)) ||
       typeof value.summary.model !== "string" ||
       value.summary.model.length === 0 ||
       value.summary.result !== "completed" ||
@@ -2475,9 +2149,7 @@ function assertManifest(
     ) {
       fail(`${label} summary is malformed.`);
     }
-  } else if (
-    input.domain === "dark-factory.optimizer-proposal.v1"
-  ) {
+  } else if (input.domain === "dark-factory.optimizer-proposal.v1") {
     if (
       typeof value.sourceCommit !== "string" ||
       !GIT_OBJECT_ID.test(value.sourceCommit) ||
@@ -2488,9 +2160,7 @@ function assertManifest(
       typeof value.lockSha256 !== "string" ||
       !SHA256.test(value.lockSha256) ||
       typeof value.bundleRef !== "string" ||
-      !/^refs\/heads\/df\/bundle\/[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(
-        value.bundleRef,
-      ) ||
+      !/^refs\/heads\/df\/bundle\/[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value.bundleRef) ||
       typeof value.hypothesisReceiptId !== "string" ||
       !/^[A-Za-z0-9_-]{16,128}$/u.test(value.hypothesisReceiptId) ||
       typeof value.candidateReceiptId !== "string" ||
@@ -2559,8 +2229,7 @@ function assertFrozenHypothesis(value: unknown): void {
     typeof value.hash !== "string" ||
     !SHA256.test(value.hash) ||
     (value.sourceBriefHash !== null &&
-      (typeof value.sourceBriefHash !== "string" ||
-        !SHA256.test(value.sourceBriefHash))) ||
+      (typeof value.sourceBriefHash !== "string" || !SHA256.test(value.sourceBriefHash))) ||
     typeof value.causalClaim !== "string" ||
     value.causalClaim.length === 0 ||
     typeof value.intervention !== "string" ||
@@ -2572,8 +2241,7 @@ function assertFrozenHypothesis(value: unknown): void {
     !Array.isArray(value.falsificationCriteria) ||
     value.falsificationCriteria.length === 0 ||
     value.falsificationCriteria.some(
-      (criterion) =>
-        typeof criterion !== "string" || criterion.length === 0,
+      (criterion) => typeof criterion !== "string" || criterion.length === 0,
     ) ||
     typeof value.rollbackCondition !== "string" ||
     value.rollbackCondition.length === 0
@@ -2586,12 +2254,7 @@ function assertFrozenCandidate(value: unknown): void {
   if (!isPlainRecord(value)) fail("Frozen candidate is not an object.");
   assertExactKeys(
     value,
-    [
-      "commit",
-      "patchHash",
-      "changedFiles",
-      "mutationCategory",
-    ],
+    ["commit", "patchHash", "changedFiles", "mutationCategory"],
     "Frozen candidate",
   );
   if (
@@ -2641,11 +2304,7 @@ function assertProposalResult(
   if (!isPlainRecord(value.proposal)) {
     fail("Optimizer proposal is not an object.");
   }
-  assertExactKeys(
-    value.proposal,
-    ["hypothesis", "candidate"],
-    "Optimizer proposal",
-  );
+  assertExactKeys(value.proposal, ["hypothesis", "candidate"], "Optimizer proposal");
   assertFrozenHypothesis(value.proposal.hypothesis);
   assertFrozenCandidate(value.proposal.candidate);
   const experimentId = optimizerExperimentId(experiment);
@@ -2684,25 +2343,14 @@ function assertProposalResult(
     !isPlainRecord(value.seal.state) ||
     value.seal.candidateCommit !==
       (value.proposal.candidate as Readonly<Record<string, unknown>>).commit ||
-    canonicalJson(value.seal.hypothesis) !==
-      canonicalJson(value.proposal.hypothesis) ||
-    canonicalJson(value.seal.candidate) !==
-      canonicalJson(value.proposal.candidate)
+    canonicalJson(value.seal.hypothesis) !== canonicalJson(value.proposal.hypothesis) ||
+    canonicalJson(value.seal.candidate) !== canonicalJson(value.proposal.candidate)
   ) {
     fail("Optimizer proposal seal is detached from its proposal.");
   }
-  assertSealedArtifactMetadata(
-    value.seal.bundle,
-    "Optimizer proposal bundle metadata",
-  );
-  assertSealedArtifactMetadata(
-    value.seal.diff,
-    "Optimizer proposal diff metadata",
-  );
-  assertSealedArtifactMetadata(
-    value.seal.state,
-    "Optimizer proposal state metadata",
-  );
+  assertSealedArtifactMetadata(value.seal.bundle, "Optimizer proposal bundle metadata");
+  assertSealedArtifactMetadata(value.seal.diff, "Optimizer proposal diff metadata");
+  assertSealedArtifactMetadata(value.seal.state, "Optimizer proposal state metadata");
   for (const [key, artifact] of [
     ["candidateBundle", value.candidateBundle],
     ["candidateDiff", value.candidateDiff],
@@ -2713,36 +2361,24 @@ function assertProposalResult(
   ] as const) {
     assertArtifactReference(artifact, `Optimizer ${key}`);
   }
-  const proposalResult =
-    value as unknown as CloudOptimizerProposalResult;
+  const proposalResult = value as unknown as CloudOptimizerProposalResult;
   if (
-    proposalResult.setup.sourceCommit !==
-      proposalResult.seal.sourceCommit ||
-    proposalResult.setup.lockSha256 !==
-      proposalResult.seal.lockSha256 ||
-    proposalResult.seal.bundleRef !==
-      `refs/heads/df/bundle/${experimentId}` ||
-    proposalResult.proposal.candidate.patchHash !==
-      proposalResult.seal.diff.sha256 ||
-    proposalResult.candidateBundle.mediaType !==
-      "application/vnd.git.bundle" ||
+    proposalResult.setup.sourceCommit !== proposalResult.seal.sourceCommit ||
+    proposalResult.setup.lockSha256 !== proposalResult.seal.lockSha256 ||
+    proposalResult.seal.bundleRef !== `refs/heads/df/bundle/${experimentId}` ||
+    proposalResult.proposal.candidate.patchHash !== proposalResult.seal.diff.sha256 ||
+    proposalResult.candidateBundle.mediaType !== "application/vnd.git.bundle" ||
     proposalResult.candidateDiff.mediaType !== "text/x-diff" ||
     proposalResult.sessionState.mediaType !== "application/x-tar" ||
     proposalResult.setupManifestArtifact.mediaType !== "application/json" ||
     proposalResult.claudeManifestArtifact.mediaType !== "application/json" ||
     proposalResult.sealManifestArtifact.mediaType !== "application/json" ||
-    proposalResult.candidateBundle.sha256 !==
-      proposalResult.seal.bundle.sha256 ||
-    proposalResult.candidateBundle.byteLength !==
-      proposalResult.seal.bundle.byteLength ||
-    proposalResult.candidateDiff.sha256 !==
-      proposalResult.seal.diff.sha256 ||
-    proposalResult.candidateDiff.byteLength !==
-      proposalResult.seal.diff.byteLength ||
-    proposalResult.sessionState.sha256 !==
-      proposalResult.seal.state.sha256 ||
-    proposalResult.sessionState.byteLength !==
-      proposalResult.seal.state.byteLength
+    proposalResult.candidateBundle.sha256 !== proposalResult.seal.bundle.sha256 ||
+    proposalResult.candidateBundle.byteLength !== proposalResult.seal.bundle.byteLength ||
+    proposalResult.candidateDiff.sha256 !== proposalResult.seal.diff.sha256 ||
+    proposalResult.candidateDiff.byteLength !== proposalResult.seal.diff.byteLength ||
+    proposalResult.sessionState.sha256 !== proposalResult.seal.state.sha256 ||
+    proposalResult.sessionState.byteLength !== proposalResult.seal.state.byteLength
   ) {
     fail("Optimizer proposal artifacts do not match the seal.");
   }
@@ -2814,10 +2450,7 @@ function assertAnalysisResult(
   ) {
     fail("Optimizer analysis result is detached from its seal.");
   }
-  assertSealedArtifactMetadata(
-    value.seal.state,
-    "Optimizer analysis state metadata",
-  );
+  assertSealedArtifactMetadata(value.seal.state, "Optimizer analysis state metadata");
   for (const [key, artifact] of [
     ["sessionState", value.sessionState],
     ["setupManifestArtifact", value.setupManifestArtifact],
@@ -2826,17 +2459,14 @@ function assertAnalysisResult(
   ] as const) {
     assertArtifactReference(artifact, `Optimizer analysis ${key}`);
   }
-  const analysisResult =
-    value as unknown as CloudOptimizerAnalysisResult;
+  const analysisResult = value as unknown as CloudOptimizerAnalysisResult;
   if (
     analysisResult.sessionState.mediaType !== "application/x-tar" ||
     analysisResult.setupManifestArtifact.mediaType !== "application/json" ||
     analysisResult.claudeManifestArtifact.mediaType !== "application/json" ||
     analysisResult.sealManifestArtifact.mediaType !== "application/json" ||
-    analysisResult.sessionState.sha256 !==
-      analysisResult.seal.state.sha256 ||
-    analysisResult.sessionState.byteLength !==
-      analysisResult.seal.state.byteLength
+    analysisResult.sessionState.sha256 !== analysisResult.seal.state.sha256 ||
+    analysisResult.sessionState.byteLength !== analysisResult.seal.state.byteLength
   ) {
     fail("Optimizer analysis state artifact does not match its seal.");
   }
@@ -2853,9 +2483,7 @@ function emptyOptimizerRecordState(): OptimizerSessionRecordState {
   };
 }
 
-function assertOptimizerRecordState(
-  value: unknown,
-): asserts value is OptimizerSessionRecordState {
+function assertOptimizerRecordState(value: unknown): asserts value is OptimizerSessionRecordState {
   if (!isPlainRecord(value)) {
     fail("Optimizer session record state is not an object.");
   }
@@ -2871,10 +2499,7 @@ function assertOptimizerRecordState(
     fail("Optimizer session record state is malformed.");
   }
   const state = value as unknown as OptimizerSessionRecordState;
-  if (
-    state.revision !==
-    Object.keys(state.proposals).length + Object.keys(state.analyses).length
-  ) {
+  if (state.revision !== Object.keys(state.proposals).length + Object.keys(state.analyses).length) {
     fail("Optimizer session record revision is inconsistent.");
   }
   for (const [key, record] of Object.entries(state.proposals)) {
@@ -2905,10 +2530,8 @@ function assertOptimizerRecordState(
       typeof record.resultHash !== "string" ||
       record.resultHash !== canonicalHash(record.result) ||
       proposal === undefined ||
-      canonicalJson(proposal.experiment) !==
-        canonicalJson(record.experiment) ||
-      record.result.seal.candidateCommit !==
-        proposal.result.seal.candidateCommit
+      canonicalJson(proposal.experiment) !== canonicalJson(record.experiment) ||
+      record.result.seal.candidateCommit !== proposal.result.seal.candidateCommit
     ) {
       fail("Optimizer analysis record identity is inconsistent.");
     }
@@ -2928,9 +2551,7 @@ function namespace(
 /**
  * Production one-use ledger store for the trusted cloud control plane.
  */
-export class MountedVolumeAtomicOneUseLedgerStore
-  implements AtomicOneUseLedgerStore
-{
+export class MountedVolumeAtomicOneUseLedgerStore implements AtomicOneUseLedgerStore {
   readonly #store: MountedVolumeTransactionalJsonStore<OneUseLedgerState>;
 
   constructor(options: MountedVolumeDurableStateOptions) {
@@ -2969,9 +2590,7 @@ export class MountedVolumeAtomicOneUseLedgerStore
 export class MountedVolumeLinearizableHiddenCatalogCasStore
   implements LinearizableHiddenCatalogCasStore
 {
-  readonly #store: MountedVolumeTransactionalJsonStore<
-    TrustedHiddenCatalogState | null
-  >;
+  readonly #store: MountedVolumeTransactionalJsonStore<TrustedHiddenCatalogState | null>;
 
   constructor(options: MountedVolumeDurableStateOptions) {
     this.#store = new MountedVolumeTransactionalJsonStore(
@@ -2987,9 +2606,7 @@ export class MountedVolumeLinearizableHiddenCatalogCasStore
   }
 
   transact<Result>(
-    operation: (
-      state: TrustedHiddenCatalogState | null,
-    ) => {
+    operation: (state: TrustedHiddenCatalogState | null) => {
       readonly next: TrustedHiddenCatalogState;
       readonly result: Result;
     },
@@ -3024,24 +2641,17 @@ export class MountedVolumeCloudOptimizerSessionRecordStore
     );
   }
 
-  put(
-    experiment: ExperimentIdentity,
-    result: CloudOptimizerProposalResult,
-  ): Promise<void> {
+  put(experiment: ExperimentIdentity, result: CloudOptimizerProposalResult): Promise<void> {
     assertExperimentIdentity(experiment);
     assertProposalResult(result, experiment);
-    const frozenExperiment = canonicalClone(
-      experiment,
-      "Optimizer proposal experiment",
-    );
+    const frozenExperiment = canonicalClone(experiment, "Optimizer proposal experiment");
     const frozenResult = canonicalClone(result, "Optimizer proposal result");
     const key = optimizerRecordKey(frozenExperiment);
     return this.#store.transact((state) => {
       const existing = state.proposals[key];
       if (existing !== undefined) {
         if (
-          canonicalJson(existing.experiment) !==
-            canonicalJson(frozenExperiment) ||
+          canonicalJson(existing.experiment) !== canonicalJson(frozenExperiment) ||
           existing.resultHash !== canonicalHash(frozenResult)
         ) {
           fail("Optimizer proposal record already contains different content.");
@@ -3064,55 +2674,40 @@ export class MountedVolumeCloudOptimizerSessionRecordStore
     });
   }
 
-  get(
-    experiment: ExperimentIdentity,
-  ): Promise<CloudOptimizerProposalResult | null> {
+  get(experiment: ExperimentIdentity): Promise<CloudOptimizerProposalResult | null> {
     assertExperimentIdentity(experiment);
     const key = optimizerRecordKey(experiment);
     return this.#store.transact((state) => {
       const record = state.proposals[key];
-      if (
-        record !== undefined &&
-        canonicalJson(record.experiment) !== canonicalJson(experiment)
-      ) {
+      if (record !== undefined && canonicalJson(record.experiment) !== canonicalJson(experiment)) {
         fail("Optimizer proposal lookup collided with another experiment.");
       }
       return {
         next: state,
         result:
-          record === undefined
-            ? null
-            : canonicalClone(record.result, "Optimizer proposal record"),
+          record === undefined ? null : canonicalClone(record.result, "Optimizer proposal record"),
       };
     });
   }
 
-  putAnalysis(
-    experiment: ExperimentIdentity,
-    result: CloudOptimizerAnalysisResult,
-  ): Promise<void> {
+  putAnalysis(experiment: ExperimentIdentity, result: CloudOptimizerAnalysisResult): Promise<void> {
     assertExperimentIdentity(experiment);
     assertAnalysisResult(result, experiment);
-    const frozenExperiment = canonicalClone(
-      experiment,
-      "Optimizer analysis experiment",
-    );
+    const frozenExperiment = canonicalClone(experiment, "Optimizer analysis experiment");
     const frozenResult = canonicalClone(result, "Optimizer analysis result");
     const key = optimizerRecordKey(frozenExperiment);
     return this.#store.transact((state) => {
       const proposal = state.proposals[key];
       if (
         proposal === undefined ||
-        proposal.result.seal.candidateCommit !==
-          frozenResult.seal.candidateCommit
+        proposal.result.seal.candidateCommit !== frozenResult.seal.candidateCommit
       ) {
         fail("Optimizer analysis has no exact sealed proposal.");
       }
       const existing = state.analyses[key];
       if (existing !== undefined) {
         if (
-          canonicalJson(existing.experiment) !==
-            canonicalJson(frozenExperiment) ||
+          canonicalJson(existing.experiment) !== canonicalJson(frozenExperiment) ||
           existing.resultHash !== canonicalHash(frozenResult)
         ) {
           fail("Optimizer analysis record already contains different content.");
@@ -3135,25 +2730,18 @@ export class MountedVolumeCloudOptimizerSessionRecordStore
     });
   }
 
-  getAnalysis(
-    experiment: ExperimentIdentity,
-  ): Promise<CloudOptimizerAnalysisResult | null> {
+  getAnalysis(experiment: ExperimentIdentity): Promise<CloudOptimizerAnalysisResult | null> {
     assertExperimentIdentity(experiment);
     const key = optimizerRecordKey(experiment);
     return this.#store.transact((state) => {
       const record = state.analyses[key];
-      if (
-        record !== undefined &&
-        canonicalJson(record.experiment) !== canonicalJson(experiment)
-      ) {
+      if (record !== undefined && canonicalJson(record.experiment) !== canonicalJson(experiment)) {
         fail("Optimizer analysis lookup collided with another experiment.");
       }
       return {
         next: state,
         result:
-          record === undefined
-            ? null
-            : canonicalClone(record.result, "Optimizer analysis record"),
+          record === undefined ? null : canonicalClone(record.result, "Optimizer analysis record"),
       };
     });
   }

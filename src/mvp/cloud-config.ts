@@ -59,21 +59,15 @@ export interface MvpCloudConfigurationReadiness {
   readonly configuration: MvpCloudConfiguration | null;
 }
 
-const SAFE_CAMPAIGN =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
-const SAFE_IDENTIFIER =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._/@+-]{0,253}[A-Za-z0-9])?$/u;
-const SAFE_GIT_NAME =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/u;
-const SAFE_GIT_REF =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,238}[A-Za-z0-9])?$/u;
+const SAFE_CAMPAIGN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SAFE_IDENTIFIER = /^[A-Za-z0-9](?:[A-Za-z0-9._/@+-]{0,253}[A-Za-z0-9])?$/u;
+const SAFE_GIT_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/u;
+const SAFE_GIT_REF = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,238}[A-Za-z0-9])?$/u;
 const SAFE_SECRET_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
-const SAFE_VOLUME_SUBPATH =
-  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$/u;
+const SAFE_VOLUME_SUBPATH = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$/u;
 const SHA1 = /^[a-f0-9]{40}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const IMMUTABLE_IMAGE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const IMMUTABLE_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const MVP_OUTER_SANDBOX_RESOURCES = {
   cpu: 4,
   memoryGiB: 8,
@@ -104,19 +98,12 @@ const REQUIRED = [
   "DF_GITHUB_SECRET_SOURCE",
 ] as const;
 
-function present(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-): string | null {
+function present(environment: NodeJS.ProcessEnv, name: string): string | null {
   const value = environment[name]?.trim();
   return value === undefined || value.length === 0 ? null : value;
 }
 
-function normalizedHttpsUrl(
-  value: string,
-  label: string,
-  invalid: string[],
-): URL | null {
+function normalizedHttpsUrl(value: string, label: string, invalid: string[]): URL | null {
   try {
     const parsed = new URL(value);
     if (
@@ -139,9 +126,7 @@ function normalizedHttpsUrl(
 function configurationHash(
   configuration: Omit<MvpCloudConfiguration, "configurationHash">,
 ): string {
-  return createHash("sha256")
-    .update(JSON.stringify(configuration))
-    .digest("hex");
+  return createHash("sha256").update(JSON.stringify(configuration)).digest("hex");
 }
 
 /**
@@ -154,9 +139,7 @@ function configurationHash(
 export function inspectMvpCloudEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
 ): MvpCloudConfigurationReadiness {
-  const missing = REQUIRED.filter(
-    (name) => present(environment, name) === null,
-  );
+  const missing = REQUIRED.filter((name) => present(environment, name) === null);
   const invalid: string[] = [];
 
   if (
@@ -172,44 +155,28 @@ export function inspectMvpCloudEnvironment(
     invalid.push("DF_MVP_CAMPAIGN_ID");
   }
 
-  const maximumIterationsRaw = present(
-    environment,
-    "DF_MVP_MAX_ITERATIONS",
-  );
-  const maximumIterations =
-    maximumIterationsRaw === null
-      ? null
-      : Number(maximumIterationsRaw);
+  const maximumIterationsRaw = present(environment, "DF_MVP_MAX_ITERATIONS");
+  const maximumIterations = maximumIterationsRaw === null ? null : Number(maximumIterationsRaw);
   if (
     maximumIterations !== null &&
-    (!Number.isSafeInteger(maximumIterations) ||
-      maximumIterations < 1 ||
-      maximumIterations > 10)
+    (!Number.isSafeInteger(maximumIterations) || maximumIterations < 1 || maximumIterations > 10)
   ) {
     invalid.push("DF_MVP_MAX_ITERATIONS");
   }
 
   const apiUrlRaw = present(environment, "DAYTONA_API_URL");
   const apiUrl =
-    apiUrlRaw === null
-      ? null
-      : normalizedHttpsUrl(
-          apiUrlRaw,
-          "DAYTONA_API_URL",
-          invalid,
-        );
+    apiUrlRaw === null ? null : normalizedHttpsUrl(apiUrlRaw, "DAYTONA_API_URL", invalid);
   if (
     apiUrl !== null &&
-    (apiUrl.hostname !== "app.daytona.io" ||
-      apiUrl.pathname.replace(/\/+$/u, "") !== "/api")
+    (apiUrl.hostname !== "app.daytona.io" || apiUrl.pathname.replace(/\/+$/u, "") !== "/api")
   ) {
     invalid.push("DAYTONA_API_URL");
   }
   const target = present(environment, "DAYTONA_TARGET");
   if (
     target !== null &&
-    (!SAFE_IDENTIFIER.test(target) ||
-      !/(?:^|[-_.])eu(?:$|[-_.])/iu.test(target))
+    (!SAFE_IDENTIFIER.test(target) || !/(?:^|[-_.])eu(?:$|[-_.])/iu.test(target))
   ) {
     invalid.push("DAYTONA_TARGET");
   }
@@ -223,82 +190,42 @@ export function inspectMvpCloudEnvironment(
   if (volumeId !== null && !SAFE_IDENTIFIER.test(volumeId)) {
     invalid.push("DF_DAYTONA_VOLUME_ID");
   }
-  const volumeSubpath = present(
-    environment,
-    "DF_DAYTONA_VOLUME_SUBPATH",
-  );
-  if (
-    volumeSubpath !== null &&
-    !SAFE_VOLUME_SUBPATH.test(volumeSubpath)
-  ) {
+  const volumeSubpath = present(environment, "DF_DAYTONA_VOLUME_SUBPATH");
+  if (volumeSubpath !== null && !SAFE_VOLUME_SUBPATH.test(volumeSubpath)) {
     invalid.push("DF_DAYTONA_VOLUME_SUBPATH");
   }
-  const harborApiSecretSource = present(
-    environment,
-    "DF_HARBOR_DAYTONA_SECRET_SOURCE",
-  );
-  if (
-    harborApiSecretSource !== null &&
-    !SAFE_SECRET_NAME.test(harborApiSecretSource)
-  ) {
+  const harborApiSecretSource = present(environment, "DF_HARBOR_DAYTONA_SECRET_SOURCE");
+  if (harborApiSecretSource !== null && !SAFE_SECRET_NAME.test(harborApiSecretSource)) {
     invalid.push("DF_HARBOR_DAYTONA_SECRET_SOURCE");
   }
 
-  const foundryBaseUrlRaw = present(
-    environment,
-    "DF_FOUNDRY_BASE_URL",
-  );
+  const foundryBaseUrlRaw = present(environment, "DF_FOUNDRY_BASE_URL");
   const foundryBaseUrl =
     foundryBaseUrlRaw === null
       ? null
-      : normalizedHttpsUrl(
-          foundryBaseUrlRaw,
-          "DF_FOUNDRY_BASE_URL",
-          invalid,
-        );
+      : normalizedHttpsUrl(foundryBaseUrlRaw, "DF_FOUNDRY_BASE_URL", invalid);
   if (
     foundryBaseUrl !== null &&
-    (!foundryBaseUrl.hostname.endsWith(
-      ".services.ai.azure.com",
-    ) ||
-      foundryBaseUrl.pathname.replace(/\/+$/u, "") !==
-        "/anthropic")
+    (!foundryBaseUrl.hostname.endsWith(".services.ai.azure.com") ||
+      foundryBaseUrl.pathname.replace(/\/+$/u, "") !== "/anthropic")
   ) {
     invalid.push("DF_FOUNDRY_BASE_URL");
   }
 
-  const optimizerDeployment = present(
-    environment,
-    "DF_OPTIMIZER_DEPLOYMENT",
-  );
-  const evaluatedDeployment = present(
-    environment,
-    "DF_EVALUATED_DEPLOYMENT",
-  );
+  const optimizerDeployment = present(environment, "DF_OPTIMIZER_DEPLOYMENT");
+  const evaluatedDeployment = present(environment, "DF_EVALUATED_DEPLOYMENT");
   for (const [name, value] of [
     ["DF_OPTIMIZER_DEPLOYMENT", optimizerDeployment],
     ["DF_EVALUATED_DEPLOYMENT", evaluatedDeployment],
   ] as const) {
-    if (
-      value !== null &&
-      !isMvpModelDeploymentAlias(value)
-    ) {
+    if (value !== null && !isMvpModelDeploymentAlias(value)) {
       invalid.push(name);
     }
   }
 
-  const optimizerSecretSource = present(
-    environment,
-    "DF_OPTIMIZER_SECRET_SOURCE",
-  );
-  const evaluatedSecretSource = present(
-    environment,
-    "DF_EVALUATED_SECRET_SOURCE",
-  );
-  const githubSecretSource = present(
-    environment,
-    "DF_GITHUB_SECRET_SOURCE",
-  );
+  const optimizerSecretSource = present(environment, "DF_OPTIMIZER_SECRET_SOURCE");
+  const evaluatedSecretSource = present(environment, "DF_EVALUATED_SECRET_SOURCE");
+  const githubSecretSource = present(environment, "DF_GITHUB_SECRET_SOURCE");
   for (const [name, value] of [
     ["DF_OPTIMIZER_SECRET_SOURCE", optimizerSecretSource],
     ["DF_EVALUATED_SECRET_SOURCE", evaluatedSecretSource],
@@ -310,20 +237,11 @@ export function inspectMvpCloudEnvironment(
   }
 
   const piOwner = present(environment, "DF_PI_GITHUB_OWNER");
-  const piRepository = present(
-    environment,
-    "DF_PI_GITHUB_REPOSITORY",
-  );
+  const piRepository = present(environment, "DF_PI_GITHUB_REPOSITORY");
   const piBranch = present(environment, "DF_PI_BRANCH");
-  const baselineCommit = present(
-    environment,
-    "DF_PI_BASELINE_COMMIT",
-  );
+  const baselineCommit = present(environment, "DF_PI_BASELINE_COMMIT");
   const baselineTree = present(environment, "DF_PI_BASELINE_TREE");
-  const packageLockSha256 = present(
-    environment,
-    "DF_PI_PACKAGE_LOCK_SHA256",
-  );
+  const packageLockSha256 = present(environment, "DF_PI_PACKAGE_LOCK_SHA256");
   for (const [name, value] of [
     ["DF_PI_GITHUB_OWNER", piOwner],
     ["DF_PI_GITHUB_REPOSITORY", piRepository],
@@ -348,10 +266,7 @@ export function inspectMvpCloudEnvironment(
   if (baselineTree !== null && !SHA1.test(baselineTree)) {
     invalid.push("DF_PI_BASELINE_TREE");
   }
-  if (
-    packageLockSha256 !== null &&
-    !SHA256.test(packageLockSha256)
-  ) {
+  if (packageLockSha256 !== null && !SHA256.test(packageLockSha256)) {
     invalid.push("DF_PI_PACKAGE_LOCK_SHA256");
   }
 
@@ -386,15 +301,10 @@ export function inspectMvpCloudEnvironment(
     packageLockSha256 === null ||
     githubSecretSource === null
   ) {
-    throw new Error(
-      "MVP readiness became inconsistent after validation.",
-    );
+    throw new Error("MVP readiness became inconsistent after validation.");
   }
 
-  const unsigned: Omit<
-    MvpCloudConfiguration,
-    "configurationHash"
-  > = {
+  const unsigned: Omit<MvpCloudConfiguration, "configurationHash"> = {
     campaignId,
     maximumIterations,
     daytona: {
@@ -411,9 +321,7 @@ export function inspectMvpCloudEnvironment(
       },
     },
     foundry: {
-      baseUrl: foundryBaseUrl
-        .toString()
-        .replace(/\/$/u, ""),
+      baseUrl: foundryBaseUrl.toString().replace(/\/$/u, ""),
       apiHost: foundryBaseUrl.hostname,
       optimizerDeployment,
       evaluatedDeployment,

@@ -24,8 +24,7 @@ export function hashResultEnvelopeBehavioralSourceMaterial(
 ): string {
   return canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.result-envelope-behavioral-source.v1",
+    domain: "dark-factory.result-envelope-behavioral-source.v1",
     resultIdentity: {
       envelopeId: material.envelopeId,
       experimentNumber: material.experimentNumber,
@@ -34,8 +33,7 @@ export function hashResultEnvelopeBehavioralSourceMaterial(
       oneUseRequest: material.oneUseRequest,
     },
     resultDerivation: {
-      normalizedOutcomeSetHash:
-        material.normalizedOutcomeSetHash,
+      normalizedOutcomeSetHash: material.normalizedOutcomeSetHash,
       cacheAttestationHash: material.cacheAttestationHash,
       rawArtifacts: material.rawArtifacts,
       derivedAt: material.derivedAt,
@@ -53,9 +51,7 @@ export function hashResultEnvelopeBehavioralSourceMaterial(
  * particular, it excludes the result's `contentHash`, `signature`, and
  * `derivation.behavioralAggregateHash`.
  */
-export function resultEnvelopeBehavioralSourceCommitmentHash(
-  result: SignedResultEnvelope,
-): string {
+export function resultEnvelopeBehavioralSourceCommitmentHash(result: SignedResultEnvelope): string {
   assertValidDocument("signedResultEnvelope", result);
   return hashResultEnvelopeBehavioralSourceMaterial({
     envelopeId: result.envelopeId,
@@ -63,10 +59,8 @@ export function resultEnvelopeBehavioralSourceCommitmentHash(
     mode: result.mode,
     protocolHash: result.protocolHash,
     oneUseRequest: result.oneUseRequest,
-    normalizedOutcomeSetHash:
-      result.derivation.normalizedOutcomeSetHash,
-    cacheAttestationHash:
-      result.derivation.cacheAttestationHash,
+    normalizedOutcomeSetHash: result.derivation.normalizedOutcomeSetHash,
+    cacheAttestationHash: result.derivation.cacheAttestationHash,
     rawArtifacts: result.derivation.rawArtifacts,
     derivedAt: result.derivation.derivedAt,
   });

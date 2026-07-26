@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   StrictTrustedDecodedEvaluationReader,
-  TrustedRawReaderBoundaryError,
   type TrustedEncryptedRawArtifactSource,
   type TrustedHarborRawArtifactDecoder,
   type TrustedRawArtifactDecryptor,
+  TrustedRawReaderBoundaryError,
 } from "../../src/evaluator/raw-reader.js";
 import {
   createTrustedRawArtifactManifest,
@@ -76,9 +76,7 @@ function fixture() {
   return { values, artifacts, rawRun };
 }
 
-class TestOnlyInMemoryRawSource
-  implements TrustedEncryptedRawArtifactSource
-{
+class TestOnlyInMemoryRawSource implements TrustedEncryptedRawArtifactSource {
   readonly boundary = "test-only-in-memory" as const;
   readonly #values: ReadonlyMap<string, Uint8Array>;
 
@@ -107,15 +105,11 @@ function source(
   };
 }
 
-function decryptor(
-  boundary: "trusted-cloud" | "test-only-in-memory",
-): TrustedRawArtifactDecryptor {
+function decryptor(boundary: "trusted-cloud" | "test-only-in-memory"): TrustedRawArtifactDecryptor {
   return {
     boundary,
     decrypt: (input) => {
-      const plaintext = new TextEncoder().encode(
-        `decoded-${input.artifact.kind}`,
-      );
+      const plaintext = new TextEncoder().encode(`decoded-${input.artifact.kind}`);
       return Promise.resolve({
         plaintext,
         attestation: {
@@ -123,8 +117,7 @@ function decryptor(
           artifactUri: input.artifact.uri,
           ciphertextSha256: input.artifact.sha256,
           plaintextSha256: hash(plaintext),
-          additionalAuthenticatedDataHash:
-            input.additionalAuthenticatedDataHash,
+          additionalAuthenticatedDataHash: input.additionalAuthenticatedDataHash,
           keyVersion: "cloud-kms-key-v1",
           decryptedAt: "2026-07-01T00:01:00.000Z",
         },
@@ -158,10 +151,7 @@ describe("authenticated trusted raw reader", () => {
   it("hash-binds ciphertext, decryption AAD, all plaintexts, and decoder output", async () => {
     const value = fixture();
     const values = new Map(
-      value.artifacts.map((artifact) => [
-        artifact.uri,
-        value.values[artifact.kind],
-      ] as const),
+      value.artifacts.map((artifact) => [artifact.uri, value.values[artifact.kind]] as const),
     );
     const reader = new StrictTrustedDecodedEvaluationReader({
       deployment: "trusted-cloud",
@@ -181,10 +171,7 @@ describe("authenticated trusted raw reader", () => {
   it("zeroes every transferred plaintext buffer after decoding", async () => {
     const value = fixture();
     const values = new Map(
-      value.artifacts.map((artifact) => [
-        artifact.uri,
-        value.values[artifact.kind],
-      ] as const),
+      value.artifacts.map((artifact) => [artifact.uri, value.values[artifact.kind]] as const),
     );
     const baseDecryptor = decryptor("trusted-cloud");
     const transferred: Uint8Array[] = [];
@@ -204,20 +191,13 @@ describe("authenticated trusted raw reader", () => {
     });
     await reader.decode(value.rawRun);
     expect(transferred).toHaveLength(3);
-    expect(
-      transferred.every((buffer) =>
-        buffer.every((byte) => byte === 0),
-      ),
-    ).toBe(true);
+    expect(transferred.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
   });
 
   it("rejects the explicitly test-only in-memory fixture in production", () => {
     const value = fixture();
     const values = new Map(
-      value.artifacts.map((artifact) => [
-        artifact.uri,
-        value.values[artifact.kind],
-      ] as const),
+      value.artifacts.map((artifact) => [artifact.uri, value.values[artifact.kind]] as const),
     );
     expect(
       () =>
@@ -234,15 +214,9 @@ describe("authenticated trusted raw reader", () => {
   it("fails before decryption when encrypted bytes do not match the manifest", async () => {
     const value = fixture();
     const tampered = new Map(
-      value.artifacts.map((artifact) => [
-        artifact.uri,
-        value.values[artifact.kind],
-      ] as const),
+      value.artifacts.map((artifact) => [artifact.uri, value.values[artifact.kind]] as const),
     );
-    tampered.set(
-      value.artifacts[0]!.uri,
-      new TextEncoder().encode("same-length-is-not-trusted"),
-    );
+    tampered.set(value.artifacts[0]!.uri, new TextEncoder().encode("same-length-is-not-trusted"));
     const decrypt = vi.fn(decryptor("trusted-cloud").decrypt);
     const reader = new StrictTrustedDecodedEvaluationReader({
       deployment: "trusted-cloud",
@@ -264,10 +238,7 @@ describe("authenticated trusted raw reader", () => {
   it("rejects a decoder result that does not acknowledge its complete input binding", async () => {
     const value = fixture();
     const values = new Map(
-      value.artifacts.map((artifact) => [
-        artifact.uri,
-        value.values[artifact.kind],
-      ] as const),
+      value.artifacts.map((artifact) => [artifact.uri, value.values[artifact.kind]] as const),
     );
     const detached: TrustedHarborRawArtifactDecoder = {
       boundary: "trusted-cloud",
@@ -300,10 +271,7 @@ describe("authenticated trusted raw reader", () => {
   it("rejects decryption attested after the raw retention deadline", async () => {
     const value = fixture();
     const values = new Map(
-      value.artifacts.map((artifact) => [
-        artifact.uri,
-        value.values[artifact.kind],
-      ] as const),
+      value.artifacts.map((artifact) => [artifact.uri, value.values[artifact.kind]] as const),
     );
     const baseDecryptor = decryptor("trusted-cloud");
     const reader = new StrictTrustedDecodedEvaluationReader({

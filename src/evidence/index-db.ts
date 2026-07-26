@@ -3,12 +3,7 @@ import { mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
-import type {
-  Decision,
-  Experiment,
-  FailureCards,
-  Results,
-} from "../schemas/artifacts.js";
+import type { Decision, Experiment, FailureCards, Results } from "../schemas/artifacts.js";
 import { SCHEMA_VERSION } from "../schemas/primitives.js";
 import { EvidenceIntegrityError } from "./errors.js";
 import { readAndVerifyEventChain } from "./events.js";
@@ -430,10 +425,7 @@ export function queryIndexedFailureCards(
       uncertaintyUpper: requiredNumber(row, "uncertainty_upper"),
       distinctTaskCountBand: requiredString(row, "distinct_task_count_band"),
       trajectoryCountBand: requiredString(row, "trajectory_count_band"),
-      minimumComparedGroupSizeBand: requiredString(
-        row,
-        "minimum_compared_group_size_band",
-      ),
+      minimumComparedGroupSizeBand: requiredString(row, "minimum_compared_group_size_band"),
     }));
   } finally {
     database.close();

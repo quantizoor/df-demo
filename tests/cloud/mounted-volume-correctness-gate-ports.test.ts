@@ -18,27 +18,21 @@ import type {
 } from "../../src/cloud/mounted-volume-state.js";
 import type { ExperimentIdentity } from "../../src/domain/models.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
-import type {
-  TrustedCandidateRuntimeBuildReceipt,
-} from "../../src/harness/candidate-build-runner.js";
+import type { TrustedCandidateRuntimeBuildReceipt } from "../../src/harness/candidate-build-runner.js";
 import type { TrustedGitPublicationReceipt } from "../../src/harness/git-publication.js";
 import {
   TRUSTED_GIT_SOURCE_BUNDLE_REF,
   type TrustedGitSourceSnapshotReceipt,
 } from "../../src/harness/git-source.js";
 import {
-  trustedCloudIntegrityScanAttestationHash,
   type AccountedCorrectnessGateReceipt,
   type CorrectnessGateOperation,
   type CorrectnessGateRecord,
   type TrustedCandidateSourceIndexReceipt,
   type TrustedCloudIntegrityScanReceipt,
+  trustedCloudIntegrityScanAttestationHash,
 } from "../../src/orchestrator/correctness-gate.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 
 const PROTOCOL_HASH = "1".repeat(64);
 const SOURCE_COMMIT = "2".repeat(40);
@@ -95,9 +89,7 @@ function verifier(publicKey: KeyLike = keyPair.publicKey) {
 }
 
 function signedSnapshot(
-  overrides: Partial<
-    Omit<TrustedGitSourceSnapshotReceipt, "signature">
-  > = {},
+  overrides: Partial<Omit<TrustedGitSourceSnapshotReceipt, "signature">> = {},
 ): TrustedGitSourceSnapshotReceipt {
   const unsigned = {
     sensitivity: "trusted-git-source-snapshot" as const,
@@ -126,13 +118,13 @@ function signedSnapshot(
     executionReceiptHash: "f".repeat(64),
     manifestArtifactSha256: "0".repeat(64),
     sourceArtifact: {
-      uri: "trusted://candidate-sources/commit-001",
+      uri: "trusted://candidate-sources/commit-001" as const,
       sha256: "1".repeat(64),
       mediaType: "application/x-tar",
       byteLength: 8_192,
     },
     sourceBundleArtifact: {
-      uri: "trusted://candidate-sources/commit-001-bundle",
+      uri: "trusted://candidate-sources/commit-001-bundle" as const,
       sha256: "2".repeat(64),
       mediaType: "application/vnd.git.bundle",
       byteLength: 16_384,
@@ -153,41 +145,38 @@ function signedSnapshot(
 }
 
 function sourceAuthority() {
-  const attest = vi.fn<
-    TrustedCandidateSourceIndexAttestationAuthority["attest"]
-  >(async (request) => ({
-    schemaVersion: 1,
-    sensitivity: "trusted-candidate-source-index-attestation",
-    storageBindingHash: request.storageBindingHash,
-    indexAttestationHash: canonicalHash({
-      domain: "index-attestation",
-      binding: request.storageBindingHash,
+  const attest = vi.fn<TrustedCandidateSourceIndexAttestationAuthority["attest"]>(
+    async (request) => ({
+      schemaVersion: 1,
+      sensitivity: "trusted-candidate-source-index-attestation",
+      storageBindingHash: request.storageBindingHash,
+      indexAttestationHash: canonicalHash({
+        domain: "index-attestation",
+        binding: request.storageBindingHash,
+      }),
+      aggregateCostUsd: 0.01,
+      tokens: 0,
+      wallTimeMs: 3,
+      accountingAttestationHash: canonicalHash({
+        domain: "index-accounting",
+        binding: request.storageBindingHash,
+      }),
+      containsTaskIdentifiers: false,
     }),
-    aggregateCostUsd: 0.01,
-    tokens: 0,
-    wallTimeMs: 3,
-    accountingAttestationHash: canonicalHash({
-      domain: "index-accounting",
-      binding: request.storageBindingHash,
-    }),
-    containsTaskIdentifiers: false,
-  }));
+  );
   return {
     boundary: "trusted-cloud" as const,
     attest,
   };
 }
 
-function rejectedScan(
-  passed = false,
-): TrustedCloudIntegrityScanReceipt {
+function rejectedScan(passed = false): TrustedCloudIntegrityScanReceipt {
   const draft: Omit<
     TrustedCloudIntegrityScanReceipt,
     "scanId" | "scanAttestationHash" | "signature"
   > = {
     schemaVersion: 2,
-    sensitivity:
-      "release-safe-candidate-integrity-scan" as const,
+    sensitivity: "release-safe-candidate-integrity-scan" as const,
     experimentId: "001-durable-source-index",
     protocolHash: PROTOCOL_HASH,
     sourceCommit: SOURCE_COMMIT,
@@ -237,8 +226,7 @@ function rejectedScan(
   };
   const unsigned = {
     ...identified,
-    scanAttestationHash:
-      trustedCloudIntegrityScanAttestationHash(identified),
+    scanAttestationHash: trustedCloudIntegrityScanAttestationHash(identified),
   };
   return {
     ...unsigned,
@@ -269,8 +257,7 @@ function accounted<Receipt>(
     receipt,
     accounting: {
       schemaVersion: 1,
-      sensitivity:
-        "release-safe-correctness-gate-accounting",
+      sensitivity: "release-safe-correctness-gate-accounting",
       operation,
       receiptHash: canonicalHash(receipt),
       aggregateCostUsd,
@@ -291,12 +278,10 @@ function rejectedRecord(
   const scan = accountedScan(overrides.scan ?? rejectedScan());
   return withContentHash({
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-correctness-gate.v1" as const,
+    domain: "dark-factory.production-correctness-gate.v1" as const,
     experiment,
     requestHash: "a".repeat(64),
-    proposalResultHash:
-      overrides.proposalResultHash ?? "b".repeat(64),
+    proposalResultHash: overrides.proposalResultHash ?? "b".repeat(64),
     integrityScan: scan,
     candidateBuild: null,
     gitPublication: null,
@@ -339,7 +324,7 @@ function signedBuild(): TrustedCandidateRuntimeBuildReceipt {
     commandReceiptHashes: ["f".repeat(64)],
     runtimeManifestSha256: "0".repeat(64),
     runtimeArtifact: {
-      uri: "trusted://candidate-runtimes/commit-001",
+      uri: "trusted://candidate-runtimes/commit-001" as const,
       sha256: "1".repeat(64),
       mediaType: "application/x-tar",
       byteLength: 16_384,
@@ -381,12 +366,9 @@ function signedPublication(): TrustedGitPublicationReceipt {
     candidateCommit: CANDIDATE_COMMIT,
     candidateTree: CANDIDATE_TREE,
     lockSha256: LOCK_SHA256,
-    bundleRef:
-      "refs/heads/df/bundle/001-durable-source-index",
-    branchRef:
-      "refs/heads/df/experiment/001-durable-source-index",
-    tagRef:
-      "refs/tags/df/experiment/001-durable-source-index/candidate",
+    bundleRef: "refs/heads/df/bundle/001-durable-source-index",
+    branchRef: "refs/heads/df/experiment/001-durable-source-index",
+    tagRef: "refs/tags/df/experiment/001-durable-source-index/candidate",
     branchCommit: CANDIDATE_COMMIT,
     tagObjectId: "d".repeat(40),
     tagPeeledCommit: CANDIDATE_COMMIT,
@@ -424,8 +406,7 @@ function sourceIndexReceipt(
       candidateTree: snapshot.treeSha,
       lockSha256: snapshot.lockSha256,
       sourceArtifactSha256: snapshot.sourceArtifact.sha256,
-      sourceBundleArtifactSha256:
-        snapshot.sourceBundleArtifact.sha256,
+      sourceBundleArtifactSha256: snapshot.sourceBundleArtifact.sha256,
       snapshotReceiptHash,
     }).slice(0, 48)}`,
     experimentId: "001-durable-source-index",
@@ -436,8 +417,7 @@ function sourceIndexReceipt(
     candidateTree: snapshot.treeSha,
     lockSha256: snapshot.lockSha256,
     sourceArtifactSha256: snapshot.sourceArtifact.sha256,
-    sourceBundleArtifactSha256:
-      snapshot.sourceBundleArtifact.sha256,
+    sourceBundleArtifactSha256: snapshot.sourceBundleArtifact.sha256,
     snapshotReceiptHash,
     indexedAt: "2026-07-26T10:05:00.000Z",
     containsTaskIdentifiers: false,
@@ -446,51 +426,15 @@ function sourceIndexReceipt(
 }
 
 function passingRecord(): CorrectnessGateRecord {
-  const scan = accounted(
-    "integrity-scan",
-    passingScan(),
-    1,
-    1,
-    10,
-    "8",
-  );
-  const build = accounted(
-    "candidate-build",
-    signedBuild(),
-    2,
-    2,
-    20,
-    "9",
-  );
-  const publication = accounted(
-    "git-publication",
-    signedPublication(),
-    3,
-    3,
-    30,
-    "a",
-  );
+  const scan = accounted("integrity-scan", passingScan(), 1, 1, 10, "8");
+  const build = accounted("candidate-build", signedBuild(), 2, 2, 20, "9");
+  const publication = accounted("git-publication", signedPublication(), 3, 3, 30, "a");
   const snapshot = signedSnapshot();
-  const source = accounted(
-    "source-snapshot",
-    snapshot,
-    4,
-    4,
-    40,
-    "b",
-  );
-  const indexed = accounted(
-    "source-index",
-    sourceIndexReceipt(snapshot),
-    5,
-    5,
-    50,
-    "c",
-  );
+  const source = accounted("source-snapshot", snapshot, 4, 4, 40, "b");
+  const indexed = accounted("source-index", sourceIndexReceipt(snapshot), 5, 5, 50, "c");
   return withContentHash({
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-correctness-gate.v1" as const,
+    domain: "dark-factory.production-correctness-gate.v1" as const,
     experiment,
     requestHash: "d".repeat(64),
     proposalResultHash: "e".repeat(64),
@@ -513,73 +457,56 @@ function passingRecord(): CorrectnessGateRecord {
 }
 
 describe("mounted-volume correctness-gate production ports", () => {
-  it(
-    "indexes one exact signed snapshot once across concurrent retry and controller handoff",
-    async () => {
-      const root = await mkdtemp(
-        join(tmpdir(), "df-candidate-source-index-test-"),
-      );
-      const authority = sourceAuthority();
-      const index = new MountedVolumeTrustedCandidateSourceIndex({
-        durableState: stateOptions(root),
-        sourceReceiptVerifier: verifier(),
-        attestationAuthority: authority,
-      });
-      const snapshot = signedSnapshot();
-      const input = {
+  it("indexes one exact signed snapshot once across concurrent retry and controller handoff", async () => {
+    const root = await mkdtemp(join(tmpdir(), "df-candidate-source-index-test-"));
+    const authority = sourceAuthority();
+    const index = new MountedVolumeTrustedCandidateSourceIndex({
+      durableState: stateOptions(root),
+      sourceReceiptVerifier: verifier(),
+      attestationAuthority: authority,
+    });
+    const snapshot = signedSnapshot();
+    const input = {
+      experiment,
+      snapshot,
+      snapshotReceiptHash: canonicalHash(snapshot),
+    };
+
+    const [first, concurrent, third] = await Promise.all([
+      index.index(input),
+      index.index(input),
+      index.index(input),
+    ]);
+    expect(concurrent).toEqual(first);
+    expect(third).toEqual(first);
+    expect(authority.attest).toHaveBeenCalledTimes(1);
+    const resolved = await index.findByCommit(snapshot.commitSha);
+    expect(resolved).toEqual(snapshot);
+
+    (snapshot.sourceArtifact as { sha256: string }).sha256 = "f".repeat(64);
+    (first.receipt as { sourceArtifactSha256: string }).sourceArtifactSha256 = "e".repeat(64);
+    expect(await index.findByCommit(CANDIDATE_COMMIT)).toEqual(signedSnapshot());
+    await index.close();
+
+    const successorAuthority = sourceAuthority();
+    const successor = new MountedVolumeTrustedCandidateSourceIndex({
+      durableState: stateOptions(root, "c".repeat(64), "d".repeat(48)),
+      sourceReceiptVerifier: verifier(),
+      attestationAuthority: successorAuthority,
+    });
+    await expect(
+      successor.index({
         experiment,
-        snapshot,
-        snapshotReceiptHash: canonicalHash(snapshot),
-      };
-
-      const [first, concurrent, third] = await Promise.all([
-        index.index(input),
-        index.index(input),
-        index.index(input),
-      ]);
-      expect(concurrent).toEqual(first);
-      expect(third).toEqual(first);
-      expect(authority.attest).toHaveBeenCalledTimes(1);
-      const resolved = await index.findByCommit(snapshot.commitSha);
-      expect(resolved).toEqual(snapshot);
-
-      (snapshot.sourceArtifact as { sha256: string }).sha256 =
-        "f".repeat(64);
-      (
-        first.receipt as { sourceArtifactSha256: string }
-      ).sourceArtifactSha256 = "e".repeat(64);
-      expect(
-        await index.findByCommit(CANDIDATE_COMMIT),
-      ).toEqual(signedSnapshot());
-      await index.close();
-
-      const successorAuthority = sourceAuthority();
-      const successor =
-        new MountedVolumeTrustedCandidateSourceIndex({
-          durableState: stateOptions(
-            root,
-            "c".repeat(64),
-            "d".repeat(48),
-          ),
-          sourceReceiptVerifier: verifier(),
-          attestationAuthority: successorAuthority,
-        });
-      await expect(
-        successor.index({
-          experiment,
-          snapshot: signedSnapshot(),
-          snapshotReceiptHash: canonicalHash(signedSnapshot()),
-        }),
-      ).resolves.toEqual(concurrent);
-      expect(successorAuthority.attest).not.toHaveBeenCalled();
-      await successor.close();
-    },
-  );
+        snapshot: signedSnapshot(),
+        snapshotReceiptHash: canonicalHash(signedSnapshot()),
+      }),
+    ).resolves.toEqual(concurrent);
+    expect(successorAuthority.attest).not.toHaveBeenCalled();
+    await successor.close();
+  });
 
   it("rejects a second signed snapshot for an already indexed commit", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-candidate-source-index-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-candidate-source-index-test-"));
     const authority = sourceAuthority();
     const index = new MountedVolumeTrustedCandidateSourceIndex({
       durableState: stateOptions(root),
@@ -605,17 +532,13 @@ describe("mounted-volume correctness-gate production ports", () => {
         snapshot: conflict,
         snapshotReceiptHash: canonicalHash(conflict),
       }),
-    ).rejects.toThrow(
-      "Candidate commit already binds a different source snapshot.",
-    );
+    ).rejects.toThrow("Candidate commit already binds a different source snapshot.");
     expect(authority.attest).toHaveBeenCalledTimes(1);
     await index.close();
   });
 
   it("rejects signature tampering before calling the index authority", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-candidate-source-index-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-candidate-source-index-test-"));
     const authority = sourceAuthority();
     const index = new MountedVolumeTrustedCandidateSourceIndex({
       durableState: stateOptions(root),
@@ -638,9 +561,7 @@ describe("mounted-volume correctness-gate production ports", () => {
   });
 
   it("rejects persisted snapshots under a different trusted keyring", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-candidate-source-index-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-candidate-source-index-test-"));
     const index = new MountedVolumeTrustedCandidateSourceIndex({
       durableState: stateOptions(root),
       sourceReceiptVerifier: verifier(),
@@ -656,31 +577,24 @@ describe("mounted-volume correctness-gate production ports", () => {
 
     const untrustedKey = generateKeyPairSync("ed25519").publicKey;
     const successor = new MountedVolumeTrustedCandidateSourceIndex({
-      durableState: stateOptions(
-        root,
-        "c".repeat(64),
-        "d".repeat(48),
-      ),
+      durableState: stateOptions(root, "c".repeat(64), "d".repeat(48)),
       sourceReceiptVerifier: verifier(untrustedKey),
       attestationAuthority: sourceAuthority(),
     });
-    await expect(
-      successor.findByCommit(CANDIDATE_COMMIT),
-    ).rejects.toThrow("Trusted receipt signature is invalid.");
+    await expect(successor.findByCommit(CANDIDATE_COMMIT)).rejects.toThrow(
+      "Trusted receipt signature is invalid.",
+    );
     await successor.close();
   });
 
   it("fails closed when an attestation contains an undeclared field", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-candidate-source-index-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-candidate-source-index-test-"));
     const authority: TrustedCandidateSourceIndexAttestationAuthority = {
       boundary: "trusted-cloud",
       attest: async (request) =>
         ({
           schemaVersion: 1,
-          sensitivity:
-            "trusted-candidate-source-index-attestation",
+          sensitivity: "trusted-candidate-source-index-attestation",
           storageBindingHash: request.storageBindingHash,
           indexAttestationHash: "1".repeat(64),
           aggregateCostUsd: 0,
@@ -708,9 +622,7 @@ describe("mounted-volume correctness-gate production ports", () => {
   });
 
   it("validates and preserves the complete signed passing gate lineage", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-correctness-record-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-correctness-record-test-"));
     const records = new MountedVolumeCorrectnessGateRecordStore({
       durableState: stateOptions(root),
       integrityScanVerifier: verifier(),
@@ -725,9 +637,7 @@ describe("mounted-volume correctness-gate production ports", () => {
   });
 
   it("rejects a rehashed record with a tampered publication signature", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-correctness-record-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-correctness-record-test-"));
     const records = new MountedVolumeCorrectnessGateRecordStore({
       durableState: stateOptions(root),
       integrityScanVerifier: verifier(),
@@ -757,68 +667,48 @@ describe("mounted-volume correctness-gate production ports", () => {
       ...record,
       gitPublication: tamperedPublication,
     }) as CorrectnessGateRecord;
-    await expect(records.put(tampered)).rejects.toThrow(
-      "Trusted receipt signature is invalid.",
-    );
+    await expect(records.put(tampered)).rejects.toThrow("Trusted receipt signature is invalid.");
     await records.close();
   });
 
-  it(
-    "persists immutable gate records and rejects a same-identity conflict",
-    async () => {
-      const root = await mkdtemp(
-        join(tmpdir(), "df-correctness-record-test-"),
-      );
-      const records = new MountedVolumeCorrectnessGateRecordStore({
-        durableState: stateOptions(root),
-        integrityScanVerifier: verifier(),
-        candidateBuildVerifier: verifier(),
-        gitPublicationVerifier: verifier(),
-        gitSourceVerifier: verifier(),
-      });
-      const record = rejectedRecord();
-      await Promise.all([
-        records.put(record),
-        records.put(
-          JSON.parse(canonicalJson(record)) as CorrectnessGateRecord,
-        ),
-        records.put(
-          JSON.parse(canonicalJson(record)) as CorrectnessGateRecord,
-        ),
-      ]);
-      await expect(records.get(experiment)).resolves.toEqual(record);
-      await expect(
-        records.put(
-          rejectedRecord({
-            proposalResultHash: "d".repeat(64),
-          }),
-        ),
-      ).rejects.toThrow(
-        "experiment identity already binds different content",
-      );
-      await records.close();
+  it("persists immutable gate records and rejects a same-identity conflict", async () => {
+    const root = await mkdtemp(join(tmpdir(), "df-correctness-record-test-"));
+    const records = new MountedVolumeCorrectnessGateRecordStore({
+      durableState: stateOptions(root),
+      integrityScanVerifier: verifier(),
+      candidateBuildVerifier: verifier(),
+      gitPublicationVerifier: verifier(),
+      gitSourceVerifier: verifier(),
+    });
+    const record = rejectedRecord();
+    await Promise.all([
+      records.put(record),
+      records.put(JSON.parse(canonicalJson(record)) as CorrectnessGateRecord),
+      records.put(JSON.parse(canonicalJson(record)) as CorrectnessGateRecord),
+    ]);
+    await expect(records.get(experiment)).resolves.toEqual(record);
+    await expect(
+      records.put(
+        rejectedRecord({
+          proposalResultHash: "d".repeat(64),
+        }),
+      ),
+    ).rejects.toThrow("experiment identity already binds different content");
+    await records.close();
 
-      const successor =
-        new MountedVolumeCorrectnessGateRecordStore({
-          durableState: stateOptions(
-            root,
-            "c".repeat(64),
-            "d".repeat(48),
-          ),
-          integrityScanVerifier: verifier(),
-          candidateBuildVerifier: verifier(),
-          gitPublicationVerifier: verifier(),
-          gitSourceVerifier: verifier(),
-        });
-      await expect(successor.get(experiment)).resolves.toEqual(record);
-      await successor.close();
-    },
-  );
+    const successor = new MountedVolumeCorrectnessGateRecordStore({
+      durableState: stateOptions(root, "c".repeat(64), "d".repeat(48)),
+      integrityScanVerifier: verifier(),
+      candidateBuildVerifier: verifier(),
+      gitPublicationVerifier: verifier(),
+      gitSourceVerifier: verifier(),
+    });
+    await expect(successor.get(experiment)).resolves.toEqual(record);
+    await successor.close();
+  });
 
   it("rejects hidden fields even when every outer hash is recomputed", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-correctness-record-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-correctness-record-test-"));
     const records = new MountedVolumeCorrectnessGateRecordStore({
       durableState: stateOptions(root),
       integrityScanVerifier: verifier(),
@@ -842,9 +732,7 @@ describe("mounted-volume correctness-gate production ports", () => {
         wallTimeMs: accounted.accounting.wallTimeMs,
       },
     }) as CorrectnessGateRecord;
-    await expect(records.put(tampered)).rejects.toThrow(
-      "contains non-canonical fields",
-    );
+    await expect(records.put(tampered)).rejects.toThrow("contains non-canonical fields");
     await records.close();
   });
 });

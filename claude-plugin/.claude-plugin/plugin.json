@@ -5,9 +5,5 @@
   "version": "0.1.0",
   "description": "Blind, privacy-budgeted Pi harness optimization with controlled cloud evaluation.",
   "license": "UNLICENSED",
-  "keywords": [
-    "agent-harness",
-    "benchmark-integrity",
-    "terminal-bench"
-  ]
+  "keywords": ["agent-harness", "benchmark-integrity", "terminal-bench"]
 }

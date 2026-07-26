@@ -1,9 +1,6 @@
 import type { CampaignLedgerPointers } from "../campaign/store.js";
 import { validateBudgetSnapshot } from "../core/budget.js";
-import type {
-  BudgetSnapshot,
-  BudgetUsage,
-} from "../domain/models.js";
+import type { BudgetSnapshot, BudgetUsage } from "../domain/models.js";
 import {
   assertTrustedOnlineErrorBudgetReconciliation,
   type TrustedOnlineErrorBudgetAuthority,
@@ -20,10 +17,10 @@ import type {
   TrustedOptimizationSealMaterial,
 } from "./campaign-state-coordinator.js";
 import {
-  assertDurableExperimentJournalState,
-  latestJournalBudgetForExperiment,
   type AtomicExperimentJournalStateStore,
+  assertDurableExperimentJournalState,
   type DurableExperimentJournalRecord,
+  latestJournalBudgetForExperiment,
 } from "./experiment-journal.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -194,9 +191,7 @@ function fail(): never {
   throw new ProductionOptimizationCompletionMaterialError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -211,10 +206,7 @@ function assertExactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -329,17 +321,12 @@ function assertCommonIdentity(input: {
   assertHash(input.protocolHash);
   assertHash(input.claimHash);
   assertHash(input.currentStateHash);
-  if (
-    !Number.isSafeInteger(input.experimentNumber) ||
-    input.experimentNumber < 1
-  ) {
+  if (!Number.isSafeInteger(input.experimentNumber) || input.experimentNumber < 1) {
     fail();
   }
 }
 
-function assertCompletionRequest(
-  value: unknown,
-): asserts value is BudgetAccountingMaterialRequest {
+function assertCompletionRequest(value: unknown): asserts value is BudgetAccountingMaterialRequest {
   assertExactKeys(value, [
     "schemaVersion",
     "domain",
@@ -380,8 +367,7 @@ function assertInterruptionRequest(
     "currentStateHash",
     "previousUsage",
   ]);
-  const request =
-    value as unknown as InterruptedBudgetAccountingMaterialRequest;
+  const request = value as unknown as InterruptedBudgetAccountingMaterialRequest;
   if (
     request.schemaVersion !== 1 ||
     request.domain !== "dark-factory.interrupted-budget-accounting.v1"
@@ -413,11 +399,8 @@ function assertSealRequest(value: unknown): asserts value is SealMaterialRequest
     request.schemaVersion !== 1 ||
     request.domain !== "dark-factory.optimization-seal-material.v1" ||
     !["pre-validation", "validation"].includes(request.stage) ||
-    !["promoted", "rejected", "inconclusive"].includes(
-      request.disposition,
-    ) ||
-    (request.promotionLookDelta !== 0 &&
-      request.promotionLookDelta !== 1)
+    !["promoted", "rejected", "inconclusive"].includes(request.disposition) ||
+    (request.promotionLookDelta !== 0 && request.promotionLookDelta !== 1)
   ) {
     fail();
   }
@@ -454,25 +437,15 @@ function assertSameOnlineErrorState(
   if (!sameCanonical(stableOnlineErrorBinding(receipt), expected)) fail();
 }
 
-function mergedUsage(
-  ...sources: readonly BudgetUsage[]
-): BudgetUsage {
+function mergedUsage(...sources: readonly BudgetUsage[]): BudgetUsage {
   return {
     spentUsd: Math.max(...sources.map((source) => source.spentUsd)),
     tokens: Math.max(...sources.map((source) => source.tokens)),
-    wallTimeMs: Math.max(
-      ...sources.map((source) => source.wallTimeMs),
-    ),
+    wallTimeMs: Math.max(...sources.map((source) => source.wallTimeMs)),
     attempts: Math.max(...sources.map((source) => source.attempts)),
-    privacyReleases: Math.max(
-      ...sources.map((source) => source.privacyReleases),
-    ),
-    promotionLooks: Math.max(
-      ...sources.map((source) => source.promotionLooks),
-    ),
-    onlineErrorSpent: Math.max(
-      ...sources.map((source) => source.onlineErrorSpent),
-    ),
+    privacyReleases: Math.max(...sources.map((source) => source.privacyReleases)),
+    promotionLooks: Math.max(...sources.map((source) => source.promotionLooks)),
+    onlineErrorSpent: Math.max(...sources.map((source) => source.onlineErrorSpent)),
   };
 }
 
@@ -504,18 +477,13 @@ export class ProductionOptimizationCompletionMaterial
   readonly #reconcileOnlineError: TrustedOnlineErrorBudgetAuthority["reconcile"];
   readonly #closeAndReadOperations: TrustedInFlightOperationLedgerUsageProvider["closeAndRead"];
   readonly #attestCompletion: TrustedOptimizationAccountingAttestationAuthority["attestCompletion"];
-  readonly #attestInterruption: TrustedOptimizationAccountingAttestationAuthority[
-    "attestInterruption"
-  ];
+  readonly #attestInterruption: TrustedOptimizationAccountingAttestationAuthority["attestInterruption"];
   readonly #authorizeSeal: TrustedCampaignSealAuthority["authorize"];
   readonly #observedReplays = new Map<string, string>();
 
-  public constructor(
-    options: ProductionOptimizationCompletionMaterialOptions,
-  ) {
+  public constructor(options: ProductionOptimizationCompletionMaterialOptions) {
     if (
-      options.onlineErrorAuthority.boundary !==
-        "trusted-cloud-online-error-authority" ||
+      options.onlineErrorAuthority.boundary !== "trusted-cloud-online-error-authority" ||
       options.operationLedgerUsage.boundary !== "trusted-cloud" ||
       options.accountingAuthority.boundary !== "trusted-cloud" ||
       options.sealAuthority.boundary !== "trusted-cloud"
@@ -523,32 +491,22 @@ export class ProductionOptimizationCompletionMaterial
       fail();
     }
     this.#journalStateStore = options.journalStateStore;
-    this.#reconcileOnlineError =
-      options.onlineErrorAuthority.reconcile.bind(
-        options.onlineErrorAuthority,
-      );
-    this.#closeAndReadOperations =
-      options.operationLedgerUsage.closeAndRead.bind(
-        options.operationLedgerUsage,
-      );
-    this.#attestCompletion =
-      options.accountingAuthority.attestCompletion.bind(
-        options.accountingAuthority,
-      );
-    this.#attestInterruption =
-      options.accountingAuthority.attestInterruption.bind(
-        options.accountingAuthority,
-      );
-    this.#authorizeSeal = options.sealAuthority.authorize.bind(
-      options.sealAuthority,
+    this.#reconcileOnlineError = options.onlineErrorAuthority.reconcile.bind(
+      options.onlineErrorAuthority,
     );
+    this.#closeAndReadOperations = options.operationLedgerUsage.closeAndRead.bind(
+      options.operationLedgerUsage,
+    );
+    this.#attestCompletion = options.accountingAuthority.attestCompletion.bind(
+      options.accountingAuthority,
+    );
+    this.#attestInterruption = options.accountingAuthority.attestInterruption.bind(
+      options.accountingAuthority,
+    );
+    this.#authorizeSeal = options.sealAuthority.authorize.bind(options.sealAuthority);
   }
 
-  #assertExactReplay(
-    domain: string,
-    requestHash: string,
-    value: unknown,
-  ): void {
+  #assertExactReplay(domain: string, requestHash: string, value: unknown): void {
     const replayKey = `${domain}:${requestHash}`;
     const canonical = canonicalJson(value);
     const existing = this.#observedReplays.get(replayKey);
@@ -571,8 +529,7 @@ export class ProductionOptimizationCompletionMaterial
         fail();
       }
       const numbered = Object.values(state.records).filter(
-        (record) =>
-          record.experiment.number === request.experimentNumber,
+        (record) => record.experiment.number === request.experimentNumber,
       );
       if (numbered.length !== 1) fail();
       const record = numbered[0];
@@ -586,20 +543,14 @@ export class ProductionOptimizationCompletionMaterial
       }
       if (
         (terminal === "sealed" &&
-          (record.status !== "sealed" ||
-            record.phase !== "sealed" ||
-            record.seal === null)) ||
-        (terminal === "unsealed" &&
-          (record.status === "sealed" || record.seal !== null))
+          (record.status !== "sealed" || record.phase !== "sealed" || record.seal === null)) ||
+        (terminal === "unsealed" && (record.status === "sealed" || record.seal !== null))
       ) {
         fail();
       }
       let latestBudget: BudgetSnapshot;
       try {
-        latestBudget = latestJournalBudgetForExperiment(
-          state,
-          record.experiment,
-        );
+        latestBudget = latestJournalBudgetForExperiment(state, record.experiment);
       } catch {
         return fail();
       }
@@ -625,17 +576,11 @@ export class ProductionOptimizationCompletionMaterial
     if (
       seal === null ||
       seal.sealChainEntryHash !== request.resultSealHash ||
-      !sameCanonical(
-        journal.latestBudget.usage,
-        request.reportedUsage,
-      )
+      !sameCanonical(journal.latestBudget.usage, request.reportedUsage)
     ) {
       fail();
     }
-    assertMonotonicUsage(
-      request.previousUsage,
-      request.reportedUsage,
-    );
+    assertMonotonicUsage(request.previousUsage, request.reportedUsage);
     assertBudget({
       limits: journal.latestBudget.limits,
       usage: request.previousUsage,
@@ -643,23 +588,19 @@ export class ProductionOptimizationCompletionMaterial
 
     const unsigned = {
       schemaVersion: 1 as const,
-      sensitivity:
-        "trusted-optimization-completion-accounting-request" as const,
+      sensitivity: "trusted-optimization-completion-accounting-request" as const,
       request,
       journal,
     };
     const requestHash = canonicalHash({
-      domain:
-        "dark-factory.optimization-completion-accounting-attestation.v1",
+      domain: "dark-factory.optimization-completion-accounting-attestation.v1",
       ...unsigned,
     });
     const authorityRequest: TrustedCompletionAccountingAttestationRequest = {
       ...unsigned,
       requestHash,
     };
-    const attestation = cloneCanonical(
-      await this.#attestCompletion(authorityRequest),
-    );
+    const attestation = cloneCanonical(await this.#attestCompletion(authorityRequest));
     assertExactKeys(attestation, [
       "schemaVersion",
       "sensitivity",
@@ -669,8 +610,7 @@ export class ProductionOptimizationCompletionMaterial
     ]);
     if (
       attestation.schemaVersion !== 1 ||
-      attestation.sensitivity !==
-        "release-safe-optimization-completion-accounting-attestation" ||
+      attestation.sensitivity !== "release-safe-optimization-completion-accounting-attestation" ||
       attestation.requestHash !== requestHash
     ) {
       fail();
@@ -684,14 +624,9 @@ export class ProductionOptimizationCompletionMaterial
     ) {
       fail();
     }
-    this.#assertExactReplay(
-      "completion-accounting",
-      requestHash,
-      attestation,
-    );
+    this.#assertExactReplay("completion-accounting", requestHash, attestation);
     return cloneCanonical({
-      accountingAttestationHash:
-        attestation.accountingAttestationHash,
+      accountingAttestationHash: attestation.accountingAttestationHash,
       nextUsage: attestation.nextUsage,
     });
   }
@@ -707,69 +642,41 @@ export class ProductionOptimizationCompletionMaterial
       usage: request.previousUsage,
     });
 
-    const observedReconciliation = cloneCanonical(
-      await this.#reconcileOnlineError(),
-    );
+    const observedReconciliation = cloneCanonical(await this.#reconcileOnlineError());
     try {
-      assertTrustedOnlineErrorBudgetReconciliation(
-        observedReconciliation,
-        request.campaignId,
-      );
+      assertTrustedOnlineErrorBudgetReconciliation(observedReconciliation, request.campaignId);
     } catch {
       fail();
     }
-    const onlineErrorState = stableOnlineErrorBinding(
-      observedReconciliation,
-    );
+    const onlineErrorState = stableOnlineErrorBinding(observedReconciliation);
     if (
-      onlineErrorState.maximumOnlineError !==
-        journal.latestBudget.limits.maximumOnlineError ||
-      onlineErrorState.onlineErrorSpent <
-        request.previousUsage.onlineErrorSpent ||
-      onlineErrorState.onlineErrorSpent <
-        journal.latestBudget.usage.onlineErrorSpent
+      onlineErrorState.maximumOnlineError !== journal.latestBudget.limits.maximumOnlineError ||
+      onlineErrorState.onlineErrorSpent < request.previousUsage.onlineErrorSpent ||
+      onlineErrorState.onlineErrorSpent < journal.latestBudget.usage.onlineErrorSpent
     ) {
       fail();
     }
 
     const operationUnsigned = {
       schemaVersion: 1 as const,
-      sensitivity:
-        "trusted-in-flight-operation-ledger-usage-request" as const,
+      sensitivity: "trusted-in-flight-operation-ledger-usage-request" as const,
       request,
       journal,
       onlineErrorState,
     };
     const operationRequestHash = canonicalHash({
-      domain:
-        "dark-factory.in-flight-operation-ledger-usage.v1",
+      domain: "dark-factory.in-flight-operation-ledger-usage.v1",
       ...operationUnsigned,
     });
     const operationRequest: TrustedInFlightOperationLedgerUsageRequest = {
       ...operationUnsigned,
       requestHash: operationRequestHash,
     };
-    const operationLedger = cloneCanonical(
-      await this.#closeAndReadOperations(operationRequest),
-    );
-    this.#assertOperationLedger(
-      operationLedger,
-      operationRequest,
-      journal.latestBudget.limits,
-    );
-    this.#assertExactReplay(
-      "operation-ledger",
-      operationRequestHash,
-      operationLedger,
-    );
-    assertMonotonicUsage(
-      request.previousUsage,
-      operationLedger.budget.usage,
-    );
-    if (
-      operationLedger.budget.usage.onlineErrorSpent >
-      onlineErrorState.onlineErrorSpent
-    ) {
+    const operationLedger = cloneCanonical(await this.#closeAndReadOperations(operationRequest));
+    this.#assertOperationLedger(operationLedger, operationRequest, journal.latestBudget.limits);
+    this.#assertExactReplay("operation-ledger", operationRequestHash, operationLedger);
+    assertMonotonicUsage(request.previousUsage, operationLedger.budget.usage);
+    if (operationLedger.budget.usage.onlineErrorSpent > onlineErrorState.onlineErrorSpent) {
       fail();
     }
 
@@ -792,8 +699,7 @@ export class ProductionOptimizationCompletionMaterial
 
     const interruptionUnsigned = {
       schemaVersion: 1 as const,
-      sensitivity:
-        "trusted-optimization-interruption-accounting-request" as const,
+      sensitivity: "trusted-optimization-interruption-accounting-request" as const,
       request,
       journal,
       onlineErrorState,
@@ -806,19 +712,15 @@ export class ProductionOptimizationCompletionMaterial
      * same evaluator state without turning a clock-only replay into new work.
      */
     const requestHash = canonicalHash({
-      domain:
-        "dark-factory.optimization-interruption-accounting-attestation.v1",
+      domain: "dark-factory.optimization-interruption-accounting-attestation.v1",
       ...interruptionUnsigned,
     });
     const authorityRequest: TrustedInterruptedAccountingAttestationRequest = {
       ...interruptionUnsigned,
       requestHash,
-      observedOnlineErrorReconciliation:
-        observedReconciliation,
+      observedOnlineErrorReconciliation: observedReconciliation,
     };
-    const attestation = cloneCanonical(
-      await this.#attestInterruption(authorityRequest),
-    );
+    const attestation = cloneCanonical(await this.#attestInterruption(authorityRequest));
     this.#assertInterruptedAttestation(
       attestation,
       requestHash,
@@ -828,17 +730,11 @@ export class ProductionOptimizationCompletionMaterial
       nextUsage,
       operationLedger.operationLedgerAttestationHash,
     );
-    this.#assertExactReplay(
-      "interruption-accounting",
-      requestHash,
-      attestation,
-    );
+    this.#assertExactReplay("interruption-accounting", requestHash, attestation);
     return cloneCanonical({
-      accountingAttestationHash:
-        attestation.accountingAttestationHash,
+      accountingAttestationHash: attestation.accountingAttestationHash,
       nextUsage: attestation.nextUsage,
-      onlineErrorReconciliation:
-        attestation.onlineErrorReconciliation,
+      onlineErrorReconciliation: attestation.onlineErrorReconciliation,
     });
   }
 
@@ -861,23 +757,19 @@ export class ProductionOptimizationCompletionMaterial
       "closed",
       "operationLedgerAttestationHash",
     ]);
-    const ledger =
-      value as unknown as TrustedInFlightOperationLedgerUsage;
+    const ledger = value as unknown as TrustedInFlightOperationLedgerUsage;
     assertBudget(ledger.budget);
     assertHash(ledger.operationLedgerAttestationHash);
     if (
       ledger.schemaVersion !== 1 ||
-      ledger.sensitivity !==
-        "release-safe-in-flight-operation-ledger-usage" ||
+      ledger.sensitivity !== "release-safe-in-flight-operation-ledger-usage" ||
       ledger.requestHash !== request.requestHash ||
       ledger.campaignId !== request.request.campaignId ||
       ledger.lineageId !== request.request.lineageId ||
       ledger.protocolHash !== request.request.protocolHash ||
       ledger.claimHash !== request.request.claimHash ||
-      ledger.experimentNumber !==
-        request.request.experimentNumber ||
-      ledger.currentStateHash !==
-        request.request.currentStateHash ||
+      ledger.experimentNumber !== request.request.experimentNumber ||
+      ledger.currentStateHash !== request.request.currentStateHash ||
       ledger.closed !== true ||
       ledger.operationLedgerAttestationHash === request.requestHash ||
       !sameCanonical(ledger.budget.limits, expectedLimits)
@@ -903,8 +795,7 @@ export class ProductionOptimizationCompletionMaterial
       "nextUsage",
       "onlineErrorReconciliation",
     ]);
-    const attestation =
-      value as unknown as TrustedInterruptedAccountingAttestation;
+    const attestation = value as unknown as TrustedInterruptedAccountingAttestation;
     assertHash(attestation.accountingAttestationHash);
     assertUsage(attestation.nextUsage);
     try {
@@ -915,27 +806,21 @@ export class ProductionOptimizationCompletionMaterial
     } catch {
       fail();
     }
-    assertSameOnlineErrorState(
-      attestation.onlineErrorReconciliation,
-      onlineErrorState,
-    );
+    assertSameOnlineErrorState(attestation.onlineErrorReconciliation, onlineErrorState);
     assertBudget({
       limits: journalBudget.limits,
       usage: attestation.nextUsage,
     });
     if (
       attestation.schemaVersion !== 1 ||
-      attestation.sensitivity !==
-        "release-safe-optimization-interruption-accounting-attestation" ||
+      attestation.sensitivity !== "release-safe-optimization-interruption-accounting-attestation" ||
       attestation.requestHash !== requestHash ||
       attestation.accountingAttestationHash === requestHash ||
-      attestation.accountingAttestationHash ===
-        operationLedgerAttestationHash ||
+      attestation.accountingAttestationHash === operationLedgerAttestationHash ||
       attestation.accountingAttestationHash ===
         attestation.onlineErrorReconciliation.reconciliationHash ||
       !sameCanonical(attestation.nextUsage, expectedUsage) ||
-      attestation.nextUsage.onlineErrorSpent !==
-        onlineErrorState.onlineErrorSpent
+      attestation.nextUsage.onlineErrorSpent !== onlineErrorState.onlineErrorSpent
     ) {
       fail();
     }
@@ -953,22 +838,17 @@ export class ProductionOptimizationCompletionMaterial
       seal.sealChainEntryHash !== request.resultSealHash ||
       seal.evaluationStage !== request.stage ||
       seal.disposition !== request.disposition ||
-      request.promotionLookDelta !==
-        (request.stage === "validation" ? 1 : 0) ||
-      (request.disposition === "promoted") !==
-        (request.candidateCommit !== null) ||
+      request.promotionLookDelta !== (request.stage === "validation" ? 1 : 0) ||
+      (request.disposition === "promoted") !== (request.candidateCommit !== null) ||
       (request.candidateCommit !== null &&
-        (request.candidateCommit !==
-          journal.record.proposal?.candidate.commit ||
-          request.candidateCommit !==
-            seal.activeChampionAfter.activeCommit))
+        (request.candidateCommit !== journal.record.proposal?.candidate.commit ||
+          request.candidateCommit !== seal.activeChampionAfter.activeCommit))
     ) {
       fail();
     }
     const unsigned = {
       schemaVersion: 1 as const,
-      sensitivity:
-        "trusted-optimization-campaign-seal-request" as const,
+      sensitivity: "trusted-optimization-campaign-seal-request" as const,
       request,
       journal,
     };
@@ -980,25 +860,12 @@ export class ProductionOptimizationCompletionMaterial
       ...unsigned,
       requestHash,
     };
-    const authorization = cloneCanonical(
-      await this.#authorizeSeal(authorityRequest),
-    );
-    this.#assertSealAuthorization(
-      authorization,
-      requestHash,
-      request,
-      journal.record,
-    );
-    this.#assertExactReplay(
-      "campaign-seal",
-      requestHash,
-      authorization,
-    );
+    const authorization = cloneCanonical(await this.#authorizeSeal(authorityRequest));
+    this.#assertSealAuthorization(authorization, requestHash, request, journal.record);
+    this.#assertExactReplay("campaign-seal", requestHash, authorization);
     return cloneCanonical({
-      decisionAttestationHash:
-        authorization.decisionAttestationHash,
-      holdoutAvailabilityAttestationHash:
-        authorization.holdoutAvailabilityAttestationHash,
+      decisionAttestationHash: authorization.decisionAttestationHash,
+      holdoutAvailabilityAttestationHash: authorization.holdoutAvailabilityAttestationHash,
       sealedAt: authorization.sealedAt,
       ledgers: authorization.ledgers,
     });
@@ -1019,33 +886,25 @@ export class ProductionOptimizationCompletionMaterial
       "sealedAt",
       "ledgers",
     ]);
-    const authorization =
-      value as unknown as TrustedCampaignSealAuthorization;
+    const authorization = value as unknown as TrustedCampaignSealAuthorization;
     assertHash(authorization.decisionAttestationHash);
-    assertNullableHash(
-      authorization.holdoutAvailabilityAttestationHash,
-    );
+    assertNullableHash(authorization.holdoutAvailabilityAttestationHash);
     assertTimestamp(authorization.sealedAt);
     assertLedgerPointers(authorization.ledgers);
     const seal = record.seal;
     if (seal === null) fail();
     const journalDecisionTime =
-      request.disposition === "promoted"
-        ? seal.activeChampionAfter.updatedAt
-        : seal.sealedAt;
+      request.disposition === "promoted" ? seal.activeChampionAfter.updatedAt : seal.sealedAt;
     if (
       authorization.schemaVersion !== 1 ||
-      authorization.sensitivity !==
-        "release-safe-optimization-campaign-seal-authorization" ||
+      authorization.sensitivity !== "release-safe-optimization-campaign-seal-authorization" ||
       authorization.requestHash !== requestHash ||
       authorization.decisionAttestationHash === requestHash ||
-      authorization.decisionAttestationHash ===
-        seal.authorityAttestationHash ||
+      authorization.decisionAttestationHash === seal.authorityAttestationHash ||
       authorization.sealedAt !== journalDecisionTime ||
       (request.stage === "pre-validation" &&
         authorization.holdoutAvailabilityAttestationHash !== null) ||
-      (request.stage === "validation" &&
-        authorization.holdoutAvailabilityAttestationHash === null)
+      (request.stage === "validation" && authorization.holdoutAvailabilityAttestationHash === null)
     ) {
       fail();
     }

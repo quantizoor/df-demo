@@ -1,5 +1,5 @@
-import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import type { HiddenTaskEstimates } from "../evaluation/types.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import type { TrustedHiddenTaskSeed } from "./catalog.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -90,9 +90,7 @@ export interface TrustedTaskObservationRow {
 export interface TrustedTaskObservationSet {
   readonly sensitivity: "trusted-task-observation-set";
   readonly schemaVersion: 1;
-  readonly sourceKind:
-    | "initial-pi-baseline"
-    | "comparable-public-leaderboard";
+  readonly sourceKind: "initial-pi-baseline" | "comparable-public-leaderboard";
   readonly sourceCommitment: string;
   readonly datasetPinHash: string;
   readonly registryRevision: 6;
@@ -117,10 +115,7 @@ export class TrustedCatalogImportError extends Error {
 
 function exactKeys(value: object, expected: readonly string[]): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     throw new TrustedCatalogImportError(
       "Trusted catalog import input contains unsupported fields.",
     );
@@ -184,8 +179,7 @@ function assertInventory(
 ): void {
   exactKeys(inventory, INVENTORY_KEYS);
   if (
-    inventory.sensitivity !==
-      "trusted-terminal-bench-task-inventory" ||
+    inventory.sensitivity !== "trusted-terminal-bench-task-inventory" ||
     inventory.schemaVersion !== 1 ||
     inventory.datasetPinHash !== expectedDatasetPinHash ||
     !SHA256.test(inventory.datasetPinHash) ||
@@ -221,12 +215,8 @@ function assertInventory(
     revisions.add(task.taskRevisionDigest);
   }
   const { inventoryHash, ...unsigned } = inventory;
-  if (
-    inventoryHash !== computeTrustedTaskInventoryHash(unsigned)
-  ) {
-    throw new TrustedCatalogImportError(
-      "Terminal-Bench inventory commitment does not reproduce.",
-    );
+  if (inventoryHash !== computeTrustedTaskInventoryHash(unsigned)) {
+    throw new TrustedCatalogImportError("Terminal-Bench inventory commitment does not reproduce.");
   }
 }
 
@@ -250,9 +240,7 @@ function assertObservationSet(
       "A trusted observation set is detached from the inventory.",
     );
   }
-  const inventoryByName = new Map(
-    inventory.tasks.map((task) => [task.packageTaskName, task]),
-  );
+  const inventoryByName = new Map(inventory.tasks.map((task) => [task.packageTaskName, task]));
   const names = new Set<string>();
   for (const row of observations.rows) {
     exactKeys(row, OBSERVATION_ROW_KEYS);
@@ -279,53 +267,33 @@ function assertObservationSet(
     names.add(row.packageTaskName);
   }
   const { observationSetHash, ...unsigned } = observations;
-  if (
-    observationSetHash !==
-    computeTrustedTaskObservationSetHash(unsigned)
-  ) {
-    throw new TrustedCatalogImportError(
-      "Trusted observation commitment does not reproduce.",
-    );
+  if (observationSetHash !== computeTrustedTaskObservationSetHash(unsigned)) {
+    throw new TrustedCatalogImportError("Trusted observation commitment does not reproduce.");
   }
 }
 
-function posteriorFailure(
-  row: TrustedTaskObservationRow | undefined,
-): number {
+function posteriorFailure(row: TrustedTaskObservationRow | undefined): number {
   if (row === undefined) return 0.5;
-  return (
-    (row.validAttempts - row.passedAttempts + 1) /
-    (row.validAttempts + 2)
-  );
+  return (row.validAttempts - row.passedAttempts + 1) / (row.validAttempts + 2);
 }
 
-function posteriorUncertainty(
-  probability: number,
-  attempts: number,
-): number {
+function posteriorUncertainty(probability: number, attempts: number): number {
   const aleatoric = 4 * probability * (1 - probability);
   const smallSample = 2 / (attempts + 2);
   return Math.min(1, 0.7 * aleatoric + 0.3 * smallSample);
 }
 
 function rounded(value: number): number {
-  return (
-    Math.round(Math.min(1, Math.max(0, value)) * 1_000_000_000_000) /
-    1_000_000_000_000
-  );
+  return Math.round(Math.min(1, Math.max(0, value)) * 1_000_000_000_000) / 1_000_000_000_000;
 }
 
-function seedsHash(
-  result: Omit<TrustedHiddenCatalogImport, "seedSetHash">,
-): string {
+function seedsHash(result: Omit<TrustedHiddenCatalogImport, "seedSetHash">): string {
   return canonicalHash({
     domain: "dark-factory.hidden-catalog-import.v1",
     datasetPinHash: result.datasetPinHash,
     inventoryHash: result.inventoryHash,
-    baselineObservationSetHash:
-      result.baselineObservationSetHash,
-    leaderboardObservationSetHash:
-      result.leaderboardObservationSetHash,
+    baselineObservationSetHash: result.baselineObservationSetHash,
+    leaderboardObservationSetHash: result.leaderboardObservationSetHash,
     seeds: result.seeds,
   });
 }
@@ -345,17 +313,11 @@ export function buildTrustedHiddenCatalogImport(input: {
   readonly comparableLeaderboard: TrustedTaskObservationSet | null;
 }): TrustedHiddenCatalogImport {
   if (!SHA256.test(input.expectedDatasetPinHash)) {
-    throw new TrustedCatalogImportError(
-      "Expected dataset pin hash is malformed.",
-    );
+    throw new TrustedCatalogImportError("Expected dataset pin hash is malformed.");
   }
   assertInventory(input.inventory, input.expectedDatasetPinHash);
   if (input.initialPiBaseline !== null) {
-    assertObservationSet(
-      input.initialPiBaseline,
-      "initial-pi-baseline",
-      input.inventory,
-    );
+    assertObservationSet(input.initialPiBaseline, "initial-pi-baseline", input.inventory);
   }
   if (input.comparableLeaderboard !== null) {
     assertObservationSet(
@@ -365,137 +327,78 @@ export function buildTrustedHiddenCatalogImport(input: {
     );
   }
   const baselineByName = new Map(
-    input.initialPiBaseline?.rows.map((row) => [
-      row.packageTaskName,
-      row,
-    ]) ?? [],
+    input.initialPiBaseline?.rows.map((row) => [row.packageTaskName, row]) ?? [],
   );
   const leaderboardByName = new Map(
-    input.comparableLeaderboard?.rows.map((row) => [
-      row.packageTaskName,
-      row,
-    ]) ?? [],
+    input.comparableLeaderboard?.rows.map((row) => [row.packageTaskName, row]) ?? [],
   );
   const stratumSizes = new Map<string, number>();
   for (const task of input.inventory.tasks) {
-    stratumSizes.set(
-      task.capabilityStratum,
-      (stratumSizes.get(task.capabilityStratum) ?? 0) + 1,
-    );
+    stratumSizes.set(task.capabilityStratum, (stratumSizes.get(task.capabilityStratum) ?? 0) + 1);
   }
   const maximumStratumSize = Math.max(...stratumSizes.values());
   const seeds = [...input.inventory.tasks]
-    .sort((left, right) =>
-      left.packageTaskName.localeCompare(right.packageTaskName),
-    )
+    .sort((left, right) => left.packageTaskName.localeCompare(right.packageTaskName))
     .map((task): TrustedHiddenTaskSeed => {
       const baseline = baselineByName.get(task.packageTaskName);
-      const leaderboard = leaderboardByName.get(
-        task.packageTaskName,
-      );
+      const leaderboard = leaderboardByName.get(task.packageTaskName);
       const baselineFailure = posteriorFailure(baseline);
       const leaderboardFailure = posteriorFailure(leaderboard);
       const baselineAttempts = baseline?.validAttempts ?? 0;
-      const leaderboardAttempts =
-        leaderboard?.validAttempts ?? 0;
-      const totalAttempts =
-        baselineAttempts + leaderboardAttempts;
+      const leaderboardAttempts = leaderboard?.validAttempts ?? 0;
+      const totalAttempts = baselineAttempts + leaderboardAttempts;
       const recentFailure =
         totalAttempts === 0
           ? 0.5
-          : (baselineFailure * baselineAttempts +
-              leaderboardFailure * leaderboardAttempts) /
+          : (baselineFailure * baselineAttempts + leaderboardFailure * leaderboardAttempts) /
             totalAttempts;
       const uncertainty = Math.max(
-        posteriorUncertainty(
-          baselineFailure,
-          baselineAttempts,
-        ),
-        posteriorUncertainty(
-          leaderboardFailure,
-          leaderboardAttempts,
-        ),
+        posteriorUncertainty(baselineFailure, baselineAttempts),
+        posteriorUncertainty(leaderboardFailure, leaderboardAttempts),
       );
-      const discrimination =
-        0.5 +
-        0.5 *
-          Math.abs(
-            baselineFailure - leaderboardFailure,
-          );
-      const capabilitySize =
-        stratumSizes.get(task.capabilityStratum) ?? 1;
+      const discrimination = 0.5 + 0.5 * Math.abs(baselineFailure - leaderboardFailure);
+      const capabilitySize = stratumSizes.get(task.capabilityStratum) ?? 1;
       const missingCapabilityCoverage =
         maximumStratumSize <= 1
           ? 1
-          : (maximumStratumSize - capabilitySize) /
-            (maximumStratumSize - 1);
-      const persistentFailure =
-        Math.min(baselineFailure, leaderboardFailure);
+          : (maximumStratumSize - capabilitySize) / (maximumStratumSize - 1);
+      const persistentFailure = Math.min(baselineFailure, leaderboardFailure);
       const impossibleProbability =
-        totalAttempts < 6
-          ? 0.05
-          : persistentFailure *
-            (1 - discrimination) *
-            0.5;
+        totalAttempts < 6 ? 0.05 : persistentFailure * (1 - discrimination) * 0.5;
       const estimates: HiddenTaskEstimates = {
-        championFailureProbability: rounded(
-          baselineFailure,
-        ),
-        baselineFailureProbability: rounded(
-          baselineFailure,
-        ),
-        leaderboardFailureProbability: rounded(
-          leaderboardFailure,
-        ),
+        championFailureProbability: rounded(baselineFailure),
+        baselineFailureProbability: rounded(baselineFailure),
+        leaderboardFailureProbability: rounded(leaderboardFailure),
         recentFailureProbability: rounded(recentFailure),
         outcomeUncertainty: rounded(uncertainty),
         discrimination: rounded(discrimination),
         componentRelevance: 0.5,
         underexposure: rounded(4 / (4 + totalAttempts)),
-        missingCapabilityCoverage: rounded(
-          missingCapabilityCoverage,
-        ),
-        normalizedCost: rounded(
-          task.normalizedExpectedCost,
-        ),
-        impossibleProbability: rounded(
-          impossibleProbability,
-        ),
+        missingCapabilityCoverage: rounded(missingCapabilityCoverage),
+        normalizedCost: rounded(task.normalizedExpectedCost),
+        impossibleProbability: rounded(impossibleProbability),
       };
       return {
         packageTaskName: task.packageTaskName,
         taskRevisionDigest: task.taskRevisionDigest,
         capabilityStratum: task.capabilityStratum,
         difficultyStratum: task.difficultyStratum,
-        buckets: [
-          "hard",
-          "uncertain",
-          "easy",
-          "coverage",
-        ],
+        buckets: ["hard", "uncertain", "easy", "coverage"],
         estimates,
         // Benchmark-derived priors never imply that feedback was released to
         // an optimizer. Experiment 001 therefore remains source-only.
         initialFeedbackReleased: false,
-        regressionCanary:
-          task.scoringEligible &&
-          totalAttempts >= 4 &&
-          recentFailure <= 0.1,
+        regressionCanary: task.scoringEligible && totalAttempts >= 4 && recentFailure <= 0.1,
         infrastructureValid: task.infrastructureValid,
         discriminating: task.scoringEligible,
       };
     });
-  const unsigned: Omit<
-    TrustedHiddenCatalogImport,
-    "seedSetHash"
-  > = {
+  const unsigned: Omit<TrustedHiddenCatalogImport, "seedSetHash"> = {
     sensitivity: "trusted-hidden-catalog-import",
     datasetPinHash: input.inventory.datasetPinHash,
     inventoryHash: input.inventory.inventoryHash,
-    baselineObservationSetHash:
-      input.initialPiBaseline?.observationSetHash ?? null,
-    leaderboardObservationSetHash:
-      input.comparableLeaderboard?.observationSetHash ?? null,
+    baselineObservationSetHash: input.initialPiBaseline?.observationSetHash ?? null,
+    leaderboardObservationSetHash: input.comparableLeaderboard?.observationSetHash ?? null,
     seeds,
   };
   const result: TrustedHiddenCatalogImport = {
@@ -508,4 +411,3 @@ export function buildTrustedHiddenCatalogImport(input: {
   canonicalJson(result);
   return result;
 }
-

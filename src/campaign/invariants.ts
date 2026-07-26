@@ -59,16 +59,13 @@ function assertPointerDidNotRegress(
 }
 
 function sameChampionIdentity(left: ChampionPointer, right: ChampionPointer): boolean {
-  return (
-    left.experimentNumber === right.experimentNumber &&
-    left.commit === right.commit
-  );
+  return left.experimentNumber === right.experimentNumber && left.commit === right.commit;
 }
 
 function assertControlTransition(previous: CampaignState, next: CampaignState): void {
   const prior = previous.control;
   const current = next.control;
-  const allowed: Readonly<Record<typeof prior.status, readonly typeof current.status[]>> = {
+  const allowed: Readonly<Record<typeof prior.status, readonly (typeof current.status)[]>> = {
     running: ["running", "stop-requested", "paused"],
     "stop-requested": ["stop-requested", "stopped"],
     stopped: ["stopped", "running"],
@@ -80,8 +77,7 @@ function assertControlTransition(previous: CampaignState, next: CampaignState): 
   }
 
   const resumed =
-    current.status === "running" &&
-    (prior.status === "stopped" || prior.status === "paused");
+    current.status === "running" && (prior.status === "stopped" || prior.status === "paused");
   const expectedEpoch = resumed ? prior.runEpoch + 1 : prior.runEpoch;
   if (current.runEpoch !== expectedEpoch) {
     fail("runEpoch must increase exactly once on resume and remain stable otherwise");
@@ -104,8 +100,7 @@ function assertControlTransition(previous: CampaignState, next: CampaignState): 
   if (
     (prior.status === "stop-requested" || prior.status === "stopped") &&
     (current.status === "stop-requested" || current.status === "stopped") &&
-    (current.stopRequestedAt !== prior.stopRequestedAt ||
-      current.stopReason !== prior.stopReason)
+    (current.stopRequestedAt !== prior.stopRequestedAt || current.stopReason !== prior.stopReason)
   ) {
     fail("Stop transitions must preserve the original stop request");
   }
@@ -170,10 +165,7 @@ function assertNumberingTransition(previous: CampaignState, next: CampaignState)
   ) {
     fail("A new in-flight experiment requires monotonic number allocation");
   }
-  if (
-    (current.inFlightExperimentNumber === null) !==
-    (current.inFlightKind === null)
-  ) {
+  if ((current.inFlightExperimentNumber === null) !== (current.inFlightKind === null)) {
     fail("In-flight experiment number and kind must be present together");
   }
   if (
@@ -195,10 +187,7 @@ function assertNumberingTransition(previous: CampaignState, next: CampaignState)
   ) {
     fail("Only the previously in-flight experiment can become the interrupted pointer");
   }
-  if (
-    currentInterrupted > priorInterrupted &&
-    current.inFlightExperimentNumber !== null
-  ) {
+  if (currentInterrupted > priorInterrupted && current.inFlightExperimentNumber !== null) {
     fail("An interrupted experiment cannot remain in flight");
   }
   if (
@@ -209,21 +198,14 @@ function assertNumberingTransition(previous: CampaignState, next: CampaignState)
   ) {
     fail("Clearing an in-flight experiment requires a sealed or interrupted durable pointer");
   }
-  if (
-    next.control.status === "stopped" &&
-    current.inFlightExperimentNumber !== null
-  ) {
+  if (next.control.status === "stopped" && current.inFlightExperimentNumber !== null) {
     fail("A stopped campaign cannot retain an in-flight experiment");
   }
 }
 
 function assertChampionTransition(previous: CampaignState, next: CampaignState): void {
   assertImmutable("Baseline champion", previous.champions.baseline, next.champions.baseline);
-  assertPointerDidNotRegress(
-    "Active champion",
-    previous.champions.active,
-    next.champions.active,
-  );
+  assertPointerDidNotRegress("Active champion", previous.champions.active, next.champions.active);
 
   const priorCertified = previous.champions.certified;
   const currentCertified = next.champions.certified;
@@ -241,10 +223,7 @@ function assertChampionTransition(previous: CampaignState, next: CampaignState):
   ) {
     fail("A newly certified champion must be the current active champion");
   }
-  if (
-    currentCertified !== null &&
-    currentCertified.experimentNumber === 0
-  ) {
+  if (currentCertified !== null && currentCertified.experimentNumber === 0) {
     fail("Experiment 000 is a baseline anchor, not a certified improvement");
   }
   const certifiedAdvanced =
@@ -253,8 +232,7 @@ function assertChampionTransition(previous: CampaignState, next: CampaignState):
       currentCertified.experimentNumber > priorCertified.experimentNumber);
   if (
     certifiedAdvanced &&
-    currentCertified.sourceSealHash !==
-      next.reconstruction.experimentSealChainHead
+    currentCertified.sourceSealHash !== next.reconstruction.experimentSealChainHead
   ) {
     fail("Certification must bind the newly sealed feedback-dark audit");
   }
@@ -265,15 +243,13 @@ function assertChampionTransition(previous: CampaignState, next: CampaignState):
     activeAdvanced &&
     (next.reconstruction.lastFullySealedExperimentNumber !==
       next.champions.active.experimentNumber ||
-      next.reconstruction.experimentSealChainHead !==
-        next.champions.active.sourceSealHash)
+      next.reconstruction.experimentSealChainHead !== next.champions.active.sourceSealHash)
   ) {
     fail("An active champion can advance only to the newly sealed experiment");
   }
   if (
     activeAdvanced &&
-    next.holdout.freshValidationSetsRemaining !==
-      previous.holdout.freshValidationSetsRemaining - 1
+    next.holdout.freshValidationSetsRemaining !== previous.holdout.freshValidationSetsRemaining - 1
   ) {
     fail("Active promotion must atomically consume one fresh-validation set");
   }
@@ -283,15 +259,13 @@ function assertChampionTransition(previous: CampaignState, next: CampaignState):
   if (
     certifiedAdvanced &&
     (next.reconstruction.lastFullySealedExperimentNumber === null ||
-      next.reconstruction.lastFullySealedExperimentNumber <=
-        next.champions.active.experimentNumber)
+      next.reconstruction.lastFullySealedExperimentNumber <= next.champions.active.experimentNumber)
   ) {
     fail("Certification must come from a later feedback-dark audit experiment");
   }
   if (
     certifiedAdvanced &&
-    next.holdout.shadowSlicesRemaining !==
-      previous.holdout.shadowSlicesRemaining - 1
+    next.holdout.shadowSlicesRemaining !== previous.holdout.shadowSlicesRemaining - 1
   ) {
     fail("Certification must atomically consume one shadow slice");
   }
@@ -307,8 +281,7 @@ function assertChampionTransition(previous: CampaignState, next: CampaignState):
   }
   if (
     pointersChanged &&
-    timestamp(next.champions.updatedAt) <
-      timestamp(previous.champions.updatedAt)
+    timestamp(next.champions.updatedAt) < timestamp(previous.champions.updatedAt)
   ) {
     fail("Champion pointer timestamp cannot move backward");
   }
@@ -325,6 +298,9 @@ function assertBudgetTransition(previous: CampaignState, next: CampaignState): v
     if (next.budget.usage[usageField] < previous.budget.usage[usageField]) {
       fail(`Budget usage ${usageField} cannot decrease`);
     }
+    if (next.budget.usage[usageField] > next.budget.limits[limitField]) {
+      fail(`Budget usage ${usageField} cannot exceed limit ${limitField}`);
+    }
     usageChanged ||= next.budget.usage[usageField] !== previous.budget.usage[usageField];
   }
 
@@ -333,8 +309,7 @@ function assertBudgetTransition(previous: CampaignState, next: CampaignState): v
     if (next.budget.limits[field] < previous.budget.limits[field]) {
       fail(`Budget limit ${field} cannot decrease`);
     }
-    extensibleLimitsChanged ||=
-      next.budget.limits[field] !== previous.budget.limits[field];
+    extensibleLimitsChanged ||= next.budget.limits[field] !== previous.budget.limits[field];
   }
   for (const field of LINEAGE_FROZEN_LIMITS) {
     if (next.budget.limits[field] !== previous.budget.limits[field]) {
@@ -379,8 +354,7 @@ function assertHoldoutTransition(previous: CampaignState, next: CampaignState): 
 
   const replenished = next.holdout.generation === previous.holdout.generation + 1;
   const capacityIncreased =
-    next.holdout.freshValidationSetsRemaining >
-      previous.holdout.freshValidationSetsRemaining ||
+    next.holdout.freshValidationSetsRemaining > previous.holdout.freshValidationSetsRemaining ||
     next.holdout.shadowSlicesRemaining > previous.holdout.shadowSlicesRemaining;
   if (replenished && !capacityIncreased) {
     fail("A new holdout generation must increase at least one capacity");
@@ -398,29 +372,24 @@ function assertHoldoutTransition(previous: CampaignState, next: CampaignState): 
   }
   if (
     !replenished &&
-    next.holdout.replenishmentAuthorizationHash !==
-      previous.holdout.replenishmentAuthorizationHash
+    next.holdout.replenishmentAuthorizationHash !== previous.holdout.replenishmentAuthorizationHash
   ) {
     fail("Holdout replenishment authorization can change only with its generation");
   }
   const holdoutPayloadChanged =
-    next.holdout.freshValidationSetsRemaining !==
-      previous.holdout.freshValidationSetsRemaining ||
+    next.holdout.freshValidationSetsRemaining !== previous.holdout.freshValidationSetsRemaining ||
     next.holdout.shadowSlicesRemaining !== previous.holdout.shadowSlicesRemaining ||
     next.holdout.generation !== previous.holdout.generation ||
-    next.holdout.replenishmentAuthorizationHash !==
-      previous.holdout.replenishmentAuthorizationHash;
+    next.holdout.replenishmentAuthorizationHash !== previous.holdout.replenishmentAuthorizationHash;
   if (
     holdoutPayloadChanged &&
-    next.holdout.availabilityAttestationHash ===
-      previous.holdout.availabilityAttestationHash
+    next.holdout.availabilityAttestationHash === previous.holdout.availabilityAttestationHash
   ) {
     fail("Holdout state changes require a new availability attestation");
   }
   if (
     !holdoutPayloadChanged &&
-    next.holdout.availabilityAttestationHash !==
-      previous.holdout.availabilityAttestationHash
+    next.holdout.availabilityAttestationHash !== previous.holdout.availabilityAttestationHash
   ) {
     fail("Holdout attestation cannot change without a holdout-state change");
   }
@@ -434,8 +403,7 @@ function assertReconstructionTransition(previous: CampaignState, next: CampaignS
   }
   if (
     currentNumber === priorNumber &&
-    next.reconstruction.experimentSealChainHead !==
-      previous.reconstruction.experimentSealChainHead
+    next.reconstruction.experimentSealChainHead !== previous.reconstruction.experimentSealChainHead
   ) {
     fail("Seal-chain head cannot change without a newly sealed experiment");
   }
@@ -453,10 +421,7 @@ function assertReconstructionTransition(previous: CampaignState, next: CampaignS
   ) {
     fail("A newly sealed experiment requires a distinct next seal-chain head");
   }
-  if (
-    currentNumber > priorNumber &&
-    next.numbering.inFlightExperimentNumber !== null
-  ) {
+  if (currentNumber > priorNumber && next.numbering.inFlightExperimentNumber !== null) {
     fail("A fully sealed experiment cannot remain in flight");
   }
   const priorDecision = previous.reconstruction.lastSealedDecision;
@@ -499,30 +464,23 @@ function assertReconstructionTransition(previous: CampaignState, next: CampaignS
     ) {
       fail("A pre-validation disposition cannot consume holdout capacity");
     }
-    const expectedKind =
-      currentDecision.stage === "shadow" ? "shadow" : "optimization";
+    const expectedKind = currentDecision.stage === "shadow" ? "shadow" : "optimization";
     if (previous.numbering.inFlightKind !== expectedKind) {
       fail("Sealed decision stage must match the allocated experiment kind");
     }
     const activeAdvanced =
-      next.champions.active.experimentNumber >
-      previous.champions.active.experimentNumber;
-    const priorCertifiedExperiment =
-      previous.champions.certified?.experimentNumber ?? -1;
-    const currentCertifiedExperiment =
-      next.champions.certified?.experimentNumber ?? -1;
-    const certifiedAdvanced =
-      currentCertifiedExperiment > priorCertifiedExperiment;
+      next.champions.active.experimentNumber > previous.champions.active.experimentNumber;
+    const priorCertifiedExperiment = previous.champions.certified?.experimentNumber ?? -1;
+    const currentCertifiedExperiment = next.champions.certified?.experimentNumber ?? -1;
+    const certifiedAdvanced = currentCertifiedExperiment > priorCertifiedExperiment;
     if (
-      (currentDecision.stage === "validation" &&
-        currentDecision.disposition === "promoted") !==
+      (currentDecision.stage === "validation" && currentDecision.disposition === "promoted") !==
       activeAdvanced
     ) {
       fail("Active champion movement must match the signed validation disposition");
     }
     if (
-      (currentDecision.stage === "shadow" &&
-        currentDecision.disposition === "certified") !==
+      (currentDecision.stage === "shadow" && currentDecision.disposition === "certified") !==
       certifiedAdvanced
     ) {
       fail("Certified champion movement must match the signed shadow disposition");
@@ -561,10 +519,7 @@ function assertReconstructionTransition(previous: CampaignState, next: CampaignS
     "lastControllerRecoveryAuthorizationHash",
     "lastControllerRecoveryLockHash",
   ] as const) {
-    if (
-      previous.reconstruction[field] !== null &&
-      next.reconstruction[field] === null
-    ) {
+    if (previous.reconstruction[field] !== null && next.reconstruction[field] === null) {
       fail(`Reconstruction pointer ${field} cannot be cleared`);
     }
   }
@@ -597,8 +552,7 @@ export function assertInitialCampaignState(state: CampaignState): void {
   }
   if (
     state.reconstruction.lastFullySealedExperimentNumber !== 0 ||
-    state.reconstruction.experimentSealChainHead !==
-      state.champions.baseline.sourceSealHash
+    state.reconstruction.experimentSealChainHead !== state.champions.baseline.sourceSealHash
   ) {
     fail("Initial reconstruction state must point to the sealed baseline");
   }
@@ -623,10 +577,7 @@ export function assertInitialCampaignState(state: CampaignState): void {
   }
 }
 
-export function assertCampaignStateTransition(
-  previous: CampaignState,
-  next: CampaignState,
-): void {
+export function assertCampaignStateTransition(previous: CampaignState, next: CampaignState): void {
   assertImmutable("Campaign id", previous.campaignId, next.campaignId);
   assertImmutable("Run mode", previous.mode, next.mode);
   assertImmutable("Baseline lineage", previous.baselineLineageId, next.baselineLineageId);
@@ -636,10 +587,7 @@ export function assertCampaignStateTransition(
     previous.harnessRegistrationHash,
     next.harnessRegistrationHash,
   );
-  if (
-    next.revision !== previous.revision + 1 ||
-    next.previousStateHash !== previous.contentHash
-  ) {
+  if (next.revision !== previous.revision + 1 || next.previousStateHash !== previous.contentHash) {
     fail("Campaign revisions must form a contiguous content-hash chain");
   }
   const expectedProvenance = [

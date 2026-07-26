@@ -2,13 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  lstatSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, lstatSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
@@ -39,11 +33,7 @@ function reject(message) {
 }
 
 function canonicalJson(value) {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
@@ -53,10 +43,7 @@ function canonicalJson(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
   }
-  if (
-    typeof value !== "object" ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
     reject("Canonical JSON accepts only plain JSON values.");
   }
   return `{${Object.keys(value)
@@ -103,6 +90,7 @@ function parseFlags(argv) {
       !flag.startsWith("--") ||
       !expected.has(flag.slice(2)) ||
       Object.hasOwn(parsed, flag.slice(2)) ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Worker CLI values must reject NUL and line breaks to prevent argument-boundary injection.
       /[\u0000\r\n]/u.test(value)
     ) {
       reject("Candidate-integrity worker received an unsupported argument.");
@@ -125,10 +113,7 @@ function assertCloudRuntime() {
   const values = activeGroups[0]
     .map((name) => process.env[name])
     .filter((value) => value !== undefined);
-  if (
-    values.length === 0 ||
-    values.some((value) => !SAFE_MARKER.test(value))
-  ) {
+  if (values.length === 0 || values.some((value) => !SAFE_MARKER.test(value))) {
     reject("Candidate-integrity cloud marker is malformed.");
   }
 }
@@ -198,10 +183,7 @@ async function hashRegularFile(path, expectedSha256, expectedByteLength) {
     }
     hash.update(chunk);
   }
-  if (
-    byteLength !== expectedByteLength ||
-    hash.digest("hex") !== expectedSha256
-  ) {
+  if (byteLength !== expectedByteLength || hash.digest("hex") !== expectedSha256) {
     reject("Candidate bundle bytes do not match sealed metadata.");
   }
 }
@@ -218,10 +200,7 @@ function parseChangedFiles(buffer) {
     new Set(values).size !== values.length ||
     values.some(
       (value) =>
-        value.length < 1 ||
-        value.length > 4096 ||
-        value.startsWith("/") ||
-        value.includes("\0"),
+        value.length < 1 || value.length > 4096 || value.startsWith("/") || value.includes("\0"),
     )
   ) {
     reject("Git changed-path evidence is malformed.");
@@ -239,15 +218,8 @@ function parseNumstat(buffer, changedFiles) {
   let deletedLines = 0;
   const paths = [];
   for (const entry of entries) {
-    const match =
-      /^(?<added>\d+|-)\t(?<deleted>\d+|-)\t(?<path>[\s\S]+)$/u.exec(
-        entry,
-      );
-    if (
-      match?.groups === undefined ||
-      match.groups.added === "-" ||
-      match.groups.deleted === "-"
-    ) {
+    const match = /^(?<added>\d+|-)\t(?<deleted>\d+|-)\t(?<path>[\s\S]+)$/u.exec(entry);
+    if (match?.groups === undefined || match.groups.added === "-" || match.groups.deleted === "-") {
       reject("Binary numstat evidence is forbidden.");
     }
     const added = Number.parseInt(match.groups.added, 10);
@@ -310,10 +282,7 @@ async function main() {
   ]) {
     assertAbsoluteFilePath(value, label);
   }
-  const expectedBundleBytes = Number.parseInt(
-    input["bundle-byte-length"],
-    10,
-  );
+  const expectedBundleBytes = Number.parseInt(input["bundle-byte-length"], 10);
   const expectedBundleRef = `refs/heads/df/bundle/${input.experiment}`;
   if (
     !EXPERIMENT_ID.test(input.experiment) ||
@@ -331,11 +300,7 @@ async function main() {
   ) {
     reject("Candidate-integrity lineage is malformed.");
   }
-  await hashRegularFile(
-    input.bundle,
-    input["bundle-sha256"],
-    expectedBundleBytes,
-  );
+  await hashRegularFile(input.bundle, input["bundle-sha256"], expectedBundleBytes);
 
   const repository = mkdtempSync(join(tmpdir(), "df-integrity-git-"));
   try {
@@ -348,25 +313,14 @@ async function main() {
       input.bundle,
       `${input["bundle-ref"]}:${input["bundle-ref"]}`,
     ]);
-    const sourceCommit = text(
-      git(repository, ["rev-parse", `${input["source-commit"]}^{commit}`]),
-    );
+    const sourceCommit = text(git(repository, ["rev-parse", `${input["source-commit"]}^{commit}`]));
     const candidateCommit = text(
       git(repository, ["rev-parse", `${input["candidate-commit"]}^{commit}`]),
     );
-    const sourceTree = text(
-      git(repository, ["rev-parse", `${sourceCommit}^{tree}`]),
-    );
-    const candidateTree = text(
-      git(repository, ["rev-parse", `${candidateCommit}^{tree}`]),
-    );
+    const sourceTree = text(git(repository, ["rev-parse", `${sourceCommit}^{tree}`]));
+    const candidateTree = text(git(repository, ["rev-parse", `${candidateCommit}^{tree}`]));
     const ancestry = text(
-      git(repository, [
-        "rev-list",
-        "--parents",
-        "--max-count=1",
-        candidateCommit,
-      ]),
+      git(repository, ["rev-list", "--parents", "--max-count=1", candidateCommit]),
     ).split(" ");
     if (
       sourceCommit !== input["source-commit"] ||

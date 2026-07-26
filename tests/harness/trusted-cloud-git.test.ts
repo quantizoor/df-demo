@@ -13,6 +13,7 @@ import type {
   TrustedCloudArtifactRef,
 } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
+import { fingerprintRemoteUrl } from "../../src/harness/git.js";
 import {
   ArtifactReadingTrustedGitPublicationAttestor,
   ArtifactReadingTrustedGitSourceSnapshotAttestor,
@@ -22,11 +23,11 @@ import {
   createTrustedGitPublicationAuthorizationPayload,
   createTrustedGitPublicationSpec,
   parseTrustedGitPublicationWorkerResult,
-  trustedGitCandidateBundleRef,
-  TrustedGitPublicationRunner,
   type TrustedGitPublicationAttestor,
   type TrustedGitPublicationAuthorization,
   type TrustedGitPublicationReceipt,
+  TrustedGitPublicationRunner,
+  trustedGitCandidateBundleRef,
 } from "../../src/harness/git-publication.js";
 import {
   assertTrustedGitSourceWorkerManifest,
@@ -38,7 +39,6 @@ import {
   type TrustedGitSourceSnapshotAttestor,
   type TrustedGitSourceSnapshotReceipt,
 } from "../../src/harness/git-source.js";
-import { fingerprintRemoteUrl } from "../../src/harness/git.js";
 import {
   OFFICIAL_PI_UPSTREAM_URL,
   type RepositoryRegistration,
@@ -61,11 +61,7 @@ const localCanonicalPath = "/Users/operator/Desktop/Repos/ParallaxAI/pi";
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const imageReference = `ghcr.io/dark-factory/runtime@${imageDigest}`;
 
-function artifact(
-  name: string,
-  hashCharacter: string,
-  mediaType: string,
-): TrustedCloudArtifactRef {
+function artifact(name: string, hashCharacter: string, mediaType: string): TrustedCloudArtifactRef {
   return {
     uri: `trusted://git/${name}`,
     sha256: hashCharacter.repeat(64),
@@ -76,26 +72,10 @@ function artifact(
 
 const workerArtifact = artifact("worker", "3", "text/javascript");
 const sourceArtifact = artifact("source", "4", "application/x-tar");
-const sourceBundleArtifact = artifact(
-  "source-bundle",
-  "0",
-  "application/vnd.git.bundle",
-);
-const sourceManifestArtifact = artifact(
-  "source-manifest",
-  "5",
-  "application/json",
-);
-const candidateBundle = artifact(
-  "candidate-bundle",
-  "6",
-  "application/vnd.git.bundle",
-);
-const publicationResultArtifact = artifact(
-  "publication-result",
-  "7",
-  "application/json",
-);
+const sourceBundleArtifact = artifact("source-bundle", "0", "application/vnd.git.bundle");
+const sourceManifestArtifact = artifact("source-manifest", "5", "application/json");
+const candidateBundle = artifact("candidate-bundle", "6", "application/vnd.git.bundle");
+const publicationResultArtifact = artifact("publication-result", "7", "application/json");
 
 const origin: PrivateGitHubOrigin = {
   host: "github.com",
@@ -115,9 +95,7 @@ const registration: RepositoryRegistration = {
   treeSha: baselineTree,
   lockSha256,
   upstreamBaseCommit: "9".repeat(40),
-  originFingerprint: fingerprintRemoteUrl(
-    "git@github.com:parallaxai/df-pi-tbench.git",
-  ),
+  originFingerprint: fingerprintRemoteUrl("git@github.com:parallaxai/df-pi-tbench.git"),
   upstreamFingerprint: fingerprintRemoteUrl(OFFICIAL_PI_UPSTREAM_URL),
   originVerification: {
     private: true,
@@ -217,10 +195,7 @@ class FakeGitProvider implements CloudSandboxProvider {
     });
   }
 
-  execute(
-    lease: SandboxLease,
-    command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     this.calls.push("execute");
     this.commands.push(structuredClone(command));
     return Promise.resolve({
@@ -252,10 +227,7 @@ class FakeGitProvider implements CloudSandboxProvider {
     return Promise.resolve();
   }
 
-  download(
-    _lease: SandboxLease,
-    remotePath: string,
-  ): Promise<TrustedCloudArtifactRef> {
+  download(_lease: SandboxLease, remotePath: string): Promise<TrustedCloudArtifactRef> {
     this.calls.push("download");
     this.downloads.push(remotePath);
     if (remotePath.endsWith("candidate-source.tar")) {
@@ -285,9 +257,9 @@ class FakeGitProvider implements CloudSandboxProvider {
 }
 
 function sourceAttestor(
-  mutate: (
-    receipt: TrustedGitSourceSnapshotReceipt,
-  ) => TrustedGitSourceSnapshotReceipt = (receipt) => receipt,
+  mutate: (receipt: TrustedGitSourceSnapshotReceipt) => TrustedGitSourceSnapshotReceipt = (
+    receipt,
+  ) => receipt,
 ): TrustedGitSourceSnapshotAttestor {
   return {
     async attest(input) {
@@ -355,9 +327,9 @@ function sourceRunner(
 }
 
 function authorization(
-  mutate: (
-    value: TrustedGitPublicationAuthorization,
-  ) => TrustedGitPublicationAuthorization = (value) => value,
+  mutate: (value: TrustedGitPublicationAuthorization) => TrustedGitPublicationAuthorization = (
+    value,
+  ) => value,
 ): TrustedGitPublicationAuthorization {
   const body = createTrustedGitPublicationAuthorizationPayload({
     registration,
@@ -376,7 +348,7 @@ function authorization(
   return mutate({
     ...body,
     signature: createEd25519Signature(
-      body,
+      { ...body },
       authorizationKeys.privateKey,
       "trusted-git-authorization-key-001",
       "2026-07-01T00:00:01.000Z",
@@ -385,9 +357,8 @@ function authorization(
 }
 
 function publicationAttestor(
-  mutate: (
-    receipt: TrustedGitPublicationReceipt,
-  ) => TrustedGitPublicationReceipt = (receipt) => receipt,
+  mutate: (receipt: TrustedGitPublicationReceipt) => TrustedGitPublicationReceipt = (receipt) =>
+    receipt,
 ): TrustedGitPublicationAttestor {
   return {
     async attest(input) {
@@ -575,16 +546,18 @@ describe("trusted Git worker JSON schemas", () => {
       }),
     ).not.toThrow();
     expect(
-      parseTrustedGitSourceWorkerManifest(
-        `${canonicalJson(manifest)}\n`,
-        { spec, sourceArtifact, sourceBundleArtifact },
-      ),
+      parseTrustedGitSourceWorkerManifest(`${canonicalJson(manifest)}\n`, {
+        spec,
+        sourceArtifact,
+        sourceBundleArtifact,
+      }),
     ).toEqual(manifest);
     expect(() =>
-      parseTrustedGitSourceWorkerManifest(
-        JSON.stringify(manifest, null, 2),
-        { spec, sourceArtifact, sourceBundleArtifact },
-      ),
+      parseTrustedGitSourceWorkerManifest(JSON.stringify(manifest, null, 2), {
+        spec,
+        sourceArtifact,
+        sourceBundleArtifact,
+      }),
     ).toThrow(/canonical/u);
     expect(() =>
       assertTrustedGitSourceWorkerManifest(
@@ -640,10 +613,10 @@ describe("trusted Git worker JSON schemas", () => {
       }),
     ).not.toThrow();
     expect(
-      parseTrustedGitPublicationWorkerResult(
-        `${canonicalJson(result)}\n`,
-        { authorization: authorized, spec },
-      ),
+      parseTrustedGitPublicationWorkerResult(`${canonicalJson(result)}\n`, {
+        authorization: authorized,
+        spec,
+      }),
     ).toEqual(result);
     expect(() =>
       assertTrustedGitPublicationWorkerResult(
@@ -687,9 +660,7 @@ describe("trusted cloud Git source snapshot", () => {
     expect(command.arguments).toContain(baselineTree);
     expect(command.arguments).toContain(lockSha256);
     expect(command.arguments).toContain("--bundle");
-    expect(command.arguments).toContain(
-      TRUSTED_GIT_SOURCE_BUNDLE_REF,
-    );
+    expect(command.arguments).toContain(TRUSTED_GIT_SOURCE_BUNDLE_REF);
     expect(provider.calls.at(-1)).toBe("destroy");
     expect(JSON.stringify(command)).not.toContain(localCanonicalPath);
     expect(JSON.stringify(receipt)).not.toContain("parallaxai");
@@ -719,9 +690,7 @@ describe("trusted cloud Git source snapshot", () => {
 
     const failedTeardown = new FakeGitProvider();
     failedTeardown.teardownFails = true;
-    await expect(sourceRunner(failedTeardown).run()).rejects.toThrow(
-      "sandbox teardown failed",
-    );
+    await expect(sourceRunner(failedTeardown).run()).rejects.toThrow("sandbox teardown failed");
   });
 
   it("captures source lineage before asynchronous cloud work begins", async () => {
@@ -772,19 +741,19 @@ describe("trusted cloud Git source snapshot", () => {
             publicKey: sourceKeys.publicKey,
           },
         }),
-    ).toThrow(/private-origin grant/u);
+    ).toThrow(/exact GitHub grants/u);
     expect(provider.calls).toEqual([]);
   });
 });
 
 describe("trusted cloud Git publication", () => {
   it("reserves experiment zero for the source snapshot bundle", () => {
-    expect(() =>
-      trustedGitCandidateBundleRef("000-source-snapshot"),
-    ).toThrow(/experiment identifier/u);
-    expect(
-      trustedGitCandidateBundleRef("001-improve-recovery"),
-    ).not.toBe(TRUSTED_GIT_SOURCE_BUNDLE_REF);
+    expect(() => trustedGitCandidateBundleRef("000-source-snapshot")).toThrow(
+      /experiment identifier/u,
+    );
+    expect(trustedGitCandidateBundleRef("001-improve-recovery")).not.toBe(
+      TRUSTED_GIT_SOURCE_BUNDLE_REF,
+    );
   });
 
   it("publishes the sealed bundle to fixed experiment refs without force", async () => {
@@ -813,9 +782,7 @@ describe("trusted cloud Git publication", () => {
     expect(command.environment).not.toHaveProperty("GITHUB_TOKEN");
     expect(command.arguments).toContain("atomic-non-force");
     expect(command.arguments).not.toContain("--force");
-    expect(command.arguments.every((argument) => !argument.startsWith("+refs/"))).toBe(
-      true,
-    );
+    expect(command.arguments.every((argument) => !argument.startsWith("+refs/"))).toBe(true);
     expect(provider.calls.at(-1)).toBe("destroy");
     expect(JSON.stringify(receipt)).not.toContain("github.com");
     expect(JSON.stringify(receipt)).not.toContain("parallaxai");
@@ -862,9 +829,7 @@ describe("trusted cloud Git publication", () => {
   it("fails closed on ref conflict, forged receipt, and teardown uncertainty", async () => {
     const conflict = new FakeGitProvider();
     conflict.executionFails = true;
-    await expect(publicationRunner(conflict).run()).rejects.toThrow(
-      "publication failed closed",
-    );
+    await expect(publicationRunner(conflict).run()).rejects.toThrow("publication failed closed");
     expect(conflict.downloads).toEqual([]);
     expect(conflict.calls.at(-1)).toBe("destroy");
 
@@ -892,8 +857,7 @@ describe("trusted cloud Git publication", () => {
     const provider = new FakeGitProvider();
     const authorized = authorization();
     const runner = publicationRunner(provider, authorized);
-    (authorized as { candidateCommit: string }).candidateCommit =
-      "f".repeat(40);
+    (authorized as { candidateCommit: string }).candidateCommit = "f".repeat(40);
     await expect(runner.run()).resolves.toMatchObject({
       candidateCommit,
     });
@@ -926,9 +890,7 @@ describe("artifact-reading trusted Git operation attestors", () => {
       },
       now: () => new Date("2026-07-01T00:03:00.000Z"),
     });
-    await expect(
-      sourceRunner(new FakeGitProvider(), attestor).run(),
-    ).resolves.toMatchObject({
+    await expect(sourceRunner(new FakeGitProvider(), attestor).run()).resolves.toMatchObject({
       commitSha: baselineCommit,
       treeSha: baselineTree,
       sourceArtifact,
@@ -961,11 +923,7 @@ describe("artifact-reading trusted Git operation attestors", () => {
       now: () => new Date("2026-07-01T00:03:00.000Z"),
     });
     await expect(
-      publicationRunner(
-        new FakeGitProvider(),
-        authorized,
-        attestor,
-      ).run(),
+      publicationRunner(new FakeGitProvider(), authorized, attestor).run(),
     ).resolves.toMatchObject({
       branchCommit: candidateCommit,
       tagPeeledCommit: candidateCommit,
@@ -979,10 +937,7 @@ describe("artifact-reading trusted Git operation attestors", () => {
     const attestor = new ArtifactReadingTrustedGitSourceSnapshotAttestor({
       reader: {
         async readUtf8() {
-          const parsed = JSON.parse(sourceManifest()) as Record<
-            string,
-            unknown
-          >;
+          const parsed = JSON.parse(sourceManifest()) as Record<string, unknown>;
           parsed["taskId"] = "hidden-task";
           return `${canonicalJson(parsed)}\n`;
         },
@@ -1002,9 +957,9 @@ describe("artifact-reading trusted Git operation attestors", () => {
       },
       now: () => new Date("2026-07-01T00:03:00.000Z"),
     });
-    await expect(
-      sourceRunner(new FakeGitProvider(), attestor).run(),
-    ).rejects.toThrow("failed closed");
+    await expect(sourceRunner(new FakeGitProvider(), attestor).run()).rejects.toThrow(
+      "failed closed",
+    );
     expect(signingCalls).toBe(0);
   });
 });

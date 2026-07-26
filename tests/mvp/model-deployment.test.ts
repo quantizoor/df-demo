@@ -1,17 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  isMvpModelDeploymentAlias,
   inspectMvpCloudEnvironment,
+  isMvpModelDeploymentAlias,
   validateEvaluationEnvironment,
 } from "../../src/mvp/index.js";
 
-const VALID_ALIASES = [
-  "a",
-  "claude-opus-5",
-  "team.opus_4-blue",
-  "a".repeat(128),
-] as const;
+const VALID_ALIASES = ["a", "claude-opus-5", "team.opus_4-blue", "a".repeat(128)] as const;
 
 const INVALID_ALIASES = [
   "",
@@ -27,53 +22,26 @@ const INVALID_ALIASES = [
 ] as const;
 
 describe("MVP Foundry deployment alias grammar", () => {
-  it.each(VALID_ALIASES)(
-    "accepts %s at the parser and evaluation-schema boundaries",
-    (alias) => {
-      expect(isMvpModelDeploymentAlias(alias)).toBe(true);
-      const readiness = inspectMvpCloudEnvironment(
-        cloudEnvironment(alias),
-      );
-      expect(readiness.ready).toBe(true);
-      expect(
-        readiness.configuration?.foundry.optimizerDeployment,
-      ).toBe(alias);
-      expect(
-        readiness.configuration?.foundry.evaluatedDeployment,
-      ).toBe(alias);
-      expect(() =>
-        validateEvaluationEnvironment(
-          evaluationEnvironment(alias),
-        ),
-      ).not.toThrow();
-    },
-  );
+  it.each(VALID_ALIASES)("accepts %s at the parser and evaluation-schema boundaries", (alias) => {
+    expect(isMvpModelDeploymentAlias(alias)).toBe(true);
+    const readiness = inspectMvpCloudEnvironment(cloudEnvironment(alias));
+    expect(readiness.ready).toBe(true);
+    expect(readiness.configuration?.foundry.optimizerDeployment).toBe(alias);
+    expect(readiness.configuration?.foundry.evaluatedDeployment).toBe(alias);
+    expect(() => validateEvaluationEnvironment(evaluationEnvironment(alias))).not.toThrow();
+  });
 
-  it.each(INVALID_ALIASES)(
-    "rejects %s at the parser and evaluation-schema boundaries",
-    (alias) => {
-      expect(isMvpModelDeploymentAlias(alias)).toBe(false);
-      const readiness = inspectMvpCloudEnvironment(
-        cloudEnvironment(alias),
-      );
-      expect(readiness.ready).toBe(false);
-      const reported = new Set([
-        ...readiness.missing,
-        ...readiness.invalid,
-      ]);
-      expect(reported.has("DF_OPTIMIZER_DEPLOYMENT")).toBe(
-        true,
-      );
-      expect(reported.has("DF_EVALUATED_DEPLOYMENT")).toBe(
-        true,
-      );
-      expect(() =>
-        validateEvaluationEnvironment(
-          evaluationEnvironment(alias),
-        ),
-      ).toThrow(/evaluation environment/u);
-    },
-  );
+  it.each(INVALID_ALIASES)("rejects %s at the parser and evaluation-schema boundaries", (alias) => {
+    expect(isMvpModelDeploymentAlias(alias)).toBe(false);
+    const readiness = inspectMvpCloudEnvironment(cloudEnvironment(alias));
+    expect(readiness.ready).toBe(false);
+    const reported = new Set([...readiness.missing, ...readiness.invalid]);
+    expect(reported.has("DF_OPTIMIZER_DEPLOYMENT")).toBe(true);
+    expect(reported.has("DF_EVALUATED_DEPLOYMENT")).toBe(true);
+    expect(() => validateEvaluationEnvironment(evaluationEnvironment(alias))).toThrow(
+      /evaluation environment/u,
+    );
+  });
 });
 
 function cloudEnvironment(alias: string): NodeJS.ProcessEnv {
@@ -90,8 +58,7 @@ function cloudEnvironment(alias: string): NodeJS.ProcessEnv {
     DF_DAYTONA_VOLUME_ID: "df-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "campaigns/mvp-001",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DAYTONA_NESTED",
-    DF_FOUNDRY_BASE_URL:
-      "https://existing-resource.services.ai.azure.com/anthropic",
+    DF_FOUNDRY_BASE_URL: "https://existing-resource.services.ai.azure.com/anthropic",
     DF_OPTIMIZER_DEPLOYMENT: alias,
     DF_EVALUATED_DEPLOYMENT: alias,
     DF_OPTIMIZER_SECRET_SOURCE: "FOUNDRY_OPTIMIZER",
@@ -106,9 +73,7 @@ function cloudEnvironment(alias: string): NodeJS.ProcessEnv {
   };
 }
 
-function evaluationEnvironment(
-  modelDeployment: string,
-): Readonly<Record<string, unknown>> {
+function evaluationEnvironment(modelDeployment: string): Readonly<Record<string, unknown>> {
   return {
     terminalBenchVersion: "terminal-bench-2.1",
     datasetRevision: "terminal-bench-2.1",

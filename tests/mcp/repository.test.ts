@@ -1,6 +1,6 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ReleasedEvidenceRepository } from "../../src/mcp/repository.js";
 import { schemaFixture } from "../schemas/fixtures.js";
@@ -45,9 +45,7 @@ beforeEach(async () => {
     allowedNextActions: ["submit-hypothesis"],
     budgetBands: { spend: "low" },
   });
-  const brief = schemaFixture("diagnosticBrief") as Readonly<
-    Record<string, unknown>
-  >;
+  const brief = schemaFixture("diagnosticBrief") as Readonly<Record<string, unknown>>;
   await writeJson(join(evidence, "latest-brief.json"), {
     file: "001-brief.json",
     contentHash: brief.contentHash,
@@ -149,9 +147,7 @@ describe("released evidence repository", () => {
     const inbox = join(submissions, "campaign", "hypothesis");
     const files = await readdir(inbox);
     expect(files).toHaveLength(1);
-    expect(await readFile(join(inbox, files[0] ?? ""), "utf8")).toContain(
-      receipt.receiptId,
-    );
+    expect(await readFile(join(inbox, files[0] ?? ""), "utf8")).toContain(receipt.receiptId);
   });
 
   it("binds a hypothesis to the one released brief and rejects protected prose", async () => {

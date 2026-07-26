@@ -3,15 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   allocateValidationQuotas,
   countFreshValidationPanels,
+  type HiddenTaskLedgerEntry,
   initialValidationQuotaCarry,
   markShadowReservations,
   releaseSafePanelAttestation,
   reserveShadowSlices,
+  type SelectionBucket,
   selectRepairPanel,
   selectRepairPanelFromSource,
   selectValidationPanel,
-  type HiddenTaskLedgerEntry,
-  type SelectionBucket,
 } from "../../src/evaluation/index.js";
 import { makeTask, taskId } from "./fixtures.js";
 
@@ -115,7 +115,9 @@ describe("failure-weighted deterministic selection", () => {
     const pool = [
       preferred,
       otherwiseEqual,
-      ...repairPool().filter((task) => task.buckets.includes("hard")).slice(0, 2),
+      ...repairPool()
+        .filter((task) => task.buckets.includes("hard"))
+        .slice(0, 2),
       ...repairPool().filter((task) => !task.buckets.includes("hard")),
     ];
     const panel = selectRepairPanel(pool, {
@@ -240,15 +242,11 @@ describe("failure-weighted deterministic selection", () => {
 
 function repairPool(): readonly HiddenTaskLedgerEntry[] {
   return [
-    ...Array.from({ length: 5 }, (_, index) =>
-      makeRepairEligible(makeTask(10 + index, ["hard"])),
-    ),
+    ...Array.from({ length: 5 }, (_, index) => makeRepairEligible(makeTask(10 + index, ["hard"]))),
     ...Array.from({ length: 3 }, (_, index) =>
       makeRepairEligible(makeTask(20 + index, ["uncertain"])),
     ),
-    ...Array.from({ length: 3 }, (_, index) =>
-      makeRepairEligible(makeTask(30 + index, ["easy"])),
-    ),
+    ...Array.from({ length: 3 }, (_, index) => makeRepairEligible(makeTask(30 + index, ["easy"]))),
     ...Array.from({ length: 3 }, (_, index) =>
       makeRepairEligible(makeTask(40 + index, ["coverage"])),
     ),

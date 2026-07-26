@@ -1,15 +1,15 @@
 import { join } from "node:path";
 import { Type } from "@sinclair/typebox";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
 import {
-  MVP_SCHEMA_VERSION,
+  canonicalJson,
   type DecisionDisposition,
   type HiddenTaskHandle,
+  hiddenTaskHandle,
+  MVP_SCHEMA_VERSION,
   type MvpIterationResult,
   type SanitizedDiagnosticBrief,
-  canonicalJson,
-  hiddenTaskHandle,
 } from "./contracts.js";
 import {
   assertMountedRoot,
@@ -60,7 +60,7 @@ const CampaignStateSchema = Type.Object(
   { additionalProperties: false },
 );
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: true });
-addFormats(ajv);
+addFormatsModule.default(ajv);
 const validateCampaignState = ajv.compile(CampaignStateSchema);
 
 export interface MvpCampaignState {
@@ -153,14 +153,11 @@ export class MountedMvpCampaignStateStore implements MvpCampaignStateStore {
       const current = await this.load();
       if (current.lastExperimentId === input.iteration.experimentId) {
         const expectedRetained =
-          input.iteration.decision.disposition === "promote"
-            ? null
-            : input.retainedTaskHandles;
+          input.iteration.decision.disposition === "promote" ? null : input.retainedTaskHandles;
         if (
           current.championRevision === input.iteration.championRevision &&
           current.previousOutcome === input.iteration.decision.disposition &&
-          canonicalJson(current.retainedTaskHandles) ===
-            canonicalJson(expectedRetained) &&
+          canonicalJson(current.retainedTaskHandles) === canonicalJson(expectedRetained) &&
           canonicalJson(current.previousDiagnosticBrief) ===
             canonicalJson(input.iteration.diagnosticBrief)
         ) {
@@ -177,10 +174,8 @@ export class MountedMvpCampaignStateStore implements MvpCampaignStateStore {
       }
       const promoted = input.iteration.decision.disposition === "promote";
       if (
-        (promoted &&
-          input.iteration.championRevision !== input.iteration.candidateRevision) ||
-        (!promoted &&
-          input.iteration.championRevision !== current.championRevision)
+        (promoted && input.iteration.championRevision !== input.iteration.candidateRevision) ||
+        (!promoted && input.iteration.championRevision !== current.championRevision)
       ) {
         throw new Error("Campaign champion transition is inconsistent with the decision");
       }

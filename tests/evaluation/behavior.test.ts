@@ -1,9 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import {
-  extractBehaviorSummary,
-  normalizeGraderOutcome,
-} from "../../src/evaluation/index.js";
+import { extractBehaviorSummary, normalizeGraderOutcome } from "../../src/evaluation/index.js";
 import { digest } from "./fixtures.js";
 
 describe("deterministic behavioral extraction", () => {
@@ -75,21 +72,24 @@ describe("deterministic behavioral extraction", () => {
   });
 
   it("normalizes only internally consistent scalar grader outcomes", () => {
-    const normalized = normalizeGraderOutcome({
-      passed: true,
-      boundedReward: 1,
-      infrastructureInvalidClass: null,
-      integrityStatus: "passed",
-      elapsedMs: 65_000,
-      cpuUtilizationPercent: 50,
-      maxRssMb: 1_024,
-      protocolHash: digest(1),
-      environmentFingerprintHash: digest(2),
-      oneUseAttemptDigest: digest(3),
-    }, {
-      createdAt: "2026-07-01T00:02:00.000Z",
-      rawManifestHash: digest(4),
-    });
+    const normalized = normalizeGraderOutcome(
+      {
+        passed: true,
+        boundedReward: 1,
+        infrastructureInvalidClass: null,
+        integrityStatus: "passed",
+        elapsedMs: 65_000,
+        cpuUtilizationPercent: 50,
+        maxRssMb: 1_024,
+        protocolHash: digest(1),
+        environmentFingerprintHash: digest(2),
+        oneUseAttemptDigest: digest(3),
+      },
+      {
+        createdAt: "2026-07-01T00:02:00.000Z",
+        rawManifestHash: digest(4),
+      },
+    );
     expect(normalized.outcome).toBe("pass");
     expect(normalized.boundedReward).toBe(1);
     expect(normalized.elapsedTimeBucket).toBe("1-5m");
@@ -101,78 +101,90 @@ describe("deterministic behavioral extraction", () => {
 
   it("rejects out-of-range and internally inconsistent grader values", () => {
     expect(() =>
-      normalizeGraderOutcome({
-        passed: true,
-        boundedReward: 1.4,
-        infrastructureInvalidClass: null,
-        integrityStatus: "passed",
-        elapsedMs: 1,
-        cpuUtilizationPercent: null,
-        maxRssMb: 1,
-        protocolHash: digest(1),
-        environmentFingerprintHash: digest(2),
-        oneUseAttemptDigest: digest(3),
-      }, {
-        createdAt: "2026-07-01T00:02:00.000Z",
-        rawManifestHash: digest(4),
-      }),
+      normalizeGraderOutcome(
+        {
+          passed: true,
+          boundedReward: 1.4,
+          infrastructureInvalidClass: null,
+          integrityStatus: "passed",
+          elapsedMs: 1,
+          cpuUtilizationPercent: null,
+          maxRssMb: 1,
+          protocolHash: digest(1),
+          environmentFingerprintHash: digest(2),
+          oneUseAttemptDigest: digest(3),
+        },
+        {
+          createdAt: "2026-07-01T00:02:00.000Z",
+          rawManifestHash: digest(4),
+        },
+      ),
     ).toThrow(/unit interval/u);
     expect(() =>
-      normalizeGraderOutcome({
-        passed: false,
-        boundedReward: 1,
-        infrastructureInvalidClass: null,
-        integrityStatus: "passed",
-        elapsedMs: 1,
-        cpuUtilizationPercent: null,
-        maxRssMb: 1,
-        protocolHash: digest(1),
-        environmentFingerprintHash: digest(2),
-        oneUseAttemptDigest: digest(3),
-      }, {
-        createdAt: "2026-07-01T00:02:00.000Z",
-        rawManifestHash: digest(4),
-      }),
+      normalizeGraderOutcome(
+        {
+          passed: false,
+          boundedReward: 1,
+          infrastructureInvalidClass: null,
+          integrityStatus: "passed",
+          elapsedMs: 1,
+          cpuUtilizationPercent: null,
+          maxRssMb: 1,
+          protocolHash: digest(1),
+          environmentFingerprintHash: digest(2),
+          oneUseAttemptDigest: digest(3),
+        },
+        {
+          createdAt: "2026-07-01T00:02:00.000Z",
+          rawManifestHash: digest(4),
+        },
+      ),
     ).toThrow(/conflict/u);
   });
 
   it("refuses grader prose, test names, and any other non-allowlisted field", () => {
     expect(() =>
-      normalizeGraderOutcome({
+      normalizeGraderOutcome(
+        {
+          passed: false,
+          boundedReward: 0,
+          infrastructureInvalidClass: null,
+          integrityStatus: "passed",
+          elapsedMs: 1,
+          cpuUtilizationPercent: null,
+          maxRssMb: 1,
+          protocolHash: digest(1),
+          environmentFingerprintHash: digest(2),
+          oneUseAttemptDigest: digest(3),
+          graderMessage: "expected secret answer",
+        },
+        {
+          createdAt: "2026-07-01T00:02:00.000Z",
+          rawManifestHash: digest(4),
+        },
+      ),
+    ).toThrow(/non-allowlisted/u);
+  });
+
+  it("classifies infrastructure invalidity separately from task failure", () => {
+    const normalized = normalizeGraderOutcome(
+      {
         passed: false,
         boundedReward: 0,
-        infrastructureInvalidClass: null,
-        integrityStatus: "passed",
+        infrastructureInvalidClass: "provider-capacity",
+        integrityStatus: "not-run",
         elapsedMs: 1,
         cpuUtilizationPercent: null,
         maxRssMb: 1,
         protocolHash: digest(1),
         environmentFingerprintHash: digest(2),
         oneUseAttemptDigest: digest(3),
-        graderMessage: "expected secret answer",
-      }, {
+      },
+      {
         createdAt: "2026-07-01T00:02:00.000Z",
         rawManifestHash: digest(4),
-      }),
-    ).toThrow(/non-allowlisted/u);
-  });
-
-  it("classifies infrastructure invalidity separately from task failure", () => {
-    const normalized = normalizeGraderOutcome({
-      passed: false,
-      boundedReward: 0,
-      infrastructureInvalidClass: "provider-capacity",
-      integrityStatus: "not-run",
-      elapsedMs: 1,
-      cpuUtilizationPercent: null,
-      maxRssMb: 1,
-      protocolHash: digest(1),
-      environmentFingerprintHash: digest(2),
-      oneUseAttemptDigest: digest(3),
-    }, {
-      createdAt: "2026-07-01T00:02:00.000Z",
-      rawManifestHash: digest(4),
-    });
+      },
+    );
     expect(normalized.outcome).toBe("invalid");
   });
 });

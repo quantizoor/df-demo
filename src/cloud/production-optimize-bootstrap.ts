@@ -3,11 +3,7 @@ import {
   PRODUCTION_RUNTIME_PORT_IDS,
   type ProductionOptimizationCompositionManifest,
 } from "../orchestrator/production-runtime.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, sha256 } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import type { VerifyingTrustedJsonArtifactReader } from "./trusted-json-reader.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
@@ -15,8 +11,7 @@ import type { TrustedCloudArtifactRef } from "./types.js";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
 const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 const MAXIMUM_DESCRIPTOR_BYTES = 64 * 1024;
 const DEFAULT_MAXIMUM_COMPOSITION_BYTES = 4 * 1024 * 1024;
@@ -54,8 +49,7 @@ export interface ProductionOptimizeBootstrapDescriptor
 
 export interface ProductionOptimizeBootstrapDescriptorVerification {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-bootstrap-verification.v1";
+  readonly domain: "dark-factory.production-optimize-bootstrap-verification.v1";
   readonly descriptorHash: string;
   readonly signingKeyId: string;
   readonly authoritySetHash: string;
@@ -85,8 +79,7 @@ export type TrustedProductionOptimizeBootstrapArtifactReader = Pick<
 
 export interface LoadedProductionOptimizeCompositionArtifact {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.loaded-production-optimize-composition.v1";
+  readonly domain: "dark-factory.loaded-production-optimize-composition.v1";
   readonly campaignId: string;
   readonly lineageId: string;
   readonly protocolHash: string;
@@ -126,9 +119,7 @@ function fail(): never {
   throw new ProductionOptimizeBootstrapError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -155,10 +146,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
 }
@@ -172,9 +160,7 @@ function timestamp(value: unknown): number {
   return parsed;
 }
 
-function assertArtifact(
-  value: unknown,
-): asserts value is TrustedCloudArtifactRef {
+function assertArtifact(value: unknown): asserts value is TrustedCloudArtifactRef {
   exactKeys(value, ["uri", "sha256", "mediaType", "byteLength"]);
   const artifact = value as unknown as TrustedCloudArtifactRef;
   if (
@@ -221,8 +207,7 @@ export function productionOptimizeBootstrapVerificationCommitmentHash(input: {
   }
   return canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-bootstrap-trust-commitment.v1",
+    domain: "dark-factory.production-optimize-bootstrap-trust-commitment.v1",
     authoritySetHash: input.authoritySetHash,
     verificationKeySetHash: input.verificationKeySetHash,
     verifierPolicyHash: input.verifierPolicyHash,
@@ -257,8 +242,7 @@ export function assertProductionOptimizeBootstrapDescriptor(
     "descriptorHash",
     "signature",
   ]);
-  const descriptor =
-    value as unknown as ProductionOptimizeBootstrapDescriptor;
+  const descriptor = value as unknown as ProductionOptimizeBootstrapDescriptor;
   assertArtifact(descriptor.compositionArtifact);
   assertSignature(descriptor.signature);
   const issuedAt = timestamp(descriptor.issuedAt);
@@ -278,15 +262,13 @@ export function assertProductionOptimizeBootstrapDescriptor(
     authoritySetHash: descriptor.authoritySetHash,
     verificationKeySetHash: descriptor.verificationKeySetHash,
     verifierPolicyHash: descriptor.verifierPolicyHash,
-    verificationCommitmentHash:
-      descriptor.verificationCommitmentHash,
+    verificationCommitmentHash: descriptor.verificationCommitmentHash,
     issuedAt: descriptor.issuedAt,
     expiresAt: descriptor.expiresAt,
   };
   if (
     descriptor.schemaVersion !== 1 ||
-    descriptor.domain !==
-      "dark-factory.production-optimize-bootstrap.v1" ||
+    descriptor.domain !== "dark-factory.production-optimize-bootstrap.v1" ||
     !SAFE_ID.test(descriptor.descriptorId) ||
     !SAFE_ID.test(descriptor.campaignId) ||
     !SAFE_ID.test(descriptor.lineageId) ||
@@ -296,24 +278,18 @@ export function assertProductionOptimizeBootstrapDescriptor(
     !SHA256.test(descriptor.verificationKeySetHash) ||
     !SHA256.test(descriptor.verifierPolicyHash) ||
     !SHA256.test(descriptor.verificationCommitmentHash) ||
-    descriptor.verificationCommitmentHash !==
-      expectedVerificationCommitment ||
+    descriptor.verificationCommitmentHash !== expectedVerificationCommitment ||
     issuedAt >= expiresAt ||
     signedAt < issuedAt ||
     signedAt > expiresAt ||
     !SHA256.test(descriptor.descriptorHash) ||
-    descriptor.descriptorHash !==
-      productionOptimizeBootstrapDescriptorHash(unsigned)
+    descriptor.descriptorHash !== productionOptimizeBootstrapDescriptorHash(unsigned)
   ) {
     fail();
   }
   if (now !== undefined) {
     const current = now.getTime();
-    if (
-      !Number.isFinite(current) ||
-      current < issuedAt ||
-      current > expiresAt
-    ) {
+    if (!Number.isFinite(current) || current < issuedAt || current > expiresAt) {
       fail();
     }
   }
@@ -342,9 +318,7 @@ export function parseProductionOptimizeBootstrapDescriptorJson(
     if (raw !== canonicalJson(parsed)) fail();
     assertProductionOptimizeBootstrapDescriptor(parsed);
     if (parsed.campaignId !== expectedCampaignId) fail();
-    return JSON.parse(
-      canonicalJson(parsed),
-    ) as ProductionOptimizeBootstrapDescriptor;
+    return JSON.parse(canonicalJson(parsed)) as ProductionOptimizeBootstrapDescriptor;
   } catch (error) {
     if (error instanceof ProductionOptimizeBootstrapError) throw error;
     fail();
@@ -355,15 +329,9 @@ export function parseProductionOptimizeBootstrapDescriptorEnvironment(
   environment: NodeJS.ProcessEnv,
   expectedCampaignId: string,
 ): ProductionOptimizeBootstrapDescriptor {
-  const raw =
-    environment[
-      PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME
-    ];
+  const raw = environment[PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME];
   if (raw === undefined) fail();
-  return parseProductionOptimizeBootstrapDescriptorJson(
-    raw,
-    expectedCampaignId,
-  );
+  return parseProductionOptimizeBootstrapDescriptorJson(raw, expectedCampaignId);
 }
 
 function assertVerification(
@@ -382,20 +350,16 @@ function assertVerification(
     "verifierAttestationHash",
     "verified",
   ]);
-  const verification =
-    value as unknown as ProductionOptimizeBootstrapDescriptorVerification;
+  const verification = value as unknown as ProductionOptimizeBootstrapDescriptorVerification;
   if (
     verification.schemaVersion !== 1 ||
-    verification.domain !==
-      "dark-factory.production-optimize-bootstrap-verification.v1" ||
+    verification.domain !== "dark-factory.production-optimize-bootstrap-verification.v1" ||
     verification.descriptorHash !== descriptor.descriptorHash ||
     verification.signingKeyId !== descriptor.signature.keyId ||
     verification.authoritySetHash !== descriptor.authoritySetHash ||
-    verification.verificationKeySetHash !==
-      descriptor.verificationKeySetHash ||
+    verification.verificationKeySetHash !== descriptor.verificationKeySetHash ||
     verification.verifierPolicyHash !== descriptor.verifierPolicyHash ||
-    verification.verificationCommitmentHash !==
-      descriptor.verificationCommitmentHash ||
+    verification.verificationCommitmentHash !== descriptor.verificationCommitmentHash ||
     !SHA256.test(verification.verifierAttestationHash) ||
     verification.verified !== true
   ) {
@@ -413,15 +377,13 @@ function assertCompositionDocument(
   } catch {
     fail();
   }
-  const document =
-    value as ProductionOptimizationCompositionManifest;
+  const document = value as ProductionOptimizationCompositionManifest;
   if (
     document.campaignId !== descriptor.campaignId ||
     document.lineageId !== descriptor.lineageId ||
     document.protocolHash !== descriptor.protocolHash ||
     document.manifestHash !== descriptor.compositionManifestHash ||
-    document.runtimePortAttestations.length !==
-      PRODUCTION_RUNTIME_PORT_IDS.length
+    document.runtimePortAttestations.length !== PRODUCTION_RUNTIME_PORT_IDS.length
   ) {
     fail();
   }
@@ -435,23 +397,16 @@ function assertCompositionDocument(
  */
 export class VerifiedProductionOptimizeBootstrapArtifactLoader {
   readonly boundary = "trusted-cloud-bootstrap-artifact-loader" as const;
-  readonly #readUtf8:
-    TrustedProductionOptimizeBootstrapArtifactReader["readUtf8"];
-  readonly #verifyDescriptor:
-    TrustedProductionOptimizeBootstrapDescriptorVerifier["verify"];
+  readonly #readUtf8: TrustedProductionOptimizeBootstrapArtifactReader["readUtf8"];
+  readonly #verifyDescriptor: TrustedProductionOptimizeBootstrapDescriptorVerifier["verify"];
   readonly #maximumCompositionBytes: number;
   readonly #now: () => Date;
 
-  constructor(
-    options: VerifiedProductionOptimizeBootstrapArtifactLoaderOptions,
-  ) {
-    const maximum =
-      options.maximumCompositionBytes ??
-      DEFAULT_MAXIMUM_COMPOSITION_BYTES;
+  constructor(options: VerifiedProductionOptimizeBootstrapArtifactLoaderOptions) {
+    const maximum = options.maximumCompositionBytes ?? DEFAULT_MAXIMUM_COMPOSITION_BYTES;
     if (
       options.reader.boundary !== "trusted-cloud" ||
-      options.verifier.boundary !==
-        "trusted-cloud-bootstrap-descriptor-verifier" ||
+      options.verifier.boundary !== "trusted-cloud-bootstrap-descriptor-verifier" ||
       typeof options.reader.readUtf8 !== "function" ||
       typeof options.verifier.verify !== "function" ||
       !Number.isSafeInteger(maximum) ||
@@ -461,9 +416,7 @@ export class VerifiedProductionOptimizeBootstrapArtifactLoader {
       fail();
     }
     this.#readUtf8 = options.reader.readUtf8.bind(options.reader);
-    this.#verifyDescriptor = options.verifier.verify.bind(
-      options.verifier,
-    );
+    this.#verifyDescriptor = options.verifier.verify.bind(options.verifier);
     this.#maximumCompositionBytes = maximum;
     this.#now = options.now ?? (() => new Date());
   }
@@ -473,31 +426,19 @@ export class VerifiedProductionOptimizeBootstrapArtifactLoader {
   ): Promise<LoadedProductionOptimizeCompositionArtifact> {
     try {
       const now = this.#now();
-      if (
-        !(now instanceof Date) ||
-        !Number.isFinite(now.getTime())
-      ) {
+      if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
         fail();
       }
       const currentTime = new Date(now.getTime());
       const parsedSnapshot = JSON.parse(
         canonicalJson(descriptor),
       ) as ProductionOptimizeBootstrapDescriptor;
-      assertProductionOptimizeBootstrapDescriptor(
-        parsedSnapshot,
-        currentTime,
-      );
-      const snapshot = deepFreezeJson(
-        parsedSnapshot,
-      ) as ProductionOptimizeBootstrapDescriptor;
-      if (
-        snapshot.compositionArtifact.byteLength >
-        this.#maximumCompositionBytes
-      ) {
+      assertProductionOptimizeBootstrapDescriptor(parsedSnapshot, currentTime);
+      const snapshot = deepFreezeJson(parsedSnapshot) as ProductionOptimizeBootstrapDescriptor;
+      if (snapshot.compositionArtifact.byteLength > this.#maximumCompositionBytes) {
         fail();
       }
-      const verificationCandidate =
-        await this.#verifyDescriptor(snapshot);
+      const verificationCandidate = await this.#verifyDescriptor(snapshot);
       assertVerification(verificationCandidate, snapshot);
       const verification = deepFreezeJson(
         JSON.parse(canonicalJson(verificationCandidate)),
@@ -508,10 +449,7 @@ export class VerifiedProductionOptimizeBootstrapArtifactLoader {
         mediaType: snapshot.compositionArtifact.mediaType,
         byteLength: snapshot.compositionArtifact.byteLength,
       });
-      const raw = await this.#readUtf8(
-        artifact,
-        this.#maximumCompositionBytes,
-      );
+      const raw = await this.#readUtf8(artifact, this.#maximumCompositionBytes);
       const byteLength = Buffer.byteLength(raw, "utf8");
       if (
         !Number.isSafeInteger(byteLength) ||
@@ -530,23 +468,20 @@ export class VerifiedProductionOptimizeBootstrapArtifactLoader {
       }
       if (raw !== `${canonicalJson(document)}\n`) fail();
       assertCompositionDocument(document, snapshot, currentTime);
-      const frozenDocument = deepFreezeJson(
-        JSON.parse(canonicalJson(document)),
-      ) as Readonly<Record<string, unknown>>;
+      const frozenDocument = deepFreezeJson(JSON.parse(canonicalJson(document))) as Readonly<
+        Record<string, unknown>
+      >;
       const unsignedReceipt = {
         schemaVersion: 1 as const,
-        domain:
-          "dark-factory.loaded-production-optimize-composition.v1" as const,
+        domain: "dark-factory.loaded-production-optimize-composition.v1" as const,
         campaignId: snapshot.campaignId,
         lineageId: snapshot.lineageId,
         protocolHash: snapshot.protocolHash,
         descriptorHash: snapshot.descriptorHash,
         compositionArtifact: artifact,
-        compositionManifestHash:
-          snapshot.compositionManifestHash,
+        compositionManifestHash: snapshot.compositionManifestHash,
         compositionDocumentHash: canonicalHash(frozenDocument),
-        verifierAttestationHash:
-          verification.verifierAttestationHash,
+        verifierAttestationHash: verification.verifierAttestationHash,
         descriptorAuthorityVerified: true as const,
         artifactTransportVerified: true as const,
         compositionAuthorityVerified: false as const,

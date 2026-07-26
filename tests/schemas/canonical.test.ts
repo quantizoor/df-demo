@@ -14,9 +14,7 @@ describe("canonical JSON and hashes", () => {
     const first = { z: 1, nested: { b: true, a: null }, list: [3, 2, 1] };
     const second = { list: [3, 2, 1], nested: { a: null, b: true }, z: 1 };
 
-    expect(canonicalize(first)).toBe(
-      '{"list":[3,2,1],"nested":{"a":null,"b":true},"z":1}',
-    );
+    expect(canonicalize(first)).toBe('{"list":[3,2,1],"nested":{"a":null,"b":true},"z":1}');
     expect(canonicalize(second)).toBe(canonicalize(first));
     expect(sha256Canonical(second)).toBe(sha256Canonical(first));
   });
@@ -39,8 +37,8 @@ describe("canonical JSON and hashes", () => {
     expect(document.contentHash).toBe(computeContentHash(document));
     expect(hasValidContentHash(document)).toBe(true);
     expect(hasValidContentHash({ ...document, value: 2 })).toBe(false);
-    expect(
-      computeContentHash({ ...document, contentHash: "f".repeat(64) }),
-    ).toBe(document.contentHash);
+    expect(computeContentHash({ ...document, contentHash: "f".repeat(64) })).toBe(
+      document.contentHash,
+    );
   });
 });

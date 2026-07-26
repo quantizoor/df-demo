@@ -12,16 +12,13 @@ function environment(): NodeJS.ProcessEnv {
     DAYTONA_API_KEY: "present-but-never-returned",
     DAYTONA_API_URL: "https://app.daytona.io/api",
     DAYTONA_TARGET: "eu",
-    DF_MVP_DAYTONA_IMAGE:
-      `ubuntu@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_IMAGE: `ubuntu@sha256:${"a".repeat(64)}`,
     DF_DAYTONA_VOLUME_ID: "df-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "mvp/state",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DF_DAYTONA_NESTED",
-    DF_FOUNDRY_BASE_URL:
-      "https://existing-resource.services.ai.azure.com/anthropic",
+    DF_FOUNDRY_BASE_URL: "https://existing-resource.services.ai.azure.com/anthropic",
     DF_OPTIMIZER_DEPLOYMENT: "optimizer-opus-5-deployment",
-    DF_EVALUATED_DEPLOYMENT:
-      "evaluated-opus-4-8-deployment",
+    DF_EVALUATED_DEPLOYMENT: "evaluated-opus-4-8-deployment",
     DF_OPTIMIZER_SECRET_SOURCE: "DF_FOUNDRY_OPTIMIZER",
     DF_EVALUATED_SECRET_SOURCE: "DF_FOUNDRY_EVALUATED",
     DF_PI_GITHUB_OWNER: "parallaxai",
@@ -67,9 +64,7 @@ describe("MVP cloud configuration", () => {
         matchedTrialCount: 30,
       },
     });
-    expect(
-      JSON.stringify(readiness.configuration),
-    ).not.toContain("present-but-never-returned");
+    expect(JSON.stringify(readiness.configuration)).not.toContain("present-but-never-returned");
   });
 
   it("rejects local execution, non-EU targets, and non-Foundry endpoints", () => {
@@ -81,11 +76,7 @@ describe("MVP cloud configuration", () => {
     });
     expect(readiness.ready).toBe(false);
     expect(readiness.invalid).toEqual(
-      expect.arrayContaining([
-        "DF_CLOUD_EXECUTION",
-        "DAYTONA_TARGET",
-        "DF_FOUNDRY_BASE_URL",
-      ]),
+      expect.arrayContaining(["DF_CLOUD_EXECUTION", "DAYTONA_TARGET", "DF_FOUNDRY_BASE_URL"]),
     );
   });
 
@@ -97,10 +88,7 @@ describe("MVP cloud configuration", () => {
     });
     expect(readiness.ready).toBe(false);
     expect(readiness.invalid).toEqual(
-      expect.arrayContaining([
-        "DAYTONA_API_URL",
-        "DF_HARBOR_DAYTONA_SECRET_SOURCE",
-      ]),
+      expect.arrayContaining(["DAYTONA_API_URL", "DF_HARBOR_DAYTONA_SECRET_SOURCE"]),
     );
   });
 

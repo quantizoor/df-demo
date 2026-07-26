@@ -1,3 +1,14 @@
+import type {
+  TrustedCanonicalAggregate,
+  TrustedCanonicalEvaluationDeriver,
+} from "../broker/service.js";
+import {
+  type BehaviorSummary,
+  extractBehaviorSummary,
+  normalizeGraderOutcome,
+  type RawTrajectory,
+  type ScalarGraderOutcomeInput,
+} from "../evaluation/behavior.js";
 import {
   evaluateFreshValidation,
   evaluateRepairGate,
@@ -5,48 +16,12 @@ import {
   type FreshValidationPair,
   type RepairTaskEvidence,
 } from "../evaluation/gates.js";
-import {
-  extractBehaviorSummary,
-  normalizeGraderOutcome,
-  type BehaviorSummary,
-  type RawTrajectory,
-  type ScalarGraderOutcomeInput,
-} from "../evaluation/behavior.js";
-import type {
-  BehaviorComparison,
-  PrivateBehaviorObservation,
-} from "../evaluation/privacy.js";
-import type {
-  HiddenTaskId,
-  SelectionBucket,
-} from "../evaluation/types.js";
+import type { BehaviorComparison, PrivateBehaviorObservation } from "../evaluation/privacy.js";
 import type { OnlineErrorBudgetState } from "../evaluation/statistics.js";
-import type {
-  TrustedCanonicalAggregate,
-  TrustedCanonicalEvaluationDeriver,
-} from "../broker/service.js";
+import type { HiddenTaskId, SelectionBucket } from "../evaluation/types.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import type {
-  PolicyVersions,
-  Signature,
-} from "../schemas/primitives.js";
-import type {
-  NormalizedGraderOutcome,
-  SignedResultEnvelope,
-} from "../schemas/trusted.js";
-import { assertSafeForLocalPersistence } from "./retention.js";
-import {
-  hashEvaluationRequest,
-  type TrustedEvaluationRequest,
-} from "./contracts.js";
-import {
-  assertTrustedOnlineErrorBudgetReservation,
-  type TrustedOnlineErrorBudgetReservation,
-} from "./online-error-authority.js";
-import {
-  hashTrustedBehavioralPreparation,
-  type TrustedBehavioralPreparationStore,
-} from "./behavioral-preparation-store.js";
+import type { PolicyVersions, Signature } from "../schemas/primitives.js";
+import type { NormalizedGraderOutcome, SignedResultEnvelope } from "../schemas/trusted.js";
 import type { TrustedRawRun } from "../terminal-bench/runner.js";
 import type {
   MatchedArmKind,
@@ -55,6 +30,16 @@ import type {
   TrustedMatchedArmSchedule,
   TrustedMatchedPanel,
 } from "../terminal-bench/trusted.js";
+import {
+  hashTrustedBehavioralPreparation,
+  type TrustedBehavioralPreparationStore,
+} from "./behavioral-preparation-store.js";
+import { hashEvaluationRequest, type TrustedEvaluationRequest } from "./contracts.js";
+import {
+  assertTrustedOnlineErrorBudgetReservation,
+  type TrustedOnlineErrorBudgetReservation,
+} from "./online-error-authority.js";
+import { assertSafeForLocalPersistence } from "./retention.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -266,9 +251,7 @@ export type TrustedHiddenCatalogOutcomeSourceBinding = Pick<
 >;
 
 export interface TrustedHiddenCatalogOutcomeUpdateSigner {
-  sign(
-    update: UnsignedTrustedHiddenCatalogOutcomeUpdate,
-  ): Promise<Signature>;
+  sign(update: UnsignedTrustedHiddenCatalogOutcomeUpdate): Promise<Signature>;
 }
 
 export interface TrustedHiddenCatalogOutcomeUpdateVerifier {
@@ -332,10 +315,7 @@ function plainObject(
     throw new Error("Canonical trusted input must be a plain object.");
   }
   const keys = Object.keys(value);
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key) => !expectedKeys.includes(key))
-  ) {
+  if (keys.length !== expectedKeys.length || keys.some((key) => !expectedKeys.includes(key))) {
     throw new Error("Canonical trusted input has an unexpected field set.");
   }
 }
@@ -367,12 +347,7 @@ function safeCount(value: number): void {
 }
 
 function assertCost(cost: TrustedDecodedAttemptCost): void {
-  plainObject(cost, [
-    "inputTokens",
-    "outputTokens",
-    "modelUsd",
-    "sandboxUsd",
-  ]);
+  plainObject(cost, ["inputTokens", "outputTokens", "modelUsd", "sandboxUsd"]);
   safeCount(cost.inputTokens);
   safeCount(cost.outputTokens);
   finiteNonNegative(cost.modelUsd);
@@ -380,17 +355,8 @@ function assertCost(cost: TrustedDecodedAttemptCost): void {
 }
 
 function assertTrajectory(trajectory: RawTrajectory): void {
-  plainObject(trajectory, [
-    "events",
-    "elapsedMs",
-    "planningTokens",
-    "actionTokens",
-    "totalTokens",
-  ]);
-  if (
-    !Array.isArray(trajectory.events) ||
-    trajectory.events.length > MAX_TRAJECTORY_EVENTS
-  ) {
+  plainObject(trajectory, ["events", "elapsedMs", "planningTokens", "actionTokens", "totalTokens"]);
+  if (!Array.isArray(trajectory.events) || trajectory.events.length > MAX_TRAJECTORY_EVENTS) {
     throw new Error("Decoded ATIF event stream is malformed.");
   }
   finiteNonNegative(trajectory.elapsedMs);
@@ -429,9 +395,7 @@ function assertTrajectory(trajectory: RawTrajectory): void {
   }
 }
 
-function assertDecodedAttempt(
-  attempt: TrustedDecodedEvaluationAttempt,
-): void {
+function assertDecodedAttempt(attempt: TrustedDecodedEvaluationAttempt): void {
   plainObject(attempt, [
     "sensitivity",
     "attemptDigest",
@@ -494,10 +458,7 @@ function assertDecodedAttempt(
   assertCost(attempt.cost);
 }
 
-function assertDecodedEvaluation(
-  decoded: TrustedDecodedEvaluation,
-  rawRun: TrustedRawRun,
-): void {
+function assertDecodedEvaluation(decoded: TrustedDecodedEvaluation, rawRun: TrustedRawRun): void {
   plainObject(decoded, [
     "sensitivity",
     "requestId",
@@ -549,9 +510,7 @@ function assertOnlineErrorBudget(state: OnlineErrorBudgetState): void {
     !Number.isFinite(state.spentAlpha) ||
     state.spentAlpha < 0 ||
     state.spentAlpha > state.initialAlpha ||
-    Math.abs(
-      state.remainingAlpha + state.spentAlpha - state.initialAlpha,
-    ) > 1e-12 ||
+    Math.abs(state.remainingAlpha + state.spentAlpha - state.initialAlpha) > 1e-12 ||
     !Number.isSafeInteger(state.gatesSpent) ||
     state.gatesSpent < 0
   ) {
@@ -579,21 +538,14 @@ function assertStratumWeights(
       const weight = weights[name];
       return weight === undefined || !Number.isFinite(weight) || weight <= 0;
     }) ||
-    Math.abs(
-      names.reduce((sum, name) => sum + (weights[name] ?? 0), 0) - 1,
-    ) > 1e-9
+    Math.abs(names.reduce((sum, name) => sum + (weights[name] ?? 0), 0) - 1) > 1e-9
   ) {
     throw new Error("Presealed stratum weights do not exactly cover the panel.");
   }
 }
 
 function assertRepairControl(control: TrustedRepairControl): void {
-  plainObject(control, [
-    "taskId",
-    "bucket",
-    "championEvidence",
-    "targetBehaviorImproved",
-  ]);
+  plainObject(control, ["taskId", "bucket", "championEvidence", "targetBehaviorImproved"]);
   digest(control.taskId);
   if (
     control.bucket !== "hard" &&
@@ -603,17 +555,11 @@ function assertRepairControl(control: TrustedRepairControl): void {
   ) {
     throw new Error("Repair control bucket is malformed.");
   }
-  plainObject(control.championEvidence, [
-    "source",
-    "passes",
-    "failures",
-    "presealedFreshControl",
-  ]);
+  plainObject(control.championEvidence, ["source", "passes", "failures", "presealedFreshControl"]);
   safeCount(control.championEvidence.passes);
   safeCount(control.championEvidence.failures);
   if (
-    (control.championEvidence.source !== "fresh" &&
-      control.championEvidence.source !== "cache") ||
+    (control.championEvidence.source !== "fresh" && control.championEvidence.source !== "cache") ||
     control.championEvidence.passes + control.championEvidence.failures < 1 ||
     (control.championEvidence.source === "fresh" &&
       (control.championEvidence.passes + control.championEvidence.failures !== 1 ||
@@ -721,13 +667,10 @@ function assertPolicy(
     if (policy.onlineErrorReservation === null) {
       throw new Error("Fresh validation lacks its pre-outcome online gate.");
     }
-    assertTrustedOnlineErrorBudgetReservation(
-      policy.onlineErrorReservation,
-    );
+    assertTrustedOnlineErrorBudgetReservation(policy.onlineErrorReservation);
     if (
       policy.onlineErrorReservation.requestId !== request.requestId ||
-      policy.onlineErrorReservation.requestHash !==
-        hashEvaluationRequest(request) ||
+      policy.onlineErrorReservation.requestHash !== hashEvaluationRequest(request) ||
       policy.onlineErrorReservation.protocolHash !== request.protocolHash ||
       policy.onlineErrorReservation.dispositionAttestationHash !==
         panel.dispositionAttestationHash ||
@@ -748,9 +691,7 @@ function assertPolicy(
     "accuracyTradeoffPredeclared",
     "complianceFlagsPassed",
   ]);
-  if (
-    Object.values(policy.guardrails).some((value) => typeof value !== "boolean")
-  ) {
+  if (Object.values(policy.guardrails).some((value) => typeof value !== "boolean")) {
     throw new Error("Canonical guardrails must be boolean.");
   }
 
@@ -766,11 +707,7 @@ function assertPolicy(
     ) {
       throw new Error("Repair derivation policy is missing its five controls.");
     }
-    plainObject(policy.repair, [
-      "alternatingBucket",
-      "attemptOrdinal",
-      "controls",
-    ]);
+    plainObject(policy.repair, ["alternatingBucket", "attemptOrdinal", "controls"]);
   } else if (policy.repair !== null) {
     throw new Error("Fresh matched stages cannot carry repair controls.");
   }
@@ -778,8 +715,7 @@ function assertPolicy(
     assertRepairControl(control);
   }
   if (
-    new Set(repairControls.map((control) => control.taskId)).size !==
-      repairControls.length ||
+    new Set(repairControls.map((control) => control.taskId)).size !== repairControls.length ||
     policy.cacheEvidenceSetHash !==
       hashTrustedCacheEvidence({
         requestHash: policy.requestHash,
@@ -811,9 +747,7 @@ function assertPolicy(
   if (
     typeof policy.behavioralPolicy.diagnosticsEnabled !== "boolean" ||
     policy.behavioralPolicy.comparison !== "candidate-vs-champion" ||
-    !Number.isSafeInteger(
-      policy.behavioralPolicy.maximumPrivacyReleases,
-    ) ||
+    !Number.isSafeInteger(policy.behavioralPolicy.maximumPrivacyReleases) ||
     policy.behavioralPolicy.maximumPrivacyReleases < 1 ||
     policy.behavioralPolicy.maximumPrivacyReleases > 1_000 ||
     !Number.isSafeInteger(policy.behavioralPolicy.diagnosticTtlMs) ||
@@ -821,8 +755,7 @@ function assertPolicy(
     policy.behavioralPolicy.diagnosticTtlMs > 24 * 60 * 60_000 ||
     Object.values(policy.behavioralPolicy.policyVersions).some(
       (version) =>
-        typeof version !== "string" ||
-        !/^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,199}$/u.test(version),
+        typeof version !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,199}$/u.test(version),
     ) ||
     !Array.isArray(policy.forbiddenReleaseLiterals) ||
     !Array.isArray(policy.forbiddenContentFingerprints) ||
@@ -875,9 +808,7 @@ function normalizeAttempts(input: {
   readonly behaviorSourceSetHash: string;
   readonly normalizedOutcomeSetHash: string;
 } {
-  const scheduleByArm = new Map(
-    input.schedule.arms.map((arm) => [arm.armId, arm] as const),
-  );
+  const scheduleByArm = new Map(input.schedule.arms.map((arm) => [arm.armId, arm] as const));
   const grouped = new Map<string, NormalizedAttempt[]>();
   const normalized: NormalizedAttempt[] = [];
   for (const attempt of input.decoded.attempts) {
@@ -914,8 +845,7 @@ function normalizeAttempts(input: {
   let invalidCount = 0;
   for (const arm of input.schedule.arms) {
     const attempts = [...(grouped.get(arm.armId) ?? [])].sort(
-      (left, right) =>
-        left.source.attemptOrdinal - right.source.attemptOrdinal,
+      (left, right) => left.source.attemptOrdinal - right.source.attemptOrdinal,
     );
     attempts.forEach((attempt, index) => {
       if (attempt.source.attemptOrdinal !== index + 1) {
@@ -935,9 +865,7 @@ function normalizeAttempts(input: {
       final === undefined ||
       final.outcome.outcome === "invalid" ||
       final.outcome.integrityStatus !== "passed" ||
-      attempts
-        .slice(0, -1)
-        .some((attempt) => attempt.outcome.outcome !== "invalid")
+      attempts.slice(0, -1).some((attempt) => attempt.outcome.outcome !== "invalid")
     ) {
       throw new Error("Each sealed arm requires one final valid grader outcome.");
     }
@@ -979,11 +907,7 @@ function normalizeAttempts(input: {
 function parsedExperimentNumber(experimentId: string): number {
   const prefix = experimentId.split("-", 1)[0] ?? "";
   const value = Number.parseInt(prefix, 10);
-  if (
-    !/^\d+$/u.test(prefix) ||
-    !Number.isSafeInteger(value) ||
-    value < 1
-  ) {
+  if (!/^\d+$/u.test(prefix) || !Number.isSafeInteger(value) || value < 1) {
     throw new Error("Behavioral preparation experiment is malformed.");
   }
   return value;
@@ -994,62 +918,38 @@ function createPrivateBehavioralPreparation(input: {
   readonly normalized: ReturnType<typeof normalizeAttempts>;
   readonly policy: TrustedCanonicalDerivationPolicy;
 }): TrustedPrivateBehavioralPreparation | null {
-  if (
-    input.request.stage !== "validation" ||
-    !input.policy.behavioralPolicy.diagnosticsEnabled
-  ) {
+  if (input.request.stage !== "validation" || !input.policy.behavioralPolicy.diagnosticsEnabled) {
     return null;
   }
-  const finalAttempts = [...input.normalized.byArm.values()].map(
-    (attempts) => attempts.final,
-  );
-  const observations: PrivateBehaviorObservation[] = finalAttempts.map(
-    (attempt) => ({
-      taskId: attempt.source.taskId,
-      arm: attempt.source.arm,
-      outcome:
-        attempt.outcome.outcome === "pass" ? "pass" : "fail",
-      behavior: attempt.behavior,
-    }),
-  );
+  const finalAttempts = [...input.normalized.byArm.values()].map((attempts) => attempts.final);
+  const observations: PrivateBehaviorObservation[] = finalAttempts.map((attempt) => ({
+    taskId: attempt.source.taskId,
+    arm: attempt.source.arm,
+    outcome: attempt.outcome.outcome === "pass" ? "pass" : "fail",
+    behavior: attempt.behavior,
+  }));
   const openedAt = new Date(
-    Math.min(
-      ...finalAttempts.map((attempt) =>
-        canonicalTimestamp(attempt.source.startedAt),
-      ),
-    ),
+    Math.min(...finalAttempts.map((attempt) => canonicalTimestamp(attempt.source.startedAt))),
   ).toISOString();
   const closedAt = new Date(
-    Math.max(
-      ...finalAttempts.map((attempt) =>
-        canonicalTimestamp(attempt.source.completedAt),
-      ),
-    ),
+    Math.max(...finalAttempts.map((attempt) => canonicalTimestamp(attempt.source.completedAt))),
   ).toISOString();
   return {
     sensitivity: "trusted-private-behavioral-preparation",
     requestHash: hashEvaluationRequest(input.request),
     protocolHash: input.request.protocolHash,
-    experimentNumber: parsedExperimentNumber(
-      input.request.experimentId,
-    ),
-    behaviorSourceSetHash:
-      input.normalized.behaviorSourceSetHash,
+    experimentNumber: parsedExperimentNumber(input.request.experimentId),
+    behaviorSourceSetHash: input.normalized.behaviorSourceSetHash,
     analysisWindow: { openedAt, closedAt },
     observations,
     policy: input.policy.behavioralPolicy,
-    forbiddenReleaseLiterals:
-      input.policy.forbiddenReleaseLiterals,
-    forbiddenContentFingerprints:
-      input.policy.forbiddenContentFingerprints,
-    graderCanaryFingerprints:
-      input.policy.graderCanaryFingerprints,
+    forbiddenReleaseLiterals: input.policy.forbiddenReleaseLiterals,
+    forbiddenContentFingerprints: input.policy.forbiddenContentFingerprints,
+    graderCanaryFingerprints: input.policy.graderCanaryFingerprints,
   };
 }
 
-function aggregateCost(
-  attempts: readonly NormalizedAttempt[],
-): AggregateCost {
+function aggregateCost(attempts: readonly NormalizedAttempt[]): AggregateCost {
   let inputTokens = 0;
   let outputTokens = 0;
   let modelUsd = 0;
@@ -1061,8 +961,7 @@ function aggregateCost(
     modelUsd += attempt.source.cost.modelUsd;
     sandboxUsd += attempt.source.cost.sandboxUsd;
     wallTimeMs +=
-      canonicalTimestamp(attempt.source.completedAt) -
-      canonicalTimestamp(attempt.source.startedAt);
+      canonicalTimestamp(attempt.source.completedAt) - canonicalTimestamp(attempt.source.startedAt);
   }
   safeCount(inputTokens);
   safeCount(outputTokens);
@@ -1083,9 +982,7 @@ function rounded(value: number): number {
   return Math.round(value * 1_000_000_000_000) / 1_000_000_000_000;
 }
 
-function assertHiddenArmOutcome(
-  outcome: TrustedHiddenCatalogArmOutcome,
-): void {
+function assertHiddenArmOutcome(outcome: TrustedHiddenCatalogArmOutcome): void {
   plainObject(outcome, [
     "pass",
     "boundedReward",
@@ -1118,9 +1015,7 @@ function assertHiddenArmOutcome(
   digest(outcome.finalAttemptDigest);
 }
 
-function assertHiddenTaskOutcome(
-  outcome: TrustedHiddenCatalogTaskOutcome,
-): void {
+function assertHiddenTaskOutcome(outcome: TrustedHiddenCatalogTaskOutcome): void {
   plainObject(outcome, [
     "taskId",
     "taskRevisionDigest",
@@ -1146,20 +1041,13 @@ function assertHiddenTaskOutcome(
 export function hashTrustedHiddenCatalogOutcomeSet(
   outcomes: readonly TrustedHiddenCatalogTaskOutcome[],
 ): string {
-  if (
-    !Array.isArray(outcomes) ||
-    outcomes.length < 1 ||
-    outcomes.length > 12
-  ) {
+  if (!Array.isArray(outcomes) || outcomes.length < 1 || outcomes.length > 12) {
     throw new Error("Hidden catalog outcome set has invalid cardinality.");
   }
   for (const outcome of outcomes) {
     assertHiddenTaskOutcome(outcome);
   }
-  if (
-    new Set(outcomes.map((outcome) => outcome.taskId)).size !==
-      outcomes.length
-  ) {
+  if (new Set(outcomes.map((outcome) => outcome.taskId)).size !== outcomes.length) {
     throw new Error("Hidden catalog outcome set repeats a task.");
   }
   return canonicalHash({
@@ -1183,11 +1071,7 @@ export function hashTrustedHiddenCatalogSourceBinding(
     "environmentFingerprintHash",
     "updateSetHash",
   ]);
-  if (
-    source.stage !== "repair" &&
-    source.stage !== "validation" &&
-    source.stage !== "shadow"
-  ) {
+  if (source.stage !== "repair" && source.stage !== "validation" && source.stage !== "shadow") {
     throw new Error("Hidden catalog outcome source stage is malformed.");
   }
   for (const value of [
@@ -1209,9 +1093,7 @@ export function hashTrustedHiddenCatalogSourceBinding(
   });
 }
 
-function hiddenArmOutcome(
-  attempts: ArmAttemptSet,
-): TrustedHiddenCatalogArmOutcome {
+function hiddenArmOutcome(attempts: ArmAttemptSet): TrustedHiddenCatalogArmOutcome {
   const all = [...attempts.invalid, attempts.final];
   const cost = aggregateCost(all);
   return {
@@ -1238,50 +1120,39 @@ function createHiddenCatalogOutcomeUpdate(input: {
   readonly normalizedOutcomeSetHash: string;
 }): UnsignedTrustedHiddenCatalogOutcomeUpdate {
   const stage = input.request.stage;
-  if (
-    stage !== "repair" &&
-    stage !== "validation" &&
-    stage !== "shadow"
-  ) {
+  if (stage !== "repair" && stage !== "validation" && stage !== "shadow") {
     throw new Error("Hidden outcome updates support adaptive stages only.");
   }
-  const outcomes: TrustedHiddenCatalogTaskOutcome[] = input.panel.cells.map(
-    (cell, cellOrdinal) => {
-      const arms = input.schedule.arms.filter(
-        (arm) => arm.cellOrdinal === cellOrdinal,
-      );
-      const candidateArm = arms.find((arm) => arm.arm === "candidate");
-      const championArm = arms.find((arm) => arm.arm === "champion");
-      if (
-        candidateArm === undefined ||
-        (stage === "repair"
-          ? arms.length !== 1 || championArm !== undefined
-          : arms.length !== 2 || championArm === undefined)
-      ) {
-        throw new Error("Hidden catalog update is detached from its schedule.");
-      }
-      const candidateAttempts = input.byArm.get(candidateArm.armId);
-      const championAttempts =
-        championArm === undefined ? undefined : input.byArm.get(championArm.armId);
-      if (
-        candidateAttempts === undefined ||
-        (championArm !== undefined && championAttempts === undefined)
-      ) {
-        throw new Error("Hidden catalog update is missing a final arm.");
-      }
-      return {
-        taskId: cell.taskId,
-        taskRevisionDigest: cell.taskRevisionDigest,
-        capabilityStratum: cell.capabilityStratum,
-        order: cell.order,
-        candidate: hiddenArmOutcome(candidateAttempts),
-        champion:
-          championAttempts === undefined
-            ? null
-            : hiddenArmOutcome(championAttempts),
-      };
-    },
-  );
+  const outcomes: TrustedHiddenCatalogTaskOutcome[] = input.panel.cells.map((cell, cellOrdinal) => {
+    const arms = input.schedule.arms.filter((arm) => arm.cellOrdinal === cellOrdinal);
+    const candidateArm = arms.find((arm) => arm.arm === "candidate");
+    const championArm = arms.find((arm) => arm.arm === "champion");
+    if (
+      candidateArm === undefined ||
+      (stage === "repair"
+        ? arms.length !== 1 || championArm !== undefined
+        : arms.length !== 2 || championArm === undefined)
+    ) {
+      throw new Error("Hidden catalog update is detached from its schedule.");
+    }
+    const candidateAttempts = input.byArm.get(candidateArm.armId);
+    const championAttempts =
+      championArm === undefined ? undefined : input.byArm.get(championArm.armId);
+    if (
+      candidateAttempts === undefined ||
+      (championArm !== undefined && championAttempts === undefined)
+    ) {
+      throw new Error("Hidden catalog update is missing a final arm.");
+    }
+    return {
+      taskId: cell.taskId,
+      taskRevisionDigest: cell.taskRevisionDigest,
+      capabilityStratum: cell.capabilityStratum,
+      order: cell.order,
+      candidate: hiddenArmOutcome(candidateAttempts),
+      champion: championAttempts === undefined ? null : hiddenArmOutcome(championAttempts),
+    };
+  });
   const updateSetHash = hashTrustedHiddenCatalogOutcomeSet(outcomes);
   const observedAt = new Date(
     Math.max(
@@ -1299,8 +1170,7 @@ function createHiddenCatalogOutcomeUpdate(input: {
     jobSha256: input.rawRun.jobSha256,
     runtimeAttestationHash: input.rawRun.runtimeAttestationHash,
     normalizedOutcomeSetHash: input.normalizedOutcomeSetHash,
-    environmentFingerprintHash:
-      input.policy.expectedEnvironmentFingerprintHash,
+    environmentFingerprintHash: input.policy.expectedEnvironmentFingerprintHash,
     updateSetHash,
   });
   return {
@@ -1315,8 +1185,7 @@ function createHiddenCatalogOutcomeUpdate(input: {
     jobSha256: input.rawRun.jobSha256,
     runtimeAttestationHash: input.rawRun.runtimeAttestationHash,
     normalizedOutcomeSetHash: input.normalizedOutcomeSetHash,
-    environmentFingerprintHash:
-      input.policy.expectedEnvironmentFingerprintHash,
+    environmentFingerprintHash: input.policy.expectedEnvironmentFingerprintHash,
     observedAt,
     outcomes,
     updateSetHash,
@@ -1378,22 +1247,12 @@ export function assertTrustedHiddenCatalogOutcomeUpdateIntegrity(
   ) {
     throw new Error("Hidden catalog update hashes are detached.");
   }
-  plainObject(update.signature, [
-    "algorithm",
-    "keyId",
-    "signedAt",
-    "signature",
-  ]);
+  plainObject(update.signature, ["algorithm", "keyId", "signedAt", "signature"]);
   if (
     update.signature.algorithm !== "ed25519" ||
-    !/^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u.test(
-      update.signature.keyId,
-    ) ||
-    !/^[A-Za-z0-9_-]{86,128}={0,2}$/u.test(
-      update.signature.signature,
-    ) ||
-    canonicalTimestamp(update.signature.signedAt) <
-      canonicalTimestamp(update.observedAt)
+    !/^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u.test(update.signature.keyId) ||
+    !/^[A-Za-z0-9_-]{86,128}={0,2}$/u.test(update.signature.signature) ||
+    canonicalTimestamp(update.signature.signedAt) < canonicalTimestamp(update.observedAt)
   ) {
     throw new Error("Hidden catalog update signature metadata is malformed.");
   }
@@ -1430,8 +1289,7 @@ async function commitHiddenCatalogOutcomeUpdate(input: {
   const receipt = await input.sink.commit(signed);
   plainObject(receipt, ["status", "updateId", "sourceBindingHash"]);
   if (
-    (receipt.status !== "committed" &&
-      receipt.status !== "already-committed") ||
+    (receipt.status !== "committed" && receipt.status !== "already-committed") ||
     receipt.updateId !== signed.updateId ||
     receipt.sourceBindingHash !== signed.sourceBindingHash
   ) {
@@ -1463,22 +1321,17 @@ function deriveRepairPayload(input: {
     input.request.selection.kind !== "repair-reuse" ||
     input.policy.repair === null ||
     input.schedule.executionPolicy !== "candidate-only-repair" ||
-    input.policy.repair.attemptOrdinal !==
-      input.request.selection.candidateAttempt
+    input.policy.repair.attemptOrdinal !== input.request.selection.candidateAttempt
   ) {
     throw new Error("Repair request, policy, and schedule do not correlate.");
   }
   const controls = new Map(
-    input.policy.repair.controls.map((control) => [
-      control.taskId,
-      control,
-    ] as const),
+    input.policy.repair.controls.map((control) => [control.taskId, control] as const),
   );
   const tasks: RepairTaskEvidence[] = input.panel.cells.map((cell) => {
     const control = controls.get(cell.taskId);
     const arm = input.schedule.arms.find(
-      (candidate) =>
-        candidate.taskId === cell.taskId && candidate.arm === "candidate",
+      (candidate) => candidate.taskId === cell.taskId && candidate.arm === "candidate",
     );
     if (control === undefined || arm === undefined) {
       throw new Error("Repair control is detached from the hidden panel.");
@@ -1517,9 +1370,7 @@ function deriveRepairPayload(input: {
           ? "failed"
           : "inconclusive",
     attemptOrdinal: input.policy.repair.attemptOrdinal,
-    integrityStatus: input.policy.guardrails.externalIntegrityVeto
-      ? "failed"
-      : "passed",
+    integrityStatus: input.policy.guardrails.externalIntegrityVeto ? "failed" : "passed",
     aggregateCost: input.cost,
     policyAttestationHash: input.policy.policyAttestationHash,
   };
@@ -1536,16 +1387,10 @@ function matchedPairs(input: {
     throw new Error("Matched stage requires a fresh paired schedule.");
   }
   return input.panel.cells.map((cell, cellOrdinal) => {
-    const arms = input.schedule.arms.filter(
-      (arm) => arm.cellOrdinal === cellOrdinal,
-    );
+    const arms = input.schedule.arms.filter((arm) => arm.cellOrdinal === cellOrdinal);
     const candidateArm = arms.find((arm) => arm.arm === "candidate");
     const championArm = arms.find((arm) => arm.arm === "champion");
-    if (
-      arms.length !== 2 ||
-      candidateArm === undefined ||
-      championArm === undefined
-    ) {
+    if (arms.length !== 2 || candidateArm === undefined || championArm === undefined) {
       throw new Error("A fresh matched cell does not contain two sealed arms.");
     }
     const candidate = finalFor(input.byArm, candidateArm);
@@ -1567,8 +1412,7 @@ function matchedPairs(input: {
         fresh: true,
         cacheUsed: false,
         protocolHash: candidate.outcome.protocolHash,
-        environmentFingerprintHash:
-          candidate.outcome.environmentFingerprintHash,
+        environmentFingerprintHash: candidate.outcome.environmentFingerprintHash,
         startedAt: candidate.source.startedAt,
         completedAt: candidate.source.completedAt,
       },
@@ -1577,8 +1421,7 @@ function matchedPairs(input: {
         fresh: true,
         cacheUsed: false,
         protocolHash: champion.outcome.protocolHash,
-        environmentFingerprintHash:
-          champion.outcome.environmentFingerprintHash,
+        environmentFingerprintHash: champion.outcome.environmentFingerprintHash,
         startedAt: champion.source.startedAt,
         completedAt: champion.source.completedAt,
       },
@@ -1586,9 +1429,7 @@ function matchedPairs(input: {
   });
 }
 
-function pairOutcomeTotals(
-  pairs: readonly FreshValidationPair[],
-): {
+function pairOutcomeTotals(pairs: readonly FreshValidationPair[]): {
   readonly bothPass: number;
   readonly challengerOnlyPass: number;
   readonly championOnlyPass: number;
@@ -1631,14 +1472,12 @@ function freshValidationInput(input: {
     capabilityRegressionVeto: input.policy.guardrails.capabilityVeto,
     costWithinGuardrail: input.policy.guardrails.costWithinGuardrail,
     latencyWithinGuardrail: input.policy.guardrails.latencyWithinGuardrail,
-    accuracyTradeoffPredeclared:
-      input.policy.guardrails.accuracyTradeoffPredeclared,
+    accuracyTradeoffPredeclared: input.policy.guardrails.accuracyTradeoffPredeclared,
     onlineErrorBudget: input.policy.onlineErrorBudget,
     ...(input.policy.onlineErrorReservation === null
       ? {}
       : {
-          reservedOnlineGate:
-            input.policy.onlineErrorReservation.allocation,
+          reservedOnlineGate: input.policy.onlineErrorReservation.allocation,
         }),
     integrationPoints: input.policy.integrationPoints,
   } as const;
@@ -1660,14 +1499,9 @@ function deriveValidationPayload(input: {
     throw new Error("Validation request does not select a fresh matched panel.");
   }
   const pairs = matchedPairs(input);
-  const result = evaluateFreshValidation(
-    freshValidationInput({ ...input, pairs }),
-  );
+  const result = evaluateFreshValidation(freshValidationInput({ ...input, pairs }));
   const reservation = input.policy.onlineErrorReservation;
-  if (
-    reservation === null ||
-    result.onlineGateAlphaSpent !== reservation.accounting.alphaSpent
-  ) {
+  if (reservation === null || result.onlineGateAlphaSpent !== reservation.accounting.alphaSpent) {
     throw new Error("Validation did not use its reserved online gate.");
   }
   return {
@@ -1676,9 +1510,7 @@ function deriveValidationPayload(input: {
     matchedTaskCount: 12,
     validFreshArmCount: 24,
     invalidArmTotal: input.invalidCount,
-    stratumCount: new Set(
-      input.panel.cells.map((cell) => cell.capabilityStratum),
-    ).size,
+    stratumCount: new Set(input.panel.cells.map((cell) => cell.capabilityStratum)).size,
     pairOutcomeTotals: pairOutcomeTotals(pairs),
     weightedAccuracy: {
       medianDelta: result.posteriorMedianAccuracyDelta,
@@ -1697,8 +1529,7 @@ function deriveValidationPayload(input: {
     capabilityVeto: input.policy.guardrails.capabilityVeto,
     costWithinGuardrail: input.policy.guardrails.costWithinGuardrail,
     latencyWithinGuardrail: input.policy.guardrails.latencyWithinGuardrail,
-    accuracyTradeoffPredeclared:
-      input.policy.guardrails.accuracyTradeoffPredeclared,
+    accuracyTradeoffPredeclared: input.policy.guardrails.accuracyTradeoffPredeclared,
     aggregateCost: input.cost,
   };
 }
@@ -1711,10 +1542,7 @@ function deriveShadowPayload(input: {
   readonly byArm: ReadonlyMap<string, ArmAttemptSet>;
   readonly cost: AggregateCost;
 }): TrustedCanonicalAggregate["payload"] {
-  if (
-    input.request.stage !== "shadow" ||
-    input.request.selection.kind !== "fresh-shadow"
-  ) {
+  if (input.request.stage !== "shadow" || input.request.selection.kind !== "fresh-shadow") {
     throw new Error("Shadow request does not select a fresh dark panel.");
   }
   const pairs = matchedPairs(input);
@@ -1759,23 +1587,16 @@ function assertNoSensitiveReleaseMaterial(input: {
   assertSafeForLocalPersistence(input.aggregate);
   const serialized = canonicalJson(input.aggregate).toLocaleLowerCase("en-US");
   const forbiddenIdentities = [
-    ...input.panel.cells.flatMap((cell) => [
-      cell.taskId,
-      cell.taskRevisionDigest,
-    ]),
+    ...input.panel.cells.flatMap((cell) => [cell.taskId, cell.taskRevisionDigest]),
     ...input.schedule.arms.map((arm) => arm.armId),
   ];
   if (
-    forbiddenIdentities.some((identity) =>
-      serialized.includes(identity.toLocaleLowerCase("en-US")),
-    )
+    forbiddenIdentities.some((identity) => serialized.includes(identity.toLocaleLowerCase("en-US")))
   ) {
     throw new Error("Release contains a hidden benchmark identity.");
   }
   for (const literal of input.policy.forbiddenReleaseLiterals) {
-    if (
-      serialized.includes(literal.trim().toLocaleLowerCase("en-US"))
-    ) {
+    if (serialized.includes(literal.trim().toLocaleLowerCase("en-US"))) {
       throw new Error("Release contains a forbidden source literal.");
     }
   }
@@ -1786,9 +1607,7 @@ function assertNoSensitiveReleaseMaterial(input: {
     input.policy.forbiddenContentFingerprints.some((fingerprint) =>
       outputFingerprints.has(fingerprint),
     ) ||
-    input.policy.graderCanaryFingerprints.some((fingerprint) =>
-      outputFingerprints.has(fingerprint),
-    )
+    input.policy.graderCanaryFingerprints.some((fingerprint) => outputFingerprints.has(fingerprint))
   ) {
     throw new Error("Release contains a forbidden content fingerprint.");
   }
@@ -1814,9 +1633,7 @@ function assertTiming(input: {
   const expiresAt = canonicalTimestamp(input.panel.expiresAt);
   const derivedAt = canonicalTimestamp(input.derivedAt);
   const latestCompletion = Math.max(
-    ...input.attempts.map((attempt) =>
-      canonicalTimestamp(attempt.source.completedAt),
-    ),
+    ...input.attempts.map((attempt) => canonicalTimestamp(attempt.source.completedAt)),
   );
   if (
     sealedAt < submittedAt ||
@@ -1838,16 +1655,13 @@ function assertTiming(input: {
  * the broker may sign and release. All errors are collapsed to generic codes so
  * reader, grader, and hidden-task details can never escape through exceptions.
  */
-export class DeterministicCanonicalEvaluationDeriver
-  implements TrustedCanonicalEvaluationDeriver
-{
+export class DeterministicCanonicalEvaluationDeriver implements TrustedCanonicalEvaluationDeriver {
   readonly #reader: TrustedDecodedEvaluationReader;
   readonly #policies: TrustedCanonicalDerivationPolicyResolver;
   readonly #hiddenOutcomeSigner: TrustedHiddenCatalogOutcomeUpdateSigner;
   readonly #hiddenOutcomeVerifier: TrustedHiddenCatalogOutcomeUpdateVerifier;
   readonly #hiddenOutcomeSink: TrustedHiddenCatalogOutcomeUpdateSink;
-  readonly #prepareBehavioral:
-    TrustedBehavioralPreparationStore["prepare"];
+  readonly #prepareBehavioral: TrustedBehavioralPreparationStore["prepare"];
   readonly #now: () => Date;
 
   constructor(options: DeterministicCanonicalEvaluationDeriverOptions) {
@@ -1859,20 +1673,13 @@ export class DeterministicCanonicalEvaluationDeriver
       typeof options.hiddenOutcomeSigner?.sign !== "function" ||
       typeof options.hiddenOutcomeVerifier?.verify !== "function" ||
       typeof options.hiddenOutcomeSink?.commit !== "function" ||
-      (options.behavioralPreparationStore?.boundary !==
-        "trusted-cloud" &&
-        options.behavioralPreparationStore?.boundary !==
-          "test-only-in-memory") ||
-      typeof options.behavioralPreparationStore?.prepare !==
-        "function" ||
-      typeof options.behavioralPreparationStore?.resolve !==
-        "function" ||
-      typeof options.behavioralPreparationStore?.finalize !==
-        "function" ||
-      typeof options.behavioralPreparationStore?.abandon !==
-        "function" ||
-      typeof options.behavioralPreparationStore?.consume !==
-        "function"
+      (options.behavioralPreparationStore?.boundary !== "trusted-cloud" &&
+        options.behavioralPreparationStore?.boundary !== "test-only-in-memory") ||
+      typeof options.behavioralPreparationStore?.prepare !== "function" ||
+      typeof options.behavioralPreparationStore?.resolve !== "function" ||
+      typeof options.behavioralPreparationStore?.finalize !== "function" ||
+      typeof options.behavioralPreparationStore?.abandon !== "function" ||
+      typeof options.behavioralPreparationStore?.consume !== "function"
     ) {
       throw new TrustedCanonicalDeriverError("policy-failed");
     }
@@ -1881,10 +1688,9 @@ export class DeterministicCanonicalEvaluationDeriver
     this.#hiddenOutcomeSigner = options.hiddenOutcomeSigner;
     this.#hiddenOutcomeVerifier = options.hiddenOutcomeVerifier;
     this.#hiddenOutcomeSink = options.hiddenOutcomeSink;
-    this.#prepareBehavioral =
-      options.behavioralPreparationStore.prepare.bind(
-        options.behavioralPreparationStore,
-      );
+    this.#prepareBehavioral = options.behavioralPreparationStore.prepare.bind(
+      options.behavioralPreparationStore,
+    );
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -2009,18 +1815,14 @@ export class DeterministicCanonicalEvaluationDeriver
       });
       if (preparation !== null) {
         const receipt = await this.#prepareBehavioral(preparation);
-        const preparationHash =
-          hashTrustedBehavioralPreparation(preparation);
+        const preparationHash = hashTrustedBehavioralPreparation(preparation);
         if (
-          (receipt.status !== "prepared" &&
-            receipt.status !== "already-prepared") ||
+          (receipt.status !== "prepared" && receipt.status !== "already-prepared") ||
           receipt.requestHash !== aggregate.requestHash ||
           receipt.protocolHash !== aggregate.protocolHash ||
           receipt.preparationHash !== preparationHash
         ) {
-          throw new Error(
-            "Behavioral preparation durability receipt is detached.",
-          );
+          throw new Error("Behavioral preparation durability receipt is detached.");
         }
       }
       return aggregate;
@@ -2029,8 +1831,7 @@ export class DeterministicCanonicalEvaluationDeriver
         throw error;
       }
       const code =
-        error instanceof Error &&
-        /Release contains|Released evidence/u.test(error.message)
+        error instanceof Error && /Release contains|Released evidence/u.test(error.message)
           ? "release-scan-failed"
           : "normalization-failed";
       throw new TrustedCanonicalDeriverError(code);

@@ -1,16 +1,11 @@
-import {
-  mkdtemp,
-  readFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import type { TrustedArtifactRuntimeGuard } from "../../src/cloud/artifact-bridge.js";
-import {
-  MountedVolumeBehavioralPreparationStore,
-} from "../../src/cloud/mounted-volume-behavioral-preparation-store.js";
+import { MountedVolumeBehavioralPreparationStore } from "../../src/cloud/mounted-volume-behavioral-preparation-store.js";
 import type {
   MountedVolumeDurableStateOptions,
   MountedVolumeStateSemanticsGuard,
@@ -19,23 +14,19 @@ import type {
   ProductionOptimizeLifecycleRegistrar,
   TrustedProductionOptimizeCloseable,
 } from "../../src/cloud/production-optimize-composition-owner.js";
+import { hiddenTaskId } from "../../src/evaluation/types.js";
+import {
+  hashTrustedBehavioralPreparation,
+  hashTrustedBehavioralPreparationAbandonment,
+  hashTrustedBehavioralPreparationFinalization,
+} from "../../src/evaluator/behavioral-preparation-store.js";
 import {
   hashTrustedBehavioralReleaseOrphanFinalization,
   type TrustedBehavioralReleaseFinalization,
   type TrustedBehavioralReleaseOrphanFinalizationReceipt,
 } from "../../src/evaluator/behavioral-release-producer.js";
-import {
-  hashTrustedBehavioralPreparationAbandonment,
-  hashTrustedBehavioralPreparation,
-  hashTrustedBehavioralPreparationFinalization,
-} from "../../src/evaluator/behavioral-preparation-store.js";
 import type { TrustedPrivateBehavioralPreparation } from "../../src/evaluator/deriver.js";
-import { hiddenTaskId } from "../../src/evaluation/types.js";
-import {
-  behaviorWithFailure,
-  behaviorWithoutFailure,
-  digest,
-} from "../evaluation/fixtures.js";
+import { behaviorWithFailure, behaviorWithoutFailure, digest } from "../evaluation/fixtures.js";
 
 const runtimeGuard: TrustedArtifactRuntimeGuard = {
   assertTrustedCloudRuntime() {},
@@ -107,9 +98,7 @@ function preparation(
         leakScanner: "scanner-v1",
       },
     },
-    forbiddenReleaseLiterals: [
-      "task-private-preparation-literal",
-    ],
+    forbiddenReleaseLiterals: ["task-private-preparation-literal"],
     forbiddenContentFingerprints: [digest(204)],
     graderCanaryFingerprints: [digest(205)],
     ...overrides,
@@ -142,8 +131,7 @@ function orphanFinalization(
   return {
     status: "orphaned",
     ...binding,
-    orphanFinalizationHash:
-      hashTrustedBehavioralReleaseOrphanFinalization(binding),
+    orphanFinalizationHash: hashTrustedBehavioralReleaseOrphanFinalization(binding),
   };
 }
 
@@ -160,9 +148,7 @@ function store(
 
 describe("mounted-volume private behavioral preparation store", () => {
   it("durably resolves only an exact request and registers lifecycle ownership", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-preparation-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-preparation-"));
     const registered: TrustedProductionOptimizeCloseable[] = [];
     const lifecycle: ProductionOptimizeLifecycleRegistrar = {
       boundary: "production-optimize-composition-owner",
@@ -172,8 +158,7 @@ describe("mounted-volume private behavioral preparation store", () => {
     };
     const first = store(root, durableState(root), lifecycle);
     const value = preparation();
-    const expectedHash =
-      hashTrustedBehavioralPreparation(value);
+    const expectedHash = hashTrustedBehavioralPreparation(value);
 
     await expect(first.prepare(value)).resolves.toEqual({
       status: "prepared",
@@ -190,22 +175,11 @@ describe("mounted-volume private behavioral preparation store", () => {
     expect(registered).toHaveLength(1);
     expect(registered[0]?.lifecycleId).toBe(first.lifecycleId);
     expect(
-      Object.getOwnPropertyNames(
-        MountedVolumeBehavioralPreparationStore.prototype,
-      ),
-    ).not.toEqual(
-      expect.arrayContaining(["list", "scan", "entries", "values"]),
-    );
+      Object.getOwnPropertyNames(MountedVolumeBehavioralPreparationStore.prototype),
+    ).not.toEqual(expect.arrayContaining(["list", "scan", "entries", "values"]));
 
     await first.close();
-    const successor = store(
-      root,
-      durableState(
-        root,
-        "2".repeat(64),
-        "b".repeat(48),
-      ),
-    );
+    const successor = store(root, durableState(root, "2".repeat(64), "b".repeat(48)));
     await expect(
       successor.resolve({
         requestHash: value.requestHash,
@@ -240,23 +214,19 @@ describe("mounted-volume private behavioral preparation store", () => {
   });
 
   it("erases private observations on exact finalization and cannot rebind or consume them", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-preparation-final-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-preparation-final-"));
     const durable = store(root);
     const value = preparation();
-    const preparationHash =
-      hashTrustedBehavioralPreparation(value);
+    const preparationHash = hashTrustedBehavioralPreparation(value);
     const release = finalization(value);
     const sourceResultEnvelopeHash = digest(208);
-    const finalizationHash =
-      hashTrustedBehavioralPreparationFinalization({
-        requestHash: value.requestHash,
-        protocolHash: value.protocolHash,
-        preparationHash,
-        sourceResultEnvelopeHash,
-        finalization: release,
-      });
+    const finalizationHash = hashTrustedBehavioralPreparationFinalization({
+      requestHash: value.requestHash,
+      protocolHash: value.protocolHash,
+      preparationHash,
+      sourceResultEnvelopeHash,
+      finalization: release,
+    });
     await durable.prepare(value);
 
     await expect(
@@ -330,9 +300,7 @@ describe("mounted-volume private behavioral preparation store", () => {
       "state.json",
     );
     const persisted = await readFile(statePath, "utf8");
-    expect(persisted).not.toContain(
-      "task-private-preparation-literal",
-    );
+    expect(persisted).not.toContain("task-private-preparation-literal");
     for (const observation of value.observations) {
       expect(persisted).not.toContain(observation.taskId);
     }
@@ -340,13 +308,10 @@ describe("mounted-volume private behavioral preparation store", () => {
   });
 
   it("makes consumption durable, idempotent, and non-resurrectable", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-preparation-consumed-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-preparation-consumed-"));
     const durable = store(root);
     const value = preparation();
-    const preparationHash =
-      hashTrustedBehavioralPreparation(value);
+    const preparationHash = hashTrustedBehavioralPreparation(value);
     await durable.prepare(value);
 
     await expect(
@@ -400,9 +365,7 @@ describe("mounted-volume private behavioral preparation store", () => {
       "state.json",
     );
     const persisted = await readFile(statePath, "utf8");
-    expect(persisted).not.toContain(
-      "task-private-preparation-literal",
-    );
+    expect(persisted).not.toContain("task-private-preparation-literal");
     for (const observation of value.observations) {
       expect(persisted).not.toContain(observation.taskId);
     }
@@ -410,33 +373,28 @@ describe("mounted-volume private behavioral preparation store", () => {
   });
 
   it("durably abandons only the exact finalized release and never makes it consumable or reusable", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-preparation-abandoned-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-preparation-abandoned-"));
     const first = store(root);
     const value = preparation();
-    const preparationHash =
-      hashTrustedBehavioralPreparation(value);
+    const preparationHash = hashTrustedBehavioralPreparation(value);
     const release = finalization(value);
     const sourceResultEnvelopeHash = digest(208);
-    const finalizationHash =
-      hashTrustedBehavioralPreparationFinalization({
-        requestHash: value.requestHash,
-        protocolHash: value.protocolHash,
-        preparationHash,
-        sourceResultEnvelopeHash,
-        finalization: release,
-      });
+    const finalizationHash = hashTrustedBehavioralPreparationFinalization({
+      requestHash: value.requestHash,
+      protocolHash: value.protocolHash,
+      preparationHash,
+      sourceResultEnvelopeHash,
+      finalization: release,
+    });
     const orphan = orphanFinalization(release);
-    const abandonmentHash =
-      hashTrustedBehavioralPreparationAbandonment({
-        requestHash: value.requestHash,
-        protocolHash: value.protocolHash,
-        preparationHash,
-        sourceResultEnvelopeHash,
-        finalizationHash,
-        orphanFinalizationHash: orphan.orphanFinalizationHash,
-      });
+    const abandonmentHash = hashTrustedBehavioralPreparationAbandonment({
+      requestHash: value.requestHash,
+      protocolHash: value.protocolHash,
+      preparationHash,
+      sourceResultEnvelopeHash,
+      finalizationHash,
+      orphanFinalizationHash: orphan.orphanFinalizationHash,
+    });
     await first.prepare(value);
     await first.finalize({
       requestHash: value.requestHash,
@@ -464,9 +422,7 @@ describe("mounted-volume private behavioral preparation store", () => {
       orphanFinalizationHash: orphan.orphanFinalizationHash,
       abandonmentHash,
     });
-    await expect(
-      first.abandon(structuredClone(abandonInput)),
-    ).resolves.toMatchObject({
+    await expect(first.abandon(structuredClone(abandonInput))).resolves.toMatchObject({
       status: "already-abandoned",
       abandonmentHash,
     });
@@ -488,10 +444,7 @@ describe("mounted-volume private behavioral preparation store", () => {
     await expect(
       first.abandon({
         ...abandonInput,
-        orphanFinalization: orphanFinalization(
-          release,
-          "2026-07-26T10:13:00.000Z",
-        ),
+        orphanFinalization: orphanFinalization(release, "2026-07-26T10:13:00.000Z"),
       }),
     ).rejects.toMatchObject({
       name: "MountedVolumeBehavioralPreparationStoreError",
@@ -519,23 +472,14 @@ describe("mounted-volume private behavioral preparation store", () => {
       "state.json",
     );
     const persisted = await readFile(statePath, "utf8");
-    expect(persisted).not.toContain(
-      "task-private-preparation-literal",
-    );
+    expect(persisted).not.toContain("task-private-preparation-literal");
     expect(persisted).not.toContain("privacyThresholdPassed");
     for (const observation of value.observations) {
       expect(persisted).not.toContain(observation.taskId);
     }
 
     await first.close();
-    const successor = store(
-      root,
-      durableState(
-        root,
-        "2".repeat(64),
-        "b".repeat(48),
-      ),
-    );
+    const successor = store(root, durableState(root, "2".repeat(64), "b".repeat(48)));
     await expect(
       successor.resolve({
         requestHash: value.requestHash,
@@ -556,9 +500,7 @@ describe("mounted-volume private behavioral preparation store", () => {
   });
 
   it("rejects conflicting replays without changing the original private preparation", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-preparation-conflict-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-preparation-conflict-"));
     const durable = store(root);
     const value = preparation();
     await durable.prepare(value);
@@ -566,9 +508,7 @@ describe("mounted-volume private behavioral preparation store", () => {
       behaviorSourceSetHash: digest(210),
     });
 
-    await expect(
-      durable.prepare(conflicting),
-    ).rejects.toMatchObject({
+    await expect(durable.prepare(conflicting)).rejects.toMatchObject({
       name: "MountedVolumeBehavioralPreparationStoreError",
     });
     await expect(
@@ -578,8 +518,7 @@ describe("mounted-volume private behavioral preparation store", () => {
       }),
     ).resolves.toMatchObject({
       status: "prepared",
-      preparationHash:
-        hashTrustedBehavioralPreparation(value),
+      preparationHash: hashTrustedBehavioralPreparation(value),
       preparation: {
         behaviorSourceSetHash: value.behaviorSourceSetHash,
       },
@@ -588,45 +527,28 @@ describe("mounted-volume private behavioral preparation store", () => {
   });
 
   it("requires provider termination proof for crash recovery and fences the predecessor", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-preparation-recovery-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-preparation-recovery-"));
     const prior = store(root);
     const value = preparation();
     await prior.prepare(value);
 
-    const unauthorized = store(
-      root,
-      durableState(
-        root,
-        "2".repeat(64),
-        "b".repeat(48),
-      ),
-    );
+    const unauthorized = store(root, durableState(root, "2".repeat(64), "b".repeat(48)));
     await expect(
       unauthorized.resolve({
         requestHash: value.requestHash,
         protocolHash: value.protocolHash,
       }),
-    ).rejects.toThrow(
-      /provider-attested recovery is required/u,
-    );
+    ).rejects.toThrow(/provider-attested recovery is required/u);
 
     const recovered = store(root, {
-      ...durableState(
-        root,
-        "3".repeat(64),
-        "c".repeat(48),
-      ),
+      ...durableState(root, "3".repeat(64), "c".repeat(48)),
       recoveryAuthority: {
         authorize: ({ observedLock, observedLockHash }) =>
           Promise.resolve({
             schemaVersion: 1 as const,
-            domain:
-              "dark-factory.mounted-volume-lock-recovery.v1" as const,
+            domain: "dark-factory.mounted-volume-lock-recovery.v1" as const,
             namespace: observedLock.namespace,
-            authorizationId:
-              "provider-destruction-preparation-1",
+            authorizationId: "provider-destruction-preparation-1",
             priorLockHash: observedLockHash,
             priorFenceEpoch: observedLock.fenceEpoch,
             providerTerminationAttestationHash: digest(211),

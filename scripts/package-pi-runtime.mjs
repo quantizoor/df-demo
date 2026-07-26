@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -6,8 +7,8 @@ import {
   mkdir,
   mkdtemp,
   open,
-  readFile,
   readdir,
+  readFile,
   realpath,
   rm,
   stat,
@@ -15,7 +16,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { spawnSync } from "node:child_process";
 
 const MAX_FILES = 100_000;
 const MAX_BYTES = 4 * 1024 * 1024 * 1024;
@@ -56,11 +56,7 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (
-      typeof flag !== "string" ||
-      !flag.startsWith("--") ||
-      typeof value !== "string"
-    ) {
+    if (typeof flag !== "string" || !flag.startsWith("--") || typeof value !== "string") {
       fail("Runtime packager arguments must be complete flag/value pairs.");
     }
     const name = flag.slice(2);
@@ -86,10 +82,7 @@ function canonical(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonical(entry)).join(",")}]`;
   }
-  if (
-    typeof value !== "object" ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
     fail("Runtime manifest accepts only plain JSON values.");
   }
   return `{${Object.keys(value)
@@ -189,29 +182,20 @@ try {
   if (error?.code !== "ENOENT") throw error;
 }
 
-const distRoot = await realpath(
-  join(sourceRoot, "packages", "coding-agent", "dist"),
-);
+const distRoot = await realpath(join(sourceRoot, "packages", "coding-agent", "dist"));
 if (!distRoot.startsWith(`${sourceRoot}${sep}`)) {
   fail("Pi build output escapes the candidate source root.");
 }
 const piEntrypoint = join(distRoot, "pi");
 const piMetadata = await lstat(piEntrypoint);
-if (
-  !piMetadata.isFile() ||
-  piMetadata.isSymbolicLink() ||
-  (piMetadata.mode & 0o111) === 0
-) {
+if (!piMetadata.isFile() || piMetadata.isSymbolicLink() || (piMetadata.mode & 0o111) === 0) {
   fail("Pi build did not produce an executable compiled runtime.");
 }
 
 let packageMetadata;
 try {
   packageMetadata = JSON.parse(
-    await readFile(
-      join(sourceRoot, "packages", "coding-agent", "package.json"),
-      "utf8",
-    ),
+    await readFile(join(sourceRoot, "packages", "coding-agent", "package.json"), "utf8"),
   );
 } catch {
   fail("Pi package metadata is unavailable after the build.");
@@ -226,12 +210,7 @@ if (
 
 const stagingRoot = await mkdtemp(join(tmpdir(), "df-pi-runtime-"));
 try {
-  const runtimeDist = join(
-    stagingRoot,
-    "packages",
-    "coding-agent",
-    "dist",
-  );
+  const runtimeDist = join(stagingRoot, "packages", "coding-agent", "dist");
   await mkdir(runtimeDist, { recursive: true, mode: 0o755 });
   const sourceFiles = await enumerateFiles(distRoot);
   for (const source of sourceFiles) {
@@ -262,11 +241,11 @@ try {
     })),
   };
   const manifestJson = `${canonical(manifest)}\n`;
-  await writeFile(
-    join(stagingRoot, "runtime-manifest.json"),
-    manifestJson,
-    { encoding: "utf8", flag: "wx", mode: 0o644 },
-  );
+  await writeFile(join(stagingRoot, "runtime-manifest.json"), manifestJson, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o644,
+  });
 
   const archive = spawnSync(
     "/usr/bin/tar",

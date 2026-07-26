@@ -113,20 +113,11 @@ export function releaseBehaviorCards(input: {
   assertDigest("experimentDigest", input.experimentDigest);
   assertDigest("analysisWindowDigest", input.analysisWindowDigest);
   const distinctTasks = uniqueTaskIds(input.observations);
-  if (
-    input.observations.length < MIN_TRAJECTORIES ||
-    distinctTasks.length < MIN_DISTINCT_TASKS
-  ) {
+  if (input.observations.length < MIN_TRAJECTORIES || distinctTasks.length < MIN_DISTINCT_TASKS) {
     return suppressed(input.privacyState, "insufficient-total-support");
   }
 
   const groups = partitionGroups(input.observations, input.comparison);
-  if (
-    input.comparison === "candidate-vs-champion" &&
-    !sameTaskSet(uniqueTaskIds(groups.a), uniqueTaskIds(groups.b))
-  ) {
-    return suppressed(input.privacyState, "unmatched-comparison");
-  }
   if (
     groups.a.length < MIN_GROUP_OBSERVATIONS ||
     groups.b.length < MIN_GROUP_OBSERVATIONS ||
@@ -134,6 +125,12 @@ export function releaseBehaviorCards(input: {
     uniqueTaskIds(groups.b).length < MIN_DISTINCT_TASKS
   ) {
     return suppressed(input.privacyState, "insufficient-group-support");
+  }
+  if (
+    input.comparison === "candidate-vs-champion" &&
+    !sameTaskSet(uniqueTaskIds(groups.a), uniqueTaskIds(groups.b))
+  ) {
+    return suppressed(input.privacyState, "unmatched-comparison");
   }
   if (input.privacyState.releasesUsed >= input.privacyState.maximumReleases) {
     return suppressed(input.privacyState, "release-budget-exhausted");
@@ -199,8 +196,7 @@ export function releaseBehaviorCards(input: {
   return {
     release: {
       cards,
-      suppression:
-        cards.length === 0 ? "no-statistically-supported-card" : "none",
+      suppression: cards.length === 0 ? "no-statistically-supported-card" : "none",
       containsTaskIdentifiers: false,
     },
     nextPrivacyState,
@@ -306,8 +302,11 @@ function createsDifferencingRisk(
 function uniqueTaskIds(
   observations: readonly PrivateBehaviorObservation[],
 ): readonly HiddenTaskId[] {
-  return [...new Map(observations.map((observation) => [observation.taskId, observation.taskId])).values()]
-    .sort((left, right) => left.localeCompare(right));
+  return [
+    ...new Map(
+      observations.map((observation) => [observation.taskId, observation.taskId]),
+    ).values(),
+  ].sort((left, right) => left.localeCompare(right));
 }
 
 function clusterFeatureTotal(
@@ -318,9 +317,7 @@ function clusterFeatureTotal(
   observations.forEach((observation) => {
     const previous = byTask.get(observation.taskId) ?? { present: 0, total: 0 };
     byTask.set(observation.taskId, {
-      present:
-        previous.present +
-        (behaviorFeaturePresent(observation.behavior, feature) ? 1 : 0),
+      present: previous.present + (behaviorFeaturePresent(observation.behavior, feature) ? 1 : 0),
       total: previous.total + 1,
     });
   });
@@ -431,14 +428,8 @@ function validatePrivacyState(state: HiddenPrivacyBudgetState): void {
   }
 }
 
-function sameTaskSet(
-  left: readonly HiddenTaskId[],
-  right: readonly HiddenTaskId[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((taskId, index) => taskId === right[index])
-  );
+function sameTaskSet(left: readonly HiddenTaskId[], right: readonly HiddenTaskId[]): boolean {
+  return left.length === right.length && left.every((taskId, index) => taskId === right[index]);
 }
 
 function assertDigest(label: string, value: string): void {

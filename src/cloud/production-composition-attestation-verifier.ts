@@ -4,21 +4,16 @@ import { verifyEd25519Signature } from "../evidence/signatures.js";
 import {
   assertProductionOptimizationCompositionManifest,
   PRODUCTION_RUNTIME_PORT_IDS,
-  productionRuntimePortBindingsHash,
   type ProductionCompositionVerification,
   type ProductionOptimizationCompositionManifest,
   type ProductionRuntimeComponentManifest,
   type ProductionRuntimePortAttestationCommitment,
   type ProductionRuntimePortId,
   type ProductionRuntimeRole,
+  productionRuntimePortBindingsHash,
   type TrustedProductionCompositionAttestationVerifier,
 } from "../orchestrator/production-runtime.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash, sha256 } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
 
@@ -26,19 +21,13 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$/u;
 const SAFE_KEY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
 const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 256 * 1024;
 const MAXIMUM_ARTIFACT_BYTES_CEILING = 4 * 1024 * 1024;
 const DEFAULT_MAXIMUM_TOTAL_BYTES = 4 * 1024 * 1024;
 const MAXIMUM_TOTAL_BYTES_CEILING = 32 * 1024 * 1024;
 
-const PRODUCTION_RUNTIME_ROLES = [
-  "control",
-  "optimizer",
-  "build",
-  "evaluator",
-] as const;
+const PRODUCTION_RUNTIME_ROLES = ["control", "optimizer", "build", "evaluator"] as const;
 
 const RUNTIME_PORT_ROLES = {
   "control.campaign-state-store": "control",
@@ -50,9 +39,7 @@ const RUNTIME_PORT_ROLES = {
   "optimizer.adapter": "optimizer",
   "build.correctness-gate": "build",
   "evaluator.blind-broker": "evaluator",
-} as const satisfies Readonly<
-  Record<ProductionRuntimePortId, ProductionRuntimeRole>
->;
+} as const satisfies Readonly<Record<ProductionRuntimePortId, ProductionRuntimeRole>>;
 
 type ProductionOperationalBindingField =
   keyof ProductionOptimizationCompositionManifest["bindings"];
@@ -68,21 +55,17 @@ const PRODUCTION_OPERATIONAL_BINDING_FIELDS = [
   ["broker.policy", "brokerPolicyHash"],
   ["evaluator.policy", "evaluatorPolicyHash"],
   ["journal.policy", "journalPolicyHash"],
-] as const satisfies readonly (
-  readonly [string, ProductionOperationalBindingField]
-)[];
+] as const satisfies readonly (readonly [string, ProductionOperationalBindingField])[];
 
 export const PRODUCTION_OPERATIONAL_BINDING_IDS = Object.freeze(
   PRODUCTION_OPERATIONAL_BINDING_FIELDS.map(([bindingId]) => bindingId),
 );
 
-export type ProductionOperationalBindingId =
-  (typeof PRODUCTION_OPERATIONAL_BINDING_IDS)[number];
+export type ProductionOperationalBindingId = (typeof PRODUCTION_OPERATIONAL_BINDING_IDS)[number];
 
 export interface ProductionCompositionAttestationQuery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-composition-attestation-query.v1";
+  readonly domain: "dark-factory.production-composition-attestation-query.v1";
   readonly campaignId: string;
   readonly manifestId: string;
   readonly manifestHash: string;
@@ -111,20 +94,16 @@ export interface ProductionRuntimePortAttestationArtifactBinding {
 
 export interface ProductionCompositionAttestationArtifactSet {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-composition-attestation-artifact-set.v1";
+  readonly domain: "dark-factory.production-composition-attestation-artifact-set.v1";
   readonly sensitivity: "release-safe-control";
   readonly deployment: "trusted-cloud";
   readonly campaignId: string;
   readonly manifestId: string;
   readonly manifestHash: string;
   readonly queryHash: string;
-  readonly componentAttestations:
-    readonly ProductionComponentAttestationArtifactBinding[];
-  readonly operationalBindingsAttestation:
-    ProductionOperationalAttestationArtifactBinding;
-  readonly runtimePortAttestations:
-    readonly ProductionRuntimePortAttestationArtifactBinding[];
+  readonly componentAttestations: readonly ProductionComponentAttestationArtifactBinding[];
+  readonly operationalBindingsAttestation: ProductionOperationalAttestationArtifactBinding;
+  readonly runtimePortAttestations: readonly ProductionRuntimePortAttestationArtifactBinding[];
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly signature: Signature;
@@ -144,10 +123,7 @@ export interface TrustedProductionCompositionAttestationArtifactSource {
 
 export interface TrustedProductionCompositionAttestationArtifactReader {
   readonly boundary: "trusted-cloud";
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 export interface TrustedProductionCompositionPublicKey {
@@ -218,8 +194,7 @@ export interface ProductionOperationalBindingAttestation {
 
 export interface ProductionComponentAttestationArtifact {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-component-attestation.v1";
+  readonly domain: "dark-factory.production-component-attestation.v1";
   readonly sensitivity: "release-safe-control";
   readonly deployment: "trusted-cloud";
   readonly campaignId: string;
@@ -239,16 +214,14 @@ export interface ProductionComponentAttestationArtifact {
 
 export interface ProductionOperationalBindingsAttestationArtifact {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-operational-bindings-attestation.v1";
+  readonly domain: "dark-factory.production-operational-bindings-attestation.v1";
   readonly sensitivity: "release-safe-control";
   readonly deployment: "trusted-cloud";
   readonly campaignId: string;
   readonly manifestId: string;
   readonly manifestHash: string;
   readonly operationalBindingsHash: string;
-  readonly bindingAttestations:
-    readonly ProductionOperationalBindingAttestation[];
+  readonly bindingAttestations: readonly ProductionOperationalBindingAttestation[];
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly contentHash: string;
@@ -256,8 +229,7 @@ export interface ProductionOperationalBindingsAttestationArtifact {
 
 export interface ProductionRuntimePortAttestationArtifact {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-runtime-port-attestation.v1";
+  readonly domain: "dark-factory.production-runtime-port-attestation.v1";
   readonly sensitivity: "release-safe-control";
   readonly deployment: "trusted-cloud";
   readonly campaignId: string;
@@ -280,8 +252,7 @@ export interface ArtifactBackedProductionCompositionVerifierOptions {
   readonly source: TrustedProductionCompositionAttestationArtifactSource;
   readonly reader: TrustedProductionCompositionAttestationArtifactReader;
   readonly keyAuthority: TrustedProductionCompositionPublicKeyAuthority;
-  readonly evidenceKeyAuthority:
-    TrustedProductionCompositionEvidencePublicKeyAuthority;
+  readonly evidenceKeyAuthority: TrustedProductionCompositionEvidencePublicKeyAuthority;
   /**
    * Complete accepted rotation set. Unknown key IDs fail before the authority
    * is queried.
@@ -293,11 +264,8 @@ export interface ArtifactBackedProductionCompositionVerifierOptions {
   readonly now?: () => Date;
 }
 
-export class ProductionCompositionAttestationVerificationError
-  extends Error
-{
-  override readonly name =
-    "ProductionCompositionAttestationVerificationError";
+export class ProductionCompositionAttestationVerificationError extends Error {
+  override readonly name = "ProductionCompositionAttestationVerificationError";
 
   constructor() {
     super("Production composition attestation verification failed closed.");
@@ -308,9 +276,19 @@ function fail(): never {
   throw new ProductionCompositionAttestationVerificationError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function capturePublicKey(value: KeyObject): KeyObject {
+  if (value.type !== "public" || value.asymmetricKeyType !== "ed25519") fail();
+  return createPublicKey({
+    key: value.export({
+      format: "der",
+      type: "spki",
+    }),
+    format: "der",
+    type: "spki",
+  });
+}
+
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -325,10 +303,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
 }
@@ -428,12 +403,9 @@ function componentForRole(
 function expectedOperationalBindings(
   manifest: ProductionOptimizationCompositionManifest,
 ): readonly ProductionOperationalBindingAttestation[] {
-  const fields = PRODUCTION_OPERATIONAL_BINDING_FIELDS.map(
-    ([, field]) => field,
-  );
+  const fields = PRODUCTION_OPERATIONAL_BINDING_FIELDS.map(([, field]) => field);
   if (
-    Object.keys(manifest.bindings).length !==
-      PRODUCTION_OPERATIONAL_BINDING_FIELDS.length ||
+    Object.keys(manifest.bindings).length !== PRODUCTION_OPERATIONAL_BINDING_FIELDS.length ||
     new Set(fields).size !== fields.length
   ) {
     fail();
@@ -475,11 +447,8 @@ export function productionRuntimePortAttestationBindingHash(
     "implementationBindingHash",
   ]);
   if (
-    !PRODUCTION_RUNTIME_PORT_IDS.includes(
-      value.portId as ProductionRuntimePortId,
-    ) ||
-    value.role !==
-      RUNTIME_PORT_ROLES[value.portId as ProductionRuntimePortId] ||
+    !PRODUCTION_RUNTIME_PORT_IDS.includes(value.portId as ProductionRuntimePortId) ||
+    value.role !== RUNTIME_PORT_ROLES[value.portId as ProductionRuntimePortId] ||
     typeof value.componentBindingHash !== "string" ||
     !SHA256.test(value.componentBindingHash) ||
     typeof value.sourceArtifactHash !== "string" ||
@@ -493,8 +462,7 @@ export function productionRuntimePortAttestationBindingHash(
   }
   return canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-runtime-port-attestation-binding.v1",
+    domain: "dark-factory.production-runtime-port-attestation-binding.v1",
     portId: value.portId,
     role: value.role,
     componentBindingHash: value.componentBindingHash,
@@ -509,16 +477,13 @@ function compositionAttestationQuery(
 ): ProductionCompositionAttestationQuery {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-composition-attestation-query.v1" as const,
+    domain: "dark-factory.production-composition-attestation-query.v1" as const,
     campaignId: manifest.campaignId,
     manifestId: manifest.manifestId,
     manifestHash: manifest.manifestHash,
     componentBindingsHash: canonicalHash(manifest.components),
     operationalBindingsHash: canonicalHash(manifest.bindings),
-    runtimePortBindingsHash: productionRuntimePortBindingsHash(
-      manifest.runtimePortAttestations,
-    ),
+    runtimePortBindingsHash: productionRuntimePortBindingsHash(manifest.runtimePortAttestations),
   };
   return Object.freeze({
     ...unsigned,
@@ -554,15 +519,10 @@ function assertArtifactSet(
   ]);
   const issuedAt = timestamp(value.issuedAt);
   const expiresAt = timestamp(value.expiresAt);
-  assertSignature(
-    value.signature,
-    trustedEvidenceKeyIds,
-    value.issuedAt as string,
-  );
+  assertSignature(value.signature, trustedEvidenceKeyIds, value.issuedAt as string);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-composition-attestation-artifact-set.v1" ||
+    value.domain !== "dark-factory.production-composition-attestation-artifact-set.v1" ||
     value.sensitivity !== "release-safe-control" ||
     value.deployment !== "trusted-cloud" ||
     value.campaignId !== manifest.campaignId ||
@@ -578,11 +538,9 @@ function assertArtifactSet(
     !SHA256.test(value.contentHash) ||
     value.contentHash !== computeContentHash(value) ||
     !Array.isArray(value.componentAttestations) ||
-    value.componentAttestations.length !==
-      PRODUCTION_RUNTIME_ROLES.length ||
+    value.componentAttestations.length !== PRODUCTION_RUNTIME_ROLES.length ||
     !Array.isArray(value.runtimePortAttestations) ||
-    value.runtimePortAttestations.length !==
-      PRODUCTION_RUNTIME_PORT_IDS.length
+    value.runtimePortAttestations.length !== PRODUCTION_RUNTIME_PORT_IDS.length
   ) {
     fail();
   }
@@ -592,19 +550,13 @@ function assertArtifactSet(
   let totalBytes = 0;
   const addArtifact = (artifactValue: unknown): void => {
     assertArtifactReference(artifactValue, maximumArtifactBytes);
-    if (
-      artifactUris.has(artifactValue.uri) ||
-      artifactHashes.has(artifactValue.sha256)
-    ) {
+    if (artifactUris.has(artifactValue.uri) || artifactHashes.has(artifactValue.sha256)) {
       fail();
     }
     artifactUris.add(artifactValue.uri);
     artifactHashes.add(artifactValue.sha256);
     totalBytes += artifactValue.byteLength;
-    if (
-      !Number.isSafeInteger(totalBytes) ||
-      totalBytes > maximumTotalBytes
-    ) {
+    if (!Number.isSafeInteger(totalBytes) || totalBytes > maximumTotalBytes) {
       fail();
     }
   };
@@ -614,21 +566,16 @@ function assertArtifactSet(
     exactKeys(entry, ["role", "componentBindingHash", "artifact"]);
     if (
       entry.role !== role ||
-      entry.componentBindingHash !==
-        canonicalHash(componentForRole(manifest, role))
+      entry.componentBindingHash !== canonicalHash(componentForRole(manifest, role))
     ) {
       fail();
     }
     addArtifact(entry.artifact);
   }
 
-  exactKeys(value.operationalBindingsAttestation, [
-    "operationalBindingsHash",
-    "artifact",
-  ]);
+  exactKeys(value.operationalBindingsAttestation, ["operationalBindingsHash", "artifact"]);
   if (
-    value.operationalBindingsAttestation.operationalBindingsHash !==
-    query.operationalBindingsHash
+    value.operationalBindingsAttestation.operationalBindingsHash !== query.operationalBindingsHash
   ) {
     fail();
   }
@@ -704,8 +651,7 @@ function assertComponentArtifact(
   assertCommonArtifactEnvelope(value, manifest, now);
   const component = componentForRole(manifest, expectedRole);
   if (
-    value.domain !==
-      "dark-factory.production-component-attestation.v1" ||
+    value.domain !== "dark-factory.production-component-attestation.v1" ||
     value.role !== expectedRole ||
     value.componentBindingHash !== canonicalHash(component) ||
     value.imageReference !== component.imageReference ||
@@ -741,8 +687,7 @@ function assertOperationalArtifact(
   assertCommonArtifactEnvelope(value, manifest, now);
   const expected = expectedOperationalBindings(manifest);
   if (
-    value.domain !==
-      "dark-factory.production-operational-bindings-attestation.v1" ||
+    value.domain !== "dark-factory.production-operational-bindings-attestation.v1" ||
     value.operationalBindingsHash !== canonicalHash(manifest.bindings) ||
     !Array.isArray(value.bindingAttestations) ||
     value.bindingAttestations.length !== expected.length
@@ -754,8 +699,7 @@ function assertOperationalArtifact(
     exactKeys(binding, ["bindingId", "attestationSha256"]);
     if (
       binding.bindingId !== expectedBinding.bindingId ||
-      binding.attestationSha256 !==
-        expectedBinding.attestationSha256
+      binding.attestationSha256 !== expectedBinding.attestationSha256
     ) {
       fail();
     }
@@ -789,17 +733,11 @@ function assertRuntimePortArtifact(
     "contentHash",
   ]);
   assertCommonArtifactEnvelope(value, manifest, now);
-  const binding = componentBindingForPort(
-    manifest,
-    expectedCommitment.portId,
-  );
+  const binding = componentBindingForPort(manifest, expectedCommitment.portId);
   if (
-    value.domain !==
-      "dark-factory.production-runtime-port-attestation.v1" ||
+    value.domain !== "dark-factory.production-runtime-port-attestation.v1" ||
     value.runtimePortBindingsHash !==
-      productionRuntimePortBindingsHash(
-        manifest.runtimePortAttestations,
-      ) ||
+      productionRuntimePortBindingsHash(manifest.runtimePortAttestations) ||
     value.portId !== expectedCommitment.portId ||
     value.role !== binding.role ||
     value.componentBindingHash !== binding.componentBindingHash ||
@@ -824,9 +762,7 @@ function assertRuntimePortArtifact(
 
 function assertPublicKey(
   value: unknown,
-  purpose:
-    | "production-composition-manifest"
-    | "production-composition-evidence-set",
+  purpose: "production-composition-manifest" | "production-composition-evidence-set",
   keyId: string,
   signedAt: string,
 ): asserts value is
@@ -887,10 +823,7 @@ function assertOptionKeys(value: unknown): void {
     "trustedEvidenceKeyIds",
   ];
   const keys = Object.keys(value);
-  if (
-    required.some((key) => !keys.includes(key)) ||
-    keys.some((key) => !allowed.includes(key))
-  ) {
+  if (required.some((key) => !keys.includes(key)) || keys.some((key) => !allowed.includes(key))) {
     fail();
   }
 }
@@ -904,34 +837,23 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
   implements TrustedProductionCompositionAttestationVerifier
 {
   readonly boundary = "trusted-cloud-attestation-verifier" as const;
-  readonly #locate:
-    TrustedProductionCompositionAttestationArtifactSource["locate"];
-  readonly #readUtf8:
-    TrustedProductionCompositionAttestationArtifactReader["readUtf8"];
-  readonly #resolveKey:
-    TrustedProductionCompositionPublicKeyAuthority["resolve"];
-  readonly #resolveEvidenceKey:
-    TrustedProductionCompositionEvidencePublicKeyAuthority["resolve"];
+  readonly #locate: TrustedProductionCompositionAttestationArtifactSource["locate"];
+  readonly #readUtf8: TrustedProductionCompositionAttestationArtifactReader["readUtf8"];
+  readonly #resolveKey: TrustedProductionCompositionPublicKeyAuthority["resolve"];
+  readonly #resolveEvidenceKey: TrustedProductionCompositionEvidencePublicKeyAuthority["resolve"];
   readonly #trustedKeyIds: ReadonlySet<string>;
   readonly #trustedEvidenceKeyIds: ReadonlySet<string>;
   readonly #maximumArtifactBytes: number;
   readonly #maximumTotalBytes: number;
   readonly #now: () => Date;
 
-  constructor(
-    options: ArtifactBackedProductionCompositionVerifierOptions,
-  ) {
+  constructor(options: ArtifactBackedProductionCompositionVerifierOptions) {
     try {
       assertOptionKeys(options);
       const trustedKeyIds = new Set(options.trustedKeyIds);
-      const trustedEvidenceKeyIds = new Set(
-        options.trustedEvidenceKeyIds,
-      );
-      const maximumArtifactBytes =
-        options.maximumArtifactBytes ??
-        DEFAULT_MAXIMUM_ARTIFACT_BYTES;
-      const maximumTotalBytes =
-        options.maximumTotalBytes ?? DEFAULT_MAXIMUM_TOTAL_BYTES;
+      const trustedEvidenceKeyIds = new Set(options.trustedEvidenceKeyIds);
+      const maximumArtifactBytes = options.maximumArtifactBytes ?? DEFAULT_MAXIMUM_ARTIFACT_BYTES;
+      const maximumTotalBytes = options.maximumTotalBytes ?? DEFAULT_MAXIMUM_TOTAL_BYTES;
       if (
         options.source.boundary !== "trusted-cloud" ||
         options.reader.boundary !== "trusted-cloud" ||
@@ -947,11 +869,9 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
         trustedKeyIds.size !== options.trustedKeyIds.length ||
         [...trustedKeyIds].some((keyId) => !SAFE_KEY_ID.test(keyId)) ||
         trustedEvidenceKeyIds.size < 1 ||
-        trustedEvidenceKeyIds.size !==
-          options.trustedEvidenceKeyIds.length ||
+        trustedEvidenceKeyIds.size !== options.trustedEvidenceKeyIds.length ||
         [...trustedEvidenceKeyIds].some(
-          (keyId) =>
-            !SAFE_KEY_ID.test(keyId) || trustedKeyIds.has(keyId),
+          (keyId) => !SAFE_KEY_ID.test(keyId) || trustedKeyIds.has(keyId),
         ) ||
         !Number.isSafeInteger(maximumArtifactBytes) ||
         maximumArtifactBytes < 1_024 ||
@@ -966,13 +886,10 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
       const sourceNow = options.now ?? (() => new Date());
       this.#locate = options.source.locate.bind(options.source);
       this.#readUtf8 = options.reader.readUtf8.bind(options.reader);
-      this.#resolveKey = options.keyAuthority.resolve.bind(
-        options.keyAuthority,
+      this.#resolveKey = options.keyAuthority.resolve.bind(options.keyAuthority);
+      this.#resolveEvidenceKey = options.evidenceKeyAuthority.resolve.bind(
+        options.evidenceKeyAuthority,
       );
-      this.#resolveEvidenceKey =
-        options.evidenceKeyAuthority.resolve.bind(
-          options.evidenceKeyAuthority,
-        );
       this.#trustedKeyIds = trustedKeyIds;
       this.#trustedEvidenceKeyIds = trustedEvidenceKeyIds;
       this.#maximumArtifactBytes = maximumArtifactBytes;
@@ -986,10 +903,7 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
   async #readArtifact(
     artifact: TrustedCloudArtifactRef,
   ): Promise<Readonly<Record<string, unknown>>> {
-    const raw = await this.#readUtf8(
-      artifact,
-      this.#maximumArtifactBytes,
-    );
+    const raw = await this.#readUtf8(artifact, this.#maximumArtifactBytes);
     const byteLength = Buffer.byteLength(raw, "utf8");
     if (
       !Number.isSafeInteger(byteLength) ||
@@ -1013,24 +927,19 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
 
   async verify(
     manifestInput: ProductionOptimizationCompositionManifest,
-    runtimePortAttestationsInput:
-      readonly ProductionRuntimePortAttestationCommitment[],
+    runtimePortAttestationsInput: readonly ProductionRuntimePortAttestationCommitment[],
   ): Promise<ProductionCompositionVerification> {
     try {
       const manifestInputJson = canonicalJson(manifestInput);
-      const runtimePortAttestationsInputJson = canonicalJson(
-        runtimePortAttestationsInput,
-      );
+      const runtimePortAttestationsInputJson = canonicalJson(runtimePortAttestationsInput);
       const manifest = cloneCanonical(manifestInput);
-      const runtimePortAttestations = cloneCanonical(
-        runtimePortAttestationsInput,
-      );
+      const runtimePortAttestations = cloneCanonical(runtimePortAttestationsInput);
       const now = this.#now();
       assertProductionOptimizationCompositionManifest(manifest, now);
       productionRuntimePortBindingsHash(runtimePortAttestations);
       if (
         canonicalJson(runtimePortAttestations) !==
-        canonicalJson(manifest.runtimePortAttestations) ||
+          canonicalJson(manifest.runtimePortAttestations) ||
         timestamp(manifest.signature.signedAt) > now.getTime() ||
         !this.#trustedKeyIds.has(manifest.signature.keyId)
       ) {
@@ -1049,20 +958,15 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
         manifest.signature.keyId,
         manifest.signature.signedAt,
       );
-      const publicKey = createPublicKey(key.publicKey);
+      const publicKey = capturePublicKey(key.publicKey);
       if (
         publicKey.type !== "public" ||
         publicKey.asymmetricKeyType !== "ed25519" ||
-        !verifyEd25519Signature(
-          manifest as unknown as Readonly<Record<string, unknown>>,
-          publicKey,
-        )
+        !verifyEd25519Signature(manifest as unknown as Readonly<Record<string, unknown>>, publicKey)
       ) {
         fail();
       }
-      const publicKeySha256 = sha256(
-        publicKey.export({ format: "der", type: "spki" }),
-      );
+      const publicKeySha256 = sha256(publicKey.export({ format: "der", type: "spki" }));
 
       const query = compositionAttestationQuery(manifest);
       const queryJson = canonicalJson(query);
@@ -1086,18 +990,14 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
         keyId: artifactSet.signature.keyId,
         signedAt: artifactSet.signature.signedAt,
       });
-      const evidenceKey = await this.#resolveEvidenceKey(
-        evidenceKeyRequest,
-      );
+      const evidenceKey = await this.#resolveEvidenceKey(evidenceKeyRequest);
       assertPublicKey(
         evidenceKey,
         "production-composition-evidence-set",
         artifactSet.signature.keyId,
         artifactSet.signature.signedAt,
       );
-      const evidencePublicKey = createPublicKey(
-        evidenceKey.publicKey,
-      );
+      const evidencePublicKey = capturePublicKey(evidenceKey.publicKey);
       if (
         evidencePublicKey.type !== "public" ||
         evidencePublicKey.asymmetricKeyType !== "ed25519" ||
@@ -1114,53 +1014,35 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
       if (evidencePublicKeySha256 === publicKeySha256) fail();
 
       const componentDocuments = await Promise.all(
-        artifactSet.componentAttestations.map((entry) =>
-          this.#readArtifact(entry.artifact),
-        ),
+        artifactSet.componentAttestations.map((entry) => this.#readArtifact(entry.artifact)),
       );
       const operationalDocument = await this.#readArtifact(
         artifactSet.operationalBindingsAttestation.artifact,
       );
       const runtimePortDocuments = await Promise.all(
-        artifactSet.runtimePortAttestations.map((entry) =>
-          this.#readArtifact(entry.artifact),
-        ),
+        artifactSet.runtimePortAttestations.map((entry) => this.#readArtifact(entry.artifact)),
       );
 
       for (const [index, role] of PRODUCTION_RUNTIME_ROLES.entries()) {
-        assertComponentArtifact(
-          componentDocuments[index],
-          manifest,
-          role,
-          now,
-        );
+        assertComponentArtifact(componentDocuments[index], manifest, role, now);
       }
       assertOperationalArtifact(operationalDocument, manifest, now);
-      for (const [index, commitment] of
-        runtimePortAttestations.entries()) {
-        assertRuntimePortArtifact(
-          runtimePortDocuments[index],
-          manifest,
-          commitment,
-          now,
-        );
+      for (const [index, commitment] of runtimePortAttestations.entries()) {
+        assertRuntimePortArtifact(runtimePortDocuments[index], manifest, commitment, now);
       }
 
       if (
         canonicalJson(manifestInput) !== manifestInputJson ||
-        canonicalJson(runtimePortAttestationsInput) !==
-          runtimePortAttestationsInputJson
+        canonicalJson(runtimePortAttestationsInput) !== runtimePortAttestationsInputJson
       ) {
         fail();
       }
       const componentBindingsHash = canonicalHash(manifest.components);
       const operationalBindingsHash = canonicalHash(manifest.bindings);
-      const runtimePortBindingsHash =
-        productionRuntimePortBindingsHash(runtimePortAttestations);
+      const runtimePortBindingsHash = productionRuntimePortBindingsHash(runtimePortAttestations);
       const verifierAttestationHash = canonicalHash({
         schemaVersion: 1,
-        domain:
-          "dark-factory.production-composition-verified-evidence.v1",
+        domain: "dark-factory.production-composition-verified-evidence.v1",
         manifestHash: manifest.manifestHash,
         queryHash: query.queryHash,
         signingKey: {
@@ -1177,8 +1059,7 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
       });
       return {
         schemaVersion: 1,
-        domain:
-          "dark-factory.production-composition-verification.v1",
+        domain: "dark-factory.production-composition-verification.v1",
         manifestHash: manifest.manifestHash,
         signingKeyId: manifest.signature.keyId,
         componentBindingsHash,
@@ -1188,10 +1069,7 @@ export class ArtifactBackedProductionCompositionAttestationVerifier
         verified: true,
       };
     } catch (error) {
-      if (
-        error instanceof
-        ProductionCompositionAttestationVerificationError
-      ) {
+      if (error instanceof ProductionCompositionAttestationVerificationError) {
         throw error;
       }
       fail();

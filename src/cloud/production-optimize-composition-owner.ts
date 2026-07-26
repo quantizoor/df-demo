@@ -1,7 +1,6 @@
 import {
   assertProductionOptimizationCompositionManifest,
   composeProductionOptimizationRuntime,
-  productionRuntimePortBindingsHash,
   type ProductionCompositionVerification,
   type ProductionOptimizationCompositionManifest,
   type ProductionOptimizationRuntime,
@@ -10,6 +9,7 @@ import {
   type ProductionOptimizationRuntimeRunReceipt,
   type ProductionOptimizationRuntimeStatus,
   type ProductionRuntimePortAttestationCommitment,
+  productionRuntimePortBindingsHash,
   type TrustedProductionCompositionAttestationVerifier,
 } from "../orchestrator/production-runtime.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
@@ -27,8 +27,7 @@ const activeCampaigns = new Set<string>();
 
 export interface ProductionOptimizeBootstrapOrReconstructRequest {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1";
+  readonly domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1";
   readonly manifestId: string;
   readonly manifestHash: string;
   readonly campaignId: string;
@@ -46,8 +45,7 @@ export interface ProductionOptimizeBootstrapOrReconstructRequest {
 
 export interface ProductionOptimizeBootstrapOrReconstructReceipt {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1";
+  readonly domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1";
   readonly requestHash: string;
   readonly manifestHash: string;
   readonly campaignId: string;
@@ -87,8 +85,7 @@ export interface ProductionOptimizeLifecycleRegistrar {
  * state. `requestHash` is the mandatory durable idempotency key.
  */
 export interface TrustedProductionOptimizeBootstrapOrReconstructPort {
-  readonly boundary:
-    "trusted-cloud-production-optimize-bootstrap-or-reconstruct";
+  readonly boundary: "trusted-cloud-production-optimize-bootstrap-or-reconstruct";
   verifyBootstrapOrReconstruct(
     request: ProductionOptimizeBootstrapOrReconstructRequest,
     lifecycle: ProductionOptimizeLifecycleRegistrar,
@@ -114,9 +111,7 @@ export interface ProductionOptimizeRuntimeFactoryInput {
  */
 export interface TrustedProductionOptimizeRuntimeFactory {
   readonly boundary: "trusted-cloud-production-optimize-runtime-factory";
-  create(
-    input: ProductionOptimizeRuntimeFactoryInput,
-  ): Promise<ProductionOptimizeRuntimeAssembly>;
+  create(input: ProductionOptimizeRuntimeFactoryInput): Promise<ProductionOptimizeRuntimeAssembly>;
 }
 
 export interface ProductionOptimizeCompositionOwnerOptions {
@@ -135,8 +130,7 @@ interface CapturedOwnerOptions {
   readonly manifestJson: string;
   readonly campaignId: string;
   readonly verify: TrustedProductionCompositionAttestationVerifier["verify"];
-  readonly verifyBootstrapOrReconstruct:
-    TrustedProductionOptimizeBootstrapOrReconstructPort["verifyBootstrapOrReconstruct"];
+  readonly verifyBootstrapOrReconstruct: TrustedProductionOptimizeBootstrapOrReconstructPort["verifyBootstrapOrReconstruct"];
   readonly createRuntime: TrustedProductionOptimizeRuntimeFactory["create"];
   readonly now: () => Date;
 }
@@ -214,10 +208,8 @@ function captureOptions(options: ProductionOptimizeCompositionOwnerOptions): Cap
     assertOwnerOptionKeys(options);
     if (
       options.verifier.boundary !== "trusted-cloud-attestation-verifier" ||
-      options.bootstrap.boundary !==
-        "trusted-cloud-production-optimize-bootstrap-or-reconstruct" ||
-      options.runtimeFactory.boundary !==
-        "trusted-cloud-production-optimize-runtime-factory" ||
+      options.bootstrap.boundary !== "trusted-cloud-production-optimize-bootstrap-or-reconstruct" ||
+      options.runtimeFactory.boundary !== "trusted-cloud-production-optimize-runtime-factory" ||
       typeof options.verifier.verify !== "function" ||
       typeof options.bootstrap.verifyBootstrapOrReconstruct !== "function" ||
       typeof options.runtimeFactory.create !== "function" ||
@@ -233,8 +225,9 @@ function captureOptions(options: ProductionOptimizeCompositionOwnerOptions): Cap
       manifestJson: canonicalJson(manifest),
       campaignId: manifest.campaignId,
       verify: options.verifier.verify.bind(options.verifier),
-      verifyBootstrapOrReconstruct:
-        options.bootstrap.verifyBootstrapOrReconstruct.bind(options.bootstrap),
+      verifyBootstrapOrReconstruct: options.bootstrap.verifyBootstrapOrReconstruct.bind(
+        options.bootstrap,
+      ),
       createRuntime: options.runtimeFactory.create.bind(options.runtimeFactory),
       now,
     };
@@ -248,8 +241,7 @@ function bootstrapRequest(
 ): ProductionOptimizeBootstrapOrReconstructRequest {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1" as const,
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1" as const,
     manifestId: manifest.manifestId,
     manifestHash: manifest.manifestHash,
     campaignId: manifest.campaignId,
@@ -288,8 +280,7 @@ function assertVerification(
     value.signingKeyId !== manifest.signature.keyId ||
     value.componentBindingsHash !== canonicalHash(manifest.components) ||
     value.operationalBindingsHash !== canonicalHash(manifest.bindings) ||
-    value.runtimePortBindingsHash !==
-      productionRuntimePortBindingsHash(runtimePortAttestations) ||
+    value.runtimePortBindingsHash !== productionRuntimePortBindingsHash(runtimePortAttestations) ||
     !SHA256.test(value.verifierAttestationHash) ||
     value.verified !== true
   ) {
@@ -343,8 +334,7 @@ function assertBootstrapReceipt(
   };
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" ||
+    value.domain !== "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" ||
     value.requestHash !== request.requestHash ||
     value.manifestHash !== request.manifestHash ||
     value.campaignId !== request.campaignId ||
@@ -380,8 +370,7 @@ export class ProductionOptimizeCompositionOwner {
   readonly #manifestJson: string;
   readonly #campaignId: string;
   readonly #verify: TrustedProductionCompositionAttestationVerifier["verify"];
-  readonly #verifyBootstrapOrReconstruct:
-    TrustedProductionOptimizeBootstrapOrReconstructPort["verifyBootstrapOrReconstruct"];
+  readonly #verifyBootstrapOrReconstruct: TrustedProductionOptimizeBootstrapOrReconstructPort["verifyBootstrapOrReconstruct"];
   readonly #createRuntime: TrustedProductionOptimizeRuntimeFactory["create"];
   readonly #now: () => Date;
   readonly #registered: RegisteredClose[] = [];
@@ -514,9 +503,7 @@ export class ProductionOptimizeCompositionOwner {
     let closeFailed = false;
     try {
       const now = this.#now();
-      const manifest = JSON.parse(
-        this.#manifestJson,
-      ) as ProductionOptimizationCompositionManifest;
+      const manifest = JSON.parse(this.#manifestJson) as ProductionOptimizationCompositionManifest;
       assertProductionOptimizationCompositionManifest(manifest, now);
       const verification = await this.#preverify(manifest);
       const request = bootstrapRequest(manifest);
@@ -530,10 +517,7 @@ export class ProductionOptimizeCompositionOwner {
       const requestInput = JSON.parse(
         requestJson,
       ) as ProductionOptimizeBootstrapOrReconstructRequest;
-      const bootstrapReceipt = await this.#verifyBootstrapOrReconstruct(
-        requestInput,
-        lifecycle,
-      );
+      const bootstrapReceipt = await this.#verifyBootstrapOrReconstruct(requestInput, lifecycle);
       if (canonicalJson(requestInput) !== requestJson) fail();
       assertBootstrapReceipt(bootstrapReceipt, request, manifest, this.#now());
       const canonicalBootstrapReceipt = cloneCanonical(bootstrapReceipt);
@@ -541,13 +525,9 @@ export class ProductionOptimizeCompositionOwner {
         this.#manifestJson,
       ) as ProductionOptimizationCompositionManifest;
       const factoryVerification = cloneCanonical(verification);
-      const factoryBootstrapReceipt = cloneCanonical(
-        canonicalBootstrapReceipt,
-      );
+      const factoryBootstrapReceipt = cloneCanonical(canonicalBootstrapReceipt);
       const verificationJson = canonicalJson(factoryVerification);
-      const bootstrapReceiptJson = canonicalJson(
-        factoryBootstrapReceipt,
-      );
+      const bootstrapReceiptJson = canonicalJson(factoryBootstrapReceipt);
       const assembly = await this.#createRuntime({
         manifest: factoryManifest,
         compositionVerification: factoryVerification,
@@ -563,9 +543,7 @@ export class ProductionOptimizeCompositionOwner {
       }
       assertAssembly(assembly);
       const runtime = await composeProductionOptimizationRuntime({
-        manifest: JSON.parse(
-          this.#manifestJson,
-        ) as ProductionOptimizationCompositionManifest,
+        manifest: JSON.parse(this.#manifestJson) as ProductionOptimizationCompositionManifest,
         verifier: this.#stableVerifier(verification),
         components: assembly.components,
         runtimePortBindings: assembly.runtimePortBindings,

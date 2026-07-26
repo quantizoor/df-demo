@@ -2,14 +2,10 @@
 
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-
-import { runSyntheticWalkForwardCampaign } from "../synthetic/campaign.js";
-import {
-  inspectBootstrapEnvironment,
-  type BootstrapConfiguration,
-} from "../config/environment.js";
+import { type BootstrapConfiguration, inspectBootstrapEnvironment } from "../config/environment.js";
 import { inspectPiHarnessSourceEnvironment } from "../config/harness-source.js";
 import { canonicalJson } from "../schemas/canonical.js";
+import { runSyntheticWalkForwardCampaign } from "../synthetic/campaign.js";
 import { createOfficialDaytonaProvider } from "./adapters/daytona.js";
 import {
   CloudMarkerTrustedArtifactRuntimeGuard,
@@ -22,8 +18,8 @@ import {
 import { MountedVolumeTrustedArtifactBackend } from "./mounted-volume-backend.js";
 import {
   AttestedMountedVolumeStateSemanticsGuard,
-  runMountedVolumeSemanticsCanary,
   type MountedVolumeRuntimeIdentity,
+  runMountedVolumeSemanticsCanary,
 } from "./mounted-volume-canary.js";
 import {
   inspectProductionOptimizeBindingReadiness,
@@ -34,14 +30,7 @@ import { assertCloudExecutionEnvironment } from "./runtime-marker.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
 
 const SAFE_CAMPAIGN_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const CONTROL_COMMANDS = [
-  "probe",
-  "synthetic",
-  "optimize",
-  "status",
-  "stop",
-  "resume",
-] as const;
+const CONTROL_COMMANDS = ["probe", "synthetic", "optimize", "status", "stop", "resume"] as const;
 type ControlCommand = (typeof CONTROL_COMMANDS)[number];
 
 class TrustedControlPlaneError extends Error {
@@ -52,9 +41,10 @@ function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function parseArguments(
-  arguments_: readonly string[],
-): { readonly command: ControlCommand; readonly campaignId: string } {
+function parseArguments(arguments_: readonly string[]): {
+  readonly command: ControlCommand;
+  readonly campaignId: string;
+} {
   const [command, campaignFlag, campaignId, ...rest] = arguments_;
   if (
     command === undefined ||
@@ -64,9 +54,7 @@ function parseArguments(
     !SAFE_CAMPAIGN_ID.test(campaignId) ||
     rest.length !== 0
   ) {
-    throw new TrustedControlPlaneError(
-      "Trusted control-plane invocation is malformed.",
-    );
+    throw new TrustedControlPlaneError("Trusted control-plane invocation is malformed.");
   }
   return { command: command as ControlCommand, campaignId };
 }
@@ -77,14 +65,10 @@ function configuration(
   if (command === "optimize") {
     const readiness = inspectBootstrapEnvironment(process.env);
     if (!readiness.ready || readiness.configuration === null) {
-      throw new TrustedControlPlaneError(
-        "Trusted paid-optimize configuration is incomplete.",
-      );
+      throw new TrustedControlPlaneError("Trusted paid-optimize configuration is incomplete.");
     }
     if (readiness.configuration.cloudProvider !== "daytona") {
-      throw new TrustedControlPlaneError(
-        "The MVP trusted control plane supports Daytona only.",
-      );
+      throw new TrustedControlPlaneError("The MVP trusted control plane supports Daytona only.");
     }
     return readiness.configuration;
   }
@@ -93,14 +77,10 @@ function configuration(
     command === "probe" ? "probe" : "offline",
   );
   if (!readiness.ready || readiness.configuration === null) {
-    throw new TrustedControlPlaneError(
-      "Trusted control-stage configuration is incomplete.",
-    );
+    throw new TrustedControlPlaneError("Trusted control-stage configuration is incomplete.");
   }
   if (readiness.configuration.cloudProvider !== "daytona") {
-    throw new TrustedControlPlaneError(
-      "The MVP trusted control plane supports Daytona only.",
-    );
+    throw new TrustedControlPlaneError("The MVP trusted control plane supports Daytona only.");
   }
   return readiness.configuration;
 }
@@ -109,17 +89,13 @@ async function* oneChunk(value: Uint8Array): AsyncIterable<Uint8Array> {
   yield value;
 }
 
-async function consume(
-  source: AsyncIterable<Uint8Array>,
-): Promise<Uint8Array> {
+async function consume(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
   for await (const chunk of source) {
     byteLength += chunk.byteLength;
     if (!Number.isSafeInteger(byteLength) || byteLength > 64 * 1024 * 1024) {
-      throw new TrustedControlPlaneError(
-        "Trusted control artifact exceeds its read limit.",
-      );
+      throw new TrustedControlPlaneError("Trusted control artifact exceeds its read limit.");
     }
     chunks.push(chunk);
   }
@@ -132,14 +108,8 @@ async function persistControlReceipt(
   kind: string,
   value: unknown,
 ): Promise<TrustedCloudArtifactRef> {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
-    throw new TrustedControlPlaneError(
-      "Trusted control receipt must be a JSON object.",
-    );
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TrustedControlPlaneError("Trusted control receipt must be a JSON object.");
   }
   const serialized = canonicalJson(value);
   const bytes = Buffer.from(`${serialized}\n`, "utf8");
@@ -149,10 +119,7 @@ async function persistControlReceipt(
     chunks: oneChunk(bytes),
   });
   const verified = await consume(await bridge.openVerified(artifact));
-  if (
-    verified.byteLength !== bytes.byteLength ||
-    sha256(verified) !== sha256(bytes)
-  ) {
+  if (verified.byteLength !== bytes.byteLength || sha256(verified) !== sha256(bytes)) {
     throw new TrustedControlPlaneError(
       "Trusted control receipt did not round-trip through the mounted volume.",
     );
@@ -164,19 +131,12 @@ async function main(): Promise<void> {
   const { command, campaignId } = parseArguments(process.argv.slice(2));
   const marker = assertCloudExecutionEnvironment("daytona", process.env);
   if (process.env["DF_TRUSTED_CONTROL_PLANE"] !== "1") {
-    throw new TrustedControlPlaneError(
-      "Trusted control-plane marker is absent.",
-    );
+    throw new TrustedControlPlaneError("Trusted control-plane marker is absent.");
   }
   const config = configuration(command);
   const volumeRoot = process.env["DF_TRUSTED_VOLUME_ROOT"];
-  if (
-    volumeRoot === undefined ||
-    volumeRoot !== "/trusted/dark-factory"
-  ) {
-    throw new TrustedControlPlaneError(
-      "Trusted control-plane volume mount is not exact.",
-    );
+  if (volumeRoot === undefined || volumeRoot !== "/trusted/dark-factory") {
+    throw new TrustedControlPlaneError("Trusted control-plane volume mount is not exact.");
   }
   const guard = new CloudMarkerTrustedArtifactRuntimeGuard({
     provider: "daytona",
@@ -204,9 +164,7 @@ async function main(): Promise<void> {
       volumeId === undefined ||
       volumeSubpath === undefined
     ) {
-      throw new TrustedControlPlaneError(
-        "Trusted control-plane volume binding is incomplete.",
-      );
+      throw new TrustedControlPlaneError("Trusted control-plane volume binding is incomplete.");
     }
     const runtimeIdentity: MountedVolumeRuntimeIdentity = {
       marker,
@@ -214,27 +172,25 @@ async function main(): Promise<void> {
       platform: process.platform,
       architecture: process.arch,
     };
-    const volumeSemantics =
-      await runMountedVolumeSemanticsCanary({
-        provider: "daytona",
-        volumeRoot: stateVolumeRoot,
-        volumeId,
-        volumeSubpath,
-        controlImageDigest: config.images.control.digest,
-        runtimeIdentity,
-        runtimeGuard: guard,
-      });
-    const semanticsGuard =
-      new AttestedMountedVolumeStateSemanticsGuard({
-        receipt: volumeSemantics,
-        provider: "daytona",
-        volumeRoot: stateVolumeRoot,
-        volumeId,
-        volumeSubpath,
-        controlImageDigest: config.images.control.digest,
-        runtimeIdentity,
-        runtimeGuard: guard,
-      });
+    const volumeSemantics = await runMountedVolumeSemanticsCanary({
+      provider: "daytona",
+      volumeRoot: stateVolumeRoot,
+      volumeId,
+      volumeSubpath,
+      controlImageDigest: config.images.control.digest,
+      runtimeIdentity,
+      runtimeGuard: guard,
+    });
+    const semanticsGuard = new AttestedMountedVolumeStateSemanticsGuard({
+      receipt: volumeSemantics,
+      provider: "daytona",
+      volumeRoot: stateVolumeRoot,
+      volumeId,
+      volumeSubpath,
+      controlImageDigest: config.images.control.digest,
+      runtimeIdentity,
+      runtimeGuard: guard,
+    });
     semanticsGuard.assertLinearizableStateVolume({
       volumeRoot: stateVolumeRoot,
       namespace: `control-probe-${campaignId}`,
@@ -257,12 +213,7 @@ async function main(): Promise<void> {
       volumeSemanticsReceiptHash: volumeSemantics.contentHash,
       volumeSemanticsArtifactSha256: volumeSemanticsArtifact.sha256,
     });
-    const artifact = await persistControlReceipt(
-      bridge,
-      campaignId,
-      "probe",
-      receipt,
-    );
+    const artifact = await persistControlReceipt(bridge, campaignId, "probe", receipt);
     process.stdout.write(
       `${JSON.stringify({
         ok: true,
@@ -276,12 +227,7 @@ async function main(): Promise<void> {
 
   if (command === "synthetic") {
     const synthetic = await runSyntheticWalkForwardCampaign();
-    const artifact = await persistControlReceipt(
-      bridge,
-      campaignId,
-      "synthetic",
-      synthetic,
-    );
+    const artifact = await persistControlReceipt(bridge, campaignId, "synthetic", synthetic);
     process.stdout.write(
       `${JSON.stringify({
         ok: true,
@@ -294,29 +240,20 @@ async function main(): Promise<void> {
   }
 
   if (command === "status") {
-    const readiness =
-      inspectProductionOptimizeBindingReadiness({
-        bindings: {},
-        piSourceConfiguration:
-          inspectPiHarnessSourceEnvironment(process.env),
-      });
-    const report =
-      releaseSafeProductionOptimizeBindingReport(readiness);
+    const readiness = inspectProductionOptimizeBindingReadiness({
+      bindings: {},
+      piSourceConfiguration: inspectPiHarnessSourceEnvironment(process.env),
+    });
+    const report = releaseSafeProductionOptimizeBindingReport(readiness);
     const status = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.cloud-control-precomposition-status.v1" as const,
+      domain: "dark-factory.cloud-control-precomposition-status.v1" as const,
       campaignId,
       state: "awaiting-production-composition" as const,
       controlImageDigest: config.images.control.digest,
       ...report,
     };
-    const artifact = await persistControlReceipt(
-      bridge,
-      campaignId,
-      "status",
-      status,
-    );
+    const artifact = await persistControlReceipt(bridge, campaignId, "status", status);
     process.stdout.write(
       `${JSON.stringify({
         ok: true,
@@ -336,19 +273,17 @@ async function main(): Promise<void> {
      * exact public composition surface rather than accepting an environment
      * declaration as proof that executable ports exist.
      */
-    const readiness =
-      inspectProductionOptimizeBindingReadiness({
-        bindings: {},
-        piSourceConfiguration: sourceReadiness,
-      });
+    const readiness = inspectProductionOptimizeBindingReadiness({
+      bindings: {},
+      piSourceConfiguration: sourceReadiness,
+    });
     const artifact = await persistControlReceipt(
       bridge,
       campaignId,
       "optimize-binding-readiness",
       readiness,
     );
-    const report =
-      releaseSafeProductionOptimizeBindingReport(readiness);
+    const report = releaseSafeProductionOptimizeBindingReport(readiness);
     process.stdout.write(
       `${JSON.stringify({
         ok: false,
@@ -373,8 +308,7 @@ try {
     `${JSON.stringify({
       ok: false,
       code: "DF_TRUSTED_CONTROL_FAILED",
-      message:
-        "Trusted control-plane command failed closed. Inspect protected cloud logs.",
+      message: "Trusted control-plane command failed closed. Inspect protected cloud logs.",
     })}\n`,
   );
   process.exitCode = 1;

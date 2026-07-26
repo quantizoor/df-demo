@@ -1,19 +1,11 @@
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fileConstants } from "node:fs";
-import {
-  chmod,
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  rename,
-  rm,
-} from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { spawn } from "node:child_process";
 
 import type { TrustedCloudArtifactRef } from "../cloud/types.js";
-import { assertMvpCandidateChangedFiles } from "./optimizer-worker.js";
+import { canonicalJson, MVP_SCHEMA_VERSION, type PrivateRawDiagnostic } from "./contracts.js";
 import {
   type MvpEvaluatorRuntimeDependencies,
   type MvpEvaluatorRuntimePin,
@@ -29,21 +21,15 @@ import {
   type TrustedMvpHarborRequestedRawTrial,
 } from "./harbor.js";
 import { readOptionalBoundedJson, writeJsonAtomic } from "./mounted-files.js";
-import {
-  canonicalJson,
-  MVP_SCHEMA_VERSION,
-  type PrivateRawDiagnostic,
-} from "./contracts.js";
+import { assertMvpCandidateChangedFiles } from "./optimizer-worker.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const REVISION = /^[a-f0-9]{40}$/u;
-const SAFE_GITHUB_NAME =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/u;
+const SAFE_GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/u;
 const MAXIMUM_COMMAND_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAXIMUM_JSON_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_RUNTIME_BYTES = 2 * 1024 * 1024 * 1024;
-const MVP_PI_RUNTIME_PACKAGER =
-  "/tmp/df-mvp-controller/scripts/package-pi-runtime.mjs";
+const MVP_PI_RUNTIME_PACKAGER = "/tmp/df-mvp-controller/scripts/package-pi-runtime.mjs";
 const MVP_PI_BUN_TARGET = "bun-linux-x64-baseline";
 const MVP_PI_RUNTIME_ABI = "linux-x64-glibc";
 const MVP_PI_BUILD_POLICY_SHA256 = createHash("sha256")
@@ -112,9 +98,7 @@ export interface MvpEvaluatorProcessResult {
 }
 
 export interface MvpEvaluatorProcessPort {
-  run(
-    request: MvpEvaluatorProcessRequest,
-  ): Promise<MvpEvaluatorProcessResult>;
+  run(request: MvpEvaluatorProcessRequest): Promise<MvpEvaluatorProcessResult>;
 }
 
 export interface MvpEvaluatorFileSystemPort {
@@ -176,21 +160,9 @@ export async function createNodeMvpEvaluatorDependencies(
   await assertEvaluatorPrivateRoot(input.stateRoot);
   const processPort = input.process ?? new NodeMvpEvaluatorProcess();
   const files = input.files ?? new NodeMvpEvaluatorFileSystem();
-  await verifyPinnedFile(
-    files,
-    input.pin.harborExecutable,
-    input.pin.harborExecutableSha256,
-  );
-  await verifyPinnedFile(
-    files,
-    input.pin.bunExecutable,
-    input.pin.bunExecutableSha256,
-  );
-  await verifyPinnedFile(
-    files,
-    input.adapterPath,
-    input.pin.adapterSha256,
-  );
+  await verifyPinnedFile(files, input.pin.harborExecutable, input.pin.harborExecutableSha256);
+  await verifyPinnedFile(files, input.pin.bunExecutable, input.pin.bunExecutableSha256);
+  await verifyPinnedFile(files, input.adapterPath, input.pin.adapterSha256);
   const packager = await files.hashFile(MVP_PI_RUNTIME_PACKAGER);
   const buildRuntimeDigest = mvpPiBuildRuntimeDigest({
     architecture: input.pin.architecture,
@@ -203,8 +175,7 @@ export async function createNodeMvpEvaluatorDependencies(
     source: new NodeMvpPiRuntimeSource({
       stateRoot: input.stateRoot,
       repository: input.repository,
-      githubBasicAuthPlaceholder:
-        input.githubBasicAuthPlaceholder,
+      githubBasicAuthPlaceholder: input.githubBasicAuthPlaceholder,
       bunExecutable: input.pin.bunExecutable,
       buildRuntimeDigest,
       expectedCandidate: input.expectedCandidate,
@@ -222,9 +193,7 @@ export async function createNodeMvpEvaluatorDependencies(
   };
 }
 
-export class NodeMvpPiRuntimeSource
-  implements MvpPiRuntimeSourcePort
-{
+export class NodeMvpPiRuntimeSource implements MvpPiRuntimeSourcePort {
   public constructor(
     private readonly options: {
       readonly stateRoot: string;
@@ -232,8 +201,7 @@ export class NodeMvpPiRuntimeSource
       readonly githubBasicAuthPlaceholder: string;
       readonly bunExecutable: string;
       readonly buildRuntimeDigest: string;
-      readonly expectedCandidate:
-        CreateNodeMvpEvaluatorDependenciesInput["expectedCandidate"];
+      readonly expectedCandidate: CreateNodeMvpEvaluatorDependenciesInput["expectedCandidate"];
       readonly process: MvpEvaluatorProcessPort;
       readonly files: MvpEvaluatorFileSystemPort;
     },
@@ -245,10 +213,7 @@ export class NodeMvpPiRuntimeSource
     readonly championRevision: string;
     readonly expectedChangedFiles: readonly string[] | null;
   }): Promise<MvpPiRuntimeMaterialization> {
-    if (
-      !REVISION.test(input.revision) ||
-      !REVISION.test(input.championRevision)
-    ) {
+    if (!REVISION.test(input.revision) || !REVISION.test(input.championRevision)) {
       throw new Error("Pi runtime revision is not a Git object ID.");
     }
     if (
@@ -256,24 +221,14 @@ export class NodeMvpPiRuntimeSource
       (this.options.expectedCandidate === null ||
         this.options.expectedCandidate.revision !== input.revision ||
         input.expectedChangedFiles === null ||
-        !sameStringSet(
-          this.options.expectedCandidate.changedFiles,
-          input.expectedChangedFiles,
-        ))
+        !sameStringSet(this.options.expectedCandidate.changedFiles, input.expectedChangedFiles))
     ) {
       throw new Error("Candidate source is not bound to its proposal.");
     }
-    if (
-      input.arm === "champion" &&
-      input.expectedChangedFiles !== null
-    ) {
+    if (input.arm === "champion" && input.expectedChangedFiles !== null) {
       throw new Error("Champion source cannot carry a candidate diff.");
     }
-    const runtimeRoot = join(
-      this.options.stateRoot,
-      "private",
-      "runtimes",
-    );
+    const runtimeRoot = join(this.options.stateRoot, "private", "runtimes");
     const archivePath = join(
       runtimeRoot,
       `${input.arm}-${input.revision}-${this.options.buildRuntimeDigest}.tar`,
@@ -298,10 +253,7 @@ export class NodeMvpPiRuntimeSource
     }
 
     await this.options.files.makeDirectory(runtimeRoot);
-    const temporaryRoot = join(
-      "/tmp",
-      `df-mvp-pi-${input.arm}-${randomUUID()}`,
-    );
+    const temporaryRoot = join("/tmp", `df-mvp-pi-${input.arm}-${randomUUID()}`);
     const sourceRoot = join(temporaryRoot, "source");
     const tarPath = join(temporaryRoot, "runtime.tar");
     const buildUid = input.arm === "candidate" ? 65_532 : 65_533;
@@ -340,14 +292,8 @@ export class NodeMvpPiRuntimeSource
         ["-C", sourceRoot, "checkout", "--quiet", "--detach", input.revision],
         "/tmp",
       );
-      const commit = await this.#gitOutput(
-        ["-C", sourceRoot, "rev-parse", "HEAD"],
-        "/tmp",
-      );
-      const treeSha = await this.#gitOutput(
-        ["-C", sourceRoot, "rev-parse", "HEAD^{tree}"],
-        "/tmp",
-      );
+      const commit = await this.#gitOutput(["-C", sourceRoot, "rev-parse", "HEAD"], "/tmp");
+      const treeSha = await this.#gitOutput(["-C", sourceRoot, "rev-parse", "HEAD^{tree}"], "/tmp");
       if (commit !== input.revision || !REVISION.test(treeSha)) {
         throw new Error("Fetched Pi source does not match its exact revision.");
       }
@@ -362,21 +308,11 @@ export class NodeMvpPiRuntimeSource
           this.options.expectedCandidate === null ||
           this.options.expectedCandidate.revision !== input.revision
         ) {
-          throw new Error(
-            "Candidate source is not bound to its proposal.",
-          );
+          throw new Error("Candidate source is not bound to its proposal.");
         }
         const ancestry = (
           await this.#gitOutput(
-            [
-              "-C",
-              sourceRoot,
-              "rev-list",
-              "--parents",
-              "-n",
-              "1",
-              input.revision,
-            ],
+            ["-C", sourceRoot, "rev-list", "--parents", "-n", "1", input.revision],
             "/tmp",
           )
         ).split(/\s+/u);
@@ -385,19 +321,10 @@ export class NodeMvpPiRuntimeSource
           ancestry[0] !== input.revision ||
           ancestry[1] !== input.championRevision
         ) {
-          throw new Error(
-            "Candidate must be an exact single-parent child of champion.",
-          );
+          throw new Error("Candidate must be an exact single-parent child of champion.");
         }
         await this.#git(
-          [
-            "-C",
-            sourceRoot,
-            "merge-base",
-            "--is-ancestor",
-            input.championRevision,
-            input.revision,
-          ],
+          ["-C", sourceRoot, "merge-base", "--is-ancestor", input.championRevision, input.revision],
           "/tmp",
         );
         const statusLines = (
@@ -416,85 +343,43 @@ export class NodeMvpPiRuntimeSource
         )
           .split("\n")
           .filter((line) => line.length > 0);
-        if (
-          statusLines.some(
-            (line) => !/^(?:A|M)\t[^\t]+$/u.test(line),
-          )
-        ) {
-          throw new Error(
-            "Candidate diff contains a deletion, rename, or unsupported entry.",
-          );
+        if (statusLines.some((line) => !/^(?:A|M)\t[^\t]+$/u.test(line))) {
+          throw new Error("Candidate diff contains a deletion, rename, or unsupported entry.");
         }
-        const changed = statusLines.map(
-          (line) => line.split("\t", 2)[1]!,
-        );
+        const changed = statusLines.map((line) => line.split("\t", 2)[1]!);
         assertMvpCandidateChangedFiles(changed);
         if (
           JSON.stringify([...changed].sort()) !==
-            JSON.stringify(
-              [...this.options.expectedCandidate.changedFiles].sort(),
-            ) ||
+            JSON.stringify([...this.options.expectedCandidate.changedFiles].sort()) ||
           JSON.stringify([...changed].sort()) !==
-            JSON.stringify(
-              [...(input.expectedChangedFiles ?? [])].sort(),
-            )
+            JSON.stringify([...(input.expectedChangedFiles ?? [])].sort())
         ) {
-          throw new Error(
-            "Candidate Git diff disagrees with its proposal.",
-          );
+          throw new Error("Candidate Git diff disagrees with its proposal.");
         }
         for (const path of changed) {
           const treeEntry = await this.#gitOutput(
-            [
-              "-C",
-              sourceRoot,
-              "ls-tree",
-              input.revision,
-              "--",
-              path,
-            ],
+            ["-C", sourceRoot, "ls-tree", input.revision, "--", path],
             "/tmp",
           );
           if (!/^(?:100644|100755) blob [a-f0-9]{40}\t/u.test(treeEntry)) {
-            throw new Error(
-              "Candidate diff contains a link, submodule, or special mode.",
-            );
+            throw new Error("Candidate diff contains a link, submodule, or special mode.");
           }
         }
         const renamedOrModeChanged = await this.#gitOutput(
-          [
-            "-C",
-            sourceRoot,
-            "diff",
-            "--summary",
-            input.championRevision,
-            input.revision,
-          ],
+          ["-C", sourceRoot, "diff", "--summary", input.championRevision, input.revision],
           "/tmp",
         );
         if (
           renamedOrModeChanged
             .split("\n")
             .filter((line) => line.length > 0)
-            .some(
-              (line) =>
-                !/^ create mode (?:100644|100755) [^\t]+$/u.test(
-                  line,
-                ),
-            )
+            .some((line) => !/^ create mode (?:100644|100755) [^\t]+$/u.test(line))
         ) {
-          throw new Error(
-            "Candidate diff changes a file mode or identity.",
-          );
+          throw new Error("Candidate diff changes a file mode or identity.");
         }
       }
-      const lock = await this.options.files.hashFile(
-        join(sourceRoot, "package-lock.json"),
-      );
-      if (
-        lock.sha256 !==
-        this.options.repository.packageLockSha256
-      ) {
+      const lock = await this.options.files.hashFile(join(sourceRoot, "package-lock.json"));
+      if (lock.sha256 !== this.options.repository.packageLockSha256) {
         throw new Error("Pi dependency lock changed.");
       }
 
@@ -603,8 +488,7 @@ export class NodeMvpPiRuntimeSource
         {
           ...safeBuildEnvironment(buildHome),
           DF_CLOUD_EXECUTION: "1",
-          DAYTONA_SANDBOX_ID:
-            process.env["DAYTONA_SANDBOX_ID"]!,
+          DAYTONA_SANDBOX_ID: process.env["DAYTONA_SANDBOX_ID"]!,
         },
         15 * 60_000,
         buildUid,
@@ -628,9 +512,7 @@ export class NodeMvpPiRuntimeSource
         archiveSha256: artifact.sha256,
         archiveByteLength: artifact.byteLength,
         changedFiles:
-          input.expectedChangedFiles === null
-            ? []
-            : [...input.expectedChangedFiles].sort(),
+          input.expectedChangedFiles === null ? [] : [...input.expectedChangedFiles].sort(),
         buildRuntimeDigest: this.options.buildRuntimeDigest,
       };
       await writeJsonAtomic(manifestPath, manifest);
@@ -645,9 +527,7 @@ export class NodeMvpPiRuntimeSource
   }
 
   async #terminateBuildProcesses(uid: number): Promise<void> {
-    const environment = safeBuildEnvironment(
-      "/tmp/df-mvp-root-home",
-    );
+    const environment = safeBuildEnvironment("/tmp/df-mvp-root-home");
     const killed = await this.options.process.run({
       executable: "/usr/bin/pkill",
       arguments: ["-KILL", "-u", String(uid)],
@@ -670,10 +550,7 @@ export class NodeMvpPiRuntimeSource
     }
   }
 
-  async #git(
-    arguments_: readonly string[],
-    cwd: string,
-  ): Promise<void> {
+  async #git(arguments_: readonly string[], cwd: string): Promise<void> {
     await this.#run(
       "/usr/bin/git",
       arguments_,
@@ -681,20 +558,15 @@ export class NodeMvpPiRuntimeSource
       {
         ...safeBuildEnvironment("/tmp/df-mvp-git-home"),
         GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0:
-          "http.https://github.com/.extraHeader",
-        GIT_CONFIG_VALUE_0:
-          `Authorization: Basic ${this.options.githubBasicAuthPlaceholder}`,
+        GIT_CONFIG_KEY_0: "http.https://github.com/.extraHeader",
+        GIT_CONFIG_VALUE_0: `Authorization: Basic ${this.options.githubBasicAuthPlaceholder}`,
         GIT_TERMINAL_PROMPT: "0",
       },
       15 * 60_000,
     );
   }
 
-  async #gitOutput(
-    arguments_: readonly string[],
-    cwd: string,
-  ): Promise<string> {
+  async #gitOutput(arguments_: readonly string[], cwd: string): Promise<string> {
     const result = await this.#run(
       "/usr/bin/git",
       arguments_,
@@ -702,10 +574,8 @@ export class NodeMvpPiRuntimeSource
       {
         ...safeBuildEnvironment("/tmp/df-mvp-git-home"),
         GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0:
-          "http.https://github.com/.extraHeader",
-        GIT_CONFIG_VALUE_0:
-          `Authorization: Basic ${this.options.githubBasicAuthPlaceholder}`,
+        GIT_CONFIG_KEY_0: "http.https://github.com/.extraHeader",
+        GIT_CONFIG_VALUE_0: `Authorization: Basic ${this.options.githubBasicAuthPlaceholder}`,
         GIT_TERMINAL_PROMPT: "0",
       },
       15 * 60_000,
@@ -738,9 +608,7 @@ export class NodeMvpPiRuntimeSource
   }
 }
 
-export class NodeMvpHarborExecution
-  implements MvpHarborExecutionPort
-{
+export class NodeMvpHarborExecution implements MvpHarborExecutionPort {
   public constructor(
     private readonly options: {
       readonly stateRoot: string;
@@ -775,22 +643,17 @@ export class NodeMvpHarborExecution
           DF_CLOUD_EXECUTION: "1",
           NO_COLOR: "1",
           PYTHONPATH: dirname(this.options.adapterPath),
-          DAYTONA_API_KEY:
-            this.options.daytona.apiKeyPlaceholder,
+          DAYTONA_API_KEY: this.options.daytona.apiKeyPlaceholder,
           DAYTONA_API_URL: this.options.daytona.apiUrl,
           DAYTONA_TARGET: this.options.daytona.target,
         },
         timeoutMs:
-          plan.basePlan.timeoutSeconds * 1_000 *
-            invocation.expectedTrialCount +
-          15 * 60_000,
+          plan.basePlan.timeoutSeconds * 1_000 * invocation.expectedTrialCount + 15 * 60_000,
       });
       if (result.exitCode !== 0) {
         throw new Error("Harbor 0.20.0 invocation failed.");
       }
-      trials.push(
-        ...(await this.#parseInvocation(plan, invocation)),
-      );
+      trials.push(...(await this.#parseInvocation(plan, invocation)));
     }
     return {
       sensitivity: "trusted-mvp-harbor-requested-output",
@@ -806,52 +669,28 @@ export class NodeMvpHarborExecution
     plan: TrustedMvpHarborExecutionPlan,
     invocation: TrustedMvpHarborRequestedInvocation,
   ): Promise<readonly TrustedMvpHarborRequestedRawTrial[]> {
-    const jobRoot = join(
-      plan.basePlan.jobsDirectory,
-      invocation.invocationId,
-    );
+    const jobRoot = join(plan.basePlan.jobsDirectory, invocation.invocationId);
     // Both job and per-trial results are retained only below evaluator-private
     // state. Parsing result.json also proves the expected completed count.
-    const job = plainRecord(
-      await this.options.files.readJson(join(jobRoot, "result.json")),
-    );
+    const job = plainRecord(await this.options.files.readJson(join(jobRoot, "result.json")));
     if (job["n_total_trials"] !== invocation.expectedTrialCount) {
       throw new Error("Harbor job result has the wrong trial count.");
     }
-    const directories = await this.options.files.listDirectories(
-      jobRoot,
-    );
+    const directories = await this.options.files.listDirectories(jobRoot);
     const parsed: ParsedTrial[] = [];
     for (const directory of directories) {
       const resultPath = join(jobRoot, directory, "result.json");
-      const trajectoryPath = join(
-        jobRoot,
-        directory,
-        "agent",
-        "trajectory.json",
-      );
+      const trajectoryPath = join(jobRoot, directory, "agent", "trajectory.json");
       let result: Readonly<Record<string, unknown>>;
       let trajectory: unknown;
       try {
-        result = plainRecord(
-          await this.options.files.readJson(resultPath),
-        );
-        trajectory = await this.options.files.readJson(
-          trajectoryPath,
-        );
+        result = plainRecord(await this.options.files.readJson(resultPath));
+        trajectory = await this.options.files.readJson(trajectoryPath);
       } catch {
         continue;
       }
-      const trajectoryArtifact =
-        await this.options.files.hashFile(trajectoryPath);
-      parsed.push(
-        parseHarborTrial(
-          directory,
-          result,
-          trajectory,
-          trajectoryArtifact.sha256,
-        ),
-      );
+      const trajectoryArtifact = await this.options.files.hashFile(trajectoryPath);
+      parsed.push(parseHarborTrial(directory, result, trajectory, trajectoryArtifact.sha256));
     }
     if (parsed.length !== invocation.expectedTrialCount) {
       throw new Error("Harbor output has missing or extra trials.");
@@ -866,9 +705,7 @@ export class NodeMvpHarborExecution
     }
     const output: TrustedMvpHarborRequestedRawTrial[] = [];
     for (const group of grouped.values()) {
-      group.sort((left, right) =>
-        left.directory.localeCompare(right.directory),
-      );
+      group.sort((left, right) => left.directory.localeCompare(right.directory));
       for (const [index, trial] of group.entries()) {
         const attemptOrdinal = (index + 1) as 1 | 2 | 3;
         const expected = invocation.expectedTrials.find(
@@ -878,9 +715,7 @@ export class NodeMvpHarborExecution
             entry.harborAttemptOrdinal === attemptOrdinal,
         );
         if (expected === undefined) {
-          throw new Error(
-            "Harbor trial cannot be mapped to a sealed repeat.",
-          );
+          throw new Error("Harbor trial cannot be mapped to a sealed repeat.");
         }
         const runtime =
           expected.arm === "candidate"
@@ -902,9 +737,7 @@ export class NodeMvpHarborExecution
           infrastructureValid: trial.infrastructureValid,
           durationMs: trial.durationMs,
           evaluatedAt: trial.evaluatedAt,
-          traceArtifactRefs: [
-            `trusted://mvp-private/traces/${trial.trajectorySha256}`,
-          ],
+          traceArtifactRefs: [`trusted://mvp-private/traces/${trial.trajectorySha256}`],
           rawDiagnostics: trial.rawDiagnostics,
         });
       }
@@ -917,9 +750,7 @@ interface ParsedTrial {
   readonly directory: string;
   readonly trialId: string;
   readonly harborTaskName: string;
-  readonly agentName:
-    | "dark-factory-candidate"
-    | "dark-factory-champion";
+  readonly agentName: "dark-factory-candidate" | "dark-factory-champion";
   readonly reward: number;
   readonly infrastructureValid: boolean;
   readonly durationMs: number;
@@ -951,8 +782,7 @@ function parseHarborTrial(
     typeof taskName !== "string" ||
     typeof trialId !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(trialId) ||
-    (agentValue !== "dark-factory-candidate" &&
-      agentValue !== "dark-factory-champion") ||
+    (agentValue !== "dark-factory-candidate" && agentValue !== "dark-factory-champion") ||
     typeof reward !== "number" ||
     !Number.isFinite(reward) ||
     reward < 0 ||
@@ -962,19 +792,14 @@ function parseHarborTrial(
   ) {
     throw new Error("Harbor trial result is malformed.");
   }
-  const diagnostics = trajectoryDiagnostics(
-    trajectory,
-    trajectorySha256,
-  );
+  const diagnostics = trajectoryDiagnostics(trajectory, trajectorySha256);
   if (reward < 1) {
     diagnostics.push({
       kind: "grader",
       code: "bounded-reward-below-one",
       toolName: null,
       message: "The verifier returned a bounded reward below one.",
-      evidenceRefs: [
-        `trusted://mvp-private/traces/${trajectorySha256}`,
-      ],
+      evidenceRefs: [`trusted://mvp-private/traces/${trajectorySha256}`],
     });
   }
   return {
@@ -991,10 +816,7 @@ function parseHarborTrial(
   };
 }
 
-function trajectoryDiagnostics(
-  value: unknown,
-  trajectorySha256: string,
-): PrivateRawDiagnostic[] {
+function trajectoryDiagnostics(value: unknown, trajectorySha256: string): PrivateRawDiagnostic[] {
   const trajectory = plainRecord(value);
   if (
     trajectory["schema_version"] !== "ATIF-v1.7" ||
@@ -1011,14 +833,8 @@ function trajectoryDiagnostics(
     if (Array.isArray(step["tool_calls"])) {
       for (const rawCall of step["tool_calls"]) {
         const call = plainRecord(rawCall);
-        if (
-          typeof call["tool_call_id"] === "string" &&
-          typeof call["function_name"] === "string"
-        ) {
-          toolNames.set(
-            call["tool_call_id"],
-            call["function_name"].slice(0, 256),
-          );
+        if (typeof call["tool_call_id"] === "string" && typeof call["function_name"] === "string") {
+          toolNames.set(call["tool_call_id"], call["function_name"].slice(0, 256));
         }
       }
     }
@@ -1035,17 +851,12 @@ function trajectoryDiagnostics(
           diagnostics.push({
             kind: "tool",
             code: "tool-result-error",
-            toolName:
-              typeof id === "string"
-                ? (toolNames.get(id) ?? null)
-                : null,
+            toolName: typeof id === "string" ? (toolNames.get(id) ?? null) : null,
             message:
               typeof result["content"] === "string"
                 ? result["content"].slice(0, 16_384)
                 : "A tool call returned an error.",
-            evidenceRefs: [
-              `trusted://mvp-private/traces/${trajectorySha256}`,
-            ],
+            evidenceRefs: [`trusted://mvp-private/traces/${trajectorySha256}`],
           });
         }
       }
@@ -1096,10 +907,7 @@ function parseRuntimeManifest(
     (manifest["archiveByteLength"] as number) < 1 ||
     !Array.isArray(changedFiles) ||
     changedFiles.some((path) => typeof path !== "string") ||
-    !sameStringSet(
-      changedFiles as readonly string[],
-      input.expectedChangedFiles ?? [],
-    ) ||
+    !sameStringSet(changedFiles as readonly string[], input.expectedChangedFiles ?? []) ||
     !archivePath.startsWith("/")
   ) {
     throw new Error("Pi runtime manifest is invalid.");
@@ -1132,30 +940,18 @@ function runtimeMaterialization(
   };
 }
 
-export class NodeMvpEvaluatorProcess
-  implements MvpEvaluatorProcessPort
-{
-  public async run(
-    request: MvpEvaluatorProcessRequest,
-  ): Promise<MvpEvaluatorProcessResult> {
+export class NodeMvpEvaluatorProcess implements MvpEvaluatorProcessPort {
+  public async run(request: MvpEvaluatorProcessRequest): Promise<MvpEvaluatorProcessResult> {
     return new Promise((resolve, reject) => {
-      const child = spawn(
-        request.executable,
-        [...request.arguments],
-        {
-          cwd: request.cwd,
-          env: { ...request.environment },
-          ...(request.uid === undefined
-            ? {}
-            : { uid: request.uid }),
-          ...(request.gid === undefined
-            ? {}
-            : { gid: request.gid }),
-          detached: true,
-          shell: false,
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
+      const child = spawn(request.executable, [...request.arguments], {
+        cwd: request.cwd,
+        env: { ...request.environment },
+        ...(request.uid === undefined ? {} : { uid: request.uid }),
+        ...(request.gid === undefined ? {} : { gid: request.gid }),
+        detached: true,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       let stdout = "";
       let stderr = "";
       let outputBytes = 0;
@@ -1180,10 +976,7 @@ export class NodeMvpEvaluatorProcess
       const timer = setTimeout(() => {
         fail(new Error("A sealed subprocess exceeded its timeout."));
       }, request.timeoutMs);
-      const append = (
-        current: string,
-        chunk: Buffer,
-      ): string => {
+      const append = (current: string, chunk: Buffer): string => {
         outputBytes += chunk.byteLength;
         if (outputBytes > MAXIMUM_COMMAND_OUTPUT_BYTES) {
           fail(new Error("A sealed subprocess exceeded its output bound."));
@@ -1204,10 +997,7 @@ export class NodeMvpEvaluatorProcess
         clearTimeout(timer);
         if (!settled) {
           settled = true;
-          if (
-            code === null ||
-            outputBytes > MAXIMUM_COMMAND_OUTPUT_BYTES
-          ) {
+          if (code === null || outputBytes > MAXIMUM_COMMAND_OUTPUT_BYTES) {
             reject(new Error("A sealed subprocess did not complete."));
           } else {
             resolve({
@@ -1222,9 +1012,7 @@ export class NodeMvpEvaluatorProcess
   }
 }
 
-export class NodeMvpEvaluatorFileSystem
-  implements MvpEvaluatorFileSystemPort
-{
+export class NodeMvpEvaluatorFileSystem implements MvpEvaluatorFileSystemPort {
   public async makeDirectory(path: string): Promise<void> {
     await mkdir(path, { recursive: true, mode: 0o700 });
   }
@@ -1240,25 +1028,16 @@ export class NodeMvpEvaluatorFileSystem
     const handle = await open(path, "r");
     try {
       const info = await handle.stat();
-      if (
-        !info.isFile() ||
-        info.size < 2 ||
-        info.size > MAXIMUM_JSON_BYTES
-      ) {
+      if (!info.isFile() || info.size < 2 || info.size > MAXIMUM_JSON_BYTES) {
         throw new Error("Private Harbor JSON is outside its bound.");
       }
-      return JSON.parse(
-        await handle.readFile({ encoding: "utf8" }),
-      ) as unknown;
+      return JSON.parse(await handle.readFile({ encoding: "utf8" })) as unknown;
     } finally {
       await handle.close();
     }
   }
 
-  public async writeJson(
-    path: string,
-    value: unknown,
-  ): Promise<void> {
+  public async writeJson(path: string, value: unknown): Promise<void> {
     await writeJsonAtomic(path, value);
   }
 
@@ -1298,10 +1077,7 @@ export class NodeMvpEvaluatorFileSystem
     ) {
       throw new Error("Secure runtime import parameters are invalid.");
     }
-    const sourceHandle = await open(
-      source,
-      fileConstants.O_RDONLY | fileConstants.O_NOFOLLOW,
-    );
+    const sourceHandle = await open(source, fileConstants.O_RDONLY | fileConstants.O_NOFOLLOW);
     let temporaryPath: string | null = null;
     try {
       const sourceInfo = await sourceHandle.stat();
@@ -1312,9 +1088,7 @@ export class NodeMvpEvaluatorFileSystem
         sourceInfo.size < 1 ||
         sourceInfo.size > maximumBytes
       ) {
-        throw new Error(
-          "Untrusted runtime archive failed secure handoff.",
-        );
+        throw new Error("Untrusted runtime archive failed secure handoff.");
       }
       await mkdir(dirname(destination), {
         recursive: true,
@@ -1341,9 +1115,7 @@ export class NodeMvpEvaluatorFileSystem
             offset,
           );
           if (bytesRead < 1) {
-            throw new Error(
-              "Untrusted runtime archive changed during handoff.",
-            );
+            throw new Error("Untrusted runtime archive changed during handoff.");
           }
           hash.update(buffer.subarray(0, bytesRead));
           let written = 0;
@@ -1373,9 +1145,7 @@ export class NodeMvpEvaluatorFileSystem
         finalSourceInfo.mtimeMs !== sourceInfo.mtimeMs ||
         finalSourceInfo.ctimeMs !== sourceInfo.ctimeMs
       ) {
-        throw new Error(
-          "Untrusted runtime archive changed during handoff.",
-        );
+        throw new Error("Untrusted runtime archive changed during handoff.");
       }
       await rename(temporaryPath, destination);
       temporaryPath = null;
@@ -1391,15 +1161,11 @@ export class NodeMvpEvaluatorFileSystem
     }
   }
 
-  public async listDirectories(
-    path: string,
-  ): Promise<readonly string[]> {
+  public async listDirectories(path: string): Promise<readonly string[]> {
     const entries = await readdir(path, { withFileTypes: true });
     return entries
       .filter(
-        (entry) =>
-          entry.isDirectory() &&
-          /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u.test(entry.name),
+        (entry) => entry.isDirectory() && /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u.test(entry.name),
       )
       .map((entry) => entry.name)
       .sort();
@@ -1410,9 +1176,7 @@ export class NodeMvpEvaluatorFileSystem
   }
 }
 
-function assertNodeOptions(
-  input: CreateNodeMvpEvaluatorDependenciesInput,
-): void {
+function assertNodeOptions(input: CreateNodeMvpEvaluatorDependenciesInput): void {
   if (
     !SAFE_GITHUB_NAME.test(input.repository.owner) ||
     !SAFE_GITHUB_NAME.test(input.repository.name) ||
@@ -1421,8 +1185,10 @@ function assertNodeOptions(
     !SHA256.test(input.repository.packageLockSha256) ||
     input.githubBasicAuthPlaceholder.length < 1 ||
     input.githubBasicAuthPlaceholder.length > 2_048 ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Credential placeholders reject NUL and line breaks before environment substitution.
     /[\u0000\r\n]/u.test(input.githubBasicAuthPlaceholder) ||
     input.daytona.apiKeyPlaceholder.length < 1 ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Credential placeholders reject NUL and line breaks before environment substitution.
     /[\u0000\r\n]/u.test(input.daytona.apiKeyPlaceholder) ||
     !input.daytona.apiUrl.startsWith("https://") ||
     !/(?:^|[-_.])eu(?:$|[-_.])/iu.test(input.daytona.target)
@@ -1439,15 +1205,11 @@ function assertLinuxDaytona(): void {
     process.env["DF_MVP_ROLE"] !== "evaluator" ||
     process.env["DAYTONA_SANDBOX_ID"] === undefined
   ) {
-    throw new Error(
-      "The Node evaluator is restricted to a Daytona Linux role.",
-    );
+    throw new Error("The Node evaluator is restricted to a Daytona Linux role.");
   }
 }
 
-function safeBuildEnvironment(
-  home: string,
-): Readonly<Record<string, string>> {
+function safeBuildEnvironment(home: string): Readonly<Record<string, string>> {
   return {
     CI: "true",
     HOME: home,
@@ -1459,19 +1221,11 @@ function safeBuildEnvironment(
   };
 }
 
-async function assertEvaluatorPrivateRoot(
-  stateRoot: string,
-): Promise<void> {
+async function assertEvaluatorPrivateRoot(stateRoot: string): Promise<void> {
   const privateRoot = join(stateRoot, "private");
   const info = await lstat(privateRoot);
-  if (
-    !info.isDirectory() ||
-    info.uid !== 0 ||
-    (info.mode & 0o077) !== 0
-  ) {
-    throw new Error(
-      "Evaluator private state is not root-owned mode 0700.",
-    );
+  if (!info.isDirectory() || info.uid !== 0 || (info.mode & 0o077) !== 0) {
+    throw new Error("Evaluator private state is not root-owned mode 0700.");
   }
 }
 
@@ -1486,14 +1240,8 @@ async function verifyPinnedFile(
   }
 }
 
-function plainRecord(
-  value: unknown,
-): Readonly<Record<string, unknown>> {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+function plainRecord(value: unknown): Readonly<Record<string, unknown>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Expected a private JSON object.");
   }
   return value as Readonly<Record<string, unknown>>;
@@ -1510,23 +1258,15 @@ function canonicalTimestamp(value: unknown): string {
   return new Date(time).toISOString();
 }
 
-function sameStringSet(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
   return (
     left.length === right.length &&
-    JSON.stringify([...left].sort()) ===
-      JSON.stringify([...right].sort())
+    JSON.stringify([...left].sort()) === JSON.stringify([...right].sort())
   );
 }
 
 function agentName(
   arm: "candidate" | "champion",
-):
-  | "dark-factory-candidate"
-  | "dark-factory-champion" {
-  return arm === "candidate"
-    ? "dark-factory-candidate"
-    : "dark-factory-champion";
+): "dark-factory-candidate" | "dark-factory-champion" {
+  return arm === "candidate" ? "dark-factory-candidate" : "dark-factory-champion";
 }

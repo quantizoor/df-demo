@@ -1,4 +1,4 @@
-import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 
 export const SCHEMA_VERSION = "1.0.0" as const;
 export const JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema" as const;

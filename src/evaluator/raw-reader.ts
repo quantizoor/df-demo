@@ -2,10 +2,7 @@ import { createHash } from "node:crypto";
 
 import { canonicalHash } from "../schemas/canonical.js";
 import type { TrustedRawRun } from "../terminal-bench/runner.js";
-import type {
-  TrustedDecodedEvaluation,
-  TrustedDecodedEvaluationReader,
-} from "./deriver.js";
+import type { TrustedDecodedEvaluation, TrustedDecodedEvaluationReader } from "./deriver.js";
 import {
   assertRawArtifactManifest,
   type TrustedEncryptedRawArtifact,
@@ -13,9 +10,7 @@ import {
   type TrustedRawRetentionPolicy,
 } from "./retention.js";
 
-export type TrustedEvaluatorPortBoundary =
-  | "trusted-cloud"
-  | "test-only-in-memory";
+export type TrustedEvaluatorPortBoundary = "trusted-cloud" | "test-only-in-memory";
 
 export interface TrustedEncryptedRawArtifactSource {
   readonly boundary: TrustedEvaluatorPortBoundary;
@@ -50,9 +45,7 @@ export interface TrustedRawArtifactDecryptor {
   }): Promise<TrustedDecryptedRawArtifact>;
 }
 
-export type TrustedDecodedPlaintextSet = Readonly<
-  Record<TrustedRawArtifactKind, Uint8Array>
->;
+export type TrustedDecodedPlaintextSet = Readonly<Record<TrustedRawArtifactKind, Uint8Array>>;
 
 export interface TrustedHarborRawDecoderResult {
   readonly decoded: TrustedDecodedEvaluation;
@@ -131,10 +124,7 @@ function exactPlainObject(
     throw new Error("Trusted raw boundary value is not a plain object.");
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     throw new Error("Trusted raw boundary value has unexpected fields.");
   }
 }
@@ -214,9 +204,7 @@ export function decodedRawInputBindingHash(input: {
   });
 }
 
-function assertCloudBoundary(
-  options: StrictTrustedDecodedEvaluationReaderOptions,
-): void {
+function assertCloudBoundary(options: StrictTrustedDecodedEvaluationReaderOptions): void {
   const boundaries = [
     options.source.boundary,
     options.decryptor.boundary,
@@ -261,19 +249,14 @@ function assertAttestation(input: {
     input.attestation.plaintextSha256 !== sha256(input.plaintext) ||
     input.attestation.additionalAuthenticatedDataHash !== input.aadHash ||
     !SAFE_KEY_VERSION.test(input.attestation.keyVersion) ||
-    Date.parse(input.attestation.decryptedAt) <
-      Date.parse(input.manifestCreatedAt) ||
-    Date.parse(input.attestation.decryptedAt) >
-      Date.parse(input.manifestDestroyBy)
+    Date.parse(input.attestation.decryptedAt) < Date.parse(input.manifestCreatedAt) ||
+    Date.parse(input.attestation.decryptedAt) > Date.parse(input.manifestDestroyBy)
   ) {
     throw new Error("Decryption attestation is detached.");
   }
 }
 
-function assertDecodedTopLevel(
-  value: TrustedDecodedEvaluation,
-  rawRun: TrustedRawRun,
-): void {
+function assertDecodedTopLevel(value: TrustedDecodedEvaluation, rawRun: TrustedRawRun): void {
   exactPlainObject(value, [
     "sensitivity",
     "requestId",
@@ -300,9 +283,7 @@ function assertDecodedTopLevel(
  * Authenticated raw-reader boundary. No local filesystem fallback exists.
  * Buffers are copied and zeroed after the provider-specific decoder returns.
  */
-export class StrictTrustedDecodedEvaluationReader
-  implements TrustedDecodedEvaluationReader
-{
+export class StrictTrustedDecodedEvaluationReader implements TrustedDecodedEvaluationReader {
   readonly boundary: TrustedEvaluatorPortBoundary;
   readonly #options: StrictTrustedDecodedEvaluationReaderOptions;
   readonly #maximumEncryptedArtifactBytes: number;
@@ -310,12 +291,8 @@ export class StrictTrustedDecodedEvaluationReader
 
   constructor(options: StrictTrustedDecodedEvaluationReaderOptions) {
     assertCloudBoundary(options);
-    const encryptedLimit =
-      options.maximumEncryptedArtifactBytes ??
-      DEFAULT_MAXIMUM_ARTIFACT_BYTES;
-    const plaintextLimit =
-      options.maximumPlaintextArtifactBytes ??
-      DEFAULT_MAXIMUM_ARTIFACT_BYTES;
+    const encryptedLimit = options.maximumEncryptedArtifactBytes ?? DEFAULT_MAXIMUM_ARTIFACT_BYTES;
+    const plaintextLimit = options.maximumPlaintextArtifactBytes ?? DEFAULT_MAXIMUM_ARTIFACT_BYTES;
     if (
       !Number.isSafeInteger(encryptedLimit) ||
       encryptedLimit < 1 ||
@@ -325,9 +302,7 @@ export class StrictTrustedDecodedEvaluationReader
       throw new TrustedRawReaderBoundaryError("boundary-invalid");
     }
     this.boundary =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
     this.#options = options;
     this.#maximumEncryptedArtifactBytes = encryptedLimit;
     this.#maximumPlaintextArtifactBytes = plaintextLimit;
@@ -335,10 +310,7 @@ export class StrictTrustedDecodedEvaluationReader
 
   async decode(rawRun: TrustedRawRun): Promise<TrustedDecodedEvaluation> {
     try {
-      assertRawArtifactManifest(
-        this.#options.retentionPolicy,
-        rawRun.manifest,
-      );
+      assertRawArtifactManifest(this.#options.retentionPolicy, rawRun.manifest);
       if (
         rawRun.sensitivity !== "raw-terminal-bench-run" ||
         !SHA256.test(rawRun.pinHash) ||
@@ -358,9 +330,7 @@ export class StrictTrustedDecodedEvaluationReader
       const byKind = new Map<TrustedRawArtifactKind, Uint8Array>();
       const plaintextHashes = {} as Record<TrustedRawArtifactKind, string>;
       for (const artifact of rawRun.manifest.artifacts) {
-        if (
-          artifact.byteLength > this.#maximumEncryptedArtifactBytes
-        ) {
+        if (artifact.byteLength > this.#maximumEncryptedArtifactBytes) {
           throw new TrustedRawReaderBoundaryError("ciphertext-invalid");
         }
         let sourceValue: Uint8Array;
@@ -457,8 +427,12 @@ export class StrictTrustedDecodedEvaluationReader
       if (error instanceof TrustedRawReaderBoundaryError) throw error;
       throw new TrustedRawReaderBoundaryError("decode-invalid");
     } finally {
-      ciphertexts.forEach((value) => value.fill(0));
-      plaintexts.forEach((value) => value.fill(0));
+      ciphertexts.forEach((value) => {
+        value.fill(0);
+      });
+      plaintexts.forEach((value) => {
+        value.fill(0);
+      });
     }
   }
 }

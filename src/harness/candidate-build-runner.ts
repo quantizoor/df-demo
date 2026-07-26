@@ -110,34 +110,21 @@ function assertExactKeys(
     throw new CandidateCloudBuildError(`${label} must be a plain object.`);
   }
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.length ||
-    keys.some((key) => !expected.includes(key))
-  ) {
+  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
     throw new CandidateCloudBuildError(`${label} contains non-canonical fields.`);
   }
 }
 
-function assertArtifact(
-  artifact: TrustedCloudArtifactRef,
-  expectedMediaType?: string,
-): void {
-  assertExactKeys(
-    artifact,
-    ["uri", "sha256", "mediaType", "byteLength"],
-    "Cloud artifact",
-  );
+function assertArtifact(artifact: TrustedCloudArtifactRef, expectedMediaType?: string): void {
+  assertExactKeys(artifact, ["uri", "sha256", "mediaType", "byteLength"], "Cloud artifact");
   if (
-    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(
-      artifact.uri,
-    ) ||
+    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(artifact.uri) ||
     artifact.uri.includes("..") ||
     !SHA256.test(artifact.sha256) ||
     !Number.isSafeInteger(artifact.byteLength) ||
     artifact.byteLength <= 0 ||
     artifact.byteLength > 4 * 1024 * 1024 * 1024 ||
-    (expectedMediaType !== undefined &&
-      artifact.mediaType !== expectedMediaType)
+    (expectedMediaType !== undefined && artifact.mediaType !== expectedMediaType)
   ) {
     throw new CandidateCloudBuildError(
       "Cloud build artifact violates the immutable artifact policy.",
@@ -178,9 +165,7 @@ function assertToolchainReceipt(
     !SEMVERISH.test(receipt.nodeVersion) ||
     !SEMVERISH.test(receipt.npmVersion) ||
     !SEMVERISH.test(receipt.bunVersion) ||
-    !/^tar \(GNU tar\) [0-9]+(?:\.[0-9]+){1,3}$/u.test(
-      receipt.gnuTarVersion,
-    ) ||
+    !/^tar \(GNU tar\) [0-9]+(?:\.[0-9]+){1,3}$/u.test(receipt.gnuTarVersion) ||
     !SHA256.test(receipt.offlineCacheManifestSha256) ||
     receipt.extractorSha256 !== spec.extractorArtifact.sha256 ||
     receipt.packagerSha256 !== spec.packagerArtifact.sha256 ||
@@ -305,20 +290,16 @@ export function assertTrustedCandidateRuntimeBuildReceipt(
     receipt.buildPolicyHash !== input.spec.buildPolicyHash ||
     receipt.architecture !== input.spec.architecture ||
     receipt.validationLevel !== input.spec.validationLevel ||
-    (input.requireReleaseValidation &&
-      receipt.validationLevel !== "release") ||
+    (input.requireReleaseValidation && receipt.validationLevel !== "release") ||
     receipt.sourceSha256 !== input.spec.sourceArtifact.sha256 ||
     receipt.extractorSha256 !== input.spec.extractorArtifact.sha256 ||
     receipt.packagerSha256 !== input.spec.packagerArtifact.sha256 ||
     receipt.toolchainAttestationHash !== canonicalHash(input.toolchain) ||
     !Array.isArray(receipt.commandReceiptHashes) ||
     receipt.commandReceiptHashes.length !== expectedCommandHashes.length ||
-    receipt.commandReceiptHashes.some(
-      (hash, index) => hash !== expectedCommandHashes[index],
-    ) ||
+    receipt.commandReceiptHashes.some((hash, index) => hash !== expectedCommandHashes[index]) ||
     !SHA256.test(receipt.runtimeManifestSha256) ||
-    canonicalHash(receipt.runtimeArtifact) !==
-      canonicalHash(input.runtimeArtifact) ||
+    canonicalHash(receipt.runtimeArtifact) !== canonicalHash(input.runtimeArtifact) ||
     !Number.isFinite(Date.parse(receipt.builtAt)) ||
     receipt.passed !== true ||
     receipt.signature.algorithm !== "ed25519" ||
@@ -348,8 +329,7 @@ export class CandidateCloudBuildRunner {
       options.sandbox.network.allowDomains.length !== 0 ||
       options.sandbox.lifetimeMs <= 0 ||
       options.sandbox.lifetimeMs > MAX_BUILD_LIFETIME_MS ||
-      (options.requireReleaseValidation &&
-        options.spec.validationLevel !== "release")
+      (options.requireReleaseValidation && options.spec.validationLevel !== "release")
     ) {
       throw new CandidateCloudBuildError(
         "Candidate builds require a bounded x86_64 deny-all cloud sandbox.",
@@ -388,6 +368,9 @@ export class CandidateCloudBuildRunner {
     });
 
     let lease: SandboxLease | undefined;
+    let result: TrustedCandidateRuntimeBuildReceipt | undefined;
+    let failure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       lease = await this.#options.provider.create({
         ...this.#options.sandbox,
@@ -398,12 +381,7 @@ export class CandidateCloudBuildRunner {
         lease,
         this.#options.spec,
       );
-      assertToolchainReceipt(
-        toolchain,
-        lease,
-        this.#options.sandbox,
-        this.#options.spec,
-      );
+      assertToolchainReceipt(toolchain, lease, this.#options.sandbox, this.#options.spec);
 
       await this.#options.provider.upload(
         lease,
@@ -424,14 +402,8 @@ export class CandidateCloudBuildRunner {
       const commandReceipts: RemoteExecutionReceipt[] = [];
       for (const command of this.#options.spec.commands) {
         const receipt = await this.#options.provider.execute(lease, command);
-        if (
-          receipt.exitCode !== 0 ||
-          receipt.timedOut ||
-          receipt.cancelled
-        ) {
-          throw new CandidateCloudBuildError(
-            "A candidate build gate failed in the cloud.",
-          );
+        if (receipt.exitCode !== 0 || receipt.timedOut || receipt.cancelled) {
+          throw new CandidateCloudBuildError("A candidate build gate failed in the cloud.");
         }
         commandReceipts.push(receipt);
       }
@@ -464,21 +436,38 @@ export class CandidateCloudBuildRunner {
         verifier: this.#options.receiptVerifier,
         requireReleaseValidation: this.#options.requireReleaseValidation,
       });
-      return receipt;
-    } catch {
-      throw new CandidateCloudBuildError(
-        "Candidate cloud build failed closed without a usable runtime.",
-      );
+      result = receipt;
+    } catch (error) {
+      failure = { error };
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          throw new CandidateCloudBuildError(
-            "Candidate sandbox teardown failed; the runtime is invalid.",
-          );
+        } catch (error) {
+          teardownFailure = { error };
         }
       }
     }
+    if (teardownFailure !== undefined) {
+      throw new CandidateCloudBuildError(
+        "Candidate sandbox teardown failed; the runtime is invalid.",
+        {
+          cause:
+            failure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [failure.error, teardownFailure.error],
+                  "Candidate build and sandbox teardown both failed.",
+                ),
+        },
+      );
+    }
+    if (failure !== undefined || result === undefined) {
+      throw new CandidateCloudBuildError(
+        "Candidate cloud build failed closed without a usable runtime.",
+        { cause: failure?.error },
+      );
+    }
+    return result;
   }
 }

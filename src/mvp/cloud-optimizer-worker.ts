@@ -2,20 +2,10 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  mkdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import {
-  canonicalJson,
-  type CandidateProposal,
-  type OptimizerInput,
-} from "./contracts.js";
+import { type CandidateProposal, canonicalJson, type OptimizerInput } from "./contracts.js";
 import {
   assertMvpCandidateProposal,
   assertTaskFreeMvpOptimizerInput,
@@ -32,37 +22,20 @@ async function main(): Promise<void> {
   if (process.argv[2] !== "optimize") {
     throw new Error("Unsupported optimizer worker operation.");
   }
-  const optimizerInput = decodeOptimizerInput(
-    requiredEnvironment("DF_MVP_OPTIMIZER_INPUT_BASE64"),
-  );
+  const optimizerInput = decodeOptimizerInput(requiredEnvironment("DF_MVP_OPTIMIZER_INPUT_BASE64"));
   const invocation = createMvpOptimizerWorkerInvocation({
     campaignId: requiredEnvironment("DF_MVP_CAMPAIGN_ID"),
     maximumIterations: 1,
     stateRoot: STATE_ROOT,
-    configurationHash: requiredDigest(
-      "DF_MVP_CONFIGURATION_HASH",
-    ),
+    configurationHash: requiredDigest("DF_MVP_CONFIGURATION_HASH"),
   });
-  await writeJsonAtomically(
-    invocation.inputPath,
-    optimizerInput,
-  );
+  await writeJsonAtomically(invocation.inputPath, optimizerInput);
 
-  const result = await runBounded(
-    invocation.executable,
-    invocation.arguments,
-    childEnvironment(),
-  );
+  const result = await runBounded(invocation.executable, invocation.arguments, childEnvironment());
   const proposal = parseProposal(result.stdout);
-  const persistedProposal = parseProposal(
-    await readFile(invocation.outputPath, "utf8"),
-  );
-  if (
-    canonicalJson(proposal) !== canonicalJson(persistedProposal)
-  ) {
-    throw new Error(
-      "The optimizer stdout and persisted proposal disagree.",
-    );
+  const persistedProposal = parseProposal(await readFile(invocation.outputPath, "utf8"));
+  if (canonicalJson(proposal) !== canonicalJson(persistedProposal)) {
+    throw new Error("The optimizer stdout and persisted proposal disagree.");
   }
   process.stdout.write(`${JSON.stringify(proposal)}\n`);
 }
@@ -75,20 +48,13 @@ function assertCloudRole(): void {
     process.env["DF_MVP_ROLE"] !== "optimizer" ||
     !hasDaytonaIdentity()
   ) {
-    throw new Error(
-      "The optimizer worker is restricted to its Daytona role.",
-    );
+    throw new Error("The optimizer worker is restricted to its Daytona role.");
   }
 }
 
 function hasDaytonaIdentity(): boolean {
-  return [
-    process.env["DAYTONA_SANDBOX_ID"],
-    process.env["DAYTONA_WORKSPACE_ID"],
-  ].some(
-    (value) =>
-      value !== undefined &&
-      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
+  return [process.env["DAYTONA_SANDBOX_ID"], process.env["DAYTONA_WORKSPACE_ID"]].some(
+    (value) => value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
   );
 }
 
@@ -111,9 +77,7 @@ function requiredDigest(name: string): string {
 function decodeOptimizerInput(value: string): OptimizerInput {
   let decoded: unknown;
   try {
-    decoded = JSON.parse(
-      Buffer.from(value, "base64url").toString("utf8"),
-    ) as unknown;
+    decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
   } catch {
     throw new Error("The optimizer input channel is malformed.");
   }
@@ -132,22 +96,15 @@ function parseProposal(value: string): CandidateProposal {
   return parsed;
 }
 
-async function writeJsonAtomically(
-  path: string,
-  value: unknown,
-): Promise<void> {
+async function writeJsonAtomically(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporaryPath = `${path}.${randomUUID()}.tmp`;
   try {
-    await writeFile(
-      temporaryPath,
-      `${JSON.stringify(value)}\n`,
-      {
-        encoding: "utf8",
-        flag: "wx",
-        mode: 0o600,
-      },
-    );
+    await writeFile(temporaryPath, `${JSON.stringify(value)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
     await rename(temporaryPath, path);
   } catch (error) {
     await rm(temporaryPath, { force: true });
@@ -213,8 +170,6 @@ async function runBounded(
 }
 
 await main().catch(() => {
-  process.stderr.write(
-    "Dark Factory optimizer worker failed closed.\n",
-  );
+  process.stderr.write("Dark Factory optimizer worker failed closed.\n");
   process.exitCode = 1;
 });

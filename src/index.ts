@@ -1,5 +1,19 @@
 export * as broker from "./broker/index.js";
 export * as campaign from "./campaign/index.js";
+export {
+  type CampaignControlStore,
+  type CampaignStoreFactory,
+  type CliErrorCode,
+  type CliOutput,
+  createDarkFactoryCli,
+  createVerifiedCampaignStoreFactory,
+  type DarkFactoryCliDependencies,
+  DarkFactoryCliError,
+  type DoctorReport,
+  type HarnessRegistrationResult,
+  runDarkFactoryCli,
+  type VerifiedCampaignStoreOptions,
+} from "./cli.js";
 export * as cloud from "./cloud/index.js";
 export * as configuration from "./config/environment.js";
 export * as harnessSourceConfiguration from "./config/harness-source.js";
@@ -27,18 +41,3 @@ export * as orchestrator from "./orchestrator/index.js";
 export * as schemas from "./schemas/index.js";
 export * as synthetic from "./synthetic/index.js";
 export * as terminalBench from "./terminal-bench/index.js";
-
-export {
-  createDarkFactoryCli,
-  createVerifiedCampaignStoreFactory,
-  DarkFactoryCliError,
-  runDarkFactoryCli,
-  type CampaignControlStore,
-  type CampaignStoreFactory,
-  type CliErrorCode,
-  type CliOutput,
-  type DarkFactoryCliDependencies,
-  type DoctorReport,
-  type HarnessRegistrationResult,
-  type VerifiedCampaignStoreOptions,
-} from "./cli.js";

@@ -1,7 +1,7 @@
-import { Type, type TSchema } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import type { ErrorObject, ValidateFunction } from "ajv";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
 import {
   CAUSE_CODES,
   DIAGNOSTIC_CATEGORIES,
@@ -10,8 +10,8 @@ import {
   MVP_DECISION_POLICY,
   MVP_SCHEMA_VERSION,
   MVP_SELECTION_POLICY,
-  TOOL_CLASSES,
   type MvpExperimentArtifacts,
+  TOOL_CLASSES,
 } from "./contracts.js";
 import {
   MVP_MODEL_DEPLOYMENT_ALIAS_MAX_LENGTH,
@@ -85,38 +85,33 @@ export const SanitizedDiagnosticCardSchema = Type.Object(
       Type.Literal("mixed"),
       Type.Literal("unknown"),
     ]),
-    supportBand: Type.Union([
-      Type.Literal("low"),
-      Type.Literal("medium"),
-      Type.Literal("high"),
-    ]),
-    confidenceBand: Type.Union([
-      Type.Literal("low"),
-      Type.Literal("medium"),
-      Type.Literal("high"),
-    ]),
+    supportBand: Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")]),
+    confidenceBand: Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")]),
   },
   { additionalProperties: false },
 );
 
-export const SanitizedDiagnosticBriefSchema = Type.Object(
-  {
-    schemaVersion: Type.Literal(MVP_SCHEMA_VERSION),
-    policyVersion: Type.Literal("closed-vocabulary-task-free-v1"),
-    cards: Type.Array(SanitizedDiagnosticCardSchema, {
-      maxItems: 12,
-      uniqueItems: true,
-    }),
-    containsTaskIdentifiers: Type.Literal(false),
-    containsTaskLiterals: Type.Literal(false),
-    containsGraderSecrets: Type.Literal(false),
-    containsPerTaskOutcomes: Type.Literal(false),
-  },
-  {
-    $id: "https://dark-factory.local/mvp/sanitized-diagnostics-1.0.0.json",
-    additionalProperties: false,
-  },
-);
+const SanitizedDiagnosticBriefProperties = {
+  schemaVersion: Type.Literal(MVP_SCHEMA_VERSION),
+  policyVersion: Type.Literal("closed-vocabulary-task-free-v1"),
+  cards: Type.Array(SanitizedDiagnosticCardSchema, {
+    maxItems: 12,
+    uniqueItems: true,
+  }),
+  containsTaskIdentifiers: Type.Literal(false),
+  containsTaskLiterals: Type.Literal(false),
+  containsGraderSecrets: Type.Literal(false),
+  containsPerTaskOutcomes: Type.Literal(false),
+};
+
+const InlineSanitizedDiagnosticBriefSchema = Type.Object(SanitizedDiagnosticBriefProperties, {
+  additionalProperties: false,
+});
+
+export const SanitizedDiagnosticBriefSchema = Type.Object(SanitizedDiagnosticBriefProperties, {
+  $id: "https://dark-factory.local/mvp/sanitized-diagnostics-1.0.0.json",
+  additionalProperties: false,
+});
 
 export const OptimizerInputSchema = Type.Object(
   {
@@ -129,7 +124,7 @@ export const OptimizerInputSchema = Type.Object(
       Type.Literal("inconclusive"),
       Type.Null(),
     ]),
-    diagnosticBrief: Type.Union([SanitizedDiagnosticBriefSchema, Type.Null()]),
+    diagnosticBrief: Type.Union([InlineSanitizedDiagnosticBriefSchema, Type.Null()]),
     boundary: Type.Object(
       {
         taskCatalogVisible: Type.Literal(false),
@@ -407,12 +402,9 @@ export const mvpArtifactSchemas = {
 export type MvpArtifactName = keyof typeof mvpArtifactSchemas;
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: true });
-addFormats(ajv);
+addFormatsModule.default(ajv);
 const validators = new Map<MvpArtifactName, ValidateFunction>();
-for (const [name, schema] of Object.entries(mvpArtifactSchemas) as [
-  MvpArtifactName,
-  TSchema,
-][]) {
+for (const [name, schema] of Object.entries(mvpArtifactSchemas) as [MvpArtifactName, TSchema][]) {
   validators.set(name, ajv.compile(schema));
 }
 const candidateProposalValidator = ajv.compile(CandidateProposalSchema);
@@ -423,10 +415,7 @@ export class MvpSchemaValidationError extends Error {
   public readonly artifactName: MvpArtifactName;
   public readonly validationErrors: readonly ErrorObject[];
 
-  public constructor(
-    artifactName: MvpArtifactName,
-    validationErrors: readonly ErrorObject[],
-  ) {
+  public constructor(artifactName: MvpArtifactName, validationErrors: readonly ErrorObject[]) {
     super(
       `MVP ${artifactName} validation failed: ${validationErrors
         .map((error) => `${error.instancePath || "/"} ${error.message ?? "is invalid"}`)
@@ -482,25 +471,17 @@ export function validateMvpExperimentArtifacts(artifacts: MvpExperimentArtifacts
     artifacts.privateCache.seededFromPromotedCandidateCellIds.length !==
     (artifacts.decision.disposition === "promote" ? 15 : 0)
   ) {
-    throw new Error(
-      "MVP cache must seed exactly the promoted candidate's fifteen fresh cells",
-    );
+    throw new Error("MVP cache must seed exactly the promoted candidate's fifteen fresh cells");
   }
   if (
-    artifacts.decision.taskWins +
-      artifacts.decision.taskLosses +
-      artifacts.decision.taskTies !==
+    artifacts.decision.taskWins + artifacts.decision.taskLosses + artifacts.decision.taskTies !==
     5
   ) {
     throw new Error("MVP decision task counts must sum to five");
   }
 }
 
-function validateStandalone(
-  name: string,
-  validator: ValidateFunction,
-  value: unknown,
-): void {
+function validateStandalone(name: string, validator: ValidateFunction, value: unknown): void {
   if (!validator(value)) {
     throw new Error(
       `Invalid MVP ${name}: ${(validator.errors ?? [])

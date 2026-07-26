@@ -101,10 +101,7 @@ export interface OneUseRequestLedger {
    * result—and any privacy-spending release it references—must be returned
    * rather than orphaned.
    */
-  inspect(
-    requestId: string,
-    requestHash: string,
-  ): Promise<OneUseLedgerInspection>;
+  inspect(requestId: string, requestHash: string): Promise<OneUseLedgerInspection>;
 
   /**
    * Rotates an in-flight claim to this controller only after a trusted
@@ -214,9 +211,7 @@ export function assertOneUseClaim(claim: OneUseClaim): void {
   }
 }
 
-export function assertOneUseLedgerInspection(
-  inspection: OneUseLedgerInspection,
-): void {
+export function assertOneUseLedgerInspection(inspection: OneUseLedgerInspection): void {
   if (inspection.state === "missing" || inspection.state === "conflict") {
     return;
   }
@@ -262,23 +257,16 @@ function recoveryObservation(
   record: OneUseLedgerRecord,
   successorOwnerInstanceIdHash: string,
 ): OneUseClaimRecoveryObservation {
-  if (
-    record.dispositionAttestationHash === null ||
-    record.status !== "in-flight"
-  ) {
-    throw new OneUseLedgerError(
-      "Only a disposition-bound in-flight claim can be recovered.",
-    );
+  if (record.dispositionAttestationHash === null || record.status !== "in-flight") {
+    throw new OneUseLedgerError("Only a disposition-bound in-flight claim can be recovered.");
   }
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.one-use-claim-recovery-observation.v1" as const,
+    domain: "dark-factory.one-use-claim-recovery-observation.v1" as const,
     requestId: input.requestId,
     requestHash: input.requestHash,
     recoveryRecordHash: input.recoveryRecordHash,
-    dispositionAttestationHash:
-      record.dispositionAttestationHash,
+    dispositionAttestationHash: record.dispositionAttestationHash,
     priorClaimTokenHash: claimTokenHash(record.claimToken),
     priorOwnerInstanceIdHash: record.ownerInstanceIdHash,
     priorClaimEpoch: record.claimEpoch,
@@ -291,14 +279,10 @@ function recoveryObservation(
 }
 
 export function hashOneUseClaimRecoveryAuthorization(
-  authorization: Omit<
-    TrustedOneUseClaimRecoveryAuthorization,
-    "authorizationHash"
-  >,
+  authorization: Omit<TrustedOneUseClaimRecoveryAuthorization, "authorizationHash">,
 ): string {
   return canonicalHash({
-    domain:
-      "dark-factory.one-use-claim-recovery-authorization-hash.v1",
+    domain: "dark-factory.one-use-claim-recovery-authorization-hash.v1",
     authorization,
   });
 }
@@ -308,53 +292,29 @@ function assertRecoveryAuthorization(
   observation: OneUseClaimRecoveryObservation,
 ): void {
   const authorizedAt = Date.parse(authorization.authorizedAt);
-  const {
-    authorizationHash: _authorizationHash,
-    ...unsigned
-  } = authorization;
+  const { authorizationHash: _authorizationHash, ...unsigned } = authorization;
   if (
     authorization.schemaVersion !== 1 ||
-    authorization.domain !==
-      "dark-factory.one-use-claim-recovery-authorization.v1" ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(
-      authorization.authorizationId,
-    ) ||
+    authorization.domain !== "dark-factory.one-use-claim-recovery-authorization.v1" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(authorization.authorizationId) ||
     authorization.requestId !== observation.requestId ||
     authorization.requestHash !== observation.requestHash ||
-    authorization.recoveryRecordHash !==
-      observation.recoveryRecordHash ||
-    authorization.dispositionAttestationHash !==
-      observation.dispositionAttestationHash ||
-    authorization.priorClaimTokenHash !==
-      observation.priorClaimTokenHash ||
-    authorization.priorOwnerInstanceIdHash !==
-      observation.priorOwnerInstanceIdHash ||
-    authorization.priorClaimEpoch !==
-      observation.priorClaimEpoch ||
-    authorization.successorOwnerInstanceIdHash !==
-      observation.successorOwnerInstanceIdHash ||
-    authorization.observationHash !==
-      observation.observationHash ||
-    authorization.priorOwnerInstanceIdHash ===
-      authorization.successorOwnerInstanceIdHash ||
-    !/^[a-f0-9]{64}$/u.test(
-      authorization.providerTerminationAttestationHash,
-    ) ||
-    !/^[a-f0-9]{64}$/u.test(
-      authorization.authorityAttestationHash,
-    ) ||
+    authorization.recoveryRecordHash !== observation.recoveryRecordHash ||
+    authorization.dispositionAttestationHash !== observation.dispositionAttestationHash ||
+    authorization.priorClaimTokenHash !== observation.priorClaimTokenHash ||
+    authorization.priorOwnerInstanceIdHash !== observation.priorOwnerInstanceIdHash ||
+    authorization.priorClaimEpoch !== observation.priorClaimEpoch ||
+    authorization.successorOwnerInstanceIdHash !== observation.successorOwnerInstanceIdHash ||
+    authorization.observationHash !== observation.observationHash ||
+    authorization.priorOwnerInstanceIdHash === authorization.successorOwnerInstanceIdHash ||
+    !/^[a-f0-9]{64}$/u.test(authorization.providerTerminationAttestationHash) ||
+    !/^[a-f0-9]{64}$/u.test(authorization.authorityAttestationHash) ||
     !Number.isFinite(authorizedAt) ||
-    new Date(authorizedAt).toISOString() !==
-      authorization.authorizedAt ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(
-      authorization.signerKeyId,
-    ) ||
-    authorization.authorizationHash !==
-      hashOneUseClaimRecoveryAuthorization(unsigned)
+    new Date(authorizedAt).toISOString() !== authorization.authorizedAt ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(authorization.signerKeyId) ||
+    authorization.authorizationHash !== hashOneUseClaimRecoveryAuthorization(unsigned)
   ) {
-    throw new OneUseLedgerError(
-      "Claim recovery authorization is malformed or detached.",
-    );
+    throw new OneUseLedgerError("Claim recovery authorization is malformed or detached.");
   }
 }
 
@@ -365,26 +325,21 @@ function assertRecoveryAuthorization(
 export class DurableOneUseRequestLedger implements OneUseRequestLedger {
   readonly #store: AtomicOneUseLedgerStore;
   readonly #controllerInstanceIdHash: string;
-  readonly #recoveryAuthority:
-    | TrustedOneUseClaimRecoveryAuthority
-    | undefined;
+  readonly #recoveryAuthority: TrustedOneUseClaimRecoveryAuthority | undefined;
   readonly #retryAfterMs: number;
   readonly #claimTokenFactory: () => string;
 
   constructor(options: DurableOneUseRequestLedgerOptions) {
     this.#store = options.store;
-    this.#controllerInstanceIdHash =
-      options.controllerInstanceIdHash;
+    this.#controllerInstanceIdHash = options.controllerInstanceIdHash;
     this.#recoveryAuthority = options.recoveryAuthority;
     this.#retryAfterMs = options.retryAfterMs ?? 5_000;
     this.#claimTokenFactory =
-      options.claimTokenFactory ??
-      (() => `claim-${randomBytes(24).toString("base64url")}`);
+      options.claimTokenFactory ?? (() => `claim-${randomBytes(24).toString("base64url")}`);
     if (
       !/^[a-f0-9]{64}$/u.test(this.#controllerInstanceIdHash) ||
       (this.#recoveryAuthority !== undefined &&
-        (this.#recoveryAuthority.boundary !==
-          "trusted-cloud-provider-termination-authority" ||
+        (this.#recoveryAuthority.boundary !== "trusted-cloud-provider-termination-authority" ||
           typeof this.#recoveryAuthority.authorize !== "function")) ||
       !Number.isSafeInteger(this.#retryAfterMs) ||
       this.#retryAfterMs <= 0 ||
@@ -396,7 +351,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
 
   claim(requestId: string, requestHash: string): Promise<OneUseClaim> {
     assertRequestIdentity(requestId, requestHash);
-    return this.#store.transact((state) => {
+    return this.#store.transact<OneUseClaim>((state) => {
       const existing = state.records[requestId];
       if (existing !== undefined) {
         if (existing.requestHash !== requestHash) {
@@ -461,12 +416,9 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
     });
   }
 
-  inspect(
-    requestId: string,
-    requestHash: string,
-  ): Promise<OneUseLedgerInspection> {
+  inspect(requestId: string, requestHash: string): Promise<OneUseLedgerInspection> {
     assertRequestIdentity(requestId, requestHash);
-    return this.#store.transact((state) => {
+    return this.#store.transact<OneUseLedgerInspection>((state) => {
       const existing = state.records[requestId];
       if (existing === undefined) {
         return {
@@ -482,9 +434,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       }
       if (existing.status === "completed") {
         if (existing.envelope === null) {
-          throw new OneUseLedgerError(
-            "Completed ledger record has no signed envelope.",
-          );
+          throw new OneUseLedgerError("Completed ledger record has no signed envelope.");
         }
         return {
           next: state,
@@ -497,9 +447,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       }
       if (existing.status === "consumed") {
         if (existing.failureCode === null) {
-          throw new OneUseLedgerError(
-            "Consumed ledger record has no failure code.",
-          );
+          throw new OneUseLedgerError("Consumed ledger record has no failure code.");
         }
         return {
           next: state,
@@ -528,27 +476,21 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
   }): Promise<OneUseClaim> {
     assertRequestIdentity(input.requestId, input.requestHash);
     if (!/^[a-f0-9]{64}$/u.test(input.recoveryRecordHash)) {
-      throw new OneUseLedgerError(
-        "Claim recovery record commitment is malformed.",
-      );
+      throw new OneUseLedgerError("Claim recovery record commitment is malformed.");
     }
     const observed = await this.#store.transact((state) => {
       const record = state.records[input.requestId];
       return { next: state, result: record };
     });
     if (observed === undefined) {
-      throw new OneUseLedgerError(
-        "An absent one-use claim cannot be recovered.",
-      );
+      throw new OneUseLedgerError("An absent one-use claim cannot be recovered.");
     }
     if (observed.requestHash !== input.requestHash) {
       return { state: "conflict" };
     }
     if (observed.status === "completed") {
       if (observed.envelope === null) {
-        throw new OneUseLedgerError(
-          "Completed ledger record has no signed envelope.",
-        );
+        throw new OneUseLedgerError("Completed ledger record has no signed envelope.");
       }
       return {
         state: "completed",
@@ -558,9 +500,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
     }
     if (observed.status === "consumed") {
       if (observed.failureCode === null) {
-        throw new OneUseLedgerError(
-          "Consumed ledger record has no failure code.",
-        );
+        throw new OneUseLedgerError("Consumed ledger record has no failure code.");
       }
       return {
         state: "consumed",
@@ -569,8 +509,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       };
     }
     if (
-      observed.ownerInstanceIdHash ===
-        this.#controllerInstanceIdHash &&
+      observed.ownerInstanceIdHash === this.#controllerInstanceIdHash &&
       observed.recoveryRecordHash === input.recoveryRecordHash &&
       observed.recoveryAuthorizationHash !== null
     ) {
@@ -580,17 +519,10 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       };
     }
     if (this.#recoveryAuthority === undefined) {
-      throw new OneUseLedgerError(
-        "Provider-termination-attested claim recovery is unavailable.",
-      );
+      throw new OneUseLedgerError("Provider-termination-attested claim recovery is unavailable.");
     }
-    const observation = recoveryObservation(
-      input,
-      observed,
-      this.#controllerInstanceIdHash,
-    );
-    const authorization =
-      await this.#recoveryAuthority.authorize(observation);
+    const observation = recoveryObservation(input, observed, this.#controllerInstanceIdHash);
+    const authorization = await this.#recoveryAuthority.authorize(observation);
     if (authorization === null) {
       throw new OneUseLedgerError(
         "The recovery authority did not prove prior controller termination.",
@@ -598,21 +530,13 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
     }
     assertRecoveryAuthorization(authorization, observation);
     const replacementClaimToken = this.#claimTokenFactory();
-    if (
-      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(
-        replacementClaimToken,
-      )
-    ) {
-      throw new OneUseLedgerError(
-        "Claim token factory returned an unsafe token.",
-      );
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(replacementClaimToken)) {
+      throw new OneUseLedgerError("Claim token factory returned an unsafe token.");
     }
-    return this.#store.transact((state) => {
+    return this.#store.transact<OneUseClaim>((state) => {
       const current = state.records[input.requestId];
       if (current === undefined) {
-        throw new OneUseLedgerError(
-          "Claim disappeared during recovery.",
-        );
+        throw new OneUseLedgerError("Claim disappeared during recovery.");
       }
       if (current.requestHash !== input.requestHash) {
         return {
@@ -622,9 +546,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       }
       if (current.status === "completed") {
         if (current.envelope === null) {
-          throw new OneUseLedgerError(
-            "Completed ledger record has no signed envelope.",
-          );
+          throw new OneUseLedgerError("Completed ledger record has no signed envelope.");
         }
         return {
           next: state,
@@ -637,9 +559,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       }
       if (current.status === "consumed") {
         if (current.failureCode === null) {
-          throw new OneUseLedgerError(
-            "Consumed ledger record has no failure code.",
-          );
+          throw new OneUseLedgerError("Consumed ledger record has no failure code.");
         }
         return {
           next: state,
@@ -652,28 +572,17 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       }
       if (
         current.claimToken !== observed.claimToken ||
-        current.ownerInstanceIdHash !==
-          observed.ownerInstanceIdHash ||
+        current.ownerInstanceIdHash !== observed.ownerInstanceIdHash ||
         current.claimEpoch !== observed.claimEpoch ||
-        current.dispositionAttestationHash !==
-          observed.dispositionAttestationHash ||
-        current.recoveryRecordHash !==
-          observed.recoveryRecordHash ||
-        current.recoveryAuthorizationHash !==
-          observed.recoveryAuthorizationHash
+        current.dispositionAttestationHash !== observed.dispositionAttestationHash ||
+        current.recoveryRecordHash !== observed.recoveryRecordHash ||
+        current.recoveryAuthorizationHash !== observed.recoveryAuthorizationHash
       ) {
-        throw new OneUseLedgerError(
-          "Claim changed while recovery authorization was pending.",
-        );
+        throw new OneUseLedgerError("Claim changed while recovery authorization was pending.");
       }
       if (
-        state.usedRecoveryAuthorizations.includes(
-          authorization.authorizationHash,
-        ) ||
-        Object.values(state.records).some(
-          (record) =>
-            record.claimToken === replacementClaimToken,
-        )
+        state.usedRecoveryAuthorizations.includes(authorization.authorizationHash) ||
+        Object.values(state.records).some((record) => record.claimToken === replacementClaimToken)
       ) {
         throw new OneUseLedgerError(
           "Claim recovery authorization or replacement token was reused.",
@@ -682,12 +591,10 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       const recovered: OneUseLedgerRecord = {
         ...current,
         claimToken: replacementClaimToken,
-        ownerInstanceIdHash:
-          this.#controllerInstanceIdHash,
+        ownerInstanceIdHash: this.#controllerInstanceIdHash,
         claimEpoch: current.claimEpoch + 1,
         recoveryRecordHash: input.recoveryRecordHash,
-        recoveryAuthorizationHash:
-          authorization.authorizationHash,
+        recoveryAuthorizationHash: authorization.authorizationHash,
       };
       return {
         next: nextState(
@@ -697,10 +604,7 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
             [input.requestId]: recovered,
           },
           state.usedDispositionAttestations,
-          [
-            ...state.usedRecoveryAuthorizations,
-            authorization.authorizationHash,
-          ],
+          [...state.usedRecoveryAuthorizations, authorization.authorizationHash],
         ),
         result: {
           state: "acquired" as const,

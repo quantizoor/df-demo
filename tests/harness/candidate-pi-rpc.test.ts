@@ -69,10 +69,7 @@ describe("candidate specifications", () => {
       focusedTestFiles: ["packages/coding-agent/test/recovery.test.ts"],
       runFullTestSuite: true,
     });
-    const commands = spec.commands.map((command) => [
-      command.executable,
-      ...command.arguments,
-    ]);
+    const commands = spec.commands.map((command) => [command.executable, ...command.arguments]);
     expect(commands[0]).toEqual([
       "/usr/bin/node",
       "/trusted/inputs/extract-pi-source.mjs",
@@ -113,20 +110,19 @@ describe("candidate specifications", () => {
     );
   });
 
-  it.each([
-    "001-../../escape",
-    "not-numbered",
-    "001-UPPERCASE",
-  ])("rejects unsafe experiment id %s", (experimentId) => {
-    expect(() =>
-      createCandidateWorktreeSpec({
-        experimentId,
-        baseCommit: "a".repeat(40),
-        canonicalRepositoryPath: "/workspace/pi",
-        worktreeRoot: "/workspace/df-worktrees",
-      }),
-    ).toThrow(/identifier/u);
-  });
+  it.each(["001-../../escape", "not-numbered", "001-UPPERCASE"])(
+    "rejects unsafe experiment id %s",
+    (experimentId) => {
+      expect(() =>
+        createCandidateWorktreeSpec({
+          experimentId,
+          baseCommit: "a".repeat(40),
+          canonicalRepositoryPath: "/workspace/pi",
+          worktreeRoot: "/workspace/df-worktrees",
+        }),
+      ).toThrow(/identifier/u);
+    },
+  );
 
   it("rejects focused test traversal", () => {
     expect(() =>
@@ -249,9 +245,7 @@ describe("strict Pi RPC JSONL boundary", () => {
   it("buffers fragmented records and classifies tool events", () => {
     const decoder = new PiRpcJsonlDecoder();
     expect(decoder.push('{"type":"tool_exec')).toEqual([]);
-    expect(decoder.push('ution_end","toolName":"bash"}\n')).toMatchObject([
-      { kind: "tool" },
-    ]);
+    expect(decoder.push('ution_end","toolName":"bash"}\n')).toMatchObject([{ kind: "tool" }]);
   });
 
   it("rejects malformed, oversized, and unterminated records", () => {

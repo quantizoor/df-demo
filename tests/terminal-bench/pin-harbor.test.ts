@@ -10,10 +10,7 @@ import {
   serializeTrustedTerminalBenchInstruction,
   type TrustedTerminalBenchInstruction,
 } from "../../src/terminal-bench/pi-agent.js";
-import {
-  hashTerminalBench21Pin,
-  type TerminalBench21Pin,
-} from "../../src/terminal-bench/pin.js";
+import { hashTerminalBench21Pin, type TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 
 const pin: TerminalBench21Pin = {
   benchmark: "terminal-bench-2.1",
@@ -107,8 +104,7 @@ function job(): TrustedHarborJobArtifact {
         configSha256: "1".repeat(64),
         remoteConfigPath: "/trusted/jobs/config-ab.json",
         remoteHarborJobPath: "/trusted/results/request-001-ab",
-        remoteOutputPath:
-          "/trusted/results/request-001-ab.harbor-output.tar",
+        remoteOutputPath: "/trusted/results/request-001-ab.harbor-output.tar",
         cellCount: 6,
         armCount: 12,
         agentOrder: ["candidate", "champion"],
@@ -122,8 +118,7 @@ function job(): TrustedHarborJobArtifact {
         configSha256: "2".repeat(64),
         remoteConfigPath: "/trusted/jobs/config-ba.json",
         remoteHarborJobPath: "/trusted/results/request-001-ba",
-        remoteOutputPath:
-          "/trusted/results/request-001-ba.harbor-output.tar",
+        remoteOutputPath: "/trusted/results/request-001-ba.harbor-output.tar",
         cellCount: 6,
         armCount: 12,
         agentOrder: ["champion", "candidate"],
@@ -174,16 +169,10 @@ describe("Harbor invocation boundary", () => {
         },
       ],
     });
-    expect(command.arguments).toEqual([
-      "run",
-      "-c",
-      "/trusted/jobs/config-ab.json",
-    ]);
+    expect(command.arguments).toEqual(["run", "-c", "/trusted/jobs/config-ab.json"]);
     expect(JSON.stringify(command)).not.toContain("include-task");
     expect(JSON.stringify(command)).not.toContain("taskId");
-    expect(command.environment["DF_TERMINAL_BENCH_PIN_SHA256"]).toBe(
-      hashTerminalBench21Pin(pin),
-    );
+    expect(command.environment["DF_TERMINAL_BENCH_PIN_SHA256"]).toBe(hashTerminalBench21Pin(pin));
     expect(command.environment["DF_HARBOR_ISOLATION_POLICY_SHA256"]).toBe(
       hashHarborAgentIsolationPolicy(),
     );
@@ -230,16 +219,10 @@ describe("Harbor invocation boundary", () => {
       executionId: "execution-001",
     });
     expect(command.executable).toBe("/usr/bin/node");
-    expect(command.arguments).toContain(
-      "/trusted/results/request-001-ab",
-    );
-    expect(command.arguments).toContain(
-      "/trusted/results/request-001-ab.harbor-output.tar",
-    );
+    expect(command.arguments).toContain("/trusted/results/request-001-ab");
+    expect(command.arguments).toContain("/trusted/results/request-001-ab.harbor-output.tar");
     expect(command.arguments).toContain("execution-001");
-    expect(command.environment["DF_HARBOR_JOB_SHA256"]).toBe(
-      value.jobSha256,
-    );
+    expect(command.environment["DF_HARBOR_JOB_SHA256"]).toBe(value.jobSha256);
     expect(command.secretReferences).toEqual([]);
   });
 });

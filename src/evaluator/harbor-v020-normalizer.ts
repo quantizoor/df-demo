@@ -1,47 +1,39 @@
 import { createHash } from "node:crypto";
 
-import type {
-  RemoteExecutionReceipt,
-  TrustedCloudArtifactRef,
-} from "../cloud/types.js";
+import type { RemoteExecutionReceipt, TrustedCloudArtifactRef } from "../cloud/types.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import type {
   TrustedHarborInvocation,
   TrustedHarborJobArtifact,
   TrustedHarborUpload,
 } from "../terminal-bench/harbor.js";
+import type { TrustedRuntimeVerificationReceipt } from "../terminal-bench/runner.js";
 import type {
   TrustedMatchedArm,
   TrustedMatchedArmSchedule,
   TrustedMatchedPanel,
 } from "../terminal-bench/trusted.js";
-import type { TrustedRuntimeVerificationReceipt } from "../terminal-bench/runner.js";
 import {
+  type Harbor020ParsedOutputBundle,
+  parseHarbor020Json,
+  parseHarbor020OutputBundle,
+} from "./harbor-v020-bundle.js";
+import {
+  assertTrustedHarbor020DecodingPlan,
   HARBOR_0_20_0_VERSION,
   HARBOR_0_20_0_WHEEL_SHA256,
-  assertTrustedHarbor020DecodingPlan,
   hashTrustedHarbor020DecodingPlan,
   type TrustedHarbor020DecodingPlan,
   type TrustedHarbor020ExpectedArm,
   type TrustedHarbor020ExpectedInvocation,
 } from "./harbor-v020-decoder.js";
-import {
-  parseHarbor020Json,
-  parseHarbor020OutputBundle,
-  type Harbor020ParsedOutputBundle,
-} from "./harbor-v020-bundle.js";
-import type {
-  TrustedDecodedPlaintextSet,
-  TrustedEvaluatorPortBoundary,
-} from "./raw-reader.js";
+import type { TrustedDecodedPlaintextSet, TrustedEvaluatorPortBoundary } from "./raw-reader.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const SAFE_TASK_NAME =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u;
-const UUID =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 const MAXIMUM_WRAPPER_BYTES = 256 * 1024 * 1024;
 
 type PlainRecord = Readonly<Record<string, unknown>>;
@@ -125,9 +117,7 @@ export interface TrustedHarbor020NormalizedEvidence {
    * buffers; ingress encrypts them immediately and zeroes them in `finally`.
    */
   readonly plaintexts: TrustedDecodedPlaintextSet;
-  readonly plaintextHashes: Readonly<
-    Record<"atif" | "grader-output" | "harbor-output", string>
-  >;
+  readonly plaintextHashes: Readonly<Record<"atif" | "grader-output" | "harbor-output", string>>;
   readonly normalizationAttestationHash: string;
 }
 
@@ -180,10 +170,7 @@ function record(value: unknown): PlainRecord {
 function exactKeys(value: unknown, keys: readonly string[]): PlainRecord {
   const result = record(value);
   const actual = Object.keys(result);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
   return result;
@@ -205,11 +192,7 @@ function uuid(value: unknown): string {
 }
 
 function finiteNonNegative(value: unknown): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    value < 0
-  ) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     fail();
   }
   return value;
@@ -268,8 +251,7 @@ function assertContext(
   ]);
   const model = exactKeys(value.evaluatedModel, ["provider", "modelId"]);
   if (
-    value.sensitivity !==
-      "trusted-harbor-0.20.0-normalization-context" ||
+    value.sensitivity !== "trusted-harbor-0.20.0-normalization-context" ||
     value.schemaVersion !== 1 ||
     value.requestId !== requestId ||
     value.jobSha256 !== jobSha256 ||
@@ -340,11 +322,7 @@ function parseInputConfig(
     fail();
   }
   const retry = exactKeys(config["retry"], ["max_retries"]);
-  const environment = exactKeys(config["environment"], [
-    "type",
-    "delete",
-    "force_build",
-  ]);
+  const environment = exactKeys(config["environment"], ["type", "delete", "force_build"]);
   const verifier = exactKeys(config["verifier"], ["disable"]);
   if (
     retry["max_retries"] !== 0 ||
@@ -365,19 +343,13 @@ function parseInputConfig(
     if (
       expectedArm === undefined ||
       agent["name"] !== `dark-factory-${expectedArm}` ||
-      agent["model_name"] !==
-        `${context.evaluatedModel.provider}/${context.evaluatedModel.modelId}`
+      agent["model_name"] !== `${context.evaluatedModel.provider}/${context.evaluatedModel.modelId}`
     ) {
       fail();
     }
     agentOrder.push(expectedArm);
   }
-  const dataset = exactKeys(config["datasets"][0], [
-    "name",
-    "ref",
-    "overwrite",
-    "task_names",
-  ]);
+  const dataset = exactKeys(config["datasets"][0], ["name", "ref", "overwrite", "task_names"]);
   if (
     dataset["overwrite"] !== false ||
     !Array.isArray(dataset["task_names"]) ||
@@ -408,8 +380,7 @@ function assertOutputConfig(
     !Array.isArray(outputConfig["datasets"]) ||
     outputConfig["datasets"].length !== 1 ||
     (outputConfig["source_jobs"] !== undefined &&
-      (!Array.isArray(outputConfig["source_jobs"]) ||
-        outputConfig["source_jobs"].length !== 0))
+      (!Array.isArray(outputConfig["source_jobs"]) || outputConfig["source_jobs"].length !== 0))
   ) {
     fail();
   }
@@ -419,8 +390,7 @@ function assertOutputConfig(
     if (
       arm === undefined ||
       agent["name"] !== `dark-factory-${arm}` ||
-      agent["model_name"] !==
-        `${context.evaluatedModel.provider}/${context.evaluatedModel.modelId}`
+      agent["model_name"] !== `${context.evaluatedModel.provider}/${context.evaluatedModel.modelId}`
     ) {
       fail();
     }
@@ -453,14 +423,10 @@ function armsForInvocation(
     fail();
   }
   return cells.map(({ cell, cellOrdinal }, index) => {
-    const arms = schedule.arms.filter(
-      (arm) => arm.cellOrdinal === cellOrdinal,
-    );
+    const arms = schedule.arms.filter((arm) => arm.cellOrdinal === cellOrdinal);
     if (
       arms.length !== config.agentOrder.length ||
-      config.agentOrder.some(
-        (kind) => !arms.some((arm) => arm.arm === kind),
-      ) ||
+      config.agentOrder.some((kind) => !arms.some((arm) => arm.arm === kind)) ||
       arms.some(
         (arm) =>
           arm.taskId !== cell.taskId ||
@@ -522,10 +488,7 @@ function joinTrials(
     }
     const key = `${taskName}\u0000${agent["name"]}`;
     const scheduleArm = expected.get(key);
-    if (
-      scheduleArm === undefined ||
-      joinedByArmId.has(scheduleArm.armId)
-    ) {
+    if (scheduleArm === undefined || joinedByArmId.has(scheduleArm.armId)) {
       fail();
     }
     const execution = record(result["agent_execution"]);
@@ -548,9 +511,7 @@ function joinTrials(
       reward,
     });
   }
-  if (
-    joinedByArmId.size !== expected.size
-  ) {
+  if (joinedByArmId.size !== expected.size) {
     fail();
   }
   const joined = expectedTasks.flatMap((task) =>
@@ -562,9 +523,7 @@ function joinTrials(
   );
   for (const task of expectedTasks) {
     const checksums = new Set(
-      joined
-        .filter((entry) => entry.taskName === task.taskName)
-        .map((entry) => entry.taskChecksum),
+      joined.filter((entry) => entry.taskName === task.taskName).map((entry) => entry.taskChecksum),
     );
     if (checksums.size !== 1) fail();
   }
@@ -577,9 +536,7 @@ function assertAllocations(
 ): ReadonlyMap<string, TrustedHarbor020TrialResourceAllocation> {
   if (!Array.isArray(values) || values.length !== trials.length) fail();
   const result = new Map<string, TrustedHarbor020TrialResourceAllocation>();
-  const expected = new Map(
-    trials.map((trial) => [trial.scheduleArm.armId, trial] as const),
-  );
+  const expected = new Map(trials.map((trial) => [trial.scheduleArm.armId, trial] as const));
   for (const value of values) {
     exactKeys(value, [
       "scheduleArmId",
@@ -633,22 +590,15 @@ function header(
   };
 }
 
-export class StrictHarbor020BundleNormalizer
-  implements TrustedHarbor020BundleNormalizer
-{
+export class StrictHarbor020BundleNormalizer implements TrustedHarbor020BundleNormalizer {
   readonly boundary: TrustedEvaluatorPortBoundary;
   readonly #contexts: TrustedHarbor020NormalizationContextProvider;
   readonly #resources: TrustedHarbor020TrialResourceAllocator;
 
   constructor(options: StrictHarbor020BundleNormalizerOptions) {
     const expected =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
-    if (
-      options.contexts.boundary !== expected ||
-      options.resources.boundary !== expected
-    ) {
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
+    if (options.contexts.boundary !== expected || options.resources.boundary !== expected) {
       fail();
     }
     this.boundary = expected;
@@ -680,8 +630,7 @@ export class StrictHarbor020BundleNormalizer
         input.bundles.length !== input.job.invocations.length ||
         input.configs.length !== input.job.invocations.length ||
         input.executions.length !== input.job.invocations.length ||
-        input.runtimeVerification.harborPackageSha256 !==
-          HARBOR_0_20_0_WHEEL_SHA256 ||
+        input.runtimeVerification.harborPackageSha256 !== HARBOR_0_20_0_WHEEL_SHA256 ||
         !SHA256.test(input.sourceEvidenceHash) ||
         !Number.isSafeInteger(input.maximumArchiveBytes) ||
         input.maximumArchiveBytes < 1
@@ -725,12 +674,7 @@ export class StrictHarbor020BundleNormalizer
           executionId: execution.executionId,
           maximumArchiveBytes: input.maximumArchiveBytes,
         });
-        assertOutputConfig(
-          parsedBundle.outputConfig,
-          configInput,
-          parsedConfig,
-          context,
-        );
+        assertOutputConfig(parsedBundle.outputConfig, configInput, parsedConfig, context);
         const expectedTasks = armsForInvocation(
           input.panel,
           input.schedule,
@@ -765,8 +709,7 @@ export class StrictHarbor020BundleNormalizer
             capabilityStratum: trial.scheduleArm.capabilityStratum,
             arm: trial.scheduleArm.arm,
             order: trial.scheduleArm.order,
-            harnessArchiveSha256:
-              trial.scheduleArm.harness.archiveSha256,
+            harnessArchiveSha256: trial.scheduleArm.harness.archiveSha256,
             harborTaskName: trial.taskName,
             harborTaskChecksum: trial.taskChecksum,
           });
@@ -778,13 +721,11 @@ export class StrictHarbor020BundleNormalizer
             boundedReward: trial.reward,
             infrastructureInvalidClass: null,
             integrityStatus: "passed",
-            elapsedMs:
-              Date.parse(trial.completedAt) - Date.parse(trial.startedAt),
+            elapsedMs: Date.parse(trial.completedAt) - Date.parse(trial.startedAt),
             cpuUtilizationPercent: allocation.cpuUtilizationPercent,
             maxRssMb: allocation.maxRssMb,
             protocolHash: context.protocolHash,
-            environmentFingerprintHash:
-              context.environmentFingerprintHash,
+            environmentFingerprintHash: context.environmentFingerprintHash,
             sandboxUsd: allocation.sandboxUsd,
           });
           atifRecords.push({
@@ -828,8 +769,7 @@ export class StrictHarbor020BundleNormalizer
         jobSha256: input.job.jobSha256,
         sourceEvidenceHash: input.sourceEvidenceHash,
         protocolHash: context.protocolHash,
-        environmentFingerprintHash:
-          context.environmentFingerprintHash,
+        environmentFingerprintHash: context.environmentFingerprintHash,
         evaluatedModel: context.evaluatedModel,
         invocations: planInvocations,
       };
@@ -904,10 +844,12 @@ export class StrictHarbor020BundleNormalizer
         normalizationAttestationHash,
       };
     } catch {
-      fail();
+      return fail();
     } finally {
       if (!transferred) {
-        ownedPlaintexts.forEach((value) => value.fill(0));
+        ownedPlaintexts.forEach((value) => {
+          value.fill(0);
+        });
       }
     }
   }

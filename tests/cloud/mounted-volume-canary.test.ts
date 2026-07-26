@@ -1,8 +1,4 @@
-import {
-  mkdtemp,
-  mkdir,
-  symlink,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,21 +7,18 @@ import { describe, expect, it } from "vitest";
 import type { TrustedArtifactRuntimeGuard } from "../../src/cloud/artifact-bridge.js";
 import {
   AttestedMountedVolumeStateSemanticsGuard,
-  InProcessMountedVolumeCanaryWorkers,
-  NodeMountedVolumeCanaryFileSystem,
   computeMountedVolumeBindingHash,
   computeMountedVolumeRootHash,
   computeMountedVolumeRuntimeIdentityHash,
-  runMountedVolumeSemanticsCanary,
+  InProcessMountedVolumeCanaryWorkers,
   type MountedVolumeCanaryFileSystemPort,
   type MountedVolumeCanaryWorkerPort,
   type MountedVolumeRuntimeIdentity,
   type MountedVolumeSemanticsCanaryReceipt,
+  NodeMountedVolumeCanaryFileSystem,
+  runMountedVolumeSemanticsCanary,
 } from "../../src/cloud/mounted-volume-canary.js";
-import {
-  computeContentHash,
-  sha256,
-} from "../../src/schemas/canonical.js";
+import { computeContentHash, sha256 } from "../../src/schemas/canonical.js";
 
 const imageDigest = `sha256:${"1".repeat(64)}` as const;
 const observedAt = new Date("2026-07-26T10:00:00.000Z");
@@ -61,14 +54,9 @@ async function runCanary(
     volumeSubpath: "campaign/state",
     controlImageDigest: imageDigest,
     runtimeIdentity,
-    runtimeGuard:
-      overrides.runtimeGuard ?? acceptingRuntimeGuard(),
-    ...(overrides.filesystem === undefined
-      ? {}
-      : { filesystem: overrides.filesystem }),
-    ...(overrides.workers === undefined
-      ? {}
-      : { workers: overrides.workers }),
+    runtimeGuard: overrides.runtimeGuard ?? acceptingRuntimeGuard(),
+    ...(overrides.filesystem === undefined ? {} : { filesystem: overrides.filesystem }),
+    ...(overrides.workers === undefined ? {} : { workers: overrides.workers }),
     now: () => observedAt,
     nonceFactory: () => "a".repeat(48),
   });
@@ -94,9 +82,7 @@ function guard(
 
 describe("mounted-volume semantics canary", () => {
   it("observes the required live semantics and creates an exact runtime-bound guard", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-volume-canary-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-volume-canary-test-"));
     const receipt = await runCanary(root, {
       filesystem: new NodeMountedVolumeCanaryFileSystem(),
       workers: new InProcessMountedVolumeCanaryWorkers(),
@@ -114,9 +100,7 @@ describe("mounted-volume semantics canary", () => {
         volumeSubpath: "campaign/state",
         volumeRoot: root,
       }),
-      controllerInstanceIdHash: sha256(
-        runtimeIdentity.marker.sandboxId,
-      ),
+      controllerInstanceIdHash: sha256(runtimeIdentity.marker.sandboxId),
       controlImageDigest: imageDigest,
       runtimeIdentityHash: computeMountedVolumeRuntimeIdentityHash({
         provider: "daytona",
@@ -169,29 +153,21 @@ describe("mounted-volume semantics canary", () => {
   });
 
   it("rejects a symlink volume root before making an observation receipt", async () => {
-    const parent = await mkdtemp(
-      join(tmpdir(), "df-volume-canary-link-test-"),
-    );
+    const parent = await mkdtemp(join(tmpdir(), "df-volume-canary-link-test-"));
     const realRoot = join(parent, "real-volume");
     const linkedRoot = join(parent, "linked-volume");
     await mkdir(realRoot, { mode: 0o700 });
     await symlink(realRoot, linkedRoot);
 
-    await expect(runCanary(linkedRoot)).rejects.toThrow(
-      /non-symlink directory/u,
-    );
+    await expect(runCanary(linkedRoot)).rejects.toThrow(/non-symlink directory/u);
   });
 
   it("creates and attests an exact campaign-state root beneath the mounted volume", async () => {
-    const mountRoot = await mkdtemp(
-      join(tmpdir(), "df-volume-canary-mount-test-"),
-    );
+    const mountRoot = await mkdtemp(join(tmpdir(), "df-volume-canary-mount-test-"));
     const stateRoot = join(mountRoot, "campaign-state");
     const receipt = await runCanary(stateRoot);
 
-    expect(receipt.volumeRootHash).toBe(
-      computeMountedVolumeRootHash(stateRoot),
-    );
+    expect(receipt.volumeRootHash).toBe(computeMountedVolumeRootHash(stateRoot));
     expect(() =>
       guard(stateRoot, receipt).assertLinearizableStateVolume({
         volumeRoot: stateRoot,
@@ -201,9 +177,7 @@ describe("mounted-volume semantics canary", () => {
   });
 
   it("fails closed when an injected contention worker reports multiple winners", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-volume-canary-race-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-volume-canary-race-test-"));
     const workers: MountedVolumeCanaryWorkerPort = {
       async raceExclusiveCreation(input) {
         return {
@@ -223,16 +197,12 @@ describe("mounted-volume semantics canary", () => {
   });
 
   it("fails closed when an injected observer detects a rename visibility gap", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-volume-canary-rename-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-volume-canary-rename-test-"));
     const realWorkers = new InProcessMountedVolumeCanaryWorkers();
     const workers: MountedVolumeCanaryWorkerPort = {
-      raceExclusiveCreation: (input) =>
-        realWorkers.raceExclusiveCreation(input),
+      raceExclusiveCreation: (input) => realWorkers.raceExclusiveCreation(input),
       async observeAtomicRename(input) {
-        const observed =
-          await realWorkers.observeAtomicRename(input);
+        const observed = await realWorkers.observeAtomicRename(input);
         return {
           ...observed,
           missingCount: 1,
@@ -241,24 +211,16 @@ describe("mounted-volume semantics canary", () => {
       },
     };
 
-    await expect(runCanary(root, { workers })).rejects.toThrow(
-      /atomic rename visibility/u,
-    );
+    await expect(runCanary(root, { workers })).rejects.toThrow(/atomic rename visibility/u);
   });
 
   it("rejects stale, tampered, or differently bound receipts", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-volume-canary-guard-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-volume-canary-guard-test-"));
     const receipt = await runCanary(root);
 
-    expect(() =>
-      guard(
-        root,
-        receipt,
-        new Date("2026-07-26T17:00:00.000Z"),
-      ),
-    ).toThrow(/stale|binding/u);
+    expect(() => guard(root, receipt, new Date("2026-07-26T17:00:00.000Z"))).toThrow(
+      /stale|binding/u,
+    );
 
     expect(
       () =>
@@ -287,8 +249,6 @@ describe("mounted-volume semantics canary", () => {
       ...unsafeDraft,
       contentHash: computeContentHash(unsafeDraft),
     } as unknown as MountedVolumeSemanticsCanaryReceipt;
-    expect(() => guard(root, unsafeReceipt)).toThrow(
-      /invalid or incomplete/u,
-    );
+    expect(() => guard(root, unsafeReceipt)).toThrow(/invalid or incomplete/u);
   });
 });

@@ -1,14 +1,7 @@
-import {
-  OFFICIAL_PI_UPSTREAM_URL,
-  type RepositoryDoctorReport,
-} from "../harness/repository.js";
-import {
-  TRUSTED_GIT_CREDENTIAL_TARGET,
-  type PrivateGitHubOrigin,
-} from "../harness/trusted-git.js";
+import { OFFICIAL_PI_UPSTREAM_URL, type RepositoryDoctorReport } from "../harness/repository.js";
+import { type PrivateGitHubOrigin, TRUSTED_GIT_CREDENTIAL_TARGET } from "../harness/trusted-git.js";
 
-const SAFE_GITHUB_OWNER =
-  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
+const SAFE_GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 const SAFE_GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/u;
 const SAFE_GIT_BRANCH = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,238}[A-Za-z0-9])?$/u;
 const GIT_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
@@ -48,10 +41,7 @@ const REQUIRED = [
   "DF_GITHUB_SECRET_SOURCE",
 ] as const;
 
-function present(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-): string | null {
+function present(environment: NodeJS.ProcessEnv, name: string): string | null {
   const value = environment[name]?.trim();
   return value === undefined || value.length === 0 ? null : value;
 }
@@ -98,9 +88,7 @@ export function inspectPiHarnessSourceEnvironment(
         .split("/")
         .some(
           (component) =>
-            component.startsWith(".") ||
-            component.endsWith(".") ||
-            component.endsWith(".lock"),
+            component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
         ))
   ) {
     invalid.push("DF_PI_BRANCH");
@@ -117,10 +105,7 @@ export function inspectPiHarnessSourceEnvironment(
   if (packageVersion !== null && !EXACT_SEMVER.test(packageVersion)) {
     invalid.push("DF_PI_CODING_AGENT_VERSION");
   }
-  if (
-    credentialSource !== null &&
-    !SAFE_ENVIRONMENT_NAME.test(credentialSource)
-  ) {
+  if (credentialSource !== null && !SAFE_ENVIRONMENT_NAME.test(credentialSource)) {
     invalid.push("DF_GITHUB_SECRET_SOURCE");
   }
 

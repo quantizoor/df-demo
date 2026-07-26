@@ -47,9 +47,7 @@ export async function requireCompatibleProvider(
     throw new CloudCompatibilityError("Provider probe attestation does not match its request.");
   }
 
-  const missing: string[] = BASELINE_CAPABILITIES.filter(
-    (name) => !report.capabilities[name],
-  );
+  const missing: string[] = BASELINE_CAPABILITIES.filter((name) => !report.capabilities[name]);
   if (request.requireDockerInDocker && !report.capabilities.dockerInDocker) {
     missing.push("dockerInDocker");
   }

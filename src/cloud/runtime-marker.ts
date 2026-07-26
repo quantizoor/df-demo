@@ -1,8 +1,6 @@
 import type { CloudExecutionMarker, CloudProviderName, SandboxLease } from "./types.js";
 
-export const CLOUD_PROVIDER_MARKER_NAMES: Readonly<
-  Record<CloudProviderName, readonly string[]>
-> = {
+export const CLOUD_PROVIDER_MARKER_NAMES: Readonly<Record<CloudProviderName, readonly string[]>> = {
   daytona: ["DAYTONA_WORKSPACE_ID", "DAYTONA_SANDBOX_ID"],
   e2b: ["E2B_SANDBOX_ID"],
   modal: ["MODAL_TASK_ID"],

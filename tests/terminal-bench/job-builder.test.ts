@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
-import type { HarnessArtifactReference } from "../../src/evaluator/contracts.js";
 import { hiddenTaskId } from "../../src/evaluation/types.js";
+import type { HarnessArtifactReference } from "../../src/evaluator/contracts.js";
+import {
+  computeTrustedHarborJobHash,
+  HARBOR_AGENT_ISOLATION_POLICY,
+} from "../../src/terminal-bench/harbor.js";
 import {
   computeHarnessRuntimeResolutionHash,
   TerminalBench21TrustedJobBuilder,
@@ -9,12 +13,8 @@ import {
   type TrustedHiddenTaskResolver,
 } from "../../src/terminal-bench/job-builder.js";
 import {
-  HARBOR_AGENT_ISOLATION_POLICY,
-  computeTrustedHarborJobHash,
-} from "../../src/terminal-bench/harbor.js";
-import {
-  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
   createPiHarborAgentSpec,
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
 } from "../../src/terminal-bench/pi-agent.js";
 import type { TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 import {
@@ -127,17 +127,15 @@ function setup(
       });
     },
   };
-  const resolver: TrustedHiddenTaskResolver =
-    taskResolver ??
-    {
-      resolve: (taskId, taskRevisionDigest) =>
-        Promise.resolve({
-          sensitivity: "trusted-hidden-task-resolution",
-          taskId,
-          taskRevisionDigest,
-          packageTaskName: `synthetic/task-${taskId.slice(-8)}`,
-        }),
-    };
+  const resolver: TrustedHiddenTaskResolver = taskResolver ?? {
+    resolve: (taskId, taskRevisionDigest) =>
+      Promise.resolve({
+        sensitivity: "trusted-hidden-task-resolution",
+        taskId,
+        taskRevisionDigest,
+        packageTaskName: `synthetic/task-${taskId.slice(-8)}`,
+      }),
+  };
   return {
     published,
     builder: new TerminalBench21TrustedJobBuilder({
@@ -171,11 +169,7 @@ function setup(
 describe("trusted Harbor job builder", () => {
   it("derives the sole evaluated-model host from the Foundry resource", async () => {
     const hiddenPanel = panel("repair");
-    const schedule = createTrustedMatchedArmSchedule(
-      hiddenPanel,
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion);
     const foundryAgent = createPiHarborAgentSpec({
       adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
       adapterSha256: pin.piHarborAdapterSha256,
@@ -188,10 +182,7 @@ describe("trusted Harbor job builder", () => {
       credentialEnvironmentNames: ["ANTHROPIC_FOUNDRY_API_KEY"],
       timeoutMs: 3_600_000,
     });
-    const { builder, published } = setup(
-      undefined,
-      ["df-eu-prod.services.ai.azure.com"],
-    );
+    const { builder, published } = setup(undefined, ["df-eu-prod.services.ai.azure.com"]);
     await builder.build({
       sensitivity: "hidden-harbor-build-request",
       pin,
@@ -201,28 +192,18 @@ describe("trusted Harbor job builder", () => {
       isolationPolicy: HARBOR_AGENT_ISOLATION_POLICY,
     });
     const config = [...published.values()][0]!;
-    const configuredAgent = (
-      config["agents"] as Array<Record<string, unknown>>
-    )[0]!;
-    expect(configuredAgent["extra_allowed_hosts"]).toEqual([
-      "df-eu-prod.services.ai.azure.com",
-    ]);
+    const configuredAgent = (config["agents"] as Array<Record<string, unknown>>)[0]!;
+    expect(configuredAgent["extra_allowed_hosts"]).toEqual(["df-eu-prod.services.ai.azure.com"]);
     expect(configuredAgent["kwargs"]).toMatchObject({
       foundry_resource_name: "df-eu-prod",
       model_family: "claude-opus-4-8",
-      credential_environment_names: [
-        "ANTHROPIC_FOUNDRY_API_KEY",
-      ],
+      credential_environment_names: ["ANTHROPIC_FOUNDRY_API_KEY"],
     });
   });
 
   it("rejects a Foundry job with an unrelated model host", async () => {
     const hiddenPanel = panel("repair");
-    const schedule = createTrustedMatchedArmSchedule(
-      hiddenPanel,
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion);
     const { builder } = setup(undefined, ["api.anthropic.com"]);
     await expect(
       builder.build({
@@ -239,9 +220,7 @@ describe("trusted Harbor job builder", () => {
           foundryResourceName: "df-eu-prod",
           thinkingLevel: "high",
           enabledTools: ["read", "write", "bash"],
-          credentialEnvironmentNames: [
-            "ANTHROPIC_FOUNDRY_API_KEY",
-          ],
+          credentialEnvironmentNames: ["ANTHROPIC_FOUNDRY_API_KEY"],
           timeoutMs: 3_600_000,
         }),
         isolationPolicy: HARBOR_AGENT_ISOLATION_POLICY,
@@ -249,13 +228,48 @@ describe("trusted Harbor job builder", () => {
     ).rejects.toThrow("exact derived API host");
   });
 
+  it.each([
+    ["missing", undefined],
+    ["unrecognized", "claude-opus-5"],
+  ] as const)("rejects a Foundry job with a %s model family", async (_label, modelFamily) => {
+    const hiddenPanel = panel("repair");
+    const schedule = createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion);
+    const validAgent = createPiHarborAgentSpec({
+      adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
+      adapterSha256: pin.piHarborAdapterSha256,
+      provider: "microsoft-foundry",
+      modelId: "df-opus48-eval",
+      modelFamily: "claude-opus-4-8",
+      foundryResourceName: "df-eu-prod",
+      thinkingLevel: "high",
+      enabledTools: ["read", "write", "bash"],
+      credentialEnvironmentNames: ["ANTHROPIC_FOUNDRY_API_KEY"],
+      timeoutMs: 3_600_000,
+    });
+    const evaluatedModel = { ...validAgent.evaluatedModel };
+    if (modelFamily === undefined) {
+      delete evaluatedModel.modelFamily;
+    } else {
+      evaluatedModel.modelFamily = modelFamily;
+    }
+    const { builder, published } = setup(undefined, ["df-eu-prod.services.ai.azure.com"]);
+
+    await expect(
+      builder.build({
+        sensitivity: "hidden-harbor-build-request",
+        pin,
+        panel: hiddenPanel,
+        schedule,
+        agent: { ...validAgent, evaluatedModel },
+        isolationPolicy: HARBOR_AGENT_ISOLATION_POLICY,
+      }),
+    ).rejects.toThrow("exact model family");
+    expect(published.size).toBe(0);
+  });
+
   it("builds two serial, retry-free AB/BA jobs without returning hidden task names", async () => {
     const hiddenPanel = panel("validation");
-    const schedule = createTrustedMatchedArmSchedule(
-      hiddenPanel,
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion);
     const { builder, published } = setup();
     const job = await builder.build({
       sensitivity: "hidden-harbor-build-request",
@@ -300,19 +314,15 @@ describe("trusted Harbor job builder", () => {
           },
         ],
       });
-      expect(
-        (config["datasets"] as Array<{ task_names: string[] }>)[0]?.task_names,
-      ).toHaveLength(6);
+      expect((config["datasets"] as Array<{ task_names: string[] }>)[0]?.task_names).toHaveLength(
+        6,
+      );
     }
   });
 
   it("builds one five-task candidate-only repair job", async () => {
     const hiddenPanel = panel("repair");
-    const schedule = createTrustedMatchedArmSchedule(
-      hiddenPanel,
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion);
     const { builder, published } = setup();
     const job = await builder.build({
       sensitivity: "hidden-harbor-build-request",
@@ -342,16 +352,12 @@ describe("trusted Harbor job builder", () => {
       "candidate-runtime",
     ]);
     const config = [...published.values()][0]!;
-    expect((config["agents"] as unknown[])).toHaveLength(1);
+    expect(config["agents"] as unknown[]).toHaveLength(1);
   });
 
   it("fails without releasing a task name when hidden resolution is invalid", async () => {
     const hiddenPanel = panel("repair");
-    const schedule = createTrustedMatchedArmSchedule(
-      hiddenPanel,
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion);
     const { builder } = setup({
       resolve: () => Promise.reject(new Error("synthetic/secret-task-name")),
     });

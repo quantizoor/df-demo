@@ -18,14 +18,11 @@ const BUNDLE_REMOTE_PATH = "/tmp/df-mvp-controller.tar.gz";
 const BUNDLE_INSTALL_ROOT = "/tmp/df-mvp-controller";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
-const SAFE_VOLUME_SUBPATH =
-  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,9}$/u;
-const SAFE_ABSOLUTE_PATH =
-  /^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
+const SAFE_VOLUME_SUBPATH = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,9}$/u;
+const SAFE_ABSOLUTE_PATH = /^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
 const SAFE_DOMAIN =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/u;
-const IMMUTABLE_IMAGE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const IMMUTABLE_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 
 export class MvpDaytonaRuntimeError extends Error {
   override readonly name = "MvpDaytonaRuntimeError";
@@ -102,10 +99,7 @@ export interface MvpStagedBundleReceipt {
 
 export interface MvpCloudRuntime {
   create(specification: MvpRoleSandboxSpec): Promise<MvpRoleSandboxLease>;
-  stage(
-    lease: MvpRoleSandboxLease,
-    bundle: MvpControllerBundle,
-  ): Promise<MvpStagedBundleReceipt>;
+  stage(lease: MvpRoleSandboxLease, bundle: MvpControllerBundle): Promise<MvpStagedBundleReceipt>;
   execute(
     lease: MvpRoleSandboxLease,
     command: MvpRoleWorkerCommand,
@@ -209,9 +203,7 @@ export interface MvpDaytonaSdkFactory {
   }): Promise<MvpDaytonaSdkClient>;
 }
 
-export class OfficialMvpDaytonaSdkFactory
-  implements MvpDaytonaSdkFactory
-{
+export class OfficialMvpDaytonaSdkFactory implements MvpDaytonaSdkFactory {
   async createClient(input: {
     readonly apiKey: string;
     readonly apiUrl: string;
@@ -252,20 +244,14 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
   readonly #active = new Map<string, ActiveSandbox>();
   #clientPromise: Promise<MvpDaytonaSdkClient> | null = null;
 
-  constructor(
-    configuration: MvpCloudConfiguration,
-    options: DaytonaMvpCloudRuntimeOptions = {},
-  ) {
+  constructor(configuration: MvpCloudConfiguration, options: DaytonaMvpCloudRuntimeOptions = {}) {
     this.#configuration = configuration;
     this.#environment = options.environment ?? (() => process.env);
-    this.#sdkFactory =
-      options.sdkFactory ?? new OfficialMvpDaytonaSdkFactory();
+    this.#sdkFactory = options.sdkFactory ?? new OfficialMvpDaytonaSdkFactory();
     this.#now = options.now ?? (() => new Date());
   }
 
-  async create(
-    specification: MvpRoleSandboxSpec,
-  ): Promise<MvpRoleSandboxLease> {
+  async create(specification: MvpRoleSandboxSpec): Promise<MvpRoleSandboxLease> {
     assertSandboxSpecification(this.#configuration, specification);
     const client = await this.#client();
     const parameters = createParameters(specification);
@@ -285,9 +271,7 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       await sandbox.refreshData();
       assertCreatedSandbox(specification, sandbox);
       if (this.#active.has(sandbox.id)) {
-        throw new MvpDaytonaRuntimeError(
-          "Daytona returned a reused sandbox identity.",
-        );
+        throw new MvpDaytonaRuntimeError("Daytona returned a reused sandbox identity.");
       }
       this.#active.set(sandbox.id, {
         sandbox,
@@ -307,9 +291,7 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
           // provider-side TTL is the final cleanup backstop.
         }
       }
-      throw new MvpDaytonaRuntimeError(
-        "Daytona sandbox creation failed closed.",
-      );
+      throw new MvpDaytonaRuntimeError("Daytona sandbox creation failed closed.");
     }
   }
 
@@ -324,71 +306,47 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       !isAbsoluteCloudRunnerPath(bundle.localPath) ||
       !/^[a-f0-9]{64}$/u.test(bundle.sha256)
     ) {
-      throw new MvpDaytonaRuntimeError(
-        "The controller bundle request is invalid.",
-      );
+      throw new MvpDaytonaRuntimeError("The controller bundle request is invalid.");
     }
     try {
-      await active.sandbox.fs.uploadFile(
-        bundle.localPath,
-        BUNDLE_REMOTE_PATH,
+      await active.sandbox.fs.uploadFile(bundle.localPath, BUNDLE_REMOTE_PATH);
+      const hashResponse = await active.sandbox.process.executeCommand(
+        `${quotePosix("/usr/bin/sha256sum")} ${quotePosix(BUNDLE_REMOTE_PATH)}`,
+        "/",
+        { LC_ALL: "C" },
+        120,
       );
-      const hashResponse =
-        await active.sandbox.process.executeCommand(
-          `${quotePosix("/usr/bin/sha256sum")} ${quotePosix(
-            BUNDLE_REMOTE_PATH,
-          )}`,
-          "/",
-          { LC_ALL: "C" },
-          120,
-        );
-      const reportedHash = (
-        hashResponse.artifacts?.stdout ??
-        hashResponse.result ??
-        ""
-      )
+      const reportedHash = (hashResponse.artifacts?.stdout ?? hashResponse.result ?? "")
         .trim()
         .split(/\s+/u)[0];
-      if (
-        hashResponse.exitCode !== 0 ||
-        reportedHash !== bundle.sha256
-      ) {
+      if (hashResponse.exitCode !== 0 || reportedHash !== bundle.sha256) {
         throw new Error("bundle digest mismatch");
       }
-      const mkdirResponse =
-        await active.sandbox.process.executeCommand(
-          `${quotePosix("/usr/bin/mkdir")} ${quotePosix(
-            "-p",
-          )} ${quotePosix(BUNDLE_INSTALL_ROOT)}`,
-          "/",
-          { LC_ALL: "C" },
-          120,
-        );
-      const extractResponse =
-        await active.sandbox.process.executeCommand(
-          [
-            quotePosix("/usr/bin/tar"),
-            quotePosix("-xzf"),
-            quotePosix(BUNDLE_REMOTE_PATH),
-            quotePosix("-C"),
-            quotePosix(BUNDLE_INSTALL_ROOT),
-          ].join(" "),
-          "/",
-          { LC_ALL: "C" },
-          10 * 60,
-        );
-      if (
-        mkdirResponse.exitCode !== 0 ||
-        extractResponse.exitCode !== 0
-      ) {
+      const mkdirResponse = await active.sandbox.process.executeCommand(
+        `${quotePosix("/usr/bin/mkdir")} ${quotePosix("-p")} ${quotePosix(BUNDLE_INSTALL_ROOT)}`,
+        "/",
+        { LC_ALL: "C" },
+        120,
+      );
+      const extractResponse = await active.sandbox.process.executeCommand(
+        [
+          quotePosix("/usr/bin/tar"),
+          quotePosix("-xzf"),
+          quotePosix(BUNDLE_REMOTE_PATH),
+          quotePosix("-C"),
+          quotePosix(BUNDLE_INSTALL_ROOT),
+        ].join(" "),
+        "/",
+        { LC_ALL: "C" },
+        10 * 60,
+      );
+      if (mkdirResponse.exitCode !== 0 || extractResponse.exitCode !== 0) {
         throw new Error("bundle extraction failed");
       }
       active.stagedBundleSha256 = bundle.sha256;
       return { role: lease.role, sha256: bundle.sha256 };
     } catch {
-      throw new MvpDaytonaRuntimeError(
-        "The controller bundle could not be staged or verified.",
-      );
+      throw new MvpDaytonaRuntimeError("The controller bundle could not be staged or verified.");
     }
   }
 
@@ -402,9 +360,7 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       active.specification.role !== lease.role ||
       active.stagedBundleSha256 === null
     ) {
-      throw new MvpDaytonaRuntimeError(
-        "The worker lease is inactive or belongs to another role.",
-      );
+      throw new MvpDaytonaRuntimeError("The worker lease is inactive or belongs to another role.");
     }
     assertWorkerCommand(active.specification, command);
     const startedAt = this.#now();
@@ -417,21 +373,13 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
         Math.ceil(command.timeoutMs / 1_000),
       );
     } catch {
-      throw new MvpDaytonaRuntimeError(
-        "The Daytona role worker failed closed.",
-      );
+      throw new MvpDaytonaRuntimeError("The Daytona role worker failed closed.");
     }
     const finishedAt = this.#now();
-    const output =
-      response.artifacts?.stdout ?? response.result ?? "";
+    const output = response.artifacts?.stdout ?? response.result ?? "";
     const outputByteLength = Buffer.byteLength(output, "utf8");
-    if (
-      response.exitCode !== 0 ||
-      outputByteLength > MAXIMUM_WORKER_OUTPUT_BYTES
-    ) {
-      throw new MvpDaytonaRuntimeError(
-        "The Daytona role worker failed closed.",
-      );
+    if (response.exitCode !== 0 || outputByteLength > MAXIMUM_WORKER_OUTPUT_BYTES) {
+      throw new MvpDaytonaRuntimeError("The Daytona role worker failed closed.");
     }
     return {
       role: lease.role,
@@ -446,34 +394,22 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
 
   async destroy(lease: MvpRoleSandboxLease): Promise<void> {
     const active = this.#active.get(lease.sandboxId);
-    if (
-      active === undefined ||
-      active.specification.role !== lease.role
-    ) {
-      throw new MvpDaytonaRuntimeError(
-        "The worker lease is inactive or belongs to another role.",
-      );
+    if (active === undefined || active.specification.role !== lease.role) {
+      throw new MvpDaytonaRuntimeError("The worker lease is inactive or belongs to another role.");
     }
     try {
       await active.sandbox.delete(SDK_DELETE_TIMEOUT_SECONDS, true);
       this.#active.delete(lease.sandboxId);
     } catch {
-      throw new MvpDaytonaRuntimeError(
-        "The ephemeral Daytona sandbox could not be destroyed.",
-      );
+      throw new MvpDaytonaRuntimeError("The ephemeral Daytona sandbox could not be destroyed.");
     }
   }
 
   async #client(): Promise<MvpDaytonaSdkClient> {
     if (this.#clientPromise !== null) return this.#clientPromise;
-    const apiKey =
-      this.#environment()[
-        this.#configuration.daytona.apiKeyEnvironmentName
-      ]?.trim();
+    const apiKey = this.#environment()[this.#configuration.daytona.apiKeyEnvironmentName]?.trim();
     if (apiKey === undefined || apiKey.length === 0) {
-      throw new MvpDaytonaRuntimeError(
-        "The Daytona API credential is unavailable.",
-      );
+      throw new MvpDaytonaRuntimeError("The Daytona API credential is unavailable.");
     }
     this.#clientPromise = this.#sdkFactory.createClient({
       apiKey,
@@ -484,19 +420,12 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
   }
 }
 
-function createParameters(
-  specification: MvpRoleSandboxSpec,
-): DaytonaCreateParameters {
+function createParameters(specification: MvpRoleSandboxSpec): DaytonaCreateParameters {
   return {
-    name: `df-mvp-${specification.role}-${specification.configurationHash.slice(
-      0,
-      12,
-    )}`,
+    name: `df-mvp-${specification.role}-${specification.configurationHash.slice(0, 12)}`,
     image: specification.image,
     language: "typescript",
-    ...(specification.user === undefined
-      ? {}
-      : { user: specification.user }),
+    ...(specification.user === undefined ? {} : { user: specification.user }),
     resources: {
       cpu: specification.resources.cpu,
       memory: specification.resources.memoryGiB,
@@ -520,9 +449,7 @@ function createParameters(
       "df-config-sha256": specification.configurationHash,
       "df-request-sha256": sha256(specification.requestId),
     },
-    domainAllowList: [...specification.networkAllowDomains]
-      .sort()
-      .join(","),
+    domainAllowList: [...specification.networkAllowDomains].sort().join(","),
     volumes: [
       {
         volumeId: specification.volume.id,
@@ -538,11 +465,8 @@ function assertSandboxSpecification(
   specification: MvpRoleSandboxSpec,
 ): void {
   const targets = new Set<string>();
-  const environmentEntries = Object.entries(
-    specification.environment,
-  );
-  const expectedResources =
-    configuration.daytona.outerSandboxResources[specification.role];
+  const environmentEntries = Object.entries(specification.environment);
+  const expectedResources = configuration.daytona.outerSandboxResources[specification.role];
   if (
     !SAFE_ID.test(specification.requestId) ||
     (specification.role === "evaluator"
@@ -557,9 +481,7 @@ function assertSandboxSpecification(
     specification.volume.id !== configuration.daytona.volumeId ||
     specification.volume.mountPath !== MVP_ROLE_MOUNT_PATH ||
     !SAFE_VOLUME_SUBPATH.test(specification.volume.subpath) ||
-    !specification.volume.subpath.endsWith(
-      `/${specification.role}`,
-    ) ||
+    !specification.volume.subpath.endsWith(`/${specification.role}`) ||
     !Number.isSafeInteger(specification.resources.cpu) ||
     specification.resources.cpu < 1 ||
     !Number.isSafeInteger(specification.resources.memoryGiB) ||
@@ -567,23 +489,20 @@ function assertSandboxSpecification(
     !Number.isSafeInteger(specification.resources.diskGiB) ||
     specification.resources.diskGiB < 10 ||
     specification.resources.cpu !== expectedResources.cpu ||
-    specification.resources.memoryGiB !==
-      expectedResources.memoryGiB ||
+    specification.resources.memoryGiB !== expectedResources.memoryGiB ||
     specification.resources.diskGiB !== expectedResources.diskGiB ||
     !Number.isSafeInteger(specification.ttlMinutes) ||
     specification.ttlMinutes < 5 ||
     specification.ttlMinutes > 300 ||
     specification.networkAllowDomains.length < 1 ||
-    specification.networkAllowDomains.some(
-      (domain) => !SAFE_DOMAIN.test(domain),
-    ) ||
-    new Set(specification.networkAllowDomains).size !==
-      specification.networkAllowDomains.length ||
+    specification.networkAllowDomains.some((domain) => !SAFE_DOMAIN.test(domain)) ||
+    new Set(specification.networkAllowDomains).size !== specification.networkAllowDomains.length ||
     environmentEntries.some(
       ([name, value]) =>
         !SAFE_ENVIRONMENT_NAME.test(name) ||
         /(?:TASK|GRADER|PROMPT|SOLUTION|TRACE)/u.test(name) ||
         value.length > 2_048 ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Sandbox environment values reject NUL and newlines to prevent injection.
         /[\u0000\r\n]/u.test(value),
     ) ||
     specification.secretReferences.some((reference) => {
@@ -591,18 +510,12 @@ function assertSandboxSpecification(
       targets.add(reference.targetEnvironmentName);
       return (
         duplicate ||
-        !SAFE_ENVIRONMENT_NAME.test(
-          reference.sourceEnvironmentName,
-        ) ||
-        !SAFE_ENVIRONMENT_NAME.test(
-          reference.targetEnvironmentName,
-        )
+        !SAFE_ENVIRONMENT_NAME.test(reference.sourceEnvironmentName) ||
+        !SAFE_ENVIRONMENT_NAME.test(reference.targetEnvironmentName)
       );
     })
   ) {
-    throw new MvpDaytonaRuntimeError(
-      "The Daytona role specification is invalid.",
-    );
+    throw new MvpDaytonaRuntimeError("The Daytona role specification is invalid.");
   }
 }
 
@@ -615,8 +528,7 @@ function assertCreatedSandbox(
   const volume = sandbox.volumes?.[0];
   if (
     !SAFE_ID.test(sandbox.id) ||
-    (specification.user !== undefined &&
-      sandbox.user !== specification.user) ||
+    (specification.user !== undefined && sandbox.user !== specification.user) ||
     sandbox.target !== specification.target ||
     sandbox.cpu !== specification.resources.cpu ||
     sandbox.memory !== specification.resources.memoryGiB ||
@@ -624,8 +536,7 @@ function assertCreatedSandbox(
     sandbox.public !== false ||
     sandbox.autoDeleteInterval !== 0 ||
     sandbox.labels?.["df-role"] !== specification.role ||
-    sandbox.labels?.["df-config-sha256"] !==
-      specification.configurationHash ||
+    sandbox.labels?.["df-config-sha256"] !== specification.configurationHash ||
     sandbox.env?.["DF_CLOUD_EXECUTION"] !== "1" ||
     sandbox.env?.["DF_MVP_ROLE"] !== specification.role ||
     sandbox.volumes?.length !== 1 ||
@@ -634,9 +545,7 @@ function assertCreatedSandbox(
     volume.subpath !== specification.volume.subpath ||
     JSON.stringify(domains) !== JSON.stringify(expectedDomains)
   ) {
-    throw new MvpDaytonaRuntimeError(
-      "Daytona did not attest the requested isolated role profile.",
-    );
+    throw new MvpDaytonaRuntimeError("Daytona did not attest the requested isolated role profile.");
   }
 }
 
@@ -644,12 +553,9 @@ function assertWorkerCommand(
   specification: MvpRoleSandboxSpec,
   command: MvpRoleWorkerCommand,
 ): void {
-  const expectedExecutable =
-    MVP_PROCESS_ENTRYPOINT;
+  const expectedExecutable = MVP_PROCESS_ENTRYPOINT;
   const expectedWorkerPath =
-    specification.role === "optimizer"
-      ? MVP_OPTIMIZER_WORKER_PATH
-      : MVP_EVALUATOR_WORKER_PATH;
+    specification.role === "optimizer" ? MVP_OPTIMIZER_WORKER_PATH : MVP_EVALUATOR_WORKER_PATH;
   if (
     command.executable !== expectedExecutable ||
     command.arguments[0] !== "node" ||
@@ -659,18 +565,19 @@ function assertWorkerCommand(
     command.timeoutMs > specification.ttlMinutes * 60_000 ||
     command.arguments.some(
       (argument) =>
-        argument.length > 2_048 || /[\u0000\r\n]/u.test(argument),
+        argument.length > 2_048 ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Sandbox process arguments reject NUL and line breaks at the execution boundary.
+        /[\u0000\r\n]/u.test(argument),
     ) ||
     Object.entries(command.environment).some(
       ([name, value]) =>
         !SAFE_ENVIRONMENT_NAME.test(name) ||
         /(?:TASK|GRADER|PROMPT|SOLUTION|TRACE)/u.test(name) ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Sandbox environment values reject NUL and newlines to prevent injection.
         /[\u0000\r\n]/u.test(value),
     )
   ) {
-    throw new MvpDaytonaRuntimeError(
-      "The Daytona role worker command is invalid.",
-    );
+    throw new MvpDaytonaRuntimeError("The Daytona role worker command is invalid.");
   }
 }
 
@@ -688,21 +595,14 @@ function normalizeDomains(value: string | undefined): readonly string[] {
 
 function quotePosix(value: string): string {
   if (value.includes("\u0000")) {
-    throw new MvpDaytonaRuntimeError(
-      "A worker argument contains an unsupported byte.",
-    );
+    throw new MvpDaytonaRuntimeError("A worker argument contains an unsupported byte.");
   }
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-function encodePosixCommand(
-  executable: string,
-  arguments_: readonly string[],
-): string {
+function encodePosixCommand(executable: string, arguments_: readonly string[]): string {
   if (!SAFE_ABSOLUTE_PATH.test(executable)) {
-    throw new MvpDaytonaRuntimeError(
-      "The role worker executable path is invalid.",
-    );
+    throw new MvpDaytonaRuntimeError("The role worker executable path is invalid.");
   }
   return [executable, ...arguments_].map(quotePosix).join(" ");
 }
@@ -713,9 +613,6 @@ function sha256(value: string): string {
 
 function isAbsoluteCloudRunnerPath(value: string): boolean {
   return (
-    value.startsWith("/") &&
-    value !== "/" &&
-    !value.includes("/../") &&
-    !value.includes("\u0000")
+    value.startsWith("/") && value !== "/" && !value.includes("/../") && !value.includes("\u0000")
   );
 }

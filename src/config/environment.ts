@@ -1,19 +1,16 @@
 import type { SecretReference } from "../cloud/types.js";
-import type {
-  LeaderboardEligibility,
-  RunMode,
-} from "../domain/models.js";
+import type { LeaderboardEligibility, RunMode } from "../domain/models.js";
 import { LEADERBOARD_ELIGIBILITY, RUN_MODES } from "../domain/models.js";
 import {
+  createPiHarborAgentSpec,
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
+} from "../terminal-bench/pi-agent.js";
+import {
+  assertTerminalBench21Pin,
   TERMINAL_BENCH_21_DATASET,
   TERMINAL_BENCH_21_TASK_COUNT,
   type TerminalBench21Pin,
-  assertTerminalBench21Pin,
 } from "../terminal-bench/pin.js";
-import {
-  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
-  createPiHarborAgentSpec,
-} from "../terminal-bench/pi-agent.js";
 
 export type CloudProviderName = "daytona" | "e2b" | "modal";
 
@@ -82,18 +79,14 @@ const PROVIDER_CREDENTIALS: Readonly<Record<CloudProviderName, string>> = {
 
 const IMAGE_ROLES = ["CONTROL", "OPTIMIZER", "BUILD", "EVALUATOR"] as const;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const IMMUTABLE_IMAGE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const IMMUTABLE_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
 const EXACT_SEMVER =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const OPTIMIZER_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
-const OPTIMIZER_SECRET_TARGETS = new Set([
-  "ANTHROPIC_FOUNDRY_API_KEY",
-]);
-const SAFE_FOUNDRY_RESOURCE =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const OPTIMIZER_SECRET_TARGETS = new Set(["ANTHROPIC_FOUNDRY_API_KEY"]);
+const SAFE_FOUNDRY_RESOURCE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
 const BASE_REQUIRED = [
   "DF_CLOUD_PROVIDER",
@@ -132,10 +125,7 @@ const BASE_REQUIRED = [
   "DF_BUDGET_PRIVACY_RELEASES",
   "DF_BUDGET_PROMOTION_LOOKS",
   "DF_BUDGET_ONLINE_ERROR",
-  ...IMAGE_ROLES.flatMap((role) => [
-    `DF_${role}_IMAGE_REFERENCE`,
-    `DF_${role}_IMAGE_DIGEST`,
-  ]),
+  ...IMAGE_ROLES.flatMap((role) => [`DF_${role}_IMAGE_REFERENCE`, `DF_${role}_IMAGE_DIGEST`]),
 ] as const;
 
 function present(environment: NodeJS.ProcessEnv, name: string): string | null {
@@ -261,10 +251,8 @@ function parseSecretBindings(
       invalid.push(name);
       return null;
     }
-    const source = (value as { sourceEnvironmentName?: unknown })
-      .sourceEnvironmentName;
-    const target = (value as { targetEnvironmentName?: unknown })
-      .targetEnvironmentName;
+    const source = (value as { sourceEnvironmentName?: unknown }).sourceEnvironmentName;
+    const target = (value as { targetEnvironmentName?: unknown }).targetEnvironmentName;
     if (
       typeof source !== "string" ||
       typeof target !== "string" ||
@@ -295,17 +283,13 @@ export function inspectBootstrapEnvironment(
   const missing = BASE_REQUIRED.filter((name) => present(environment, name) === null);
   const invalid: string[] = [];
   const providerValue = present(environment, "DF_CLOUD_PROVIDER");
-  const provider =
-    providerValue !== null && isCloudProvider(providerValue) ? providerValue : null;
+  const provider = providerValue !== null && isCloudProvider(providerValue) ? providerValue : null;
   if (providerValue !== null && provider === null) {
     invalid.push("DF_CLOUD_PROVIDER");
   }
 
   const credentialVariable = provider === null ? null : PROVIDER_CREDENTIALS[provider];
-  if (
-    credentialVariable !== null &&
-    present(environment, credentialVariable) === null
-  ) {
+  if (credentialVariable !== null && present(environment, credentialVariable) === null) {
     missing.push(credentialVariable);
   }
 
@@ -317,9 +301,7 @@ export function inspectBootstrapEnvironment(
 
   const eligibilityValue = present(environment, "DF_LEADERBOARD_ELIGIBILITY");
   const eligibility =
-    eligibilityValue !== null && isEligibility(eligibilityValue)
-      ? eligibilityValue
-      : null;
+    eligibilityValue !== null && isEligibility(eligibilityValue) ? eligibilityValue : null;
   if (eligibilityValue !== null && eligibility === null) {
     invalid.push("DF_LEADERBOARD_ELIGIBILITY");
   }
@@ -356,11 +338,7 @@ export function inspectBootstrapEnvironment(
     "DF_EVALUATED_SECRET_BINDINGS_JSON",
     invalid,
   );
-  const harborSecrets = parseSecretBindings(
-    environment,
-    "DF_HARBOR_SECRET_BINDINGS_JSON",
-    invalid,
-  );
+  const harborSecrets = parseSecretBindings(environment, "DF_HARBOR_SECRET_BINDINGS_JSON", invalid);
   const githubSecret = parseSecretReference(
     present(environment, "DF_GITHUB_SECRET_SOURCE"),
     "DF_GITHUB_TOKEN",
@@ -373,27 +351,16 @@ export function inspectBootstrapEnvironment(
     ...(evaluatedSecrets ?? []).map((item) => item.targetEnvironmentName),
     ...(harborSecrets ?? []).map((item) => item.targetEnvironmentName),
   ];
-  if (
-    new Set(evaluatorSecretTargets).size !== evaluatorSecretTargets.length
-  ) {
+  if (new Set(evaluatorSecretTargets).size !== evaluatorSecretTargets.length) {
     invalid.push("DF_SECRET_TARGET_PLAN");
   }
 
   const optimizerModel = present(environment, "DF_OPTIMIZER_MODEL");
-  const optimizerDeploymentName = present(
-    environment,
-    "DF_OPTIMIZER_DEPLOYMENT_NAME",
-  );
-  const foundryResourceName = present(
-    environment,
-    "DF_FOUNDRY_RESOURCE_NAME",
-  );
+  const optimizerDeploymentName = present(environment, "DF_OPTIMIZER_DEPLOYMENT_NAME");
+  const foundryResourceName = present(environment, "DF_FOUNDRY_RESOURCE_NAME");
   const evaluatedProvider = present(environment, "DF_EVALUATED_PROVIDER");
   const evaluatedModel = present(environment, "DF_EVALUATED_MODEL");
-  const evaluatedDeploymentName = present(
-    environment,
-    "DF_EVALUATED_DEPLOYMENT_NAME",
-  );
+  const evaluatedDeploymentName = present(environment, "DF_EVALUATED_DEPLOYMENT_NAME");
   const evaluatedReasoning = present(environment, "DF_EVALUATED_REASONING");
   const claudeCodeVersion = present(environment, "DF_CLAUDE_CODE_VERSION");
   for (const [name, value] of [
@@ -409,10 +376,7 @@ export function inspectBootstrapEnvironment(
   if (claudeCodeVersion !== null && !EXACT_SEMVER.test(claudeCodeVersion)) {
     invalid.push("DF_CLAUDE_CODE_VERSION");
   }
-  if (
-    foundryResourceName !== null &&
-    !SAFE_FOUNDRY_RESOURCE.test(foundryResourceName)
-  ) {
+  if (foundryResourceName !== null && !SAFE_FOUNDRY_RESOURCE.test(foundryResourceName)) {
     invalid.push("DF_FOUNDRY_RESOURCE_NAME");
   }
   if (optimizerModel !== null && optimizerModel !== "claude-opus-5") {
@@ -421,22 +385,13 @@ export function inspectBootstrapEnvironment(
   if (effortValue !== null && effortValue !== "high") {
     invalid.push("DF_OPTIMIZER_EFFORT");
   }
-  if (
-    evaluatedProvider !== null &&
-    evaluatedProvider !== "microsoft-foundry"
-  ) {
+  if (evaluatedProvider !== null && evaluatedProvider !== "microsoft-foundry") {
     invalid.push("DF_EVALUATED_PROVIDER");
   }
-  if (
-    evaluatedModel !== null &&
-    evaluatedModel !== "claude-opus-4-8"
-  ) {
+  if (evaluatedModel !== null && evaluatedModel !== "claude-opus-4-8") {
     invalid.push("DF_EVALUATED_MODEL");
   }
-  if (
-    evaluatedReasoning !== null &&
-    evaluatedReasoning !== "high"
-  ) {
+  if (evaluatedReasoning !== null && evaluatedReasoning !== "high") {
     invalid.push("DF_EVALUATED_REASONING");
   }
   if (
@@ -480,12 +435,9 @@ export function inspectBootstrapEnvironment(
     }
   }
 
-  const registryRevision = parsePositive(
-    environment,
-    "DF_TBENCH_REGISTRY_REVISION",
-    invalid,
-    { integer: true },
-  );
+  const registryRevision = parsePositive(environment, "DF_TBENCH_REGISTRY_REVISION", invalid, {
+    integer: true,
+  });
   const terminalBench =
     registryRevision === null
       ? null
@@ -494,17 +446,12 @@ export function inspectBootstrapEnvironment(
           dataset: TERMINAL_BENCH_21_DATASET,
           registryRevision,
           taskCount: TERMINAL_BENCH_21_TASK_COUNT,
-          datasetContentSha256:
-            present(environment, "DF_TBENCH_DATASET_CONTENT_SHA256") ?? "",
-          datasetManifestSha256:
-            present(environment, "DF_TBENCH_DATASET_MANIFEST_SHA256") ?? "",
+          datasetContentSha256: present(environment, "DF_TBENCH_DATASET_CONTENT_SHA256") ?? "",
+          datasetManifestSha256: present(environment, "DF_TBENCH_DATASET_MANIFEST_SHA256") ?? "",
           harborVersion: present(environment, "DF_HARBOR_VERSION") ?? "",
-          harborPackageSha256:
-            present(environment, "DF_HARBOR_PACKAGE_SHA256") ?? "",
-          harborExecutableSha256:
-            present(environment, "DF_HARBOR_EXECUTABLE_SHA256") ?? "",
-          piHarborAdapterSha256:
-            present(environment, "DF_PI_HARBOR_ADAPTER_SHA256") ?? "",
+          harborPackageSha256: present(environment, "DF_HARBOR_PACKAGE_SHA256") ?? "",
+          harborExecutableSha256: present(environment, "DF_HARBOR_EXECUTABLE_SHA256") ?? "",
+          piHarborAdapterSha256: present(environment, "DF_PI_HARBOR_ADAPTER_SHA256") ?? "",
         };
   if (terminalBench !== null) {
     try {
@@ -525,44 +472,24 @@ export function inspectBootstrapEnvironment(
   const maximumTokens = parsePositive(environment, "DF_BUDGET_TOKENS", invalid, {
     integer: true,
   });
-  const wallMinutes = parsePositive(
-    environment,
-    "DF_BUDGET_WALL_TIME_MINUTES",
-    invalid,
-  );
-  const maximumAttempts = parsePositive(
-    environment,
-    "DF_BUDGET_ATTEMPTS",
-    invalid,
-    { integer: true },
-  );
-  const maximumPrivacyReleases = parsePositive(
-    environment,
-    "DF_BUDGET_PRIVACY_RELEASES",
-    invalid,
-    { integer: true },
-  );
-  const maximumPromotionLooks = parsePositive(
-    environment,
-    "DF_BUDGET_PROMOTION_LOOKS",
-    invalid,
-    { integer: true },
-  );
-  let maximumOnlineError = parsePositive(
-    environment,
-    "DF_BUDGET_ONLINE_ERROR",
-    invalid,
-  );
+  const wallMinutes = parsePositive(environment, "DF_BUDGET_WALL_TIME_MINUTES", invalid);
+  const maximumAttempts = parsePositive(environment, "DF_BUDGET_ATTEMPTS", invalid, {
+    integer: true,
+  });
+  const maximumPrivacyReleases = parsePositive(environment, "DF_BUDGET_PRIVACY_RELEASES", invalid, {
+    integer: true,
+  });
+  const maximumPromotionLooks = parsePositive(environment, "DF_BUDGET_PROMOTION_LOOKS", invalid, {
+    integer: true,
+  });
+  let maximumOnlineError = parsePositive(environment, "DF_BUDGET_ONLINE_ERROR", invalid);
   if (maximumOnlineError !== null && maximumOnlineError > 0.05) {
     invalid.push("DF_BUDGET_ONLINE_ERROR");
     maximumOnlineError = null;
   }
 
   const cloudRegionClass = present(environment, "DF_CLOUD_REGION_CLASS");
-  if (
-    cloudRegionClass !== null &&
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(cloudRegionClass)
-  ) {
+  if (cloudRegionClass !== null && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(cloudRegionClass)) {
     invalid.push("DF_CLOUD_REGION_CLASS");
   }
   const trustedVolumeRoot = present(environment, "DF_TRUSTED_VOLUME_ROOT");

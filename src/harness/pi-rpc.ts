@@ -78,7 +78,10 @@ export function createPiRpcLaunchSpec(options: PiRpcLaunchOptions): PiRpcLaunchS
       "Pi provider, model, and thinking level must be exact supported identifiers.",
     );
   }
-  if (options.enabledTools.length === 0 || options.enabledTools.some((tool) => !SAFE_TOOL.test(tool))) {
+  if (
+    options.enabledTools.length === 0 ||
+    options.enabledTools.some((tool) => !SAFE_TOOL.test(tool))
+  ) {
     throw new PiRpcSpecificationError("Pi tool allowlist is empty or malformed.");
   }
   if (
@@ -199,7 +202,10 @@ export class PiRpcJsonlDecoder {
 
   push(chunk: string): readonly TrustedPiRpcRecord[] {
     this.#buffer += chunk;
-    if (Buffer.byteLength(this.#buffer, "utf8") > this.#maximumLineBytes && !this.#buffer.includes("\n")) {
+    if (
+      Buffer.byteLength(this.#buffer, "utf8") > this.#maximumLineBytes &&
+      !this.#buffer.includes("\n")
+    ) {
       throw new PiRpcSpecificationError("Pi RPC record exceeds the configured size limit.");
     }
     const records: TrustedPiRpcRecord[] = [];
@@ -225,9 +231,7 @@ export class PiRpcJsonlDecoder {
 
   finish(): void {
     if (this.#buffer.length > 0) {
-      throw new PiRpcSpecificationError(
-        "Pi RPC stream ended with a non-terminated JSONL record.",
-      );
+      throw new PiRpcSpecificationError("Pi RPC stream ended with a non-terminated JSONL record.");
     }
   }
 }

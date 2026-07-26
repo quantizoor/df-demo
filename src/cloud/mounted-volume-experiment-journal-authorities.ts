@@ -1,11 +1,15 @@
 import type { KeyLike } from "node:crypto";
-
-import type { LeakScanSubject } from "../evidence/store.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
+import type { LeakScanSubject } from "../evidence/store.js";
 import type {
-  Attestation,
-  LeakScanReceipt,
-} from "../schemas/artifacts.js";
+  ReleaseSafeExperimentArtifactSet,
+  ReleaseSafeFinalExperimentSnapshot,
+  TrustedExperimentSealAuthority,
+  TrustedExperimentSealAuthorization,
+  TrustedJournalInterruptionAttestor,
+  TrustedReleaseSafeExperimentArtifactAssembler,
+} from "../orchestrator/experiment-journal.js";
+import type { Attestation, LeakScanReceipt } from "../schemas/artifacts.js";
 import {
   canonicalHash,
   canonicalJson,
@@ -14,22 +18,14 @@ import {
 } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import {
-  REQUIRED_PRESEAL_ARTIFACT_FILES,
   artifactFileSchemas,
   assertValidDocument,
+  REQUIRED_PRESEAL_ARTIFACT_FILES,
 } from "../schemas/registry.js";
 import { assertReleaseSafe } from "../schemas/safety.js";
-import type {
-  ReleaseSafeExperimentArtifactSet,
-  ReleaseSafeFinalExperimentSnapshot,
-  TrustedExperimentSealAuthorization,
-  TrustedExperimentSealAuthority,
-  TrustedJournalInterruptionAttestor,
-  TrustedReleaseSafeExperimentArtifactAssembler,
-} from "../orchestrator/experiment-journal.js";
 import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -64,16 +60,9 @@ const PINNED_VERSION_KEYS = [
 ] as const;
 
 type PolicyArtifactFile = (typeof POLICY_ARTIFACT_FILES)[number];
-type ProvenanceArtifactFile =
-  (typeof PROVENANCE_ARTIFACT_FILES)[number];
-type PolicyArtifactSet = Pick<
-  ReleaseSafeExperimentArtifactSet,
-  PolicyArtifactFile
->;
-type ProvenanceArtifactSet = Pick<
-  ReleaseSafeExperimentArtifactSet,
-  ProvenanceArtifactFile
->;
+type ProvenanceArtifactFile = (typeof PROVENANCE_ARTIFACT_FILES)[number];
+type PolicyArtifactSet = Pick<ReleaseSafeExperimentArtifactSet, PolicyArtifactFile>;
+type ProvenanceArtifactSet = Pick<ReleaseSafeExperimentArtifactSet, ProvenanceArtifactFile>;
 
 export class ExperimentJournalAuthorityError extends Error {
   override readonly name = "ExperimentJournalAuthorityError";
@@ -83,9 +72,7 @@ function fail(message: string): never {
   throw new ExperimentJournalAuthorityError(message);
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -101,10 +88,7 @@ function assertExactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail(`${label} must be a plain object.`);
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail(`${label} contains non-canonical fields.`);
   }
 }
@@ -137,9 +121,7 @@ function assertTimestamp(value: unknown, label: string): asserts value is string
   }
 }
 
-function assertSnapshot(
-  value: unknown,
-): asserts value is ReleaseSafeFinalExperimentSnapshot {
+function assertSnapshot(value: unknown): asserts value is ReleaseSafeFinalExperimentSnapshot {
   assertExactKeys(
     value,
     [
@@ -164,13 +146,9 @@ function assertSnapshot(
     ],
     "Experiment artifact assembly snapshot",
   );
-  const snapshot =
-    value as unknown as ReleaseSafeFinalExperimentSnapshot;
+  const snapshot = value as unknown as ReleaseSafeFinalExperimentSnapshot;
   assertHash(snapshot.assemblyRequestHash, "Assembly request hash");
-  const {
-    assemblyRequestHash: _assemblyRequestHash,
-    ...withoutHash
-  } = snapshot;
+  const { assemblyRequestHash: _assemblyRequestHash, ...withoutHash } = snapshot;
   if (
     snapshot.schemaVersion !== 1 ||
     snapshot.assemblyRequestHash !==
@@ -192,16 +170,13 @@ function assertArtifactSubset(
 ): void {
   assertExactKeys(value, expected, label);
   for (const fileName of expected) {
-    const document = value[fileName];
+    const document: unknown = value[fileName];
     assertValidDocument(artifactFileSchemas[fileName], document);
     if (!hasValidContentHash(document)) {
       fail(`${label} ${fileName} has an invalid content commitment.`);
     }
     assertReleaseSafe(document);
-    if (
-      !isPlainRecord(document) ||
-      document.experimentNumber !== experimentNumber
-    ) {
+    if (!isPlainRecord(document) || document.experimentNumber !== experimentNumber) {
       fail(`${label} ${fileName} belongs to another experiment.`);
     }
   }
@@ -218,9 +193,7 @@ function provenanceContains(
   contentHash: string,
 ): boolean {
   return document.provenanceRefs.some(
-    (reference) =>
-      reference.artifactName === artifactName &&
-      reference.contentHash === contentHash,
+    (reference) => reference.artifactName === artifactName && reference.contentHash === contentHash,
   );
 }
 
@@ -241,8 +214,7 @@ function assertArtifactBindings(
   const decision = artifacts["decision.json"];
   const feedback = artifacts["feedback-entry.json"];
   const expectedAfter =
-    snapshot.promotedCandidate?.commit ??
-    snapshot.activeChampionBefore.activeCommit;
+    snapshot.promotedCandidate?.commit ?? snapshot.activeChampionBefore.activeCommit;
   const expectedRepair =
     snapshot.repair === null
       ? "not-run"
@@ -263,28 +235,19 @@ function assertArtifactBindings(
     experiment.protocolHash !== snapshot.experiment.protocolHash ||
     experiment.startedAt !== snapshot.startedAt ||
     experiment.finishedAt !== snapshot.finishedAt ||
-    experiment.championBefore !==
-      snapshot.activeChampionBefore.activeCommit ||
+    experiment.championBefore !== snapshot.activeChampionBefore.activeCommit ||
     experiment.championAfter !== expectedAfter ||
     experiment.finalDisposition !== snapshot.disposition ||
-    hypothesis.sourceDiagnosticBriefHash !==
-      snapshot.proposal.hypothesis.sourceBriefHash ||
+    hypothesis.sourceDiagnosticBriefHash !== snapshot.proposal.hypothesis.sourceBriefHash ||
     hypothesis.causalClaim !== snapshot.proposal.hypothesis.causalClaim ||
-    hypothesis.proposedIntervention !==
-      snapshot.proposal.hypothesis.intervention ||
-    !provenanceContains(
-      hypothesis,
-      "optimizer-hypothesis",
-      snapshot.proposal.hypothesis.hash,
-    ) ||
+    hypothesis.proposedIntervention !== snapshot.proposal.hypothesis.intervention ||
+    !provenanceContains(hypothesis, "optimizer-hypothesis", snapshot.proposal.hypothesis.hash) ||
     candidate.candidateCommit !== snapshot.proposal.candidate.commit ||
     candidate.patchHash !== snapshot.proposal.candidate.patchHash ||
     canonicalJson(candidate.changedFiles) !==
       canonicalJson(snapshot.proposal.candidate.changedFiles) ||
-    candidate.mutation.category !==
-      snapshot.proposal.candidate.mutationCategory ||
-    candidate.allGatesPassed !==
-      (snapshot.gates.passed && snapshot.gates.integrityPassed) ||
+    candidate.mutation.category !== snapshot.proposal.candidate.mutationCategory ||
+    candidate.allGatesPassed !== (snapshot.gates.passed && snapshot.gates.integrityPassed) ||
     !provenanceContains(candidate, "gate-checks", snapshot.gates.checksHash) ||
     plan.protocolHash !== snapshot.experiment.protocolHash ||
     behavior.protocolHash !== snapshot.experiment.protocolHash ||
@@ -294,36 +257,24 @@ function assertArtifactBindings(
     brief.failureCardsHash !== cards.contentHash ||
     results.protocolHash !== snapshot.experiment.protocolHash ||
     results.repair.disposition !== expectedRepair ||
-    results.repair.attemptOrdinal !==
-      (snapshot.repair?.attemptOrdinal ?? 0) ||
+    results.repair.attemptOrdinal !== (snapshot.repair?.attemptOrdinal ?? 0) ||
     (results.validation === null) !== (snapshot.validation === null) ||
     analysis.hypothesisHash !== snapshot.proposal.hypothesis.hash ||
     analysis.resultsHash !== results.contentHash ||
-    !provenanceContains(
-      analysis,
-      "optimizer-analysis",
-      snapshot.analysisHash,
-    ) ||
+    !provenanceContains(analysis, "optimizer-analysis", snapshot.analysisHash) ||
     decision.repairDisposition !== expectedRepair ||
     decision.validationDisposition !== expectedValidation ||
-    decision.activeChampionTransition.beforeCommit !==
-      snapshot.activeChampionBefore.activeCommit ||
+    decision.activeChampionTransition.beforeCommit !== snapshot.activeChampionBefore.activeCommit ||
     decision.activeChampionTransition.afterCommit !== expectedAfter ||
-    decision.activeChampionTransition.changed !==
-      (snapshot.disposition === "promoted") ||
+    decision.activeChampionTransition.changed !== (snapshot.disposition === "promoted") ||
     feedback.lifecycleDisposition !== snapshot.disposition ||
-    !provenanceContains(
-      feedback,
-      "budget-final",
-      canonicalHash(snapshot.finalBudget),
-    )
+    !provenanceContains(feedback, "budget-final", canonicalHash(snapshot.finalBudget))
   ) {
     fail("Release-safe artifacts are detached from the journal snapshot.");
   }
   if (
     snapshot.repair !== null &&
-    results.repair.signedPolicyAttestationHash !==
-      snapshot.repair.attestationHash
+    results.repair.signedPolicyAttestationHash !== snapshot.repair.attestationHash
   ) {
     fail("Repair evidence is detached from its broker attestation.");
   }
@@ -333,10 +284,8 @@ function assertArtifactBindings(
         snapshot.validation.aggregate.attestationHash ||
       decision.oneUseConsumptionAttestationHash !==
         snapshot.validation.panelDispositionAttestationHash ||
-      results.validation.matchedTaskCount !==
-        snapshot.validation.aggregate.validPairs ||
-      results.validation.validFreshArmCount !==
-        snapshot.validation.aggregate.validArms
+      results.validation.matchedTaskCount !== snapshot.validation.aggregate.validPairs ||
+      results.validation.validFreshArmCount !== snapshot.validation.aggregate.validArms
     ) {
       fail("Validation evidence is detached from trusted evaluator evidence.");
     }
@@ -345,18 +294,14 @@ function assertArtifactBindings(
     snapshot.validation?.aggregate.behavioralSourceCommitmentHash ??
     snapshot.repair?.attestationHash ??
     null;
-  if (
-    expectedBehaviorSource !== null &&
-    behavior.sourceEnvelopeHash !== expectedBehaviorSource
-  ) {
+  if (expectedBehaviorSource !== null && behavior.sourceEnvelopeHash !== expectedBehaviorSource) {
     fail("Behavioral evidence is detached from its trusted envelope.");
   }
   if (
     snapshot.diagnosticBrief !== null &&
     (brief.contentHash !== snapshot.diagnosticBrief.hash ||
       brief.releaseId !== snapshot.diagnosticBrief.releaseId ||
-      (brief.status === "actionable-evidence") !==
-        snapshot.diagnosticBrief.actionable)
+      (brief.status === "actionable-evidence") !== snapshot.diagnosticBrief.actionable)
   ) {
     fail("Diagnostic evidence is detached from its release.");
   }
@@ -367,9 +312,7 @@ export interface TrustedReleaseSafeArtifactPolicyProvider {
    * Must be idempotent by assemblyRequestHash. It has no hidden-task input and
    * returns only the five policy/narrative artifacts.
    */
-  provide(
-    snapshot: ReleaseSafeFinalExperimentSnapshot,
-  ): Promise<{
+  provide(snapshot: ReleaseSafeFinalExperimentSnapshot): Promise<{
     readonly schemaVersion: 1;
     readonly assemblyRequestHash: string;
     readonly policyAttestationHash: string;
@@ -383,9 +326,7 @@ export interface TrustedReleaseSafeArtifactProvenanceProvider {
    * cache evidence. Raw task identities and grader material never cross this
    * port.
    */
-  provide(
-    snapshot: ReleaseSafeFinalExperimentSnapshot,
-  ): Promise<{
+  provide(snapshot: ReleaseSafeFinalExperimentSnapshot): Promise<{
     readonly schemaVersion: 1;
     readonly assemblyRequestHash: string;
     readonly provenanceAttestationHash: string;
@@ -432,9 +373,7 @@ interface DurableArtifactAssemblyState {
   readonly sensitivity: "release-safe-experiment-artifact-assemblies";
   readonly scopeHash: string;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, DurableArtifactAssemblyRecord>
-  >;
+  readonly records: Readonly<Record<string, DurableArtifactAssemblyRecord>>;
 }
 
 export interface MountedVolumeReleaseSafeExperimentArtifactAssemblerOptions {
@@ -457,103 +396,86 @@ export class MountedVolumeReleaseSafeExperimentArtifactAssembler
   readonly #provenanceProvider: TrustedReleaseSafeArtifactProvenanceProvider;
   readonly #taskIdentityExclusionAuthority: TrustedTaskIdentityExclusionAuthority;
 
-  public constructor(
-    options: MountedVolumeReleaseSafeExperimentArtifactAssemblerOptions,
-  ) {
+  public constructor(options: MountedVolumeReleaseSafeExperimentArtifactAssemblerOptions) {
     this.#policyProvider = options.policyProvider;
     this.#provenanceProvider = options.provenanceProvider;
-    this.#taskIdentityExclusionAuthority =
-      options.taskIdentityExclusionAuthority;
+    this.#taskIdentityExclusionAuthority = options.taskIdentityExclusionAuthority;
     const scopeHash = canonicalHash({
       domain: "dark-factory.release-safe-artifact-assembler-scope.v1",
       storeId: options.durableState.storeId,
     });
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableArtifactAssemblyState>(
-        options.durableState,
-        `experiment-artifact-assemblies-${options.durableState.storeId}`,
-        {
-          domain: "dark-factory.release-safe-artifact-assemblies.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity:
-              "release-safe-experiment-artifact-assemblies",
-            scopeHash,
-            revision: 0,
-            records: {},
-          }),
-          assertState: (value): asserts value is DurableArtifactAssemblyState => {
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableArtifactAssemblyState>(
+      options.durableState,
+      `experiment-artifact-assemblies-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.release-safe-artifact-assemblies.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "release-safe-experiment-artifact-assemblies",
+          scopeHash,
+          revision: 0,
+          records: {},
+        }),
+        assertState: (value): asserts value is DurableArtifactAssemblyState => {
+          assertExactKeys(
+            value,
+            ["schemaVersion", "sensitivity", "scopeHash", "revision", "records"],
+            "Durable artifact assembly state",
+          );
+          const state = value as unknown as DurableArtifactAssemblyState;
+          if (
+            state.schemaVersion !== 1 ||
+            state.sensitivity !== "release-safe-experiment-artifact-assemblies" ||
+            state.scopeHash !== scopeHash ||
+            !Number.isSafeInteger(state.revision) ||
+            state.revision < 0 ||
+            !isPlainRecord(state.records) ||
+            state.revision !== Object.keys(state.records).length
+          ) {
+            fail("Durable artifact assembly state is malformed.");
+          }
+          for (const [requestHash, rawRecord] of Object.entries(state.records)) {
             assertExactKeys(
-              value,
+              rawRecord,
               [
-                "schemaVersion",
-                "sensitivity",
-                "scopeHash",
-                "revision",
-                "records",
+                "assemblyRequestHash",
+                "snapshotHash",
+                "policyResponseHash",
+                "provenanceResponseHash",
+                "taskIdentityExclusionAttestationHash",
+                "artifactSetHash",
+                "artifacts",
               ],
-              "Durable artifact assembly state",
+              "Durable artifact assembly record",
             );
-            const state =
-              value as unknown as DurableArtifactAssemblyState;
+            const record = rawRecord as unknown as DurableArtifactAssemblyRecord;
+            for (const [field, hash] of Object.entries({
+              requestHash,
+              snapshotHash: record.snapshotHash,
+              policyResponseHash: record.policyResponseHash,
+              provenanceResponseHash: record.provenanceResponseHash,
+              taskIdentityExclusionAttestationHash: record.taskIdentityExclusionAttestationHash,
+              artifactSetHash: record.artifactSetHash,
+            })) {
+              assertHash(hash, `Artifact assembly ${field}`);
+            }
             if (
-              state.schemaVersion !== 1 ||
-              state.sensitivity !==
-                "release-safe-experiment-artifact-assemblies" ||
-              state.scopeHash !== scopeHash ||
-              !Number.isSafeInteger(state.revision) ||
-              state.revision < 0 ||
-              !isPlainRecord(state.records) ||
-              state.revision !== Object.keys(state.records).length
+              record.assemblyRequestHash !== requestHash ||
+              record.artifactSetHash !== canonicalHash(record.artifacts)
             ) {
-              fail("Durable artifact assembly state is malformed.");
+              fail("Durable artifact assembly record is inconsistent.");
             }
-            for (const [requestHash, rawRecord] of Object.entries(
-              state.records,
-            )) {
-              assertExactKeys(
-                rawRecord,
-                [
-                  "assemblyRequestHash",
-                  "snapshotHash",
-                  "policyResponseHash",
-                  "provenanceResponseHash",
-                  "taskIdentityExclusionAttestationHash",
-                  "artifactSetHash",
-                  "artifacts",
-                ],
-                "Durable artifact assembly record",
-              );
-              const record =
-                rawRecord as unknown as DurableArtifactAssemblyRecord;
-              for (const [field, hash] of Object.entries({
-                requestHash,
-                snapshotHash: record.snapshotHash,
-                policyResponseHash: record.policyResponseHash,
-                provenanceResponseHash: record.provenanceResponseHash,
-                taskIdentityExclusionAttestationHash:
-                  record.taskIdentityExclusionAttestationHash,
-                artifactSetHash: record.artifactSetHash,
-              })) {
-                assertHash(hash, `Artifact assembly ${field}`);
-              }
-              if (
-                record.assemblyRequestHash !== requestHash ||
-                record.artifactSetHash !== canonicalHash(record.artifacts)
-              ) {
-                fail("Durable artifact assembly record is inconsistent.");
-              }
-              assertArtifactSubset(
-                record.artifacts,
-                REQUIRED_PRESEAL_ARTIFACT_FILES,
-                record.artifacts["experiment.json"].experimentNumber,
-                "Durable artifact assembly",
-              );
-            }
-          },
-          revision: (state) => state.revision,
+            assertArtifactSubset(
+              record.artifacts,
+              REQUIRED_PRESEAL_ARTIFACT_FILES,
+              record.artifacts["experiment.json"].experimentNumber,
+              "Durable artifact assembly",
+            );
+          }
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public async assemble(
@@ -575,23 +497,13 @@ export class MountedVolumeReleaseSafeExperimentArtifactAssembler
 
     const [rawPolicy, rawProvenance] = await Promise.all([
       this.#policyProvider.provide(cloneJson(snapshot, "Policy snapshot")),
-      this.#provenanceProvider.provide(
-        cloneJson(snapshot, "Provenance snapshot"),
-      ),
+      this.#provenanceProvider.provide(cloneJson(snapshot, "Provenance snapshot")),
     ]);
     const policy = cloneJson(rawPolicy, "Artifact policy response");
-    const provenance = cloneJson(
-      rawProvenance,
-      "Artifact provenance response",
-    );
+    const provenance = cloneJson(rawProvenance, "Artifact provenance response");
     assertExactKeys(
       policy,
-      [
-        "schemaVersion",
-        "assemblyRequestHash",
-        "policyAttestationHash",
-        "artifacts",
-      ],
+      ["schemaVersion", "assemblyRequestHash", "policyAttestationHash", "artifacts"],
       "Artifact policy response",
     );
     assertExactKeys(
@@ -607,12 +519,7 @@ export class MountedVolumeReleaseSafeExperimentArtifactAssembler
     );
     assertExactKeys(
       provenance.evidence,
-      [
-        "correctnessGateHash",
-        "brokerEvidenceHash",
-        "evaluatorEvidenceHash",
-        "cacheEvidenceHash",
-      ],
+      ["correctnessGateHash", "brokerEvidenceHash", "evaluatorEvidenceHash", "cacheEvidenceHash"],
       "Artifact provenance evidence",
     );
     if (
@@ -624,26 +531,11 @@ export class MountedVolumeReleaseSafeExperimentArtifactAssembler
       fail("Artifact provider response is detached from the assembly request.");
     }
     assertHash(policy.policyAttestationHash, "Policy attestation hash");
-    assertHash(
-      provenance.provenanceAttestationHash,
-      "Provenance attestation hash",
-    );
-    assertHash(
-      provenance.evidence.correctnessGateHash,
-      "Correctness evidence hash",
-    );
-    assertNullableHash(
-      provenance.evidence.brokerEvidenceHash,
-      "Broker evidence hash",
-    );
-    assertNullableHash(
-      provenance.evidence.evaluatorEvidenceHash,
-      "Evaluator evidence hash",
-    );
-    assertHash(
-      provenance.evidence.cacheEvidenceHash,
-      "Cache evidence hash",
-    );
+    assertHash(provenance.provenanceAttestationHash, "Provenance attestation hash");
+    assertHash(provenance.evidence.correctnessGateHash, "Correctness evidence hash");
+    assertNullableHash(provenance.evidence.brokerEvidenceHash, "Broker evidence hash");
+    assertNullableHash(provenance.evidence.evaluatorEvidenceHash, "Evaluator evidence hash");
+    assertHash(provenance.evidence.cacheEvidenceHash, "Cache evidence hash");
     assertArtifactSubset(
       policy.artifacts,
       POLICY_ARTIFACT_FILES,
@@ -661,12 +553,9 @@ export class MountedVolumeReleaseSafeExperimentArtifactAssembler
       snapshot.repair?.attestationHash ??
       null;
     const expectedEvaluator =
-      snapshot.validation?.aggregate.attestationHash ??
-      snapshot.repair?.attestationHash ??
-      null;
+      snapshot.validation?.aggregate.attestationHash ?? snapshot.repair?.attestationHash ?? null;
     if (
-      provenance.evidence.correctnessGateHash !==
-        snapshot.gates.checksHash ||
+      provenance.evidence.correctnessGateHash !== snapshot.gates.checksHash ||
       provenance.evidence.brokerEvidenceHash !== expectedBroker ||
       provenance.evidence.evaluatorEvidenceHash !== expectedEvaluator ||
       provenance.evidence.cacheEvidenceHash !==
@@ -708,10 +597,7 @@ export class MountedVolumeReleaseSafeExperimentArtifactAssembler
       ],
       "Task-identity exclusion attestation",
     );
-    assertHash(
-      taskFree.attestationHash,
-      "Task-identity exclusion attestation hash",
-    );
+    assertHash(taskFree.attestationHash, "Task-identity exclusion attestation hash");
     if (
       taskFree.assemblyRequestHash !== snapshot.assemblyRequestHash ||
       taskFree.artifactSetHash !== artifactSetHash ||
@@ -824,18 +710,14 @@ interface CompletedSealAuthorization {
   readonly authorization: TrustedExperimentSealAuthorization;
 }
 
-type DurableSealAuthorizationRecord =
-  | PendingSealAuthorization
-  | CompletedSealAuthorization;
+type DurableSealAuthorizationRecord = PendingSealAuthorization | CompletedSealAuthorization;
 
 interface DurableSealAuthorizationState {
   readonly schemaVersion: 1;
   readonly sensitivity: "trusted-experiment-seal-authorizations";
   readonly scopeHash: string;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, DurableSealAuthorizationRecord>
-  >;
+  readonly records: Readonly<Record<string, DurableSealAuthorizationRecord>>;
 }
 
 export interface MountedVolumeTrustedExperimentSealAuthorityOptions {
@@ -846,9 +728,7 @@ export interface MountedVolumeTrustedExperimentSealAuthorityOptions {
   readonly pinnedVersions: TrustedPinnedVersionProvider;
 }
 
-function assertLeakScanSubject(
-  value: unknown,
-): asserts value is LeakScanSubject {
+function assertLeakScanSubject(value: unknown): asserts value is LeakScanSubject {
   assertExactKeys(
     value,
     [
@@ -871,8 +751,7 @@ function assertLeakScanSubject(
     !Number.isSafeInteger(subject.experimentNumber) ||
     subject.experimentNumber < 1 ||
     !Array.isArray(subject.artifactManifest) ||
-    subject.artifactManifest.length !==
-      REQUIRED_PRESEAL_ARTIFACT_FILES.length ||
+    subject.artifactManifest.length !== REQUIRED_PRESEAL_ARTIFACT_FILES.length ||
     !Number.isSafeInteger(subject.eventRecordCount) ||
     subject.eventRecordCount < 1
   ) {
@@ -882,8 +761,7 @@ function assertLeakScanSubject(
   assertHash(subject.eventChainHead, "Event chain head");
   assertHash(subject.protocolHash, "Leak-scan protocol hash");
   if (
-    subject.artifactManifestHash !==
-      canonicalHash(subject.artifactManifest) ||
+    subject.artifactManifestHash !== canonicalHash(subject.artifactManifest) ||
     canonicalJson(subject.artifactManifest.map((entry) => entry.path)) !==
       canonicalJson([...REQUIRED_PRESEAL_ARTIFACT_FILES].sort())
   ) {
@@ -895,11 +773,12 @@ function assertLeakScanSubject(
       ["path", "schemaKind", "contentHash", "byteHash", "bytes"],
       "Leak-scan manifest entry",
     );
+    const bytes = entry.bytes;
     if (
-      artifactFileSchemas[entry.path as keyof typeof artifactFileSchemas] !==
-        entry.schemaKind ||
-      !Number.isSafeInteger(entry.bytes) ||
-      entry.bytes < 1
+      artifactFileSchemas[entry.path as keyof typeof artifactFileSchemas] !== entry.schemaKind ||
+      typeof bytes !== "number" ||
+      !Number.isSafeInteger(bytes) ||
+      bytes < 1
     ) {
       fail("Leak-scan manifest entry is malformed.");
     }
@@ -908,9 +787,7 @@ function assertLeakScanSubject(
   }
 }
 
-function assertPinnedVersions(
-  value: unknown,
-): asserts value is Attestation["pinnedVersions"] {
+function assertPinnedVersions(value: unknown): asserts value is Attestation["pinnedVersions"] {
   assertExactKeys(value, PINNED_VERSION_KEYS, "Pinned versions");
   for (const [key, version] of Object.entries(value)) {
     if (typeof version !== "string" || !SAFE_VERSION.test(version)) {
@@ -932,11 +809,7 @@ function assertSignature(
   keyId: string,
   checkedAt: string,
 ): asserts value is Signature {
-  assertExactKeys(
-    value,
-    ["algorithm", "keyId", "signedAt", "signature"],
-    "Leak-scan signature",
-  );
+  assertExactKeys(value, ["algorithm", "keyId", "signedAt", "signature"], "Leak-scan signature");
   const signature = value as unknown as Signature;
   if (
     signature.algorithm !== "ed25519" ||
@@ -959,20 +832,11 @@ function assertAuthorization(
 ): asserts value is TrustedExperimentSealAuthorization {
   assertExactKeys(
     value,
-    [
-      "authorityAttestationHash",
-      "pinnedVersions",
-      "leakScanReceipt",
-      "signer",
-    ],
+    ["authorityAttestationHash", "pinnedVersions", "leakScanReceipt", "signer"],
     "Experiment seal authorization",
   );
-  const authorization =
-    value as unknown as TrustedExperimentSealAuthorization;
-  assertHash(
-    authorization.authorityAttestationHash,
-    "Seal authority attestation hash",
-  );
+  const authorization = value as unknown as TrustedExperimentSealAuthorization;
+  assertHash(authorization.authorityAttestationHash, "Seal authority attestation hash");
   assertPinnedVersions(authorization.pinnedVersions);
   if (authorization.signer !== null) {
     fail("Experiment attestation signing is not delegated by this authority.");
@@ -980,8 +844,7 @@ function assertAuthorization(
   assertValidDocument("leakScanReceipt", authorization.leakScanReceipt);
   if (
     !hasValidContentHash(authorization.leakScanReceipt) ||
-    authorization.authorityAttestationHash !==
-      authorization.leakScanReceipt.contentHash
+    authorization.authorityAttestationHash !== authorization.leakScanReceipt.contentHash
   ) {
     fail("Leak-scan receipt content commitment is invalid.");
   }
@@ -990,8 +853,7 @@ function assertAuthorization(
     experimentId: authorization.leakScanReceipt.experimentId,
     experimentNumber: authorization.leakScanReceipt.experimentNumber,
     artifactManifest: authorization.leakScanReceipt.artifactManifest,
-    artifactManifestHash:
-      authorization.leakScanReceipt.artifactManifestHash,
+    artifactManifestHash: authorization.leakScanReceipt.artifactManifestHash,
     eventRecordCount: authorization.leakScanReceipt.eventRecordCount,
     eventChainHead: authorization.leakScanReceipt.eventChainHead,
     protocolHash: authorization.leakScanReceipt.protocolHash,
@@ -999,10 +861,7 @@ function assertAuthorization(
   if (
     canonicalJson(receiptSubject) !== canonicalJson(input.subject) ||
     authorization.leakScanReceipt.signature.keyId !== input.keyId ||
-    !verifyEd25519Signature(
-      authorization.leakScanReceipt,
-      input.publicKey,
-    )
+    !verifyEd25519Signature(authorization.leakScanReceipt, input.publicKey)
   ) {
     fail("Leak-scan receipt is detached or has an invalid signature.");
   }
@@ -1012,21 +871,16 @@ function assertAuthorization(
  * Durable seal authority. The only path to the signing key is after a strict
  * deterministic scan of the exact immutable leak-scan subject.
  */
-export class MountedVolumeTrustedExperimentSealAuthority
-  implements TrustedExperimentSealAuthority
-{
+export class MountedVolumeTrustedExperimentSealAuthority implements TrustedExperimentSealAuthority {
   readonly #store: MountedVolumeTransactionalJsonStore<DurableSealAuthorizationState>;
   readonly #scanner: TrustedDeterministicExperimentLeakScanner;
   readonly #keyAuthority: TrustedCloudLeakScanKeyAuthority;
   readonly #scannerPublicKey: KeyLike;
   readonly #pinnedVersions: TrustedPinnedVersionProvider;
 
-  public constructor(
-    options: MountedVolumeTrustedExperimentSealAuthorityOptions,
-  ) {
+  public constructor(options: MountedVolumeTrustedExperimentSealAuthorityOptions) {
     if (
-      options.scanner.boundary !==
-        "trusted-cloud-deterministic-leak-scanner" ||
+      options.scanner.boundary !== "trusted-cloud-deterministic-leak-scanner" ||
       options.keyAuthority.boundary !== "trusted-cloud-leak-scan-key" ||
       !SAFE_ID.test(options.keyAuthority.keyId)
     ) {
@@ -1041,10 +895,7 @@ export class MountedVolumeTrustedExperimentSealAuthority
       storeId: options.durableState.storeId,
       scannerKeyId: options.keyAuthority.keyId,
     });
-    const assertRecord = (
-      requestHash: string,
-      rawRecord: unknown,
-    ): void => {
+    const assertRecord = (requestHash: string, rawRecord: unknown): void => {
       if (!isPlainRecord(rawRecord)) {
         fail("Seal authorization record is not an object.");
       }
@@ -1074,11 +925,9 @@ export class MountedVolumeTrustedExperimentSealAuthority
             ],
         "Seal authorization record",
       );
-      const record =
-        rawRecord as unknown as DurableSealAuthorizationRecord;
+      const record = rawRecord as unknown as DurableSealAuthorizationRecord;
       if (
-        (record.status !== "pending" &&
-          record.status !== "completed") ||
+        (record.status !== "pending" && record.status !== "completed") ||
         record.requestHash !== requestHash
       ) {
         fail("Seal authorization record status is malformed.");
@@ -1091,24 +940,12 @@ export class MountedVolumeTrustedExperimentSealAuthority
       ]) {
         assertHash(hash, "Seal authorization record hash");
       }
-      assertNullableHash(
-        record.previousExperimentSealHash,
-        "Previous experiment seal hash",
-      );
+      assertNullableHash(record.previousExperimentSealHash, "Previous experiment seal hash");
       if (record.status === "completed") {
-        assertHash(
-          record.scanAttestationHash,
-          "Stored leak-scan attestation hash",
-        );
-        assertHash(
-          record.unsignedReceiptHash,
-          "Stored unsigned receipt hash",
-        );
+        assertHash(record.scanAttestationHash, "Stored leak-scan attestation hash");
+        assertHash(record.unsignedReceiptHash, "Stored unsigned receipt hash");
         assertHash(record.authorizationHash, "Authorization hash");
-        if (
-          record.authorizationHash !==
-            canonicalHash(record.authorization)
-        ) {
+        if (record.authorizationHash !== canonicalHash(record.authorization)) {
           fail("Stored seal authorization hash is invalid.");
         }
         const receipt = record.authorization.leakScanReceipt;
@@ -1128,23 +965,16 @@ export class MountedVolumeTrustedExperimentSealAuthority
           keyId: options.keyAuthority.keyId,
           publicKey: options.scannerPublicKey,
         });
-        const {
-          contentHash: _contentHash,
-          signature,
-          ...receiptBody
-        } = receipt;
+        const { contentHash: _contentHash, signature, ...receiptBody } = receipt;
         if (
           record.subjectHash !== canonicalHash(receiptSubject) ||
-          record.unsignedReceiptHash !==
-            canonicalHash({ ...receiptBody, signature: null }) ||
+          record.unsignedReceiptHash !== canonicalHash({ ...receiptBody, signature: null }) ||
           signature.keyId !== options.keyAuthority.keyId ||
           record.requestHash !==
             canonicalHash({
-              domain:
-                "dark-factory.experiment-seal-authorization.v1",
+              domain: "dark-factory.experiment-seal-authorization.v1",
               subject: receiptSubject,
-              previousExperimentSealHash:
-                record.previousExperimentSealHash,
+              previousExperimentSealHash: record.previousExperimentSealHash,
               assemblyRequestHash: record.assemblyRequestHash,
             })
         ) {
@@ -1152,53 +982,42 @@ export class MountedVolumeTrustedExperimentSealAuthority
         }
       }
     };
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableSealAuthorizationState>(
-        options.durableState,
-        `experiment-seal-authorizations-${options.durableState.storeId}`,
-        {
-          domain: "dark-factory.experiment-seal-authorizations.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity: "trusted-experiment-seal-authorizations",
-            scopeHash,
-            revision: 0,
-            records: {},
-          }),
-          assertState: (value): asserts value is DurableSealAuthorizationState => {
-            assertExactKeys(
-              value,
-              [
-                "schemaVersion",
-                "sensitivity",
-                "scopeHash",
-                "revision",
-                "records",
-              ],
-              "Durable seal authorization state",
-            );
-            const state =
-              value as unknown as DurableSealAuthorizationState;
-            if (
-              state.schemaVersion !== 1 ||
-              state.sensitivity !==
-                "trusted-experiment-seal-authorizations" ||
-              state.scopeHash !== scopeHash ||
-              !Number.isSafeInteger(state.revision) ||
-              state.revision < 0 ||
-              !isPlainRecord(state.records)
-            ) {
-              fail("Durable seal authorization state is malformed.");
-            }
-            for (const [requestHash, record] of Object.entries(
-              state.records,
-            )) {
-              assertRecord(requestHash, record);
-            }
-          },
-          revision: (state) => state.revision,
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableSealAuthorizationState>(
+      options.durableState,
+      `experiment-seal-authorizations-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.experiment-seal-authorizations.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "trusted-experiment-seal-authorizations",
+          scopeHash,
+          revision: 0,
+          records: {},
+        }),
+        assertState: (value): asserts value is DurableSealAuthorizationState => {
+          assertExactKeys(
+            value,
+            ["schemaVersion", "sensitivity", "scopeHash", "revision", "records"],
+            "Durable seal authorization state",
+          );
+          const state = value as unknown as DurableSealAuthorizationState;
+          if (
+            state.schemaVersion !== 1 ||
+            state.sensitivity !== "trusted-experiment-seal-authorizations" ||
+            state.scopeHash !== scopeHash ||
+            !Number.isSafeInteger(state.revision) ||
+            state.revision < 0 ||
+            !isPlainRecord(state.records)
+          ) {
+            fail("Durable seal authorization state is malformed.");
+          }
+          for (const [requestHash, record] of Object.entries(state.records)) {
+            assertRecord(requestHash, record);
+          }
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public async authorize(input: {
@@ -1210,26 +1029,17 @@ export class MountedVolumeTrustedExperimentSealAuthority
     const detached = cloneJson(input, "Experiment seal request");
     assertExactKeys(
       detached,
-      [
-        "requestHash",
-        "subject",
-        "previousExperimentSealHash",
-        "assemblyRequestHash",
-      ],
+      ["requestHash", "subject", "previousExperimentSealHash", "assemblyRequestHash"],
       "Experiment seal request",
     );
     assertHash(detached.requestHash, "Seal request hash");
     assertHash(detached.assemblyRequestHash, "Assembly request hash");
-    assertNullableHash(
-      detached.previousExperimentSealHash,
-      "Previous experiment seal hash",
-    );
+    assertNullableHash(detached.previousExperimentSealHash, "Previous experiment seal hash");
     assertLeakScanSubject(detached.subject);
     const expectedRequestHash = canonicalHash({
       domain: "dark-factory.experiment-seal-authorization.v1",
       subject: detached.subject,
-      previousExperimentSealHash:
-        detached.previousExperimentSealHash,
+      previousExperimentSealHash: detached.previousExperimentSealHash,
       assemblyRequestHash: detached.assemblyRequestHash,
     });
     if (detached.requestHash !== expectedRequestHash) {
@@ -1251,8 +1061,7 @@ export class MountedVolumeTrustedExperimentSealAuthority
         inputHash,
         subjectHash,
         assemblyRequestHash: detached.assemblyRequestHash,
-        previousExperimentSealHash:
-          detached.previousExperimentSealHash,
+        previousExperimentSealHash: detached.previousExperimentSealHash,
       };
       return {
         next: {
@@ -1272,10 +1081,7 @@ export class MountedVolumeTrustedExperimentSealAuthority
         keyId: this.#keyAuthority.keyId,
         publicKey: this.#scannerPublicKey,
       });
-      return cloneJson(
-        observed.authorization,
-        "Stored experiment seal authorization",
-      );
+      return cloneJson(observed.authorization, "Stored experiment seal authorization");
     }
 
     const scan = cloneJson(
@@ -1343,22 +1149,13 @@ export class MountedVolumeTrustedExperimentSealAuthority
       }),
       "Leak-scan signature",
     );
-    assertSignature(
-      signature,
-      this.#keyAuthority.keyId,
-      scan.checkedAt,
-    );
+    assertSignature(signature, this.#keyAuthority.keyId, scan.checkedAt);
     const leakScanReceipt = withContentHash({
       ...unsignedReceipt,
       signature,
     }) as LeakScanReceipt;
     assertValidDocument("leakScanReceipt", leakScanReceipt);
-    if (
-      !verifyEd25519Signature(
-        leakScanReceipt,
-        this.#scannerPublicKey,
-      )
-    ) {
+    if (!verifyEd25519Signature(leakScanReceipt, this.#scannerPublicKey)) {
       fail("Cloud key authority returned an invalid leak-scan signature.");
     }
     const authorization: TrustedExperimentSealAuthorization = {
@@ -1382,10 +1179,7 @@ export class MountedVolumeTrustedExperimentSealAuthority
     };
     const committed = await this.#store.transact((state) => {
       const current = state.records[detached.requestHash];
-      if (
-        current === undefined ||
-        current.inputHash !== inputHash
-      ) {
+      if (current === undefined || current.inputHash !== inputHash) {
         fail("Pending seal authorization was lost or replaced.");
       }
       if (current.status === "completed") {
@@ -1406,10 +1200,7 @@ export class MountedVolumeTrustedExperimentSealAuthority
         result: completed,
       };
     });
-    return cloneJson(
-      committed.authorization,
-      "Committed seal authorization",
-    );
+    return cloneJson(committed.authorization, "Committed seal authorization");
   }
 
   public close(): Promise<void> {
@@ -1460,9 +1251,7 @@ interface DurableInterruptionAttestationState {
   readonly sensitivity: "release-safe-journal-interruptions";
   readonly scopeHash: string;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, DurableInterruptionAttestation>
-  >;
+  readonly records: Readonly<Record<string, DurableInterruptionAttestation>>;
 }
 
 export interface MountedVolumeTrustedJournalInterruptionAttestorOptions {
@@ -1480,102 +1269,82 @@ export class MountedVolumeTrustedJournalInterruptionAttestor
   readonly #store: MountedVolumeTransactionalJsonStore<DurableInterruptionAttestationState>;
   readonly #now: () => Date;
 
-  public constructor(
-    options: MountedVolumeTrustedJournalInterruptionAttestorOptions,
-  ) {
+  public constructor(options: MountedVolumeTrustedJournalInterruptionAttestorOptions) {
     this.#now = options.now ?? (() => new Date());
     const scopeHash = canonicalHash({
       domain: "dark-factory.journal-interruption-attestor-scope.v1",
       storeId: options.durableState.storeId,
     });
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableInterruptionAttestationState>(
-        options.durableState,
-        `journal-interruptions-${options.durableState.storeId}`,
-        {
-          domain: "dark-factory.journal-interruption-attestations.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity: "release-safe-journal-interruptions",
-            scopeHash,
-            revision: 0,
-            records: {},
-          }),
-          assertState: (value): asserts value is DurableInterruptionAttestationState => {
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableInterruptionAttestationState>(
+      options.durableState,
+      `journal-interruptions-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.journal-interruption-attestations.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "release-safe-journal-interruptions",
+          scopeHash,
+          revision: 0,
+          records: {},
+        }),
+        assertState: (value): asserts value is DurableInterruptionAttestationState => {
+          assertExactKeys(
+            value,
+            ["schemaVersion", "sensitivity", "scopeHash", "revision", "records"],
+            "Durable interruption state",
+          );
+          const state = value as unknown as DurableInterruptionAttestationState;
+          if (
+            state.schemaVersion !== 1 ||
+            state.sensitivity !== "release-safe-journal-interruptions" ||
+            state.scopeHash !== scopeHash ||
+            !Number.isSafeInteger(state.revision) ||
+            state.revision < 0 ||
+            !isPlainRecord(state.records) ||
+            state.revision !== Object.keys(state.records).length
+          ) {
+            fail("Durable interruption state is malformed.");
+          }
+          for (const [operationKey, rawRecord] of Object.entries(state.records)) {
             assertExactKeys(
-              value,
+              rawRecord,
               [
-                "schemaVersion",
-                "sensitivity",
-                "scopeHash",
-                "revision",
-                "records",
+                "operationKey",
+                "experimentHash",
+                "phase",
+                "reasonCode",
+                "attestedAt",
+                "attestationHash",
               ],
-              "Durable interruption state",
+              "Durable interruption attestation",
             );
-            const state =
-              value as unknown as DurableInterruptionAttestationState;
+            const record = rawRecord as unknown as DurableInterruptionAttestation;
+            assertHash(operationKey, "Interruption operation key");
+            assertHash(record.experimentHash, "Interrupted experiment hash");
+            assertHash(record.attestationHash, "Interruption attestation hash");
+            assertTimestamp(record.attestedAt, "Interruption timestamp");
             if (
-              state.schemaVersion !== 1 ||
-              state.sensitivity !==
-                "release-safe-journal-interruptions" ||
-              state.scopeHash !== scopeHash ||
-              !Number.isSafeInteger(state.revision) ||
-              state.revision < 0 ||
-              !isPlainRecord(state.records) ||
-              state.revision !== Object.keys(state.records).length
+              record.operationKey !== operationKey ||
+              !SAFE_ID.test(record.phase) ||
+              (!INTERRUPTION_REASON_RULES.some((rule) => rule.code === record.reasonCode) &&
+                record.reasonCode !== "unexpected-failure") ||
+              record.attestationHash !==
+                canonicalHash({
+                  domain: "dark-factory.release-safe-journal-interruption.v1",
+                  operationKey,
+                  experimentHash: record.experimentHash,
+                  phase: record.phase,
+                  reasonCode: record.reasonCode,
+                  attestedAt: record.attestedAt,
+                })
             ) {
-              fail("Durable interruption state is malformed.");
+              fail("Durable interruption attestation is malformed.");
             }
-            for (const [operationKey, rawRecord] of Object.entries(
-              state.records,
-            )) {
-              assertExactKeys(
-                rawRecord,
-                [
-                  "operationKey",
-                  "experimentHash",
-                  "phase",
-                  "reasonCode",
-                  "attestedAt",
-                  "attestationHash",
-                ],
-                "Durable interruption attestation",
-              );
-              const record =
-                rawRecord as unknown as DurableInterruptionAttestation;
-              assertHash(operationKey, "Interruption operation key");
-              assertHash(record.experimentHash, "Interrupted experiment hash");
-              assertHash(
-                record.attestationHash,
-                "Interruption attestation hash",
-              );
-              assertTimestamp(record.attestedAt, "Interruption timestamp");
-              if (
-                record.operationKey !== operationKey ||
-                !SAFE_ID.test(record.phase) ||
-                !INTERRUPTION_REASON_RULES.some(
-                  (rule) => rule.code === record.reasonCode,
-                ) &&
-                  record.reasonCode !== "unexpected-failure" ||
-                record.attestationHash !==
-                  canonicalHash({
-                    domain:
-                      "dark-factory.release-safe-journal-interruption.v1",
-                    operationKey,
-                    experimentHash: record.experimentHash,
-                    phase: record.phase,
-                    reasonCode: record.reasonCode,
-                    attestedAt: record.attestedAt,
-                  })
-              ) {
-                fail("Durable interruption attestation is malformed.");
-              }
-            }
-          },
-          revision: (state) => state.revision,
+          }
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public async attest(input: {
@@ -1587,11 +1356,7 @@ export class MountedVolumeTrustedJournalInterruptionAttestor
     readonly attestationHash: string;
   }> {
     const detached = cloneJson(input, "Journal interruption request");
-    assertExactKeys(
-      detached,
-      ["experiment", "phase", "reason"],
-      "Journal interruption request",
-    );
+    assertExactKeys(detached, ["experiment", "phase", "reason"], "Journal interruption request");
     if (
       !SAFE_ID.test(detached.phase) ||
       typeof detached.reason !== "string" ||
@@ -1607,9 +1372,8 @@ export class MountedVolumeTrustedJournalInterruptionAttestor
       phase: detached.phase,
     });
     const reasonCode =
-      INTERRUPTION_REASON_RULES.find((rule) =>
-        rule.pattern.test(detached.reason),
-      )?.code ?? "unexpected-failure";
+      INTERRUPTION_REASON_RULES.find((rule) => rule.pattern.test(detached.reason))?.code ??
+      "unexpected-failure";
     const committed = await this.#store.transact((state) => {
       const existing = state.records[operationKey];
       if (existing !== undefined) {

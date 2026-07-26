@@ -1,10 +1,10 @@
-import {
-  createPublicKey,
-  KeyObject,
-  type KeyLike,
-} from "node:crypto";
+import { createPublicKey, type KeyLike, KeyObject } from "node:crypto";
 
 import type { HiddenPrivacyBudgetState } from "../evaluation/privacy.js";
+import type {
+  BehavioralReleaseArtifact,
+  TrustedBehavioralPrivacyArtifactStore,
+} from "../evaluator/behavioral-release-producer.js";
 import {
   createTrustedEvaluationService,
   type TrustedEvaluationService,
@@ -16,26 +16,15 @@ import type {
   TrustedEvaluationReleaseArtifactReader,
   TrustedEvaluationReleaseArtifactSource,
 } from "../evaluator/release-bundle-service.js";
-import type {
-  BehavioralReleaseArtifact,
-  TrustedBehavioralPrivacyArtifactStore,
-} from "../evaluator/behavioral-release-producer.js";
 import { canonicalHash, canonicalJson, sha256 } from "../schemas/canonical.js";
-import type { TrustedCloudArtifactRef } from "./types.js";
-import {
-  MountedVolumeBehavioralPreparationStore,
-} from "./mounted-volume-behavioral-preparation-store.js";
-import {
-  MountedVolumeBehavioralPrivacyArtifactStore,
-} from "./mounted-volume-behavioral-privacy-store.js";
-import type {
-  ProductionOptimizeLifecycleRegistrar,
-} from "./production-optimize-composition-owner.js";
+import { MountedVolumeBehavioralPreparationStore } from "./mounted-volume-behavioral-preparation-store.js";
+import { MountedVolumeBehavioralPrivacyArtifactStore } from "./mounted-volume-behavioral-privacy-store.js";
 import type { MountedVolumeDurableStateOptions } from "./mounted-volume-state.js";
+import type { ProductionOptimizeLifecycleRegistrar } from "./production-optimize-composition-owner.js";
+import type { TrustedCloudArtifactRef } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const BEHAVIORAL_URI_PREFIX =
-  "trusted://behavioral-release/" as const;
+const BEHAVIORAL_URI_PREFIX = "trusted://behavioral-release/" as const;
 const BEHAVIORAL_URI =
   /^trusted:\/\/behavioral-release\/(behavioral-release|behavioral-evidence|failure-cards|diagnostic-brief)\/([a-f0-9]{64})$/u;
 const BEHAVIORAL_PURPOSES = Object.freeze([
@@ -68,12 +57,7 @@ const STORE_KEYS = [
   "hiddenOutcomeSink",
   "onlineErrorAuthority",
 ] as const;
-const SIGNING_KEYS = [
-  "keyId",
-  "trustedKeyIds",
-  "privateKeys",
-  "publicKeys",
-] as const;
+const SIGNING_KEYS = ["keyId", "trustedKeyIds", "privateKeys", "publicKeys"] as const;
 const RUNNER_KEYS = [
   "provider",
   "pin",
@@ -95,10 +79,7 @@ export type ProductionTrustedEvaluationDependencies = Omit<
   TrustedEvaluationServiceCompositionOptions,
   "stores" | "behavioralReleaseStore" | "now"
 > & {
-  readonly stores: Omit<
-    TrustedProductionEvaluationStores,
-    "behavioralPreparations"
-  >;
+  readonly stores: Omit<TrustedProductionEvaluationStores, "behavioralPreparations">;
   readonly initialPrivacyState: HiddenPrivacyBudgetState;
 };
 
@@ -111,16 +92,14 @@ export interface ProductionMountedVolumeTrustedEvaluatorOptions {
 }
 
 export interface ProductionMountedVolumeTrustedEvaluatorRuntime {
-  readonly boundary:
-    "trusted-cloud-mounted-volume-evaluator-runtime";
+  readonly boundary: "trusted-cloud-mounted-volume-evaluator-runtime";
   readonly service: TrustedEvaluationService;
   readonly releaseSource: TrustedEvaluationReleaseArtifactSource;
   readonly releaseReader: TrustedEvaluationReleaseArtifactReader;
 }
 
 export class ProductionMountedVolumeTrustedEvaluatorError extends Error {
-  override readonly name =
-    "ProductionMountedVolumeTrustedEvaluatorError";
+  override readonly name = "ProductionMountedVolumeTrustedEvaluatorError";
 
   constructor() {
     super("Production mounted-volume trusted evaluator failed closed.");
@@ -131,9 +110,7 @@ function fail(): never {
   throw new ProductionMountedVolumeTrustedEvaluatorError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -155,10 +132,7 @@ function exactKeys(
       (key) =>
         typeof key !== "string" ||
         !allowed.has(key) ||
-        !Object.hasOwn(
-          Object.getOwnPropertyDescriptor(value, key) ?? {},
-          "value",
-        ),
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, "value"),
     ) ||
     expected.some((key) => !Object.hasOwn(value, key))
   ) {
@@ -187,10 +161,7 @@ function capturePublicKey(value: KeyLike): KeyObject {
       format: "der",
       type: "spki",
     });
-    if (
-      key.type !== "public" ||
-      key.asymmetricKeyType !== "ed25519"
-    ) {
+    if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") {
       fail();
     }
     return key;
@@ -199,11 +170,7 @@ function capturePublicKey(value: KeyLike): KeyObject {
   }
 }
 
-function captureMethod<
-  Owner extends object,
-  Arguments extends unknown[],
-  Result,
->(
+function captureMethod<Owner extends object, Arguments extends unknown[], Result>(
   owner: Owner,
   method: (...arguments_: Arguments) => Result,
 ): (...arguments_: Arguments) => Result {
@@ -242,17 +209,11 @@ function captureSigning(
     trustedKeyIds: Object.freeze([...value.trustedKeyIds]),
     privateKeys: Object.freeze({
       boundary: value.privateKeys.boundary,
-      resolve: captureMethod(
-        value.privateKeys,
-        value.privateKeys.resolve,
-      ),
+      resolve: captureMethod(value.privateKeys, value.privateKeys.resolve),
     }),
     publicKeys: Object.freeze({
       boundary: value.publicKeys.boundary,
-      resolve: captureMethod(
-        value.publicKeys,
-        value.publicKeys.resolve,
-      ),
+      resolve: captureMethod(value.publicKeys, value.publicKeys.resolve),
     }),
   });
 }
@@ -265,10 +226,7 @@ function captureDependencies(
   exactKeys(
     value.raw,
     ["source", "decryptor", "decoder"],
-    [
-      "maximumEncryptedArtifactBytes",
-      "maximumPlaintextArtifactBytes",
-    ],
+    ["maximumEncryptedArtifactBytes", "maximumPlaintextArtifactBytes"],
   );
   exactKeys(value.runner, RUNNER_KEYS);
 
@@ -281,69 +239,38 @@ function captureDependencies(
       harborExecutable: runner.harborExecutable,
       harborWorkingDirectory: runner.harborWorkingDirectory,
       harborTimeoutMs: runner.harborTimeoutMs,
-      outputPackagerNodeExecutable:
-        runner.outputPackagerNodeExecutable,
-      outputPackagerTimeoutMs:
-        runner.outputPackagerTimeoutMs,
+      outputPackagerNodeExecutable: runner.outputPackagerNodeExecutable,
+      outputPackagerTimeoutMs: runner.outputPackagerTimeoutMs,
       remoteUploadRoot: runner.remoteUploadRoot,
       remoteOutputRoot: runner.remoteOutputRoot,
-      harborSecretReferences: cloneCanonical(
-        runner.harborSecretReferences,
-      ),
-      modelSecretReferences: cloneCanonical(
-        runner.modelSecretReferences,
-      ),
+      harborSecretReferences: cloneCanonical(runner.harborSecretReferences),
+      modelSecretReferences: cloneCanonical(runner.modelSecretReferences),
       jobBuilder: Object.freeze({
-        build: captureMethod(
-          runner.jobBuilder,
-          runner.jobBuilder.build,
-        ),
+        build: captureMethod(runner.jobBuilder, runner.jobBuilder.build),
       }),
       runtimeVerifier: Object.freeze({
-        verify: captureMethod(
-          runner.runtimeVerifier,
-          runner.runtimeVerifier.verify,
-        ),
+        verify: captureMethod(runner.runtimeVerifier, runner.runtimeVerifier.verify),
       }),
     }),
     retentionPolicy: cloneCanonical(value.retentionPolicy),
     destructionReceiptVerifier: Object.freeze({
-      trustedKeyId:
-        value.destructionReceiptVerifier.trustedKeyId,
-      publicKey: capturePublicKey(
-        value.destructionReceiptVerifier.publicKey,
-      ),
+      trustedKeyId: value.destructionReceiptVerifier.trustedKeyId,
+      publicKey: capturePublicKey(value.destructionReceiptVerifier.publicKey),
     }),
     agent: cloneCanonical(value.agent),
     stores: Object.freeze({
       boundary: value.stores.boundary,
-      durabilityAttestationHash:
-        value.stores.durabilityAttestationHash,
+      durabilityAttestationHash: value.stores.durabilityAttestationHash,
       ledger: Object.freeze({
-        claim: captureMethod(
-          value.stores.ledger,
-          value.stores.ledger.claim,
-        ),
-        inspect: captureMethod(
-          value.stores.ledger,
-          value.stores.ledger.inspect,
-        ),
-        recoverInFlight: captureMethod(
-          value.stores.ledger,
-          value.stores.ledger.recoverInFlight,
-        ),
+        claim: captureMethod(value.stores.ledger, value.stores.ledger.claim),
+        inspect: captureMethod(value.stores.ledger, value.stores.ledger.inspect),
+        recoverInFlight: captureMethod(value.stores.ledger, value.stores.ledger.recoverInFlight),
         bindDispositionAttestation: captureMethod(
           value.stores.ledger,
           value.stores.ledger.bindDispositionAttestation,
         ),
-        complete: captureMethod(
-          value.stores.ledger,
-          value.stores.ledger.complete,
-        ),
-        consumeFailure: captureMethod(
-          value.stores.ledger,
-          value.stores.ledger.consumeFailure,
-        ),
+        complete: captureMethod(value.stores.ledger, value.stores.ledger.complete),
+        consumeFailure: captureMethod(value.stores.ledger, value.stores.ledger.consumeFailure),
       }),
       panels: Object.freeze({
         allocateAndConsume: captureMethod(
@@ -352,20 +279,11 @@ function captureDependencies(
         ),
       }),
       rawIngress: Object.freeze({
-        persist: captureMethod(
-          value.stores.rawIngress,
-          value.stores.rawIngress.persist,
-        ),
-        discard: captureMethod(
-          value.stores.rawIngress,
-          value.stores.rawIngress.discard,
-        ),
+        persist: captureMethod(value.stores.rawIngress, value.stores.rawIngress.persist),
+        discard: captureMethod(value.stores.rawIngress, value.stores.rawIngress.discard),
       }),
       custodian: Object.freeze({
-        destroy: captureMethod(
-          value.stores.custodian,
-          value.stores.custodian.destroy,
-        ),
+        destroy: captureMethod(value.stores.custodian, value.stores.custodian.destroy),
       }),
       hiddenOutcomeSink: Object.freeze({
         commit: captureMethod(
@@ -374,8 +292,7 @@ function captureDependencies(
         ),
       }),
       onlineErrorAuthority: Object.freeze({
-        boundary:
-          value.stores.onlineErrorAuthority.boundary,
+        boundary: value.stores.onlineErrorAuthority.boundary,
         reserve: captureMethod(
           value.stores.onlineErrorAuthority,
           value.stores.onlineErrorAuthority.reserve,
@@ -389,70 +306,40 @@ function captureDependencies(
     raw: Object.freeze({
       source: Object.freeze({
         boundary: value.raw.source.boundary,
-        read: captureMethod(
-          value.raw.source,
-          value.raw.source.read,
-        ),
+        read: captureMethod(value.raw.source, value.raw.source.read),
       }),
       decryptor: Object.freeze({
         boundary: value.raw.decryptor.boundary,
-        decrypt: captureMethod(
-          value.raw.decryptor,
-          value.raw.decryptor.decrypt,
-        ),
+        decrypt: captureMethod(value.raw.decryptor, value.raw.decryptor.decrypt),
       }),
       decoder: Object.freeze({
         boundary: value.raw.decoder.boundary,
-        decode: captureMethod(
-          value.raw.decoder,
-          value.raw.decoder.decode,
-        ),
+        decode: captureMethod(value.raw.decoder, value.raw.decoder.decode),
       }),
       ...(value.raw.maximumEncryptedArtifactBytes === undefined
         ? {}
         : {
-            maximumEncryptedArtifactBytes:
-              value.raw.maximumEncryptedArtifactBytes,
+            maximumEncryptedArtifactBytes: value.raw.maximumEncryptedArtifactBytes,
           }),
       ...(value.raw.maximumPlaintextArtifactBytes === undefined
         ? {}
         : {
-            maximumPlaintextArtifactBytes:
-              value.raw.maximumPlaintextArtifactBytes,
+            maximumPlaintextArtifactBytes: value.raw.maximumPlaintextArtifactBytes,
           }),
     }),
     policyProvider: Object.freeze({
       boundary: value.policyProvider.boundary,
-      load: captureMethod(
-        value.policyProvider,
-        value.policyProvider.load,
-      ),
+      load: captureMethod(value.policyProvider, value.policyProvider.load),
     }),
-    hiddenOutcomeSigning: captureSigning(
-      value.hiddenOutcomeSigning,
-    ),
-    resultEnvelopeSigning: captureSigning(
-      value.resultEnvelopeSigning,
-    ),
-    behavioralReleaseSigning: captureSigning(
-      value.behavioralReleaseSigning,
-    ),
-    initialPrivacyState: cloneCanonical(
-      value.initialPrivacyState,
-    ),
+    hiddenOutcomeSigning: captureSigning(value.hiddenOutcomeSigning),
+    resultEnvelopeSigning: captureSigning(value.resultEnvelopeSigning),
+    behavioralReleaseSigning: captureSigning(value.behavioralReleaseSigning),
+    initialPrivacyState: cloneCanonical(value.initialPrivacyState),
   });
 }
 
-function assertQuery(
-  value: EvaluationReleaseArtifactQuery,
-): void {
-  exactKeys(value, [
-    "schemaVersion",
-    "domain",
-    "purpose",
-    "contentHash",
-    "queryHash",
-  ]);
+function assertQuery(value: EvaluationReleaseArtifactQuery): void {
+  exactKeys(value, ["schemaVersion", "domain", "purpose", "contentHash", "queryHash"]);
   const unsigned = {
     schemaVersion: value.schemaVersion,
     domain: value.domain,
@@ -461,8 +348,7 @@ function assertQuery(
   };
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.evaluation-release-artifact-query.v1" ||
+    value.domain !== "dark-factory.evaluation-release-artifact-query.v1" ||
     !SHA256.test(value.contentHash) ||
     value.queryHash !== canonicalHash(unsigned)
   ) {
@@ -473,9 +359,7 @@ function assertQuery(
 function behavioralPurpose(
   value: EvaluationReleaseArtifactQuery["purpose"],
 ): value is BehavioralReleaseArtifact["purpose"] {
-  return BEHAVIORAL_PURPOSES.includes(
-    value as BehavioralReleaseArtifact["purpose"],
-  );
+  return BEHAVIORAL_PURPOSES.includes(value as BehavioralReleaseArtifact["purpose"]);
 }
 
 function behavioralUri(
@@ -488,18 +372,12 @@ function behavioralUri(
 export class TrustedBehavioralReleaseArtifactOverlay {
   readonly source: TrustedEvaluationReleaseArtifactSource;
   readonly reader: TrustedEvaluationReleaseArtifactReader;
-  readonly #resolveBehavioral:
-    TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"];
-  readonly #locateFallback:
-    TrustedEvaluationReleaseArtifactSource["locate"];
-  readonly #readFallback:
-    TrustedEvaluationReleaseArtifactReader["readUtf8"];
+  readonly #resolveBehavioral: TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"];
+  readonly #locateFallback: TrustedEvaluationReleaseArtifactSource["locate"];
+  readonly #readFallback: TrustedEvaluationReleaseArtifactReader["readUtf8"];
 
   constructor(
-    store: Pick<
-      TrustedBehavioralPrivacyArtifactStore,
-      "resolveByContentHash"
-    >,
+    store: Pick<TrustedBehavioralPrivacyArtifactStore, "resolveByContentHash">,
     fallbackSource: TrustedEvaluationReleaseArtifactSource,
     fallbackReader: TrustedEvaluationReleaseArtifactReader,
   ) {
@@ -509,18 +387,9 @@ export class TrustedBehavioralReleaseArtifactOverlay {
     ) {
       fail();
     }
-    this.#resolveBehavioral = captureMethod(
-      store,
-      store.resolveByContentHash,
-    );
-    this.#locateFallback = captureMethod(
-      fallbackSource,
-      fallbackSource.locate,
-    );
-    this.#readFallback = captureMethod(
-      fallbackReader,
-      fallbackReader.readUtf8,
-    );
+    this.#resolveBehavioral = captureMethod(store, store.resolveByContentHash);
+    this.#locateFallback = captureMethod(fallbackSource, fallbackSource.locate);
+    this.#readFallback = captureMethod(fallbackReader, fallbackReader.readUtf8);
     this.source = Object.freeze({
       boundary: "trusted-cloud" as const,
       locate: this.#locate.bind(this),
@@ -543,10 +412,7 @@ export class TrustedBehavioralReleaseArtifactOverlay {
       const queryJson = canonicalJson(canonicalQuery);
       const located = await this.#locateFallback(canonicalQuery);
       if (canonicalJson(canonicalQuery) !== queryJson) fail();
-      if (
-        located !== undefined &&
-        located.uri.startsWith(BEHAVIORAL_URI_PREFIX)
-      ) {
+      if (located !== undefined && located.uri.startsWith(BEHAVIORAL_URI_PREFIX)) {
         fail();
       }
       return located;
@@ -558,27 +424,20 @@ export class TrustedBehavioralReleaseArtifactOverlay {
     if (artifact === undefined) return undefined;
     if (
       artifact.purpose !== canonicalQuery.purpose ||
-      artifact.document.contentHash !==
-        canonicalQuery.contentHash
+      artifact.document.contentHash !== canonicalQuery.contentHash
     ) {
       fail();
     }
     const raw = `${canonicalJson(artifact.document)}\n`;
     return Object.freeze({
-      uri: behavioralUri(
-        canonicalQuery.purpose,
-        canonicalQuery.contentHash,
-      ),
+      uri: behavioralUri(canonicalQuery.purpose, canonicalQuery.contentHash),
       sha256: sha256(raw),
       mediaType: "application/json",
       byteLength: Buffer.byteLength(raw, "utf8"),
     });
   }
 
-  async #readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string> {
+  async #readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string> {
     const reference = cloneCanonical(artifact);
     const match = BEHAVIORAL_URI.exec(reference.uri);
     if (match === null) {
@@ -586,16 +445,11 @@ export class TrustedBehavioralReleaseArtifactOverlay {
         fail();
       }
       const referenceJson = canonicalJson(reference);
-      const raw = await this.#readFallback(
-        reference,
-        maximumBytes,
-      );
+      const raw = await this.#readFallback(reference, maximumBytes);
       if (canonicalJson(reference) !== referenceJson) fail();
       return raw;
     }
-    const purpose = match[1] as
-      | BehavioralReleaseArtifact["purpose"]
-      | undefined;
+    const purpose = match[1] as BehavioralReleaseArtifact["purpose"] | undefined;
     const contentHash = match[2];
     if (
       purpose === undefined ||
@@ -646,40 +500,26 @@ export class ProductionMountedVolumeTrustedEvaluator {
     options: ProductionMountedVolumeTrustedEvaluatorOptions,
   ): Promise<ProductionMountedVolumeTrustedEvaluatorRuntime> {
     try {
-      exactKeys(
-        options,
-        [
-          "durableState",
-          "lifecycle",
-          "releaseSource",
-          "releaseReader",
-        ],
-        ["now"],
-      );
+      exactKeys(options, ["durableState", "lifecycle", "releaseSource", "releaseReader"], ["now"]);
       if (
-        options.lifecycle.boundary !==
-          "production-optimize-composition-owner" ||
+        options.lifecycle.boundary !== "production-optimize-composition-owner" ||
         typeof options.lifecycle.register !== "function"
       ) {
         fail();
       }
-      const preparations =
-        new MountedVolumeBehavioralPreparationStore({
-          durableState: options.durableState,
-          lifecycle: options.lifecycle,
-        });
-      const releases =
-        new MountedVolumeBehavioralPrivacyArtifactStore({
-          durableState: options.durableState,
-          initialPrivacyState:
-            this.#dependencies.initialPrivacyState,
-          lifecycle: options.lifecycle,
-        });
+      const preparations = new MountedVolumeBehavioralPreparationStore({
+        durableState: options.durableState,
+        lifecycle: options.lifecycle,
+      });
+      const releases = new MountedVolumeBehavioralPrivacyArtifactStore({
+        durableState: options.durableState,
+        initialPrivacyState: this.#dependencies.initialPrivacyState,
+        lifecycle: options.lifecycle,
+      });
       const service = await createTrustedEvaluationService({
         runner: this.#dependencies.runner,
         retentionPolicy: this.#dependencies.retentionPolicy,
-        destructionReceiptVerifier:
-          this.#dependencies.destructionReceiptVerifier,
+        destructionReceiptVerifier: this.#dependencies.destructionReceiptVerifier,
         agent: this.#dependencies.agent,
         stores: {
           ...this.#dependencies.stores,
@@ -687,33 +527,25 @@ export class ProductionMountedVolumeTrustedEvaluator {
         },
         raw: this.#dependencies.raw,
         policyProvider: this.#dependencies.policyProvider,
-        hiddenOutcomeSigning:
-          this.#dependencies.hiddenOutcomeSigning,
-        resultEnvelopeSigning:
-          this.#dependencies.resultEnvelopeSigning,
+        hiddenOutcomeSigning: this.#dependencies.hiddenOutcomeSigning,
+        resultEnvelopeSigning: this.#dependencies.resultEnvelopeSigning,
         behavioralReleaseStore: releases,
-        behavioralReleaseSigning:
-          this.#dependencies.behavioralReleaseSigning,
+        behavioralReleaseSigning: this.#dependencies.behavioralReleaseSigning,
         ...(options.now === undefined ? {} : { now: options.now }),
       });
-      const artifacts =
-        new TrustedBehavioralReleaseArtifactOverlay(
-          releases,
-          options.releaseSource,
-          options.releaseReader,
-        );
+      const artifacts = new TrustedBehavioralReleaseArtifactOverlay(
+        releases,
+        options.releaseSource,
+        options.releaseReader,
+      );
       return Object.freeze({
-        boundary:
-          "trusted-cloud-mounted-volume-evaluator-runtime" as const,
+        boundary: "trusted-cloud-mounted-volume-evaluator-runtime" as const,
         service,
         releaseSource: artifacts.source,
         releaseReader: artifacts.reader,
       });
     } catch (error) {
-      if (
-        error instanceof
-        ProductionMountedVolumeTrustedEvaluatorError
-      ) {
+      if (error instanceof ProductionMountedVolumeTrustedEvaluatorError) {
         throw error;
       }
       return fail();

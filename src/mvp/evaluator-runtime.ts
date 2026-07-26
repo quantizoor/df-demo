@@ -5,16 +5,16 @@ import { join } from "node:path";
 import type { TrustedCloudArtifactRef } from "../cloud/types.js";
 import { MountedMvpCampaignStateStore } from "./campaign-state.js";
 import {
+  type CandidateProposal,
+  canonicalJson,
+  type EvaluationArm,
   type EvaluationEnvironment,
   evaluationEnvironmentDigest,
-  type EvaluationArm,
   type HiddenEvaluationCell,
+  MVP_SCHEMA_VERSION,
   type PrivateEvaluationObservation,
   type PrivateEvaluationRequest,
   type TrustedEvaluatorPort,
-  type CandidateProposal,
-  canonicalJson,
-  MVP_SCHEMA_VERSION,
 } from "./contracts.js";
 import {
   assertTrustedMvpHarborExecutionPlan,
@@ -28,25 +28,20 @@ import {
   type TrustedMvpHarborTaskBinding,
 } from "./harbor.js";
 import {
-  MountedHiddenTaskCatalog,
-  type ResolvedHarborEvaluationCell,
-  type TrustedHarborTaskDefinition,
-} from "./mounted-hidden-task-catalog.js";
-import {
   readBoundedJson,
   readOptionalBoundedJson,
   withMountedLock,
   writeJsonAtomic,
 } from "./mounted-files.js";
 import {
-  validateCandidateProposal,
-  validateEvaluationEnvironment,
-} from "./schemas.js";
+  MountedHiddenTaskCatalog,
+  type ResolvedHarborEvaluationCell,
+  type TrustedHarborTaskDefinition,
+} from "./mounted-hidden-task-catalog.js";
+import { validateCandidateProposal, validateEvaluationEnvironment } from "./schemas.js";
 
-export const MVP_EVALUATOR_RUNTIME_PIN_PATH =
-  "private/mvp-runtime-pin.json" as const;
-export const MVP_EVALUATOR_CATALOG_NAMESPACE_PATH =
-  "private/catalog-namespace.json" as const;
+export const MVP_EVALUATOR_RUNTIME_PIN_PATH = "private/mvp-runtime-pin.json" as const;
+export const MVP_EVALUATOR_CATALOG_NAMESPACE_PATH = "private/catalog-namespace.json" as const;
 export const MVP_EVALUATOR_READINESS_CODES = [
   "MVP_EVALUATOR_RUNTIME_PIN",
   "MVP_EVALUATOR_HIDDEN_CATALOG",
@@ -56,13 +51,10 @@ export const MVP_EVALUATOR_READINESS_CODES = [
 const REVISION = /^[a-f0-9]{40}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_SECRET_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
-const SAFE_TASK_NAME =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const SAFE_RELATIVE_PATH =
-  /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 
-export type MvpEvaluatorReadinessCode =
-  (typeof MVP_EVALUATOR_READINESS_CODES)[number];
+export type MvpEvaluatorReadinessCode = (typeof MVP_EVALUATOR_READINESS_CODES)[number];
 
 export class MvpEvaluatorReadinessError extends Error {
   override readonly name = "MvpEvaluatorReadinessError";
@@ -128,9 +120,7 @@ export interface MvpPiRuntimeSourcePort {
 }
 
 export interface MvpHarborExecutionPort {
-  execute(
-    plan: TrustedMvpHarborExecutionPlan,
-  ): Promise<TrustedMvpHarborRequestedRawOutput>;
+  execute(plan: TrustedMvpHarborExecutionPlan): Promise<TrustedMvpHarborRequestedRawOutput>;
 }
 
 export interface MvpEvaluatorRuntimeDependencies {
@@ -169,25 +159,16 @@ export async function createMvpEvaluatorRuntime(
     .map((definition) => definition.revisionDigest);
   if (
     isolatedTaskRevisions.length < 5 ||
-    !sameStringSet(
-      isolatedTaskRevisions,
-      pin.directSandboxEligibleTaskRevisionDigests,
-    )
+    !sameStringSet(isolatedTaskRevisions, pin.directSandboxEligibleTaskRevisionDigests)
   ) {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_TASK_ELIGIBILITY",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_TASK_ELIGIBILITY");
   }
   const namespace = await loadOrCreateCatalogNamespace(input.stateRoot);
   const privateRoot = join(input.stateRoot, "private");
-  const campaignStore = new MountedMvpCampaignStateStore(
-    join(privateRoot, "campaign"),
-  );
+  const campaignStore = new MountedMvpCampaignStateStore(join(privateRoot, "campaign"));
   const campaign = await campaignStore.initialize({
     campaignId: requiredEnvironment("DF_MVP_CAMPAIGN_ID"),
-    frozenBaselineRevision: requiredEnvironment(
-      "DF_PI_BASELINE_COMMIT",
-    ),
+    frozenBaselineRevision: requiredEnvironment("DF_PI_BASELINE_COMMIT"),
     initializedAt: new Date().toISOString(),
   });
   const catalog = new MountedHiddenTaskCatalog(privateRoot, namespace);
@@ -198,23 +179,15 @@ export async function createMvpEvaluatorRuntime(
     });
     await catalog.list();
   } catch {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_HIDDEN_CATALOG",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_HIDDEN_CATALOG");
   }
 
   const endpoint = foundryEndpoint(input.foundryBaseUrl);
-  const configurationHash = requiredEnvironment(
-    "DF_MVP_CONFIGURATION_HASH",
-  );
+  const configurationHash = requiredEnvironment("DF_MVP_CONFIGURATION_HASH");
   if (!SHA256.test(configurationHash)) {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_RUNTIME_PIN",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
   }
-  const runtimePinDigest = createHash("sha256")
-    .update(canonicalJson(pin))
-    .digest("hex");
+  const runtimePinDigest = createHash("sha256").update(canonicalJson(pin)).digest("hex");
   const fullEnvironmentExtraConfigDigest = createHash("sha256")
     .update(
       canonicalJson({
@@ -224,13 +197,8 @@ export async function createMvpEvaluatorRuntime(
       }),
     )
     .digest("hex");
-  if (
-    input.modelFamily !== "claude-opus-4-8" ||
-    input.reasoningEffort !== "high"
-  ) {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_RUNTIME_PIN",
-    );
+  if (input.modelFamily !== "claude-opus-4-8" || input.reasoningEffort !== "high") {
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
   }
   const environment: EvaluationEnvironment = {
     terminalBenchVersion: pin.terminalBenchVersion,
@@ -258,26 +226,18 @@ export async function createMvpEvaluatorRuntime(
 
   let dependencies = input.dependencies;
   if (dependencies === undefined) {
-    const nodeRuntime = await import(
-      "./evaluator-runtime-node.js"
-    );
+    const nodeRuntime = await import("./evaluator-runtime-node.js");
     dependencies = await nodeRuntime.createNodeMvpEvaluatorDependencies({
       stateRoot: input.stateRoot,
       pin,
       repository: {
         owner: requiredEnvironment("DF_PI_GITHUB_OWNER"),
         name: requiredEnvironment("DF_PI_GITHUB_REPOSITORY"),
-        baselineCommit: requiredEnvironment(
-          "DF_PI_BASELINE_COMMIT",
-        ),
+        baselineCommit: requiredEnvironment("DF_PI_BASELINE_COMMIT"),
         baselineTree: requiredEnvironment("DF_PI_BASELINE_TREE"),
-        packageLockSha256: requiredEnvironment(
-          "DF_PI_PACKAGE_LOCK_SHA256",
-        ),
+        packageLockSha256: requiredEnvironment("DF_PI_PACKAGE_LOCK_SHA256"),
       },
-      githubBasicAuthPlaceholder: requiredEnvironment(
-        "DF_GITHUB_BASIC_AUTH",
-      ),
+      githubBasicAuthPlaceholder: requiredEnvironment("DF_GITHUB_BASIC_AUTH"),
       daytona: {
         apiKeyPlaceholder: requiredEnvironment("DAYTONA_API_KEY"),
         apiUrl: requiredEnvironment("DAYTONA_API_URL"),
@@ -288,10 +248,8 @@ export async function createMvpEvaluatorRuntime(
         input.candidateProposal === undefined
           ? null
           : {
-              revision:
-                input.candidateProposal.candidateRevision,
-              changedFiles:
-                input.candidateProposal.changedFiles,
+              revision: input.candidateProposal.candidateRevision,
+              changedFiles: input.candidateProposal.changedFiles,
             },
     });
   }
@@ -306,13 +264,10 @@ export async function createMvpEvaluatorRuntime(
       evaluatedDeployment: input.evaluatedDeployment,
       endpointHost: endpoint.hostname,
       championRevision: campaign.championRevision,
-      evaluatedSecretSourceName: requiredEnvironment(
-        "DF_EVALUATED_SECRET_SOURCE",
-      ),
+      evaluatedSecretSourceName: requiredEnvironment("DF_EVALUATED_SECRET_SOURCE"),
       source: dependencies.source,
       harbor: dependencies.harbor,
-      expectedCandidateProposal:
-        input.candidateProposal ?? null,
+      expectedCandidateProposal: input.candidateProposal ?? null,
     }),
   };
 }
@@ -336,61 +291,41 @@ export class MvpTrustedBatchEvaluator implements TrustedEvaluatorPort {
     },
   ) {
     if (!SAFE_SECRET_NAME.test(options.evaluatedSecretSourceName)) {
-      throw new MvpEvaluatorReadinessError(
-        "MVP_EVALUATOR_RUNTIME_PIN",
-      );
+      throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
     }
   }
 
   public async evaluateBatch(
     requests: readonly PrivateEvaluationRequest[],
   ): Promise<readonly PrivateEvaluationObservation[]> {
-    const batch = assertPrivateBatch(
-      requests,
-      this.options.environment,
-    );
+    const batch = assertPrivateBatch(requests, this.options.environment);
     let buildInput = this.#plans.get(batch.experimentId);
     if (batch.purpose === "screen") {
       buildInput = await this.#prepareScreen(batch.requests);
       this.#plans.set(batch.experimentId, buildInput);
       await writeJsonAtomic(
-        join(
-          this.options.stateRoot,
-          "private",
-          "plans",
-          `${batch.experimentId}.json`,
-        ),
+        join(this.options.stateRoot, "private", "plans", `${batch.experimentId}.json`),
         buildInput,
       );
     } else if (buildInput === undefined) {
       const restored = await readOptionalBoundedJson(
-        join(
-          this.options.stateRoot,
-          "private",
-          "plans",
-          `${batch.experimentId}.json`,
-        ),
+        join(this.options.stateRoot, "private", "plans", `${batch.experimentId}.json`),
       );
       if (restored === null) {
-        throw new Error(
-          "Promotion refresh has no sealed screening plan.",
-        );
+        throw new Error("Promotion refresh has no sealed screening plan.");
       }
       buildInput = restored as MvpHarborBuildInput;
       // Rebuilding below is the strict validator for the persisted object.
     }
 
-    const executionPlan = buildTrustedMvpHarborExecutionPlan(
-      buildInput,
-      {
-        purpose: batch.purpose,
-        cells: batch.requests.map((request) => ({
-          hiddenTaskId: request.cell.task.handle,
-          arm: request.arm,
-          replicateOrdinal: request.cell.repetition,
-        })),
-      },
-    );
+    const executionPlan = buildTrustedMvpHarborExecutionPlan(buildInput, {
+      purpose: batch.purpose,
+      cells: batch.requests.map((request) => ({
+        hiddenTaskId: request.cell.task.handle,
+        arm: request.arm,
+        replicateOrdinal: request.cell.repetition,
+      })),
+    });
     assertTrustedMvpHarborExecutionPlan(executionPlan);
     const decoded = decodeTrustedMvpHarborRequestedOutput(
       executionPlan,
@@ -398,29 +333,16 @@ export class MvpTrustedBatchEvaluator implements TrustedEvaluatorPort {
     );
     const requestsByIdentity = new Map(
       batch.requests.map((request) => [
-        observationIdentity(
-          request.cell.cellId,
-          request.arm,
-          request.cell.repetition,
-        ),
+        observationIdentity(request.cell.cellId, request.arm, request.cell.repetition),
         request,
       ]),
     );
-    return [
-      ...decoded.trustedMatrix.candidate,
-      ...decoded.trustedMatrix.champion,
-    ].map((trial) => {
+    return [...decoded.trustedMatrix.candidate, ...decoded.trustedMatrix.champion].map((trial) => {
       const request = requestsByIdentity.get(
-        observationIdentity(
-          trial.cellId,
-          trial.arm,
-          trial.replicateOrdinal,
-        ),
+        observationIdentity(trial.cellId, trial.arm, trial.replicateOrdinal),
       );
       if (request === undefined) {
-        throw new Error(
-          "Decoded Harbor output escaped its requested batch.",
-        );
+        throw new Error("Decoded Harbor output escaped its requested batch.");
       }
       return {
         schemaVersion: MVP_SCHEMA_VERSION,
@@ -448,48 +370,25 @@ export class MvpTrustedBatchEvaluator implements TrustedEvaluatorPort {
     requests: readonly PrivateEvaluationRequest[],
   ): Promise<MvpHarborBuildInput> {
     const uniqueCells = uniqueHiddenCells(requests);
-    const resolved =
-      await this.options.catalog.resolveSelectedCells(uniqueCells);
-    const eligible = new Set(
-      this.options.pin.directSandboxEligibleTaskRevisionDigests,
-    );
-    if (
-      resolved.some(
-        (cell) => !eligible.has(cell.taskRevisionDigest),
-      )
-    ) {
-      throw new MvpEvaluatorReadinessError(
-        "MVP_EVALUATOR_TASK_ELIGIBILITY",
-      );
+    const resolved = await this.options.catalog.resolveSelectedCells(uniqueCells);
+    const eligible = new Set(this.options.pin.directSandboxEligibleTaskRevisionDigests);
+    if (resolved.some((cell) => !eligible.has(cell.taskRevisionDigest))) {
+      throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_TASK_ELIGIBILITY");
     }
-    const candidateRevision = singleRevision(
-      requests,
-      "candidate",
-    );
-    const requestedChampionRevision = optionalSingleRevision(
-      requests,
-      "champion",
-    );
+    const candidateRevision = singleRevision(requests, "candidate");
+    const requestedChampionRevision = optionalSingleRevision(requests, "champion");
     const championRevision = this.options.championRevision;
-    if (
-      requestedChampionRevision !== null &&
-      requestedChampionRevision !== championRevision
-    ) {
-      throw new Error(
-        "Champion requests disagree with trusted campaign state.",
-      );
+    if (requestedChampionRevision !== null && requestedChampionRevision !== championRevision) {
+      throw new Error("Champion requests disagree with trusted campaign state.");
     }
     if (candidateRevision === championRevision) {
       throw new Error("Candidate and champion revisions must differ.");
     }
     if (
       this.options.expectedCandidateProposal === null ||
-      this.options.expectedCandidateProposal.candidateRevision !==
-        candidateRevision
+      this.options.expectedCandidateProposal.candidateRevision !== candidateRevision
     ) {
-      throw new Error(
-        "Candidate revision is not bound to its trusted proposal.",
-      );
+      throw new Error("Candidate revision is not bound to its trusted proposal.");
     }
     // Source-controlled build/test code is never concurrent with a
     // credentialed Git fetch for the other arm.
@@ -503,8 +402,7 @@ export class MvpTrustedBatchEvaluator implements TrustedEvaluatorPort {
       arm: "candidate",
       revision: candidateRevision,
       championRevision,
-      expectedChangedFiles:
-        this.options.expectedCandidateProposal.changedFiles,
+      expectedChangedFiles: this.options.expectedCandidateProposal.changedFiles,
     });
     const adapter = await artifactForFile(
       this.options.pin.adapterPath,
@@ -522,15 +420,9 @@ export class MvpTrustedBatchEvaluator implements TrustedEvaluatorPort {
       environmentDigest: first.environmentDigest,
       datasetName: this.options.pin.datasetName,
       datasetRef: this.options.pin.datasetRef,
-      jobsDirectory: join(
-        this.options.stateRoot,
-        "private",
-        "harbor-jobs",
-        first.experimentId,
-      ),
+      jobsDirectory: join(this.options.stateRoot, "private", "harbor-jobs", first.experimentId),
       environmentType: "daytona",
-      evaluatedSecretSourceName:
-        this.options.evaluatedSecretSourceName,
+      evaluatedSecretSourceName: this.options.evaluatedSecretSourceName,
       tasks: taskBindings(resolved),
       candidateRuntime: candidate.archive,
       championRuntime: champion.archive,
@@ -571,17 +463,12 @@ function assertPrivateBatch(
   const environmentDigest = evaluationEnvironmentDigest(environment);
   const identities = new Set<string>();
   for (const request of requests) {
-    const identity = observationIdentity(
-      request.cell.cellId,
-      request.arm,
-      request.cell.repetition,
-    );
+    const identity = observationIdentity(request.cell.cellId, request.arm, request.cell.repetition);
     if (
       request.schemaVersion !== MVP_SCHEMA_VERSION ||
       request.experimentId !== experimentId ||
       request.environmentDigest !== environmentDigest ||
-      JSON.stringify(request.environment) !==
-        JSON.stringify(environment) ||
+      JSON.stringify(request.environment) !== JSON.stringify(environment) ||
       !REVISION.test(request.harnessRevision) ||
       !SHA256.test(request.cell.cellId) ||
       identities.has(identity)
@@ -590,11 +477,8 @@ function assertPrivateBatch(
     }
     identities.add(identity);
   }
-  const candidateCount = requests.filter(
-    (request) => request.arm === "candidate",
-  ).length;
-  const purpose =
-    candidateCount === 15 ? "screen" : "promotion-refresh";
+  const candidateCount = requests.filter((request) => request.arm === "candidate").length;
+  const purpose = candidateCount === 15 ? "screen" : "promotion-refresh";
   if (
     (purpose === "screen" &&
       new Set(
@@ -602,8 +486,7 @@ function assertPrivateBatch(
           .filter((request) => request.arm === "candidate")
           .map((request) => request.cell.cellId),
       ).size !== 15) ||
-    (purpose === "promotion-refresh" &&
-      requests.some((request) => request.arm !== "champion"))
+    (purpose === "promotion-refresh" && requests.some((request) => request.arm !== "champion"))
   ) {
     throw new Error("The evaluator batch violates cache-aware staging.");
   }
@@ -620,10 +503,7 @@ function uniqueHiddenCells(
   const cells = new Map<string, HiddenEvaluationCell>();
   for (const request of requests) {
     const existing = cells.get(request.cell.cellId);
-    if (
-      existing !== undefined &&
-      JSON.stringify(existing) !== JSON.stringify(request.cell)
-    ) {
+    if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(request.cell)) {
       throw new Error("A cell ID maps to conflicting hidden cells.");
     }
     cells.set(request.cell.cellId, request.cell);
@@ -634,10 +514,7 @@ function uniqueHiddenCells(
 function taskBindings(
   resolved: readonly ResolvedHarborEvaluationCell[],
 ): readonly TrustedMvpHarborTaskBinding[] {
-  const grouped = new Map<
-    string,
-    ResolvedHarborEvaluationCell[]
-  >();
+  const grouped = new Map<string, ResolvedHarborEvaluationCell[]>();
   for (const cell of resolved) {
     const list = grouped.get(cell.taskHandle) ?? [];
     list.push(cell);
@@ -660,32 +537,21 @@ function taskBindings(
       ) ||
       !SAFE_TASK_NAME.test(first.harborTaskLocator)
     ) {
-      throw new Error(
-        "A hidden task does not have three sealed replicates.",
-      );
+      throw new Error("A hidden task does not have three sealed replicates.");
     }
     return {
       sensitivity: "trusted-hidden-mvp-task",
       hiddenTaskId: first.taskHandle,
       taskRevisionDigest: first.taskRevisionDigest,
       harborTaskName: first.harborTaskLocator,
-      cellIds: [
-        cells[0]!.cellId,
-        cells[1]!.cellId,
-        cells[2]!.cellId,
-      ],
+      cellIds: [cells[0]!.cellId, cells[1]!.cellId, cells[2]!.cellId],
     };
   });
 }
 
-function singleRevision(
-  requests: readonly PrivateEvaluationRequest[],
-  arm: EvaluationArm,
-): string {
+function singleRevision(requests: readonly PrivateEvaluationRequest[], arm: EvaluationArm): string {
   const revisions = new Set(
-    requests
-      .filter((request) => request.arm === arm)
-      .map((request) => request.harnessRevision),
+    requests.filter((request) => request.arm === arm).map((request) => request.harnessRevision),
   );
   if (revisions.size !== 1) {
     throw new Error(`The ${arm} arm must have one exact revision.`);
@@ -697,41 +563,25 @@ function optionalSingleRevision(
   requests: readonly PrivateEvaluationRequest[],
   arm: EvaluationArm,
 ): string | null {
-  const matching = requests.filter(
-    (request) => request.arm === arm,
-  );
-  return matching.length === 0
-    ? null
-    : singleRevision(matching, arm);
+  const matching = requests.filter((request) => request.arm === arm);
+  return matching.length === 0 ? null : singleRevision(matching, arm);
 }
 
-function observationIdentity(
-  cellId: string,
-  arm: EvaluationArm,
-  repetition: number,
-): string {
+function observationIdentity(cellId: string, arm: EvaluationArm, repetition: number): string {
   return `${cellId}|${arm}|${repetition}`;
 }
 
-async function loadRuntimePin(
-  stateRoot: string,
-): Promise<MvpEvaluatorRuntimePin> {
+async function loadRuntimePin(stateRoot: string): Promise<MvpEvaluatorRuntimePin> {
   try {
-    const value = await readBoundedJson(
-      join(stateRoot, MVP_EVALUATOR_RUNTIME_PIN_PATH),
-    );
+    const value = await readBoundedJson(join(stateRoot, MVP_EVALUATOR_RUNTIME_PIN_PATH));
     assertRuntimePin(value);
     return value;
   } catch {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_RUNTIME_PIN",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
   }
 }
 
-function assertRuntimePin(
-  value: unknown,
-): asserts value is MvpEvaluatorRuntimePin {
+function assertRuntimePin(value: unknown): asserts value is MvpEvaluatorRuntimePin {
   if (
     value === null ||
     typeof value !== "object" ||
@@ -775,9 +625,7 @@ function assertRuntimePin(
   ];
   if (
     Object.keys(value as object).length !== expectedKeys.length ||
-    Object.keys(value as object).some(
-      (key) => !expectedKeys.includes(key),
-    ) ||
+    Object.keys(value as object).some((key) => !expectedKeys.includes(key)) ||
     pin.schemaVersion !== 1 ||
     pin.domain !== "dark-factory.mvp-evaluator-runtime-pin.v1" ||
     pin.harborVersion !== MVP_HARBOR_VERSION ||
@@ -810,22 +658,17 @@ function assertRuntimePin(
     (pin.timeoutSeconds ?? 0) < 60 ||
     !Array.isArray(pin.directSandboxEligibleTaskRevisionDigests) ||
     pin.directSandboxEligibleTaskRevisionDigests.length < 5 ||
-    pin.directSandboxEligibleTaskRevisionDigests.some(
-      (digest) => !SHA256.test(digest),
-    ) ||
+    pin.directSandboxEligibleTaskRevisionDigests.some((digest) => !SHA256.test(digest)) ||
     !Array.isArray(pin.hiddenTaskDefinitions) ||
     pin.hiddenTaskDefinitions.length < 5 ||
-    new Set(pin.hiddenTaskDefinitions.map((item) => item.revisionDigest))
-        .size !== pin.hiddenTaskDefinitions.length ||
+    new Set(pin.hiddenTaskDefinitions.map((item) => item.revisionDigest)).size !==
+      pin.hiddenTaskDefinitions.length ||
     new Set(pin.directSandboxEligibleTaskRevisionDigests).size !==
       pin.directSandboxEligibleTaskRevisionDigests.length ||
-    pin.hiddenTaskDefinitions.length !==
-      pin.directSandboxEligibleTaskRevisionDigests.length ||
+    pin.hiddenTaskDefinitions.length !== pin.directSandboxEligibleTaskRevisionDigests.length ||
     pin.hiddenTaskDefinitions.some(
       (definition) =>
-        !pin.directSandboxEligibleTaskRevisionDigests?.includes(
-          definition.revisionDigest,
-        ),
+        !pin.directSandboxEligibleTaskRevisionDigests?.includes(definition.revisionDigest),
     ) ||
     !SHA256.test(pin.imageDigest ?? "") ||
     pin.architecture !== "x86_64" ||
@@ -843,12 +686,8 @@ function assertRuntimePin(
   }
 }
 
-function isSeparateVerifierAttested(
-  definition: TrustedHarborTaskDefinition,
-): boolean {
-  const attestation = (
-    definition as Partial<TrustedHarborTaskDefinition>
-  ).graderIsolation;
+function isSeparateVerifierAttested(definition: TrustedHarborTaskDefinition): boolean {
+  const attestation = (definition as Partial<TrustedHarborTaskDefinition>).graderIsolation;
   return (
     attestation !== undefined &&
     attestation.verifierEnvironmentMode === "separate" &&
@@ -857,58 +696,44 @@ function isSeparateVerifierAttested(
   );
 }
 
-function sameStringSet(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
   return (
     left.length === right.length &&
-    JSON.stringify([...left].sort()) ===
-      JSON.stringify([...right].sort())
+    JSON.stringify([...left].sort()) === JSON.stringify([...right].sort())
   );
 }
 
-async function loadOrCreateCatalogNamespace(
-  stateRoot: string,
-): Promise<string> {
-  const path = join(
-    stateRoot,
-    MVP_EVALUATOR_CATALOG_NAMESPACE_PATH,
-  );
-  return withMountedLock(
-    join(stateRoot, "private"),
-    "catalog-namespace",
-    async () => {
-      const existing = await readOptionalBoundedJson(path, 2_048);
+async function loadOrCreateCatalogNamespace(stateRoot: string): Promise<string> {
+  const path = join(stateRoot, MVP_EVALUATOR_CATALOG_NAMESPACE_PATH);
+  return withMountedLock(join(stateRoot, "private"), "catalog-namespace", async () => {
+    const existing = await readOptionalBoundedJson(path, 2_048);
+    if (
+      existing !== null &&
+      typeof existing === "object" &&
+      !Array.isArray(existing) &&
+      Object.getPrototypeOf(existing) === Object.prototype
+    ) {
+      const record = existing as Readonly<Record<string, unknown>>;
+      const namespace = record["namespace"];
       if (
-        existing !== null &&
-        typeof existing === "object" &&
-        !Array.isArray(existing) &&
-        Object.getPrototypeOf(existing) === Object.prototype
+        Object.keys(record).length === 3 &&
+        record["schemaVersion"] === 1 &&
+        record["domain"] === "dark-factory.mvp-catalog-namespace.v1" &&
+        typeof namespace === "string" &&
+        /^[a-f0-9]{64}$/u.test(namespace)
       ) {
-        const record = existing as Readonly<Record<string, unknown>>;
-        const namespace = record["namespace"];
-        if (
-          Object.keys(record).length === 3 &&
-          record["schemaVersion"] === 1 &&
-          record["domain"] ===
-            "dark-factory.mvp-catalog-namespace.v1" &&
-          typeof namespace === "string" &&
-          /^[a-f0-9]{64}$/u.test(namespace)
-        ) {
-          return namespace;
-        }
-        throw new Error("Catalog namespace state is invalid.");
+        return namespace;
       }
-      const namespace = randomBytes(32).toString("hex");
-      await writeJsonAtomic(path, {
-        schemaVersion: 1,
-        domain: "dark-factory.mvp-catalog-namespace.v1",
-        namespace,
-      });
-      return namespace;
-    },
-  );
+      throw new Error("Catalog namespace state is invalid.");
+    }
+    const namespace = randomBytes(32).toString("hex");
+    await writeJsonAtomic(path, {
+      schemaVersion: 1,
+      domain: "dark-factory.mvp-catalog-namespace.v1",
+      namespace,
+    });
+    return namespace;
+  });
 }
 
 async function artifactForFile(
@@ -941,9 +766,7 @@ function foundryEndpoint(value: string): URL {
     !endpoint.hostname.endsWith(".services.ai.azure.com") ||
     endpoint.pathname.replace(/\/+$/u, "") !== "/anthropic"
   ) {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_RUNTIME_PIN",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
   }
   return endpoint;
 }
@@ -953,11 +776,10 @@ function requiredEnvironment(name: string): string {
   if (
     value === undefined ||
     value.length === 0 ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Required cloud settings reject NUL and line breaks before provider use.
     /[\u0000\r\n]/u.test(value)
   ) {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_RUNTIME_PIN",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
   }
   return value;
 }
@@ -969,8 +791,6 @@ function assertEvaluatorCloudRole(): void {
     process.env["DF_MVP_ROLE"] !== "evaluator" ||
     process.env["DAYTONA_SANDBOX_ID"] === undefined
   ) {
-    throw new MvpEvaluatorReadinessError(
-      "MVP_EVALUATOR_RUNTIME_PIN",
-    );
+    throw new MvpEvaluatorReadinessError("MVP_EVALUATOR_RUNTIME_PIN");
   }
 }

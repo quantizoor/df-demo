@@ -182,11 +182,7 @@ export interface CloudSandboxProvider {
   probe(request: ProviderProbeRequest): Promise<ProviderProbeReport>;
   create(request: SandboxCreateRequest): Promise<SandboxLease>;
   execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt>;
-  upload(
-    lease: SandboxLease,
-    artifact: TrustedCloudArtifactRef,
-    remotePath: string,
-  ): Promise<void>;
+  upload(lease: SandboxLease, artifact: TrustedCloudArtifactRef, remotePath: string): Promise<void>;
   download(
     lease: SandboxLease,
     remotePath: string,

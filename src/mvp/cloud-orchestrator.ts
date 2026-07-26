@@ -5,11 +5,7 @@ import {
   validateReleaseSafeMvpCampaignReceipt,
 } from "./campaign-driver.js";
 import type { MvpCloudConfiguration } from "./cloud-config.js";
-import {
-  canonicalJson,
-  type CandidateProposal,
-  type OptimizerInput,
-} from "./contracts.js";
+import { type CandidateProposal, canonicalJson, type OptimizerInput } from "./contracts.js";
 import {
   MVP_EVALUATOR_WORKER_PATH,
   MVP_OPTIMIZER_WORKER_PATH,
@@ -23,10 +19,7 @@ import {
   type MvpRoleSandboxSpec,
   type MvpRoleWorkerCommand,
 } from "./daytona-runtime.js";
-import {
-  validateCandidateProposal,
-  validateMvpArtifact,
-} from "./schemas.js";
+import { validateCandidateProposal, validateMvpArtifact } from "./schemas.js";
 
 const WORKER_TTL_MINUTES = 300;
 const PREPARE_TIMEOUT_MS = 2 * 60_000;
@@ -41,6 +34,23 @@ const SAFE_PREREQUISITES = new Set([
   "MVP_EVALUATOR_RUNTIME_PIN",
   "MVP_EVALUATOR_TASK_ELIGIBILITY",
 ]);
+
+function isSafePrerequisiteList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item): item is string => {
+      if (typeof item !== "string") {
+        return false;
+      }
+      return SAFE_PREREQUISITES.has(item);
+    })
+  );
+}
+
+function isMvpCloudRole(value: unknown): value is MvpCloudRole {
+  return value === "optimizer" || value === "evaluator";
+}
 
 const OPTIMIZER_DOMAINS = [
   "api.github.com",
@@ -107,8 +117,7 @@ interface MvpCloudReceiptBase {
   readonly containsRawTraces: false;
 }
 
-export interface MvpCloudCompletedReceipt
-  extends MvpCloudReceiptBase {
+export interface MvpCloudCompletedReceipt extends MvpCloudReceiptBase {
   readonly status: "actual-iteration-completed";
   readonly actualIterationsCompleted: 1;
   readonly iteration: ReleaseSafeMvpCampaignReceipt;
@@ -120,9 +129,7 @@ export interface MvpCloudBlockedReceipt extends MvpCloudReceiptBase {
   readonly missingPrerequisites: readonly string[];
 }
 
-export type MvpCloudLaunchReceipt =
-  | MvpCloudCompletedReceipt
-  | MvpCloudBlockedReceipt;
+export type MvpCloudLaunchReceipt = MvpCloudCompletedReceipt | MvpCloudBlockedReceipt;
 
 export interface MvpReleaseSafeRoleExecution {
   readonly phase: "prepare" | "optimize" | "evaluate";
@@ -166,20 +173,12 @@ export async function launchMvpCloudShell(
 ): Promise<MvpCloudLaunchReceipt> {
   assertLaunchIdentity(options.identity);
   if (options.configuration.maximumIterations !== 1) {
-    throw new MvpCloudOrchestrationError(
-      "The MVP launch currently permits exactly one iteration.",
-    );
+    throw new MvpCloudOrchestrationError("The MVP launch currently permits exactly one iteration.");
   }
   const now = options.now ?? (() => new Date());
   const startedAt = now().toISOString();
-  const optimizerSpec = roleSpecification(
-    options.configuration,
-    "optimizer",
-  );
-  const evaluatorSpec = roleSpecification(
-    options.configuration,
-    "evaluator",
-  );
+  const optimizerSpec = roleSpecification(options.configuration, "optimizer");
+  const evaluatorSpec = roleSpecification(options.configuration, "evaluator");
   assertRoleIsolation(optimizerSpec, evaluatorSpec);
 
   const leases: MvpRoleSandboxLease[] = [];
@@ -206,21 +205,13 @@ export async function launchMvpCloudShell(
     leases.push(optimizer);
     const evaluator = await options.runtime.create(evaluatorSpec);
     leases.push(evaluator);
-    const optimizerBundle = await options.runtime.stage(
-      optimizer,
-      options.controllerBundle,
-    );
-    const evaluatorBundle = await options.runtime.stage(
-      evaluator,
-      options.controllerBundle,
-    );
+    const optimizerBundle = await options.runtime.stage(optimizer, options.controllerBundle);
+    const evaluatorBundle = await options.runtime.stage(evaluator, options.controllerBundle);
     if (
       optimizerBundle.sha256 !== options.controllerBundle.sha256 ||
       evaluatorBundle.sha256 !== options.controllerBundle.sha256
     ) {
-      throw new MvpCloudOrchestrationError(
-        "The staged controller bundle digest is inconsistent.",
-      );
+      throw new MvpCloudOrchestrationError("The staged controller bundle digest is inconsistent.");
     }
 
     const prepareReceipt = await options.runtime.execute(
@@ -232,23 +223,16 @@ export async function launchMvpCloudShell(
       lease: evaluator,
       receipt: prepareReceipt,
     });
-    const prepared = parseWorkerPayload(
-      prepareReceipt.privateWorkerOutput,
-      "optimizer-input",
-    );
+    const prepared = parseWorkerPayload(prepareReceipt.privateWorkerOutput, "optimizer-input");
     if (prepared.kind === "blocked") {
       outcome = prepared;
     } else if (prepared.kind !== "optimizer-input") {
-      throw new MvpCloudOrchestrationError(
-        "Evaluator prepare returned an invalid channel value.",
-      );
+      throw new MvpCloudOrchestrationError("Evaluator prepare returned an invalid channel value.");
     } else {
       const optimizeReceipt = await options.runtime.execute(
         optimizer,
         roleWorkerCommand("optimizer", "optimize", {
-          DF_MVP_OPTIMIZER_INPUT_BASE64: encodePublicJson(
-            prepared.value,
-          ),
+          DF_MVP_OPTIMIZER_INPUT_BASE64: encodePublicJson(prepared.value),
         }),
       );
       executions.push({
@@ -256,26 +240,17 @@ export async function launchMvpCloudShell(
         lease: optimizer,
         receipt: optimizeReceipt,
       });
-      const proposed = parseWorkerPayload(
-        optimizeReceipt.privateWorkerOutput,
-        "proposal",
-      );
+      const proposed = parseWorkerPayload(optimizeReceipt.privateWorkerOutput, "proposal");
       if (proposed.kind === "blocked") {
         outcome = proposed;
       } else if (proposed.kind !== "proposal") {
-        throw new MvpCloudOrchestrationError(
-          "Optimizer returned an invalid public proposal.",
-        );
+        throw new MvpCloudOrchestrationError("Optimizer returned an invalid public proposal.");
       } else {
         const evaluateReceipt = await options.runtime.execute(
           evaluator,
           roleWorkerCommand("evaluator", "evaluate", {
-            DF_MVP_CANDIDATE_PROPOSAL_BASE64: encodePublicJson(
-              proposed.value,
-            ),
-            DF_MVP_PREPARED_INPUT_SHA256: sha256(
-              canonicalJson(prepared.value),
-            ),
+            DF_MVP_CANDIDATE_PROPOSAL_BASE64: encodePublicJson(proposed.value),
+            DF_MVP_PREPARED_INPUT_SHA256: sha256(canonicalJson(prepared.value)),
           }),
         );
         executions.push({
@@ -283,10 +258,7 @@ export async function launchMvpCloudShell(
           lease: evaluator,
           receipt: evaluateReceipt,
         });
-        const evaluated = parseWorkerPayload(
-          evaluateReceipt.privateWorkerOutput,
-          "release",
-        );
+        const evaluated = parseWorkerPayload(evaluateReceipt.privateWorkerOutput, "release");
         outcome =
           evaluated.kind === "blocked"
             ? evaluated
@@ -307,15 +279,8 @@ export async function launchMvpCloudShell(
     }
   }
 
-  if (
-    primaryFailure ||
-    cleanupFailure ||
-    leases.length !== 2 ||
-    outcome === null
-  ) {
-    throw new MvpCloudOrchestrationError(
-      "The MVP cloud launch failed closed.",
-    );
+  if (primaryFailure || cleanupFailure || leases.length !== 2 || outcome === null) {
+    throw new MvpCloudOrchestrationError("The MVP cloud launch failed closed.");
   }
 
   const base = receiptBase(
@@ -360,35 +325,25 @@ export function roleSpecification(
     DF_PI_BRANCH: configuration.pi.branch,
     DF_PI_BASELINE_COMMIT: configuration.pi.baselineCommit,
     DF_PI_BASELINE_TREE: configuration.pi.baselineTree,
-    DF_PI_PACKAGE_LOCK_SHA256:
-      configuration.pi.packageLockSha256,
+    DF_PI_PACKAGE_LOCK_SHA256: configuration.pi.packageLockSha256,
     DF_FOUNDRY_BASE_URL: configuration.foundry.baseUrl,
   };
   const roleEnvironment =
     role === "optimizer"
       ? {
-          DF_OPTIMIZER_DEPLOYMENT:
-            configuration.foundry.optimizerDeployment,
-          DF_OPTIMIZER_MODEL_FAMILY:
-            configuration.foundry.optimizerModelFamily,
+          DF_OPTIMIZER_DEPLOYMENT: configuration.foundry.optimizerDeployment,
+          DF_OPTIMIZER_MODEL_FAMILY: configuration.foundry.optimizerModelFamily,
         }
       : {
           DAYTONA_API_URL: configuration.daytona.apiUrl,
           DAYTONA_TARGET: configuration.daytona.target,
-          DF_EVALUATED_DEPLOYMENT:
-            configuration.foundry.evaluatedDeployment,
-          DF_EVALUATED_SECRET_SOURCE:
-            configuration.foundry.evaluatedSecretSource,
-          DF_EVALUATED_MODEL_FAMILY:
-            configuration.foundry.evaluatedModelFamily,
-          DF_EVALUATED_REASONING_EFFORT:
-            configuration.foundry.evaluatedReasoningEffort,
-          DF_MVP_PANEL_SIZE:
-            configuration.protocol.taskCount.toString(),
-          DF_MVP_REPETITIONS:
-            configuration.protocol.repetitions.toString(),
-          DF_MVP_MATCHED_TRIAL_COUNT:
-            configuration.protocol.matchedTrialCount.toString(),
+          DF_EVALUATED_DEPLOYMENT: configuration.foundry.evaluatedDeployment,
+          DF_EVALUATED_SECRET_SOURCE: configuration.foundry.evaluatedSecretSource,
+          DF_EVALUATED_MODEL_FAMILY: configuration.foundry.evaluatedModelFamily,
+          DF_EVALUATED_REASONING_EFFORT: configuration.foundry.evaluatedReasoningEffort,
+          DF_MVP_PANEL_SIZE: configuration.protocol.taskCount.toString(),
+          DF_MVP_REPETITIONS: configuration.protocol.repetitions.toString(),
+          DF_MVP_MATCHED_TRIAL_COUNT: configuration.protocol.matchedTrialCount.toString(),
         };
   return {
     role,
@@ -408,12 +363,8 @@ export function roleSpecification(
     networkAllowDomains: [
       ...new Set([
         configuration.foundry.apiHost,
-        ...(role === "evaluator"
-          ? [new URL(configuration.daytona.apiUrl).hostname]
-          : []),
-        ...(role === "optimizer"
-          ? OPTIMIZER_DOMAINS
-          : EVALUATOR_DOMAINS),
+        ...(role === "evaluator" ? [new URL(configuration.daytona.apiUrl).hostname] : []),
+        ...(role === "optimizer" ? OPTIMIZER_DOMAINS : EVALUATOR_DOMAINS),
       ]),
     ].sort(),
     environment: {
@@ -429,8 +380,7 @@ export function roleSpecification(
         targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
       },
       {
-        sourceEnvironmentName:
-          configuration.pi.githubSecretSource,
+        sourceEnvironmentName: configuration.pi.githubSecretSource,
         // This governed placeholder is wrapper-only. The stored Daytona value
         // is pre-encoded Basic auth, and child Claude/Pi environments must
         // exclude both the placeholder and Git's extraHeader configuration.
@@ -439,8 +389,7 @@ export function roleSpecification(
       ...(role === "evaluator"
         ? [
             {
-              sourceEnvironmentName:
-                configuration.daytona.harborApiSecretSource,
+              sourceEnvironmentName: configuration.daytona.harborApiSecretSource,
               targetEnvironmentName: "DAYTONA_API_KEY",
             },
           ]
@@ -463,14 +412,9 @@ export function roleWorkerCommand(
     (role === "optimizer" && operation !== "optimize") ||
     (role === "evaluator" && operation === "optimize")
   ) {
-    throw new MvpCloudOrchestrationError(
-      "The MVP worker operation belongs to another role.",
-    );
+    throw new MvpCloudOrchestrationError("The MVP worker operation belongs to another role.");
   }
-  const workerPath =
-    role === "optimizer"
-      ? MVP_OPTIMIZER_WORKER_PATH
-      : MVP_EVALUATOR_WORKER_PATH;
+  const workerPath = role === "optimizer" ? MVP_OPTIMIZER_WORKER_PATH : MVP_EVALUATOR_WORKER_PATH;
   const timeoutMs =
     operation === "prepare"
       ? PREPARE_TIMEOUT_MS
@@ -498,14 +442,11 @@ function parseWorkerPayload(
   try {
     value = JSON.parse(raw) as unknown;
   } catch {
-    throw new MvpCloudOrchestrationError(
-      "A role worker returned malformed JSON.",
-    );
+    throw new MvpCloudOrchestrationError("A role worker returned malformed JSON.");
   }
   const record = plainRecord(value);
   if (
-    record?.["domain"] ===
-      "dark-factory.mvp-worker-readiness.v1" &&
+    record?.["domain"] === "dark-factory.mvp-worker-readiness.v1" &&
     record["status"] === "blocked"
   ) {
     const keys = [
@@ -523,26 +464,18 @@ function parseWorkerPayload(
     if (
       !hasExactKeys(record, keys) ||
       record["schemaVersion"] !== 1 ||
-      !new Set(["optimizer", "evaluator"]).has(record["role"]) ||
-      !Array.isArray(missing) ||
-      missing.length < 1 ||
-      missing.some(
-        (item) =>
-          typeof item !== "string" ||
-          !SAFE_PREREQUISITES.has(item),
-      ) ||
+      !isMvpCloudRole(record["role"]) ||
+      !isSafePrerequisiteList(missing) ||
       record["containsTaskIdentifiers"] !== false ||
       record["containsTaskLiterals"] !== false ||
       record["containsGraderData"] !== false ||
       record["containsRawTraces"] !== false
     ) {
-      throw new MvpCloudOrchestrationError(
-        "A role worker returned an invalid readiness result.",
-      );
+      throw new MvpCloudOrchestrationError("A role worker returned an invalid readiness result.");
     }
     return {
       kind: "blocked",
-      missingPrerequisites: [...new Set(missing as string[])].sort(),
+      missingPrerequisites: [...new Set(missing)].sort(),
     };
   }
   if (expected === "optimizer-input") {
@@ -557,9 +490,7 @@ function parseWorkerPayload(
   return { kind: "release", value };
 }
 
-function assertControllerRelease(
-  value: unknown,
-): asserts value is ReleaseSafeMvpCampaignReceipt {
+function assertControllerRelease(value: unknown): asserts value is ReleaseSafeMvpCampaignReceipt {
   try {
     validateReleaseSafeMvpCampaignReceipt(value);
   } catch {
@@ -587,14 +518,10 @@ function receiptBase(
     configuration.daytona.image.lastIndexOf("@") + 1,
   );
   if (!/^sha256:[a-f0-9]{64}$/u.test(imageDigest)) {
-    throw new MvpCloudOrchestrationError(
-      "The MVP image digest is invalid.",
-    );
+    throw new MvpCloudOrchestrationError("The MVP image digest is invalid.");
   }
   if (!SHA256.test(controllerBundleSha256)) {
-    throw new MvpCloudOrchestrationError(
-      "The controller bundle digest is invalid.",
-    );
+    throw new MvpCloudOrchestrationError("The controller bundle digest is invalid.");
   }
   return {
     schemaVersion: 2,
@@ -646,30 +573,21 @@ function receiptBase(
   };
 }
 
-function assertLaunchIdentity(
-  identity: MvpCloudLaunchIdentity,
-): void {
+function assertLaunchIdentity(identity: MvpCloudLaunchIdentity): void {
   if (
     !SHA1.test(identity.sourceCommit) ||
     !SAFE_RUN_ID.test(identity.workflowRunId) ||
     !Number.isSafeInteger(identity.workflowRunAttempt) ||
     identity.workflowRunAttempt < 1
   ) {
-    throw new MvpCloudOrchestrationError(
-      "The GitHub-hosted launch identity is invalid.",
-    );
+    throw new MvpCloudOrchestrationError("The GitHub-hosted launch identity is invalid.");
   }
 }
 
-function assertRoleIsolation(
-  optimizer: MvpRoleSandboxSpec,
-  evaluator: MvpRoleSandboxSpec,
-): void {
+function assertRoleIsolation(optimizer: MvpRoleSandboxSpec, evaluator: MvpRoleSandboxSpec): void {
   const optimizerEnvironment = JSON.stringify(optimizer.environment);
   const optimizerSecretTargets = new Set(
-    optimizer.secretReferences.map(
-      (reference) => reference.targetEnvironmentName,
-    ),
+    optimizer.secretReferences.map((reference) => reference.targetEnvironmentName),
   );
   if (
     optimizer.volume.id !== evaluator.volume.id ||
@@ -683,21 +601,15 @@ function assertRoleIsolation(
     ].some((name) => optimizerEnvironment.includes(name)) ||
     optimizerSecretTargets.has("DAYTONA_API_KEY")
   ) {
-    throw new MvpCloudOrchestrationError(
-      "The optimizer and evaluator role boundaries overlap.",
-    );
+    throw new MvpCloudOrchestrationError("The optimizer and evaluator role boundaries overlap.");
   }
 }
 
 function encodePublicJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), "utf8").toString(
-    "base64url",
-  );
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
-function plainRecord(
-  value: unknown,
-): Readonly<Record<string, unknown>> | null {
+function plainRecord(value: unknown): Readonly<Record<string, unknown>> | null {
   return value !== null &&
     typeof value === "object" &&
     !Array.isArray(value) &&
@@ -706,15 +618,9 @@ function plainRecord(
     : null;
 }
 
-function hasExactKeys(
-  value: Readonly<Record<string, unknown>>,
-  keys: readonly string[],
-): boolean {
+function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
   const actual = Object.keys(value);
-  return (
-    actual.length === keys.length &&
-    actual.every((key) => keys.includes(key))
-  );
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
 }
 
 function volumeBoundaryHash(

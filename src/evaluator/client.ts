@@ -4,11 +4,8 @@ import {
   type SignedAggregateEnvelope,
   type TrustedEvaluationRequest,
 } from "./contracts.js";
-import {
-  type EnvelopeKeyring,
-  verifySignedAggregateEnvelope,
-} from "./signature.js";
 import { assertEnvelopeSafeForLocalPersistence } from "./retention.js";
+import { type EnvelopeKeyring, verifySignedAggregateEnvelope } from "./signature.js";
 
 export interface TrustedEvaluatorTransport {
   submit(

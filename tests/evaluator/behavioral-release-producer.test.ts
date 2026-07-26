@@ -1,29 +1,22 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-
+import { createPrivacyBudget } from "../../src/evaluation/privacy.js";
+import { hiddenTaskId } from "../../src/evaluation/types.js";
 import {
+  type BehavioralReleaseArtifact,
   DeterministicPostDestructionBehavioralReleaseProducer,
   hashHiddenPrivacyBudgetState,
   hashTrustedBehavioralReleaseOrphanFinalization,
-  type BehavioralReleaseArtifact,
   type TrustedBehavioralPrivacyArtifactStore,
 } from "../../src/evaluator/behavioral-release-producer.js";
 import type { TrustedPrivateBehavioralPreparation } from "../../src/evaluator/deriver.js";
-import { createPrivacyBudget } from "../../src/evaluation/privacy.js";
-import { hiddenTaskId } from "../../src/evaluation/types.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
-import {
-  behaviorWithFailure,
-  behaviorWithoutFailure,
-  digest,
-} from "../evaluation/fixtures.js";
+import { behaviorWithFailure, behaviorWithoutFailure, digest } from "../evaluation/fixtures.js";
 
 const keys = generateKeyPairSync("ed25519");
 const CREATED_AT = "2026-07-01T00:12:00.000Z";
 
-function artifactSetHash(
-  artifacts: readonly BehavioralReleaseArtifact[],
-): string {
+function artifactSetHash(artifacts: readonly BehavioralReleaseArtifact[]): string {
   return canonicalHash({
     domain: "dark-factory.behavioral-release-artifact-set.v1",
     artifacts: artifacts
@@ -31,21 +24,14 @@ function artifactSetHash(
         purpose,
         contentHash: document.contentHash,
       }))
-      .sort((left, right) =>
-        left.purpose.localeCompare(right.purpose),
-      ),
+      .sort((left, right) => left.purpose.localeCompare(right.purpose)),
   });
 }
 
-class AtomicMemoryBehavioralStore
-  implements TrustedBehavioralPrivacyArtifactStore
-{
+class AtomicMemoryBehavioralStore implements TrustedBehavioralPrivacyArtifactStore {
   readonly boundary = "test-only-in-memory" as const;
   state = createPrivacyBudget(8);
-  readonly artifacts = new Map<
-    string,
-    BehavioralReleaseArtifact
-  >();
+  readonly artifacts = new Map<string, BehavioralReleaseArtifact>();
   readonly authorizations = new Map<
     string,
     {
@@ -86,16 +72,12 @@ class AtomicMemoryBehavioralStore
   }
 
   commit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["commit"]
-    >[0],
-  ) {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["commit"]> {
     if (this.failCommit) {
       return Promise.reject(new Error("transaction aborted"));
     }
-    const release = input.artifacts.find(
-      (artifact) => artifact.purpose === "behavioral-release",
-    );
+    const release = input.artifacts.find((artifact) => artifact.purpose === "behavioral-release");
     if (release === undefined) {
       return Promise.reject(new Error("release missing"));
     }
@@ -113,8 +95,7 @@ class AtomicMemoryBehavioralStore
     if (previous !== undefined) {
       if (
         previous.requestHash !== input.requestHash ||
-        previous.sourceResultEnvelopeHash !==
-          input.sourceResultEnvelopeHash ||
+        previous.sourceResultEnvelopeHash !== input.sourceResultEnvelopeHash ||
         previous.releaseHash !== input.releaseContentHash
       ) {
         return Promise.reject(new Error("authorization conflict"));
@@ -127,10 +108,7 @@ class AtomicMemoryBehavioralStore
         artifactSetHash: previous.artifactSetHash,
       });
     }
-    if (
-      input.priorPrivacyStateHash !==
-      hashHiddenPrivacyBudgetState(this.state)
-    ) {
+    if (input.priorPrivacyStateHash !== hashHiddenPrivacyBudgetState(this.state)) {
       return Promise.reject(new Error("privacy CAS conflict"));
     }
     if (
@@ -138,8 +116,7 @@ class AtomicMemoryBehavioralStore
         (binding) =>
           binding.releaseHash === release.document.contentHash ||
           binding.requestHash === input.requestHash ||
-          binding.sourceResultEnvelopeHash ===
-            input.sourceResultEnvelopeHash,
+          binding.sourceResultEnvelopeHash === input.sourceResultEnvelopeHash,
       )
     ) {
       return Promise.reject(new Error("release cannot be rebound"));
@@ -149,8 +126,7 @@ class AtomicMemoryBehavioralStore
       this.artifacts.set(artifact.document.contentHash, artifact);
     }
     const committedArtifactSetHash = artifactSetHash(input.artifacts);
-    const committedPrivacyStateHash =
-      hashHiddenPrivacyBudgetState(this.state);
+    const committedPrivacyStateHash = hashHiddenPrivacyBudgetState(this.state);
     this.authorizations.set(input.authorizationHash, {
       requestHash: input.requestHash,
       sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
@@ -186,19 +162,14 @@ class AtomicMemoryBehavioralStore
   }
 
   inspectCommit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-    >[0],
-  ): ReturnType<
-    TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-  > {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]> {
     const exact = this.authorizations.get(input.authorizationHash);
     const related = [...this.authorizations.entries()].filter(
       ([authorizationHash, binding]) =>
         authorizationHash === input.authorizationHash ||
         binding.requestHash === input.requestHash ||
-        binding.sourceResultEnvelopeHash ===
-          input.sourceResultEnvelopeHash ||
+        binding.sourceResultEnvelopeHash === input.sourceResultEnvelopeHash ||
         binding.releaseHash === input.releaseContentHash ||
         binding.artifactSetHash === input.artifactSetHash,
     );
@@ -208,8 +179,7 @@ class AtomicMemoryBehavioralStore
     if (
       exact === undefined ||
       exact.requestHash !== input.requestHash ||
-      exact.sourceResultEnvelopeHash !==
-        input.sourceResultEnvelopeHash ||
+      exact.sourceResultEnvelopeHash !== input.sourceResultEnvelopeHash ||
       exact.releaseHash !== input.releaseContentHash ||
       exact.artifactSetHash !== input.artifactSetHash ||
       exact.artifactReferences.length !== 4
@@ -222,29 +192,21 @@ class AtomicMemoryBehavioralStore
         status: "already-committed",
         authorizationHash: input.authorizationHash,
         bindingHash: canonicalHash({
-          domain:
-            "dark-factory.behavioral-release-one-use-binding.v1",
+          domain: "dark-factory.behavioral-release-one-use-binding.v1",
           authorizationHash: input.authorizationHash,
           requestHash: input.requestHash,
-          sourceResultEnvelopeHash:
-            input.sourceResultEnvelopeHash,
+          sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
           releaseContentHash: input.releaseContentHash,
         }),
         privacyStateHash: exact.privacyStateHash,
         artifactSetHash: exact.artifactSetHash,
       },
       artifactReferences: exact.artifactReferences,
-      orphanedAt: this.orphaned.has(input.authorizationHash)
-        ? CREATED_AT
-        : null,
+      orphanedAt: this.orphaned.has(input.authorizationHash) ? CREATED_AT : null,
     });
   }
 
-  orphan(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["orphan"]
-    >[0],
-  ) {
+  orphan(input: Parameters<TrustedBehavioralPrivacyArtifactStore["orphan"]>[0]) {
     const binding = this.authorizations.get(input.authorizationHash);
     if (
       binding === undefined ||
@@ -257,9 +219,7 @@ class AtomicMemoryBehavioralStore
       ? ("already-orphaned" as const)
       : ("orphaned" as const);
     this.orphaned.add(input.authorizationHash);
-    const orphanedAt =
-      this.orphanTimes.get(input.authorizationHash) ??
-      input.orphanedAt;
+    const orphanedAt = this.orphanTimes.get(input.authorizationHash) ?? input.orphanedAt;
     this.orphanTimes.set(input.authorizationHash, orphanedAt);
     return Promise.resolve({
       status,
@@ -277,32 +237,21 @@ class AtomicMemoryBehavioralStore
     const authorization = [...this.authorizations.entries()].find(
       ([, binding]) => binding.releaseHash === input.contentHash,
     );
-    if (
-      authorization !== undefined &&
-      this.orphaned.has(authorization[0])
-    ) {
+    if (authorization !== undefined && this.orphaned.has(authorization[0])) {
       return Promise.resolve(undefined);
     }
     const artifact = this.artifacts.get(input.contentHash);
-    return Promise.resolve(
-      artifact?.purpose === input.purpose ? artifact : undefined,
-    );
+    return Promise.resolve(artifact?.purpose === input.purpose ? artifact : undefined);
   }
 }
 
 class DoubleLostCommitAcknowledgementStore extends AtomicMemoryBehavioralStore {
   loseAcknowledgements = true;
-  lastCommit:
-    | Parameters<
-        TrustedBehavioralPrivacyArtifactStore["commit"]
-      >[0]
-    | undefined;
+  lastCommit: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0] | undefined;
 
   override async commit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["commit"]
-    >[0],
-  ) {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["commit"]> {
     this.lastCommit = input;
     if (!this.loseAcknowledgements) {
       return super.commit(input);
@@ -314,11 +263,7 @@ class DoubleLostCommitAcknowledgementStore extends AtomicMemoryBehavioralStore {
 }
 
 class DetachedOrphanReceiptStore extends AtomicMemoryBehavioralStore {
-  override async orphan(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["orphan"]
-    >[0],
-  ) {
+  override async orphan(input: Parameters<TrustedBehavioralPrivacyArtifactStore["orphan"]>[0]) {
     const receipt = await super.orphan(input);
     return {
       ...receipt,
@@ -382,10 +327,7 @@ function preparation(
   };
 }
 
-function producer(
-  store: TrustedBehavioralPrivacyArtifactStore,
-  now = CREATED_AT,
-) {
+function producer(store: TrustedBehavioralPrivacyArtifactStore, now = CREATED_AT) {
   return new DeterministicPostDestructionBehavioralReleaseProducer({
     deployment: "test-only",
     store,
@@ -508,8 +450,7 @@ describe("post-destruction behavioral release producer", () => {
       store.inspectCommit({
         authorizationHash: committed.authorizationHash,
         requestHash: committed.requestHash,
-        sourceResultEnvelopeHash:
-          committed.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: committed.sourceResultEnvelopeHash,
         releaseContentHash: committed.releaseContentHash,
         artifactSetHash: artifactSetHash(committed.artifacts),
       }),
@@ -525,6 +466,7 @@ describe("post-destruction behavioral release producer", () => {
       store.commit({
         ...committed,
         authorizationHash: digest(111),
+        priorPrivacyStateHash: hashHiddenPrivacyBudgetState(store.state),
       }),
     ).rejects.toThrow(/rebound/u);
     expect(store.state.releasesUsed).toBe(1);
@@ -578,10 +520,7 @@ describe("post-destruction behavioral release producer", () => {
     expect(orphaned).toEqual({
       status: "orphaned",
       ...orphanBinding,
-      orphanFinalizationHash:
-        hashTrustedBehavioralReleaseOrphanFinalization(
-          orphanBinding,
-        ),
+      orphanFinalizationHash: hashTrustedBehavioralReleaseOrphanFinalization(orphanBinding),
     });
     const serializedReceipt = JSON.stringify(orphaned);
     expect(serializedReceipt).not.toContain("secret-task-literal");
@@ -594,12 +533,9 @@ describe("post-destruction behavioral release producer", () => {
         contentHash: finalized.contentHash,
       }),
     ).resolves.toBeUndefined();
-    await expect(
-      producer(
-        store,
-        "2026-07-01T00:13:00.000Z",
-      ).orphan(finalized),
-    ).resolves.toEqual(orphaned);
+    await expect(producer(store, "2026-07-01T00:13:00.000Z").orphan(finalized)).resolves.toEqual(
+      orphaned,
+    );
     expect(store.state.releasesUsed).toBe(1);
     expect(store.artifacts.size).toBe(4);
   });
@@ -619,9 +555,7 @@ describe("post-destruction behavioral release producer", () => {
       name: "TrustedBehavioralReleaseProducerError",
       finalizationDisposition: "unsafe-to-consume",
     });
-    expect(
-      store.orphaned.has(finalized.authorizationHash),
-    ).toBe(true);
+    expect(store.orphaned.has(finalized.authorizationHash)).toBe(true);
     expect(store.state.releasesUsed).toBe(1);
   });
 
@@ -636,10 +570,7 @@ describe("post-destruction behavioral release producer", () => {
       throw new Error("Expected behavioral release");
     }
     const byPurpose = new Map(
-      [...store.artifacts.values()].map((artifact) => [
-        artifact.purpose,
-        artifact,
-      ]),
+      [...store.artifacts.values()].map((artifact) => [artifact.purpose, artifact]),
     );
     const artifacts = [
       byPurpose.get("behavioral-evidence"),

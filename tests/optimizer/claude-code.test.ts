@@ -42,14 +42,12 @@ describe("Claude Code optimizer launch", () => {
       ANTHROPIC_DEFAULT_OPUS_MODEL: "df-opus5-prod",
       DF_OPTIMIZER_MODEL_ID: "claude-opus-5",
     });
-    expect(spec.command.environment.DF_OPTIMIZER_SUBMISSION_ROOT).toBe(
-      "/workspace/submissions",
-    );
-    expect(spec.command.environment.DF_OPTIMIZER_AUDIT_ROOT).toBe(
-      "/workspace/audit",
-    );
+    expect(spec.command.environment.DF_OPTIMIZER_SUBMISSION_ROOT).toBe("/workspace/submissions");
+    expect(spec.command.environment.DF_OPTIMIZER_AUDIT_ROOT).toBe("/workspace/audit");
     expect(spec.command.arguments).toContain("dontAsk");
-    expect(spec.command.arguments).toContain("Bash,Shell,WebSearch,WebFetch,Agent,Task,NotebookEdit");
+    expect(spec.command.arguments).toContain(
+      "Bash,Shell,WebSearch,WebFetch,Agent,Task,NotebookEdit",
+    );
     expect(spec.command.arguments).toContain("/workspace/df-plugin");
     expect(spec.command.arguments.join(" ")).not.toContain("--dangerously-skip-permissions");
   });
@@ -73,8 +71,7 @@ describe("Claude Code optimizer launch", () => {
     expect(() =>
       createClaudeCodeLaunchSpec({
         ...options,
-        foundryResourceName:
-          "https://df-eu-prod.services.ai.azure.com",
+        foundryResourceName: "https://df-eu-prod.services.ai.azure.com",
       }),
     ).toThrow(ClaudeCodeSpecificationError);
     expect(() =>

@@ -1,7 +1,4 @@
-import type {
-  CloudProviderName,
-  ImmutableCloudImage,
-} from "../config/environment.js";
+import type { CloudProviderName, ImmutableCloudImage } from "../config/environment.js";
 
 export type ControlConfigurationStage = "offline" | "probe";
 
@@ -22,15 +19,11 @@ export interface StagedControlConfigurationReadiness {
   readonly configuration: StagedControlConfiguration | null;
 }
 
-const SHA256_IMAGE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const SHA256_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const IMAGE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const REGION_CLASS = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
-function present(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-): string | null {
+function present(environment: NodeJS.ProcessEnv, name: string): string | null {
   const value = environment[name]?.trim();
   return value === undefined || value.length === 0 ? null : value;
 }
@@ -83,39 +76,24 @@ export function inspectStagedControlEnvironment(
   const providerValue = present(environment, "DF_CLOUD_PROVIDER");
   if (providerValue === null) missing.push("DF_CLOUD_PROVIDER");
   const provider =
-    providerValue === "daytona" ||
-    providerValue === "e2b" ||
-    providerValue === "modal"
+    providerValue === "daytona" || providerValue === "e2b" || providerValue === "modal"
       ? providerValue
       : null;
   if (providerValue !== null && provider === null) {
     invalid.push("DF_CLOUD_PROVIDER");
   }
 
-  const cloudRegionClass = present(
-    environment,
-    "DF_CLOUD_REGION_CLASS",
-  );
+  const cloudRegionClass = present(environment, "DF_CLOUD_REGION_CLASS");
   if (cloudRegionClass === null) {
     missing.push("DF_CLOUD_REGION_CLASS");
   } else if (!REGION_CLASS.test(cloudRegionClass)) {
     invalid.push("DF_CLOUD_REGION_CLASS");
   }
 
-  const control = parseImage(
-    environment,
-    "CONTROL",
-    missing,
-    invalid,
-  );
-  const build =
-    stage === "probe"
-      ? parseImage(environment, "BUILD", missing, invalid)
-      : null;
+  const control = parseImage(environment, "CONTROL", missing, invalid);
+  const build = stage === "probe" ? parseImage(environment, "BUILD", missing, invalid) : null;
   const evaluator =
-    stage === "probe"
-      ? parseImage(environment, "EVALUATOR", missing, invalid)
-      : null;
+    stage === "probe" ? parseImage(environment, "EVALUATOR", missing, invalid) : null;
   const uniqueMissing = unique(missing);
   const uniqueInvalid = unique(invalid);
   if (

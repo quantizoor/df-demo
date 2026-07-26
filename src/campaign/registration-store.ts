@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, readdir } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 import { atomicWriteFile, withExclusiveFileLock } from "../evidence/atomic.js";
@@ -20,9 +20,7 @@ export interface HarnessRegistrationStoreOptions {
 }
 
 function isMissingFile(error: unknown): boolean {
-  return (
-    typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function assertSafeIdentifier(value: string): void {
@@ -61,9 +59,7 @@ async function readCanonicalRegistration(path: string): Promise<HarnessRegistrat
   return value;
 }
 
-export function createHarnessRegistration(
-  draft: HarnessRegistrationDraft,
-): HarnessRegistration {
+export function createHarnessRegistration(draft: HarnessRegistrationDraft): HarnessRegistration {
   const value: unknown = withContentHash(draft);
   assertValidDocument("harnessRegistration", value);
   return value;
@@ -76,10 +72,7 @@ export class HarnessRegistrationStore {
   readonly #root: string;
   readonly #verifier: HarnessRegistrationVerifier | undefined;
 
-  public constructor(
-    root: string,
-    options: HarnessRegistrationStoreOptions = {},
-  ) {
+  public constructor(root: string, options: HarnessRegistrationStoreOptions = {}) {
     this.#root = resolve(root);
     this.#verifier = options.verifier;
   }
@@ -94,17 +87,12 @@ export class HarnessRegistrationStore {
   }
 
   public async register(registration: HarnessRegistration): Promise<void> {
-    const registrationSnapshot = JSON.parse(
-      canonicalJson(registration),
-    ) as HarnessRegistration;
+    const registrationSnapshot = JSON.parse(canonicalJson(registration)) as HarnessRegistration;
     assertValidDocument("harnessRegistration", registrationSnapshot);
     await this.#verify(registrationSnapshot);
     assertSafeIdentifier(registrationSnapshot.registrationId);
     await this.initialize();
-    const lockPath = join(
-      this.#root,
-      `.${registrationSnapshot.registrationId}.lock`,
-    );
+    const lockPath = join(this.#root, `.${registrationSnapshot.registrationId}.lock`);
     await withExclusiveFileLock(lockPath, async () => {
       const path = this.#path(registrationSnapshot.registrationId);
       try {
@@ -158,12 +146,8 @@ export class HarnessRegistrationStore {
 
   async #verify(registration: HarnessRegistration): Promise<void> {
     if (this.#verifier === undefined) {
-      throw new HarnessRegistrationError(
-        "A trusted harness-registration verifier is required",
-      );
+      throw new HarnessRegistrationError("A trusted harness-registration verifier is required");
     }
-    await this.#verifier.verify(
-      JSON.parse(canonicalJson(registration)) as HarnessRegistration,
-    );
+    await this.#verifier.verify(JSON.parse(canonicalJson(registration)) as HarnessRegistration);
   }
 }

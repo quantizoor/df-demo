@@ -1,14 +1,6 @@
-import {
-  validateBudgetSnapshot,
-} from "../core/budget.js";
-import type {
-  BudgetSnapshot,
-  ChampionPointers,
-  ExperimentIdentity,
-} from "../domain/models.js";
-import type {
-  OptimizationLoopSnapshot,
-} from "../orchestrator/autonomous-loop.js";
+import { validateBudgetSnapshot } from "../core/budget.js";
+import type { BudgetSnapshot, ChampionPointers, ExperimentIdentity } from "../domain/models.js";
+import type { OptimizationLoopSnapshot } from "../orchestrator/autonomous-loop.js";
 import type {
   OptimizationInputPreparationContext,
   OptimizationInterruptionControl,
@@ -21,31 +13,21 @@ import type {
   TrustedOptimizationInterruptionPort,
   TrustedOptimizationResumeVerifier,
 } from "../orchestrator/campaign-state-coordinator.js";
-import type {
-  DiagnosticBriefReference,
-  ExperimentRunInput,
-} from "../orchestrator/contracts.js";
+import type { DiagnosticBriefReference, ExperimentRunInput } from "../orchestrator/contracts.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-} from "../schemas/canonical.js";
-import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-const SAFE_ID =
-  /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const SAFE_KEY_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,255}$/u;
-const OPAQUE_DIAGNOSTIC_RELEASE_ID =
-  /^diagnostic[-:](?:[0-9]{1,12}|[a-f0-9]{16,64})$/u;
+const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
+const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,255}$/u;
+const OPAQUE_DIAGNOSTIC_RELEASE_ID = /^diagnostic[-:](?:[0-9]{1,12}|[a-f0-9]{16,64})$/u;
 
 export class MountedVolumeOptimizationCoordinationError extends Error {
-  override readonly name =
-    "MountedVolumeOptimizationCoordinationError";
+  override readonly name = "MountedVolumeOptimizationCoordinationError";
 
   public constructor() {
     super("Trusted optimization coordination failed.");
@@ -56,9 +38,7 @@ function fail(): never {
   throw new MountedVolumeOptimizationCoordinationError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -73,10 +53,7 @@ function assertExactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
 }
@@ -85,9 +62,7 @@ function assertHash(value: unknown): asserts value is string {
   if (typeof value !== "string" || !SHA256.test(value)) fail();
 }
 
-function assertNullableHash(
-  value: unknown,
-): asserts value is string | null {
+function assertNullableHash(value: unknown): asserts value is string | null {
   if (value !== null) assertHash(value);
 }
 
@@ -99,9 +74,7 @@ function cloneJson<Value>(value: Value): Value {
   return JSON.parse(canonicalJson(value)) as Value;
 }
 
-function assertDiagnosticBrief(
-  value: unknown,
-): asserts value is DiagnosticBriefReference | null {
+function assertDiagnosticBrief(value: unknown): asserts value is DiagnosticBriefReference | null {
   if (value === null) return;
   assertExactKeys(value, ["hash", "releaseId", "actionable"]);
   if (
@@ -115,9 +88,7 @@ function assertDiagnosticBrief(
   }
 }
 
-function assertChampionPointers(
-  value: unknown,
-): asserts value is ChampionPointers {
+function assertChampionPointers(value: unknown): asserts value is ChampionPointers {
   assertExactKeys(value, [
     "baselineCommit",
     "activeExperiment",
@@ -138,10 +109,8 @@ function assertChampionPointers(
       (!Number.isSafeInteger(value.certifiedExperiment) ||
         (value.certifiedExperiment as number) < 0)) ||
     (value.certifiedCommit !== null &&
-      (typeof value.certifiedCommit !== "string" ||
-        !GIT_OBJECT.test(value.certifiedCommit))) ||
-    (value.certifiedExperiment === null) !==
-      (value.certifiedCommit === null) ||
+      (typeof value.certifiedCommit !== "string" || !GIT_OBJECT.test(value.certifiedCommit))) ||
+    (value.certifiedExperiment === null) !== (value.certifiedCommit === null) ||
     typeof value.updatedAt !== "string" ||
     !Number.isFinite(Date.parse(value.updatedAt)) ||
     new Date(value.updatedAt).toISOString() !== value.updatedAt ||
@@ -152,9 +121,7 @@ function assertChampionPointers(
   }
 }
 
-function assertBudget(
-  value: unknown,
-): asserts value is BudgetSnapshot {
+function assertBudget(value: unknown): asserts value is BudgetSnapshot {
   assertExactKeys(value, ["limits", "usage"]);
   assertExactKeys(value.limits, [
     "maximumUsd",
@@ -196,23 +163,17 @@ function assertBudget(
     integers.some((item) => !Number.isSafeInteger(item)) ||
     budget.usage.spentUsd > budget.limits.maximumUsd ||
     budget.usage.tokens > budget.limits.maximumTokens ||
-    budget.usage.wallTimeMs >
-      budget.limits.maximumWallTimeMs ||
+    budget.usage.wallTimeMs > budget.limits.maximumWallTimeMs ||
     budget.usage.attempts > budget.limits.maximumAttempts ||
-    budget.usage.privacyReleases >
-      budget.limits.maximumPrivacyReleases ||
-    budget.usage.promotionLooks >
-      budget.limits.maximumPromotionLooks ||
-    budget.usage.onlineErrorSpent >
-      budget.limits.maximumOnlineError
+    budget.usage.privacyReleases > budget.limits.maximumPrivacyReleases ||
+    budget.usage.promotionLooks > budget.limits.maximumPromotionLooks ||
+    budget.usage.onlineErrorSpent > budget.limits.maximumOnlineError
   ) {
     fail();
   }
 }
 
-function assertExperimentIdentity(
-  value: unknown,
-): asserts value is ExperimentIdentity {
+function assertExperimentIdentity(value: unknown): asserts value is ExperimentIdentity {
   assertExactKeys(value, [
     "number",
     "slug",
@@ -224,14 +185,12 @@ function assertExperimentIdentity(
   if (
     !Number.isSafeInteger(value.number) ||
     (value.number as number) < 1 ||
-    (value.slug !== "source-only-bootstrap" &&
-      value.slug !== "diagnostic-repair") ||
+    (value.slug !== "source-only-bootstrap" && value.slug !== "diagnostic-repair") ||
     value.kind !== "optimization" ||
     (value.parentExperiment !== null &&
       (!Number.isSafeInteger(value.parentExperiment) ||
         (value.parentExperiment as number) < 0 ||
-        (value.parentExperiment as number) >=
-          (value.number as number))) ||
+        (value.parentExperiment as number) >= (value.number as number))) ||
     typeof value.lineageId !== "string" ||
     !SAFE_ID.test(value.lineageId) ||
     typeof value.protocolHash !== "string" ||
@@ -241,9 +200,7 @@ function assertExperimentIdentity(
   }
 }
 
-function assertLoopSnapshot(
-  value: unknown,
-): asserts value is OptimizationLoopSnapshot {
+function assertLoopSnapshot(value: unknown): asserts value is OptimizationLoopSnapshot {
   assertExactKeys(value, [
     "schemaVersion",
     "campaignId",
@@ -274,13 +231,10 @@ function assertLoopSnapshot(
     (value.nextExperimentNumber as number) < 2 ||
     !Number.isSafeInteger(value.inFlightExperimentNumber) ||
     (value.inFlightExperimentNumber as number) < 1 ||
-    value.nextExperimentNumber !==
-      (value.inFlightExperimentNumber as number) + 1 ||
+    value.nextExperimentNumber !== (value.inFlightExperimentNumber as number) + 1 ||
     value.inFlightKind !== "optimization" ||
     typeof value.hardBudgetExhausted !== "boolean" ||
-    !Number.isSafeInteger(
-      value.freshValidationPanelsRemaining,
-    ) ||
+    !Number.isSafeInteger(value.freshValidationPanelsRemaining) ||
     (value.freshValidationPanelsRemaining as number) < 0
   ) {
     fail();
@@ -306,8 +260,7 @@ function assertPreparationContext(
   ]);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.optimization-input-preparation.v1" ||
+    value.domain !== "dark-factory.optimization-input-preparation.v1" ||
     typeof value.campaignId !== "string" ||
     !SAFE_ID.test(value.campaignId) ||
     typeof value.lineageId !== "string" ||
@@ -327,23 +280,19 @@ function assertPreparationContext(
     fail();
   }
   assertLoopSnapshot(value.allocationSnapshot);
-  const snapshot =
-    value.allocationSnapshot as OptimizationLoopSnapshot;
+  const snapshot = value.allocationSnapshot as OptimizationLoopSnapshot;
   if (
     snapshot.campaignId !== value.campaignId ||
     snapshot.lineageId !== value.lineageId ||
     snapshot.protocolHash !== value.protocolHash ||
     snapshot.stateHash !== value.allocationStateHash ||
-    snapshot.inFlightExperimentNumber !==
-      value.experimentNumber
+    snapshot.inFlightExperimentNumber !== value.experimentNumber
   ) {
     fail();
   }
 }
 
-function assertExperimentRunInput(
-  value: unknown,
-): asserts value is ExperimentRunInput {
+function assertExperimentRunInput(value: unknown): asserts value is ExperimentRunInput {
   assertExactKeys(value, [
     "experiment",
     "activeChampion",
@@ -360,15 +309,13 @@ function assertExperimentRunInput(
   assertNullableHash(value.previousDiscoveryAttestationHash);
   assertExactKeys(value.stop, ["requested"]);
   if (
-    (value.repairAttemptOrdinal !== 1 &&
-      value.repairAttemptOrdinal !== 2) ||
+    (value.repairAttemptOrdinal !== 1 && value.repairAttemptOrdinal !== 2) ||
     value.stop.requested !== false ||
     (value.experiment.number === 1 &&
       (value.diagnosticBrief !== null ||
         value.previousDiscoveryAttestationHash !== null ||
         value.repairAttemptOrdinal !== 1)) ||
-    (value.experiment.number > 1 &&
-      value.previousDiscoveryAttestationHash === null)
+    (value.experiment.number > 1 && value.previousDiscoveryAttestationHash === null)
   ) {
     fail();
   }
@@ -376,8 +323,7 @@ function assertExperimentRunInput(
 
 export interface TaskFreeOptimizationDiagnosticDiscovery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.task-free-optimization-diagnostic-discovery.v1";
+  readonly domain: "dark-factory.task-free-optimization-diagnostic-discovery.v1";
   readonly campaignId: string;
   readonly lineageId: string;
   readonly protocolHash: string;
@@ -408,14 +354,12 @@ function diagnosticBindingHash(input: {
   readonly previousDiscoveryAttestationHash: string;
 }): string {
   return canonicalHash({
-    domain:
-      "dark-factory.task-free-diagnostic-binding.v1",
+    domain: "dark-factory.task-free-diagnostic-binding.v1",
     campaignId: input.campaignId,
     lineageId: input.lineageId,
     protocolHash: input.protocolHash,
     diagnosticBrief: input.diagnosticBrief,
-    previousDiscoveryAttestationHash:
-      input.previousDiscoveryAttestationHash,
+    previousDiscoveryAttestationHash: input.previousDiscoveryAttestationHash,
   });
 }
 
@@ -445,8 +389,7 @@ function assertDiagnosticDiscovery(
   assertNullableHash(value.priorClaimHash);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.task-free-optimization-diagnostic-discovery.v1" ||
+    value.domain !== "dark-factory.task-free-optimization-diagnostic-discovery.v1" ||
     typeof value.campaignId !== "string" ||
     !SAFE_ID.test(value.campaignId) ||
     typeof value.lineageId !== "string" ||
@@ -459,22 +402,17 @@ function assertDiagnosticDiscovery(
     !SHA256.test(value.allocationStateHash) ||
     typeof value.previousDiscoveryAttestationHash !== "string" ||
     !SHA256.test(value.previousDiscoveryAttestationHash) ||
-    (value.repairAttemptOrdinal !== 1 &&
-      value.repairAttemptOrdinal !== 2) ||
-    ((value.repairAttemptOrdinal === 1) !==
-      (value.priorAllocationStateHash === null)) ||
-    ((value.repairAttemptOrdinal === 1) !==
-      (value.priorClaimHash === null)) ||
+    (value.repairAttemptOrdinal !== 1 && value.repairAttemptOrdinal !== 2) ||
+    (value.repairAttemptOrdinal === 1) !== (value.priorAllocationStateHash === null) ||
+    (value.repairAttemptOrdinal === 1) !== (value.priorClaimHash === null) ||
     typeof value.diagnosticBindingHash !== "string" ||
     value.diagnosticBindingHash !==
       diagnosticBindingHash({
         campaignId: value.campaignId,
         lineageId: value.lineageId,
         protocolHash: value.protocolHash,
-        diagnosticBrief:
-          value.diagnosticBrief as DiagnosticBriefReference | null,
-        previousDiscoveryAttestationHash:
-          value.previousDiscoveryAttestationHash,
+        diagnosticBrief: value.diagnosticBrief as DiagnosticBriefReference | null,
+        previousDiscoveryAttestationHash: value.previousDiscoveryAttestationHash,
       }) ||
     typeof value.resolutionAttestationHash !== "string" ||
     !SHA256.test(value.resolutionAttestationHash) ||
@@ -488,8 +426,7 @@ function assertDiagnosticDiscovery(
       value.lineageId !== context.lineageId ||
       value.protocolHash !== context.protocolHash ||
       value.experimentNumber !== context.experimentNumber ||
-      value.allocationStateHash !==
-        context.allocationStateHash)
+      value.allocationStateHash !== context.allocationStateHash)
   ) {
     fail();
   }
@@ -500,16 +437,13 @@ interface DurableOptimizationPreparation {
   readonly context: OptimizationInputPreparationContext;
   readonly inputHash: string;
   readonly input: ExperimentRunInput;
-  readonly discovery:
-    | TaskFreeOptimizationDiagnosticDiscovery
-    | null;
+  readonly discovery: TaskFreeOptimizationDiagnosticDiscovery | null;
   readonly claimBinding: PersistedOptimizationClaimBinding | null;
 }
 
 export interface TrustedOptimizationResumePathAttestation {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "release-safe-optimization-resume-path-attestation";
+  readonly sensitivity: "release-safe-optimization-resume-path-attestation";
   readonly pathHash: string;
   readonly checkpointChainHash: string;
   readonly checkpointCount: number;
@@ -529,14 +463,12 @@ interface DurableOptimizationResumePath {
   readonly path: OptimizationResumeVerification;
   readonly pathHash: string;
   readonly checkpointChainHash: string;
-  readonly verificationHistory:
-    readonly TrustedOptimizationResumePathAttestation[];
+  readonly verificationHistory: readonly TrustedOptimizationResumePathAttestation[];
 }
 
 export interface TrustedOptimizationBrokerExposureAttestation {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "release-safe-optimization-broker-exposure-attestation";
+  readonly sensitivity: "release-safe-optimization-broker-exposure-attestation";
   readonly draftHash: string;
   readonly brokerExposureStateAttestationHash: string;
   readonly authorizationAttestationHash: string;
@@ -545,8 +477,7 @@ export interface TrustedOptimizationBrokerExposureAttestation {
 
 export interface TrustedOptimizationControlAuthorization {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "release-safe-optimization-interruption-control-authorization";
+  readonly sensitivity: "release-safe-optimization-interruption-control-authorization";
   readonly recordHash: string;
   readonly currentStateHash: string;
   readonly control: OptimizationInterruptionControl;
@@ -558,10 +489,7 @@ export interface TrustedOptimizationControlAuthorization {
 export interface TrustedOptimizationInterruptionAuthority {
   readonly boundary: "trusted-cloud-attestation-authority";
   attestBrokerExposure(
-    draft: Omit<
-      OptimizationInterruptionRecordDraft,
-      "brokerExposureStateAttestationHash"
-    >,
+    draft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
   ): Promise<TrustedOptimizationBrokerExposureAttestation>;
   authorizeControl(input: {
     readonly record: OptimizationInterruptionRecord;
@@ -579,9 +507,7 @@ interface DurableOptimizationControlPreparation {
 interface DurableOptimizationInterruption {
   readonly record: OptimizationInterruptionRecord;
   readonly brokerExposureAuthorizationAttestationHash: string;
-  readonly controlPreparation:
-    | DurableOptimizationControlPreparation
-    | null;
+  readonly controlPreparation: DurableOptimizationControlPreparation | null;
   readonly finalStateHash: string | null;
 }
 
@@ -590,18 +516,10 @@ export interface DurableOptimizationCoordinationState {
   readonly sensitivity: "trusted-optimization-coordination";
   readonly storeScopeHash: string;
   readonly revision: number;
-  readonly preparations: Readonly<
-    Record<string, DurableOptimizationPreparation>
-  >;
-  readonly resumePaths: Readonly<
-    Record<string, DurableOptimizationResumePath>
-  >;
-  readonly interruptions: Readonly<
-    Record<string, DurableOptimizationInterruption>
-  >;
-  readonly activeInterruptions: Readonly<
-    Record<string, string>
-  >;
+  readonly preparations: Readonly<Record<string, DurableOptimizationPreparation>>;
+  readonly resumePaths: Readonly<Record<string, DurableOptimizationResumePath>>;
+  readonly interruptions: Readonly<Record<string, DurableOptimizationInterruption>>;
+  readonly activeInterruptions: Readonly<Record<string, string>>;
 }
 
 export interface AtomicOptimizationCoordinationStateStore {
@@ -621,17 +539,14 @@ function assertInputMatchesContext(
   if (
     input.experiment.number !== context.experimentNumber ||
     input.experiment.slug !==
-      (context.sourceOnlyBootstrap
-        ? "source-only-bootstrap"
-        : "diagnostic-repair") ||
+      (context.sourceOnlyBootstrap ? "source-only-bootstrap" : "diagnostic-repair") ||
     input.experiment.parentExperiment !==
       context.allocationSnapshot.activeChampion.activeExperiment ||
     input.experiment.lineageId !== context.lineageId ||
     input.experiment.protocolHash !== context.protocolHash ||
     canonicalJson(input.activeChampion) !==
       canonicalJson(context.allocationSnapshot.activeChampion) ||
-    canonicalJson(input.budget) !==
-      canonicalJson(context.allocationSnapshot.budget) ||
+    canonicalJson(input.budget) !== canonicalJson(context.allocationSnapshot.budget) ||
     input.stop.requested !== false
   ) {
     fail();
@@ -649,20 +564,15 @@ function assertInputMatchesContext(
   }
   if (
     discovery === null ||
-    canonicalJson(input.diagnosticBrief) !==
-      canonicalJson(discovery.diagnosticBrief) ||
-    input.previousDiscoveryAttestationHash !==
-      discovery.previousDiscoveryAttestationHash ||
-    input.repairAttemptOrdinal !==
-      discovery.repairAttemptOrdinal
+    canonicalJson(input.diagnosticBrief) !== canonicalJson(discovery.diagnosticBrief) ||
+    input.previousDiscoveryAttestationHash !== discovery.previousDiscoveryAttestationHash ||
+    input.repairAttemptOrdinal !== discovery.repairAttemptOrdinal
   ) {
     fail();
   }
 }
 
-function assertClaimBinding(
-  value: unknown,
-): asserts value is PersistedOptimizationClaimBinding {
+function assertClaimBinding(value: unknown): asserts value is PersistedOptimizationClaimBinding {
   assertExactKeys(value, [
     "schemaVersion",
     "domain",
@@ -687,12 +597,10 @@ function assertClaimBinding(
   assertNullableHash(value.previousDiscoveryAttestationHash);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.optimization-claim-binding.v1" ||
+    value.domain !== "dark-factory.optimization-claim-binding.v1" ||
     !Number.isSafeInteger(value.experimentNumber) ||
     (value.experimentNumber as number) < 1 ||
-    (value.repairAttemptOrdinal !== 1 &&
-      value.repairAttemptOrdinal !== 2)
+    (value.repairAttemptOrdinal !== 1 && value.repairAttemptOrdinal !== 2)
   ) {
     fail();
   }
@@ -719,11 +627,9 @@ function assertPreparation(
   if (value.claimBinding !== null) {
     assertClaimBinding(value.claimBinding);
   }
-  const context =
-    value.context as OptimizationInputPreparationContext;
+  const context = value.context as OptimizationInputPreparationContext;
   const input = value.input as ExperimentRunInput;
-  const discovery =
-    value.discovery as TaskFreeOptimizationDiagnosticDiscovery | null;
+  const discovery = value.discovery as TaskFreeOptimizationDiagnosticDiscovery | null;
   if (
     key !== context.allocationStateHash ||
     value.contextHash !== canonicalHash(context) ||
@@ -733,8 +639,7 @@ function assertPreparation(
   }
   assertInputMatchesContext(input, context, discovery);
   if (value.claimBinding !== null) {
-    const binding =
-      value.claimBinding as PersistedOptimizationClaimBinding;
+    const binding = value.claimBinding as PersistedOptimizationClaimBinding;
     const expectedClaimHash = canonicalHash({
       domain: "dark-factory.optimization-claim.v2",
       priorStateHash: context.priorStateHash,
@@ -747,23 +652,18 @@ function assertPreparation(
       binding.protocolHash !== context.protocolHash ||
       binding.experimentNumber !== context.experimentNumber ||
       binding.priorStateHash !== context.priorStateHash ||
-      binding.allocationStateHash !==
-        context.allocationStateHash ||
+      binding.allocationStateHash !== context.allocationStateHash ||
       binding.claimHash !== expectedClaimHash ||
       binding.inputHash !== value.inputHash ||
-      binding.previousDiscoveryAttestationHash !==
-        input.previousDiscoveryAttestationHash ||
-      binding.repairAttemptOrdinal !==
-        input.repairAttemptOrdinal
+      binding.previousDiscoveryAttestationHash !== input.previousDiscoveryAttestationHash ||
+      binding.repairAttemptOrdinal !== input.repairAttemptOrdinal
     ) {
       fail();
     }
   }
 }
 
-function assertCheckpoint(
-  value: unknown,
-): asserts value is ReleaseSafeResumeCheckpoint {
+function assertCheckpoint(value: unknown): asserts value is ReleaseSafeResumeCheckpoint {
   assertExactKeys(value, [
     "stateHash",
     "previousStateHash",
@@ -799,8 +699,7 @@ export function optimizationResumeCheckpointChainHash(
   });
   for (const checkpoint of path.checkpoints) {
     head = canonicalHash({
-      domain:
-        "dark-factory.optimization-resume-chain-link.v1",
+      domain: "dark-factory.optimization-resume-chain-link.v1",
       previousChainHash: head,
       checkpoint,
     });
@@ -808,9 +707,7 @@ export function optimizationResumeCheckpointChainHash(
   return head;
 }
 
-function assertResumePath(
-  value: unknown,
-): asserts value is OptimizationResumeVerification {
+function assertResumePath(value: unknown): asserts value is OptimizationResumeVerification {
   assertExactKeys(value, [
     "schemaVersion",
     "domain",
@@ -831,8 +728,7 @@ function assertResumePath(
   assertHash(value.currentStateHash);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.optimization-resume-path.v1" ||
+    value.domain !== "dark-factory.optimization-resume-path.v1" ||
     !Number.isSafeInteger(value.experimentNumber) ||
     (value.experimentNumber as number) < 1 ||
     !Array.isArray(value.checkpoints) ||
@@ -842,18 +738,11 @@ function assertResumePath(
     fail();
   }
   let previous = value.allocationStateHash;
-  const seen = new Set<string>([
-    value.priorStateHash,
-    value.allocationStateHash,
-  ]);
+  const seen = new Set<string>([value.priorStateHash, value.allocationStateHash]);
   for (const rawCheckpoint of value.checkpoints) {
     assertCheckpoint(rawCheckpoint);
-    const checkpoint =
-      rawCheckpoint as ReleaseSafeResumeCheckpoint;
-    if (
-      checkpoint.previousStateHash !== previous ||
-      seen.has(checkpoint.stateHash)
-    ) {
+    const checkpoint = rawCheckpoint as ReleaseSafeResumeCheckpoint;
+    if (checkpoint.previousStateHash !== previous || seen.has(checkpoint.stateHash)) {
       fail();
     }
     seen.add(checkpoint.stateHash);
@@ -876,9 +765,7 @@ function resumePathPrefix(
   const checkpoints = path.checkpoints.slice(0, checkpointCount);
   return {
     ...path,
-    currentStateHash:
-      checkpoints.at(-1)?.stateHash ??
-      path.allocationStateHash,
+    currentStateHash: checkpoints.at(-1)?.stateHash ?? path.allocationStateHash,
     checkpoints,
   };
 }
@@ -899,11 +786,9 @@ function assertResumeAttestation(
   ]);
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "release-safe-optimization-resume-path-attestation" ||
+    value.sensitivity !== "release-safe-optimization-resume-path-attestation" ||
     value.pathHash !== canonicalHash(path) ||
-    value.checkpointChainHash !==
-      optimizationResumeCheckpointChainHash(path) ||
+    value.checkpointChainHash !== optimizationResumeCheckpointChainHash(path) ||
     value.checkpointCount !== path.checkpoints.length ||
     typeof value.authorizationAttestationHash !== "string" ||
     !SHA256.test(value.authorizationAttestationHash) ||
@@ -920,22 +805,15 @@ function assertResumeRecord(
   value: unknown,
 ): asserts value is DurableOptimizationResumePath {
   assertHash(key);
-  assertExactKeys(value, [
-    "path",
-    "pathHash",
-    "checkpointChainHash",
-    "verificationHistory",
-  ]);
+  assertExactKeys(value, ["path", "pathHash", "checkpointChainHash", "verificationHistory"]);
   assertResumePath(value.path);
   if (
     key !== value.path.allocationStateHash ||
     value.pathHash !== canonicalHash(value.path) ||
-    value.checkpointChainHash !==
-      optimizationResumeCheckpointChainHash(value.path) ||
+    value.checkpointChainHash !== optimizationResumeCheckpointChainHash(value.path) ||
     !Array.isArray(value.verificationHistory) ||
     value.verificationHistory.length < 1 ||
-    value.verificationHistory.length >
-      value.path.checkpoints.length + 1
+    value.verificationHistory.length > value.path.checkpoints.length + 1
   ) {
     fail();
   }
@@ -958,23 +836,16 @@ function assertResumeRecord(
     priorCount = checkpointCount as number;
   }
   const latest = value.verificationHistory.at(-1);
-  if (
-    latest === undefined ||
-    latest.checkpointCount !== value.path.checkpoints.length
-  ) {
+  if (latest === undefined || latest.checkpointCount !== value.path.checkpoints.length) {
     fail();
   }
 }
 
 function interruptionDraftHash(
-  draft: Omit<
-    OptimizationInterruptionRecordDraft,
-    "brokerExposureStateAttestationHash"
-  >,
+  draft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
 ): string {
   return canonicalHash({
-    domain:
-      "dark-factory.optimization-interruption-draft-binding.v1",
+    domain: "dark-factory.optimization-interruption-draft-binding.v1",
     draft,
   });
 }
@@ -1003,24 +874,18 @@ function assertInterruptionDraft(
   assertHash(value.allocationStateHash);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.optimization-interruption.v1" ||
+    value.domain !== "dark-factory.optimization-interruption.v1" ||
     !Number.isSafeInteger(value.experimentNumber) ||
     (value.experimentNumber as number) < 1 ||
-    ![
-      "integrity",
-      "infrastructure",
-      "budget",
-      "operator-stop",
-    ].includes(value.failureClass as string)
+    !["integrity", "infrastructure", "budget", "operator-stop"].includes(
+      value.failureClass as string,
+    )
   ) {
     fail();
   }
 }
 
-function recordDraft(
-  record: OptimizationInterruptionRecord,
-): OptimizationInterruptionRecordDraft {
+function recordDraft(record: OptimizationInterruptionRecord): OptimizationInterruptionRecordDraft {
   return {
     schemaVersion: record.schemaVersion,
     domain: record.domain,
@@ -1031,17 +896,13 @@ function recordDraft(
     claimHash: record.claimHash,
     allocationStateHash: record.allocationStateHash,
     failureClass: record.failureClass,
-    brokerExposureStateAttestationHash:
-      record.brokerExposureStateAttestationHash,
+    brokerExposureStateAttestationHash: record.brokerExposureStateAttestationHash,
   };
 }
 
 function draftWithoutExposure(
   record: OptimizationInterruptionRecord,
-): Omit<
-  OptimizationInterruptionRecordDraft,
-  "brokerExposureStateAttestationHash"
-> {
+): Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash"> {
   const draft = recordDraft(record);
   return {
     schemaVersion: draft.schemaVersion,
@@ -1056,9 +917,7 @@ function draftWithoutExposure(
   };
 }
 
-function assertInterruptionRecord(
-  value: unknown,
-): asserts value is OptimizationInterruptionRecord {
+function assertInterruptionRecord(value: unknown): asserts value is OptimizationInterruptionRecord {
   assertExactKeys(value, [
     "schemaVersion",
     "domain",
@@ -1095,42 +954,26 @@ function assertControl(
   value: unknown,
   failureClass: OptimizationInterruptionRecord["failureClass"],
 ): asserts value is OptimizationInterruptionControl {
-  if (
-    isPlainRecord(value) &&
-    value.kind === "stop"
-  ) {
+  if (isPlainRecord(value) && value.kind === "stop") {
     assertExactKeys(value, ["kind", "reason"]);
     if (
       failureClass !== "operator-stop" ||
-      !["operator", "sigint", "sigterm", "system-shutdown"].includes(
-        value.reason as string,
-      )
+      !["operator", "sigint", "sigterm", "system-shutdown"].includes(value.reason as string)
     ) {
       fail();
     }
     return;
   }
-  assertExactKeys(value, [
-    "kind",
-    "reason",
-    "attestationHash",
-  ]);
+  assertExactKeys(value, ["kind", "reason", "attestationHash"]);
   assertHash(value.attestationHash);
   const allowed: Readonly<
     Record<
-      Exclude<
-        OptimizationInterruptionRecord["failureClass"],
-        "operator-stop"
-      >,
+      Exclude<OptimizationInterruptionRecord["failureClass"], "operator-stop">,
       readonly string[]
     >
   > = {
     integrity: ["integrity", "policy"],
-    infrastructure: [
-      "infrastructure",
-      "publication",
-      "policy",
-    ],
+    infrastructure: ["infrastructure", "publication", "policy"],
     budget: ["budget-exhausted", "policy"],
   };
   if (
@@ -1144,10 +987,7 @@ function assertControl(
 
 function assertBrokerExposureAttestation(
   value: unknown,
-  draft: Omit<
-    OptimizationInterruptionRecordDraft,
-    "brokerExposureStateAttestationHash"
-  >,
+  draft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
 ): asserts value is TrustedOptimizationBrokerExposureAttestation {
   assertExactKeys(value, [
     "schemaVersion",
@@ -1159,15 +999,13 @@ function assertBrokerExposureAttestation(
   ]);
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "release-safe-optimization-broker-exposure-attestation" ||
+    value.sensitivity !== "release-safe-optimization-broker-exposure-attestation" ||
     value.draftHash !== interruptionDraftHash(draft) ||
     typeof value.brokerExposureStateAttestationHash !== "string" ||
     !SHA256.test(value.brokerExposureStateAttestationHash) ||
     typeof value.authorizationAttestationHash !== "string" ||
     !SHA256.test(value.authorizationAttestationHash) ||
-    value.brokerExposureStateAttestationHash ===
-      value.authorizationAttestationHash ||
+    value.brokerExposureStateAttestationHash === value.authorizationAttestationHash ||
     value.containsTaskIdentifiers !== false
   ) {
     fail();
@@ -1192,8 +1030,7 @@ function assertControlAuthorization(
   assertControl(value.control, record.failureClass);
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "release-safe-optimization-interruption-control-authorization" ||
+    value.sensitivity !== "release-safe-optimization-interruption-control-authorization" ||
     value.recordHash !== record.recordHash ||
     value.currentStateHash !== currentStateHash ||
     value.controlHash !== canonicalHash(value.control) ||
@@ -1217,9 +1054,7 @@ function assertInterruptionEntry(
     "finalStateHash",
   ]);
   assertInterruptionRecord(value.record);
-  assertHash(
-    value.brokerExposureAuthorizationAttestationHash,
-  );
+  assertHash(value.brokerExposureAuthorizationAttestationHash);
   assertNullableHash(value.finalStateHash);
   if (key !== value.record.recordHash) fail();
   if (value.controlPreparation !== null) {
@@ -1230,24 +1065,15 @@ function assertInterruptionEntry(
       "authorizationAttestationHash",
     ]);
     assertHash(value.controlPreparation.currentStateHash);
-    assertControl(
-      value.controlPreparation.control,
-      value.record.failureClass,
-    );
+    assertControl(value.controlPreparation.control, value.record.failureClass);
     assertHash(value.controlPreparation.controlHash);
-    assertHash(
-      value.controlPreparation.authorizationAttestationHash,
-    );
-    if (
-      value.controlPreparation.controlHash !==
-      canonicalHash(value.controlPreparation.control)
-    ) {
+    assertHash(value.controlPreparation.authorizationAttestationHash);
+    if (value.controlPreparation.controlHash !== canonicalHash(value.controlPreparation.control)) {
       fail();
     }
   }
   if (
-    (value.finalStateHash !== null) !==
-      (value.controlPreparation !== null) &&
+    (value.finalStateHash !== null) !== (value.controlPreparation !== null) &&
     value.finalStateHash !== null
   ) {
     fail();
@@ -1255,23 +1081,19 @@ function assertInterruptionEntry(
   if (
     value.finalStateHash !== null &&
     (value.controlPreparation === null ||
-      value.finalStateHash ===
-        value.controlPreparation.currentStateHash)
+      value.finalStateHash === value.controlPreparation.currentStateHash)
   ) {
     fail();
   }
 }
 
-function interruptionScope(
-  input: {
-    readonly campaignId: string;
-    readonly lineageId: string;
-    readonly protocolHash: string;
-  },
-): string {
+function interruptionScope(input: {
+  readonly campaignId: string;
+  readonly lineageId: string;
+  readonly protocolHash: string;
+}): string {
   return canonicalHash({
-    domain:
-      "dark-factory.optimization-interruption-scope.v1",
+    domain: "dark-factory.optimization-interruption-scope.v1",
     campaignId: input.campaignId,
     lineageId: input.lineageId,
     protocolHash: input.protocolHash,
@@ -1279,9 +1101,7 @@ function interruptionScope(
 }
 
 function assertPreparationContinuity(
-  preparations: Readonly<
-    Record<string, DurableOptimizationPreparation>
-  >,
+  preparations: Readonly<Record<string, DurableOptimizationPreparation>>,
 ): void {
   const discoveryPairs = new Map<
     string,
@@ -1311,8 +1131,7 @@ function assertPreparationContinuity(
       campaignId: discovery.campaignId,
       lineageId: discovery.lineageId,
       protocolHash: discovery.protocolHash,
-      previousDiscoveryAttestationHash:
-        discovery.previousDiscoveryAttestationHash,
+      previousDiscoveryAttestationHash: discovery.previousDiscoveryAttestationHash,
     });
     const pair = discoveryPairs.get(key) ?? {
       first: null,
@@ -1338,20 +1157,13 @@ function assertPreparationContinuity(
       firstDiscovery === null ||
       secondDiscovery === null ||
       first.claimBinding === null ||
-      secondDiscovery.priorAllocationStateHash !==
-        first.context.allocationStateHash ||
-      secondDiscovery.priorClaimHash !==
-        first.claimBinding.claimHash ||
-      second.context.experimentNumber !==
-        first.context.experimentNumber + 1 ||
-      second.context.priorStateHash ===
-        first.context.allocationStateHash ||
-      first.input.activeChampion.activeCommit !==
-        second.input.activeChampion.activeCommit ||
-      first.input.experiment.parentExperiment !==
-        second.input.experiment.parentExperiment ||
-      firstDiscovery.diagnosticBindingHash !==
-        secondDiscovery.diagnosticBindingHash ||
+      secondDiscovery.priorAllocationStateHash !== first.context.allocationStateHash ||
+      secondDiscovery.priorClaimHash !== first.claimBinding.claimHash ||
+      second.context.experimentNumber !== first.context.experimentNumber + 1 ||
+      second.context.priorStateHash === first.context.allocationStateHash ||
+      first.input.activeChampion.activeCommit !== second.input.activeChampion.activeCommit ||
+      first.input.experiment.parentExperiment !== second.input.experiment.parentExperiment ||
+      firstDiscovery.diagnosticBindingHash !== secondDiscovery.diagnosticBindingHash ||
       canonicalJson(firstDiscovery.diagnosticBrief) !==
         canonicalJson(secondDiscovery.diagnosticBrief)
     ) {
@@ -1376,12 +1188,10 @@ export function assertDurableOptimizationCoordinationState(
   ]);
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "trusted-optimization-coordination" ||
+    value.sensitivity !== "trusted-optimization-coordination" ||
     typeof value.storeScopeHash !== "string" ||
     !SHA256.test(value.storeScopeHash) ||
-    (expectedStoreScopeHash !== undefined &&
-      value.storeScopeHash !== expectedStoreScopeHash) ||
+    (expectedStoreScopeHash !== undefined && value.storeScopeHash !== expectedStoreScopeHash) ||
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
     !isPlainRecord(value.preparations) ||
@@ -1391,30 +1201,22 @@ export function assertDurableOptimizationCoordinationState(
   ) {
     fail();
   }
-  const state =
-    value as unknown as DurableOptimizationCoordinationState;
-  for (const [key, preparation] of Object.entries(
-    state.preparations,
-  )) {
+  const state = value as unknown as DurableOptimizationCoordinationState;
+  for (const [key, preparation] of Object.entries(state.preparations)) {
     assertPreparation(key, preparation);
   }
   assertPreparationContinuity(state.preparations);
 
   const authorityAttestations = new Set<string>();
-  for (const preparation of Object.values(
-    state.preparations,
-  )) {
+  for (const preparation of Object.values(state.preparations)) {
     if (preparation.discovery !== null) {
-      const hash =
-        preparation.discovery.resolutionAttestationHash;
+      const hash = preparation.discovery.resolutionAttestationHash;
       if (authorityAttestations.has(hash)) fail();
       authorityAttestations.add(hash);
     }
   }
 
-  for (const [key, resume] of Object.entries(
-    state.resumePaths,
-  )) {
+  for (const [key, resume] of Object.entries(state.resumePaths)) {
     assertResumeRecord(key, resume);
     for (const attestation of resume.verificationHistory) {
       const hash = attestation.authorizationAttestationHash;
@@ -1424,14 +1226,11 @@ export function assertDurableOptimizationCoordinationState(
   }
 
   const expectedActive: Record<string, string> = {};
-  for (const [key, interruption] of Object.entries(
-    state.interruptions,
-  )) {
+  for (const [key, interruption] of Object.entries(state.interruptions)) {
     assertInterruptionEntry(key, interruption);
     const hashes = [
       interruption.brokerExposureAuthorizationAttestationHash,
-      interruption.controlPreparation
-        ?.authorizationAttestationHash,
+      interruption.controlPreparation?.authorizationAttestationHash,
     ].filter((item): item is string => item !== undefined);
     for (const hash of hashes) {
       if (authorityAttestations.has(hash)) fail();
@@ -1443,28 +1242,21 @@ export function assertDurableOptimizationCoordinationState(
       expectedActive[scope] = interruption.record.recordHash;
     }
   }
-  for (const [scope, recordHash] of Object.entries(
-    state.activeInterruptions,
-  )) {
+  for (const [scope, recordHash] of Object.entries(state.activeInterruptions)) {
     assertHash(scope);
     assertHash(recordHash);
   }
-  if (
-    canonicalJson(state.activeInterruptions) !==
-    canonicalJson(expectedActive)
-  ) {
+  if (canonicalJson(state.activeInterruptions) !== canonicalJson(expectedActive)) {
     fail();
   }
 
   const expectedRevision =
     Object.values(state.preparations).reduce(
-      (count, preparation) =>
-        count + 1 + (preparation.claimBinding === null ? 0 : 1),
+      (count, preparation) => count + 1 + (preparation.claimBinding === null ? 0 : 1),
       0,
     ) +
     Object.values(state.resumePaths).reduce(
-      (count, path) =>
-        count + path.verificationHistory.length,
+      (count, path) => count + path.verificationHistory.length,
       0,
     ) +
     Object.values(state.interruptions).reduce(
@@ -1495,14 +1287,11 @@ export function emptyOptimizationCoordinationState(
 }
 
 function storeScopeHash(storeId: string): string {
-  if (
-    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(storeId)
-  ) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(storeId)) {
     fail();
   }
   return canonicalHash({
-    domain:
-      "dark-factory.optimization-coordination-store-scope.v1",
+    domain: "dark-factory.optimization-coordination-store-scope.v1",
     storeId,
   });
 }
@@ -1519,26 +1308,18 @@ export class MountedVolumeAtomicOptimizationCoordinationStateStore
 
   public constructor(options: MountedVolumeDurableStateOptions) {
     const scope = storeScopeHash(options.storeId);
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableOptimizationCoordinationState>(
-        options,
-        `optimization-coordination-${options.storeId}`,
-        {
-          domain:
-            "dark-factory.optimization-coordination-state.v1",
-          initialState: () =>
-            emptyOptimizationCoordinationState(scope),
-          assertState(
-            value,
-          ): asserts value is DurableOptimizationCoordinationState {
-            assertDurableOptimizationCoordinationState(
-              value,
-              scope,
-            );
-          },
-          revision: (state) => state.revision,
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableOptimizationCoordinationState>(
+      options,
+      `optimization-coordination-${options.storeId}`,
+      {
+        domain: "dark-factory.optimization-coordination-state.v1",
+        initialState: () => emptyOptimizationCoordinationState(scope),
+        assertState(value): asserts value is DurableOptimizationCoordinationState {
+          assertDurableOptimizationCoordinationState(value, scope);
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public transact<Result>(
@@ -1562,23 +1343,17 @@ function createExperimentInput(
   const input: ExperimentRunInput = {
     experiment: {
       number: context.experimentNumber,
-      slug: context.sourceOnlyBootstrap
-        ? "source-only-bootstrap"
-        : "diagnostic-repair",
+      slug: context.sourceOnlyBootstrap ? "source-only-bootstrap" : "diagnostic-repair",
       kind: "optimization",
-      parentExperiment:
-        context.allocationSnapshot.activeChampion.activeExperiment,
+      parentExperiment: context.allocationSnapshot.activeChampion.activeExperiment,
       lineageId: context.lineageId,
       protocolHash: context.protocolHash,
     },
-    activeChampion:
-      context.allocationSnapshot.activeChampion,
+    activeChampion: context.allocationSnapshot.activeChampion,
     budget: context.allocationSnapshot.budget,
     diagnosticBrief: discovery?.diagnosticBrief ?? null,
-    previousDiscoveryAttestationHash:
-      discovery?.previousDiscoveryAttestationHash ?? null,
-    repairAttemptOrdinal:
-      discovery?.repairAttemptOrdinal ?? 1,
+    previousDiscoveryAttestationHash: discovery?.previousDiscoveryAttestationHash ?? null,
+    repairAttemptOrdinal: discovery?.repairAttemptOrdinal ?? 1,
     stop: { requested: false },
   };
   const cloned = cloneJson(input);
@@ -1607,9 +1382,7 @@ function assertNewDiscoveryContinuity(
     return;
   }
   if (discovery === null) fail();
-  const sameDiscovery = Object.values(
-    state.preparations,
-  ).filter(
+  const sameDiscovery = Object.values(state.preparations).filter(
     (entry) =>
       entry.discovery !== null &&
       entry.context.campaignId === context.campaignId &&
@@ -1629,16 +1402,11 @@ function assertNewDiscoveryContinuity(
     first.discovery === null ||
     first.discovery.repairAttemptOrdinal !== 1 ||
     first.claimBinding === null ||
-    first.context.experimentNumber + 1 !==
-      context.experimentNumber ||
-    discovery.priorAllocationStateHash !==
-      first.context.allocationStateHash ||
-    discovery.priorClaimHash !==
-      first.claimBinding.claimHash ||
-    discovery.diagnosticBindingHash !==
-      first.discovery.diagnosticBindingHash ||
-    canonicalJson(discovery.diagnosticBrief) !==
-      canonicalJson(first.discovery.diagnosticBrief) ||
+    first.context.experimentNumber + 1 !== context.experimentNumber ||
+    discovery.priorAllocationStateHash !== first.context.allocationStateHash ||
+    discovery.priorClaimHash !== first.claimBinding.claimHash ||
+    discovery.diagnosticBindingHash !== first.discovery.diagnosticBindingHash ||
+    canonicalJson(discovery.diagnosticBrief) !== canonicalJson(first.discovery.diagnosticBrief) ||
     context.allocationSnapshot.activeChampion.activeCommit !==
       first.context.allocationSnapshot.activeChampion.activeCommit ||
     context.allocationSnapshot.activeChampion.activeExperiment !==
@@ -1650,8 +1418,7 @@ function assertNewDiscoveryContinuity(
 
 export interface DurableTrustedOptimizationInputFactoryOptions {
   readonly state: AtomicOptimizationCoordinationStateStore;
-  readonly diagnosticResolver:
-    TrustedTaskFreeOptimizationDiagnosticResolver;
+  readonly diagnosticResolver: TrustedTaskFreeOptimizationDiagnosticResolver;
 }
 
 /**
@@ -1659,28 +1426,19 @@ export interface DurableTrustedOptimizationInputFactoryOptions {
  * resolver is never called again after a committed preparation, so authority
  * nondeterminism cannot change an already-issued claim after a restart.
  */
-export class DurableTrustedOptimizationInputFactory
-  implements TrustedOptimizationInputFactory
-{
+export class DurableTrustedOptimizationInputFactory implements TrustedOptimizationInputFactory {
   readonly boundary = "trusted-cloud" as const;
   readonly #state: AtomicOptimizationCoordinationStateStore;
   readonly #resolver: TrustedTaskFreeOptimizationDiagnosticResolver;
 
-  public constructor(
-    options: DurableTrustedOptimizationInputFactoryOptions,
-  ) {
-    if (
-      options.diagnosticResolver.boundary !== "trusted-cloud"
-    ) {
+  public constructor(options: DurableTrustedOptimizationInputFactoryOptions) {
+    if (options.diagnosticResolver.boundary !== "trusted-cloud") {
       fail();
     }
     this.#state = options.state;
     this.#resolver = Object.freeze({
       boundary: "trusted-cloud" as const,
-      resolve:
-        options.diagnosticResolver.resolve.bind(
-          options.diagnosticResolver,
-        ),
+      resolve: options.diagnosticResolver.resolve.bind(options.diagnosticResolver),
     });
   }
 
@@ -1688,8 +1446,7 @@ export class DurableTrustedOptimizationInputFactory
     context: OptimizationInputPreparationContext,
   ): Promise<ExperimentRunInput | null> {
     return this.#state.transact((state) => {
-      const existing =
-        state.preparations[context.allocationStateHash];
+      const existing = state.preparations[context.allocationStateHash];
       if (existing === undefined) {
         return { next: state, result: null };
       }
@@ -1725,13 +1482,11 @@ export class DurableTrustedOptimizationInputFactory
       claimBinding: null,
     };
     return this.#state.transact((state) => {
-      const concurrent =
-        state.preparations[context.allocationStateHash];
+      const concurrent = state.preparations[context.allocationStateHash];
       if (concurrent !== undefined) {
         if (
           !samePreparationRequest(concurrent, context) ||
-          canonicalJson(concurrent) !==
-            canonicalJson(candidate)
+          canonicalJson(concurrent) !== canonicalJson(candidate)
         ) {
           fail();
         }
@@ -1740,11 +1495,7 @@ export class DurableTrustedOptimizationInputFactory
           result: cloneJson(concurrent.input),
         };
       }
-      assertNewDiscoveryContinuity(
-        state,
-        context,
-        discovery,
-      );
+      assertNewDiscoveryContinuity(state, context, discovery);
       const next: DurableOptimizationCoordinationState = {
         ...state,
         revision: state.revision + 1,
@@ -1753,44 +1504,31 @@ export class DurableTrustedOptimizationInputFactory
           [context.allocationStateHash]: candidate,
         },
       };
-      assertDurableOptimizationCoordinationState(
-        next,
-        state.storeScopeHash,
-      );
+      assertDurableOptimizationCoordinationState(next, state.storeScopeHash);
       return { next, result: cloneJson(input) };
     });
   }
 
-  public async bindClaim(
-    rawBinding: PersistedOptimizationClaimBinding,
-  ): Promise<void> {
+  public async bindClaim(rawBinding: PersistedOptimizationClaimBinding): Promise<void> {
     const binding = cloneJson(rawBinding);
     assertClaimBinding(binding);
     await this.#state.transact((state) => {
-      const preparation =
-        state.preparations[binding.allocationStateHash];
+      const preparation = state.preparations[binding.allocationStateHash];
       if (preparation === undefined) fail();
       const candidate: DurableOptimizationPreparation = {
         ...preparation,
         claimBinding: binding,
       };
-      assertPreparation(
-        binding.allocationStateHash,
-        candidate,
-      );
+      assertPreparation(binding.allocationStateHash, candidate);
       if (preparation.claimBinding !== null) {
-        if (
-          canonicalJson(preparation.claimBinding) !==
-          canonicalJson(binding)
-        ) {
+        if (canonicalJson(preparation.claimBinding) !== canonicalJson(binding)) {
           fail();
         }
         return { next: state, result: undefined };
       }
       if (
         Object.values(state.preparations).some(
-          (entry) =>
-            entry.claimBinding?.claimHash === binding.claimHash,
+          (entry) => entry.claimBinding?.claimHash === binding.claimHash,
         )
       ) {
         fail();
@@ -1803,10 +1541,7 @@ export class DurableTrustedOptimizationInputFactory
           [binding.allocationStateHash]: candidate,
         },
       };
-      assertDurableOptimizationCoordinationState(
-        next,
-        state.storeScopeHash,
-      );
+      assertDurableOptimizationCoordinationState(next, state.storeScopeHash);
       return { next, result: undefined };
     });
   }
@@ -1837,14 +1572,9 @@ function assertStrictResumeExtension(
 ): void {
   assertSameResumeBase(existing.path, candidate);
   if (
-    candidate.checkpoints.length <=
-      existing.path.checkpoints.length ||
-    canonicalJson(
-      candidate.checkpoints.slice(
-        0,
-        existing.path.checkpoints.length,
-      ),
-    ) !== canonicalJson(existing.path.checkpoints)
+    candidate.checkpoints.length <= existing.path.checkpoints.length ||
+    canonicalJson(candidate.checkpoints.slice(0, existing.path.checkpoints.length)) !==
+      canonicalJson(existing.path.checkpoints)
   ) {
     fail();
   }
@@ -1852,8 +1582,7 @@ function assertStrictResumeExtension(
 
 export interface AttestedTrustedOptimizationResumeVerifierOptions {
   readonly state: AtomicOptimizationCoordinationStateStore;
-  readonly authority:
-    TrustedOptimizationResumeAttestationAuthority;
+  readonly authority: TrustedOptimizationResumeAttestationAuthority;
 }
 
 /**
@@ -1868,32 +1597,20 @@ export class AttestedTrustedOptimizationResumeVerifier
   readonly #state: AtomicOptimizationCoordinationStateStore;
   readonly #authority: TrustedOptimizationResumeAttestationAuthority;
 
-  public constructor(
-    options: AttestedTrustedOptimizationResumeVerifierOptions,
-  ) {
-    if (
-      options.authority.boundary !==
-      "trusted-cloud-attestation-authority"
-    ) {
+  public constructor(options: AttestedTrustedOptimizationResumeVerifierOptions) {
+    if (options.authority.boundary !== "trusted-cloud-attestation-authority") {
       fail();
     }
     this.#state = options.state;
     this.#authority = Object.freeze({
-      boundary:
-        "trusted-cloud-attestation-authority" as const,
-      verifyAndAttest:
-        options.authority.verifyAndAttest.bind(
-          options.authority,
-        ),
+      boundary: "trusted-cloud-attestation-authority" as const,
+      verifyAndAttest: options.authority.verifyAndAttest.bind(options.authority),
     });
   }
 
-  async #alreadyVerified(
-    path: OptimizationResumeVerification,
-  ): Promise<boolean> {
+  async #alreadyVerified(path: OptimizationResumeVerification): Promise<boolean> {
     return this.#state.transact((state) => {
-      const existing =
-        state.resumePaths[path.allocationStateHash];
+      const existing = state.resumePaths[path.allocationStateHash];
       if (existing === undefined) {
         return { next: state, result: false };
       }
@@ -1909,20 +1626,15 @@ export class AttestedTrustedOptimizationResumeVerifier
     });
   }
 
-  public async verify(
-    rawPath: OptimizationResumeVerification,
-  ): Promise<void> {
+  public async verify(rawPath: OptimizationResumeVerification): Promise<void> {
     const path = cloneJson(rawPath);
     assertResumePath(path);
     if (await this.#alreadyVerified(path)) return;
 
-    const attestation = cloneJson(
-      await this.#authority.verifyAndAttest(path),
-    );
+    const attestation = cloneJson(await this.#authority.verifyAndAttest(path));
     assertResumeAttestation(attestation, path);
     await this.#state.transact((state) => {
-      const existing =
-        state.resumePaths[path.allocationStateHash];
+      const existing = state.resumePaths[path.allocationStateHash];
       if (
         existing !== undefined &&
         existing.pathHash === canonicalHash(path) &&
@@ -1936,12 +1648,8 @@ export class AttestedTrustedOptimizationResumeVerifier
       const record: DurableOptimizationResumePath = {
         path,
         pathHash: canonicalHash(path),
-        checkpointChainHash:
-          optimizationResumeCheckpointChainHash(path),
-        verificationHistory: [
-          ...(existing?.verificationHistory ?? []),
-          attestation,
-        ],
+        checkpointChainHash: optimizationResumeCheckpointChainHash(path),
+        verificationHistory: [...(existing?.verificationHistory ?? []), attestation],
       };
       assertResumeRecord(path.allocationStateHash, record);
       const next: DurableOptimizationCoordinationState = {
@@ -1952,10 +1660,7 @@ export class AttestedTrustedOptimizationResumeVerifier
           [path.allocationStateHash]: record,
         },
       };
-      assertDurableOptimizationCoordinationState(
-        next,
-        state.storeScopeHash,
-      );
+      assertDurableOptimizationCoordinationState(next, state.storeScopeHash);
       return { next, result: undefined };
     });
   }
@@ -1978,46 +1683,27 @@ export class DurableTrustedOptimizationInterruptionPort
   readonly #state: AtomicOptimizationCoordinationStateStore;
   readonly #authority: TrustedOptimizationInterruptionAuthority;
 
-  public constructor(
-    options: DurableTrustedOptimizationInterruptionPortOptions,
-  ) {
-    if (
-      options.authority.boundary !==
-      "trusted-cloud-attestation-authority"
-    ) {
+  public constructor(options: DurableTrustedOptimizationInterruptionPortOptions) {
+    if (options.authority.boundary !== "trusted-cloud-attestation-authority") {
       fail();
     }
     this.#state = options.state;
     this.#authority = Object.freeze({
-      boundary:
-        "trusted-cloud-attestation-authority" as const,
-      attestBrokerExposure:
-        options.authority.attestBrokerExposure.bind(
-          options.authority,
-        ),
-      authorizeControl:
-        options.authority.authorizeControl.bind(
-          options.authority,
-        ),
+      boundary: "trusted-cloud-attestation-authority" as const,
+      attestBrokerExposure: options.authority.attestBrokerExposure.bind(options.authority),
+      authorizeControl: options.authority.authorizeControl.bind(options.authority),
     });
   }
 
   async #findExistingForDraft(
-    draft: Omit<
-      OptimizationInterruptionRecordDraft,
-      "brokerExposureStateAttestationHash"
-    >,
+    draft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
   ): Promise<OptimizationInterruptionRecord | null> {
     return this.#state.transact((state) => {
       const scope = interruptionScope(draft);
       const activeHash = state.activeInterruptions[scope];
       if (activeHash === undefined) {
-        const applied = Object.values(
-          state.interruptions,
-        ).find(
-          (entry) =>
-            canonicalJson(draftWithoutExposure(entry.record)) ===
-            canonicalJson(draft),
+        const applied = Object.values(state.interruptions).find(
+          (entry) => canonicalJson(draftWithoutExposure(entry.record)) === canonicalJson(draft),
         );
         if (applied !== undefined) fail();
         return { next: state, result: null };
@@ -2025,8 +1711,7 @@ export class DurableTrustedOptimizationInterruptionPort
       const entry = state.interruptions[activeHash];
       if (
         entry === undefined ||
-        canonicalJson(draftWithoutExposure(entry.record)) !==
-          canonicalJson(draft)
+        canonicalJson(draftWithoutExposure(entry.record)) !== canonicalJson(draft)
       ) {
         fail();
       }
@@ -2038,24 +1723,18 @@ export class DurableTrustedOptimizationInterruptionPort
   }
 
   public async begin(
-    rawDraft: Omit<
-      OptimizationInterruptionRecordDraft,
-      "brokerExposureStateAttestationHash"
-    >,
+    rawDraft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
   ): Promise<OptimizationInterruptionRecord> {
     const draft = cloneJson(rawDraft);
     assertInterruptionDraft(draft);
     const existing = await this.#findExistingForDraft(draft);
     if (existing !== null) return existing;
 
-    const exposure = cloneJson(
-      await this.#authority.attestBrokerExposure(draft),
-    );
+    const exposure = cloneJson(await this.#authority.attestBrokerExposure(draft));
     assertBrokerExposureAttestation(exposure, draft);
     const recordDraftValue: OptimizationInterruptionRecordDraft = {
       ...draft,
-      brokerExposureStateAttestationHash:
-        exposure.brokerExposureStateAttestationHash,
+      brokerExposureStateAttestationHash: exposure.brokerExposureStateAttestationHash,
     };
     const record: OptimizationInterruptionRecord = {
       ...recordDraftValue,
@@ -2065,15 +1744,12 @@ export class DurableTrustedOptimizationInterruptionPort
 
     return this.#state.transact((state) => {
       const scope = interruptionScope(draft);
-      const concurrentHash =
-        state.activeInterruptions[scope];
+      const concurrentHash = state.activeInterruptions[scope];
       if (concurrentHash !== undefined) {
-        const concurrent =
-          state.interruptions[concurrentHash];
+        const concurrent = state.interruptions[concurrentHash];
         if (
           concurrent === undefined ||
-          canonicalJson(concurrent.record) !==
-            canonicalJson(record)
+          canonicalJson(concurrent.record) !== canonicalJson(record)
         ) {
           fail();
         }
@@ -2094,8 +1770,7 @@ export class DurableTrustedOptimizationInterruptionPort
       }
       const entry: DurableOptimizationInterruption = {
         record,
-        brokerExposureAuthorizationAttestationHash:
-          exposure.authorizationAttestationHash,
+        brokerExposureAuthorizationAttestationHash: exposure.authorizationAttestationHash,
         controlPreparation: null,
         finalStateHash: null,
       };
@@ -2111,10 +1786,7 @@ export class DurableTrustedOptimizationInterruptionPort
           [scope]: record.recordHash,
         },
       };
-      assertDurableOptimizationCoordinationState(
-        next,
-        state.storeScopeHash,
-      );
+      assertDurableOptimizationCoordinationState(next, state.storeScopeHash);
       return { next, result: cloneJson(record) };
     });
   }
@@ -2126,29 +1798,18 @@ export class DurableTrustedOptimizationInterruptionPort
     readonly currentStateHash: string;
   }): Promise<OptimizationInterruptionRecord | null> {
     const query = cloneJson(input);
-    assertExactKeys(query, [
-      "campaignId",
-      "lineageId",
-      "protocolHash",
-      "currentStateHash",
-    ]);
+    assertExactKeys(query, ["campaignId", "lineageId", "protocolHash", "currentStateHash"]);
     assertSafeId(query.campaignId);
     assertSafeId(query.lineageId);
     assertHash(query.protocolHash);
     assertHash(query.currentStateHash);
     return this.#state.transact((state) => {
-      const recordHash =
-        state.activeInterruptions[
-          interruptionScope(query)
-        ];
+      const recordHash = state.activeInterruptions[interruptionScope(query)];
       if (recordHash === undefined) {
         return { next: state, result: null };
       }
       const entry = state.interruptions[recordHash];
-      if (
-        entry === undefined ||
-        entry.finalStateHash !== null
-      ) {
+      if (entry === undefined || entry.finalStateHash !== null) {
         fail();
       }
       return {
@@ -2167,23 +1828,18 @@ export class DurableTrustedOptimizationInterruptionPort
     assertInterruptionRecord(request.record);
     assertHash(request.currentStateHash);
     const existing = await this.#state.transact((state) => {
-      const entry =
-        state.interruptions[request.record.recordHash];
+      const entry = state.interruptions[request.record.recordHash];
       if (
         entry === undefined ||
         entry.finalStateHash !== null ||
-        canonicalJson(entry.record) !==
-          canonicalJson(request.record)
+        canonicalJson(entry.record) !== canonicalJson(request.record)
       ) {
         fail();
       }
       if (entry.controlPreparation === null) {
         return { next: state, result: null };
       }
-      if (
-        entry.controlPreparation.currentStateHash !==
-        request.currentStateHash
-      ) {
+      if (entry.controlPreparation.currentStateHash !== request.currentStateHash) {
         fail();
       }
       return {
@@ -2193,31 +1849,21 @@ export class DurableTrustedOptimizationInterruptionPort
     });
     if (existing !== null) return existing;
 
-    const authorization = cloneJson(
-      await this.#authority.authorizeControl(request),
-    );
-    assertControlAuthorization(
-      authorization,
-      request.record,
-      request.currentStateHash,
-    );
+    const authorization = cloneJson(await this.#authority.authorizeControl(request));
+    assertControlAuthorization(authorization, request.record, request.currentStateHash);
     return this.#state.transact((state) => {
-      const entry =
-        state.interruptions[request.record.recordHash];
+      const entry = state.interruptions[request.record.recordHash];
       if (
         entry === undefined ||
         entry.finalStateHash !== null ||
-        canonicalJson(entry.record) !==
-          canonicalJson(request.record)
+        canonicalJson(entry.record) !== canonicalJson(request.record)
       ) {
         fail();
       }
       if (entry.controlPreparation !== null) {
         if (
-          entry.controlPreparation.currentStateHash !==
-            request.currentStateHash ||
-          canonicalJson(entry.controlPreparation.control) !==
-            canonicalJson(authorization.control)
+          entry.controlPreparation.currentStateHash !== request.currentStateHash ||
+          canonicalJson(entry.controlPreparation.control) !== canonicalJson(authorization.control)
         ) {
           fail();
         }
@@ -2230,8 +1876,7 @@ export class DurableTrustedOptimizationInterruptionPort
         currentStateHash: request.currentStateHash,
         control: authorization.control,
         controlHash: authorization.controlHash,
-        authorizationAttestationHash:
-          authorization.authorizationAttestationHash,
+        authorizationAttestationHash: authorization.authorizationAttestationHash,
       };
       const nextEntry: DurableOptimizationInterruption = {
         ...entry,
@@ -2245,10 +1890,7 @@ export class DurableTrustedOptimizationInterruptionPort
           [request.record.recordHash]: nextEntry,
         },
       };
-      assertDurableOptimizationCoordinationState(
-        next,
-        state.storeScopeHash,
-      );
+      assertDurableOptimizationCoordinationState(next, state.storeScopeHash);
       return {
         next,
         result: cloneJson(authorization.control),
@@ -2261,39 +1903,25 @@ export class DurableTrustedOptimizationInterruptionPort
     readonly finalStateHash: string;
   }): Promise<void> {
     const request = cloneJson(input);
-    assertExactKeys(request, [
-      "recordHash",
-      "finalStateHash",
-    ]);
+    assertExactKeys(request, ["recordHash", "finalStateHash"]);
     assertHash(request.recordHash);
     assertHash(request.finalStateHash);
     await this.#state.transact((state) => {
       const entry = state.interruptions[request.recordHash];
-      if (
-        entry === undefined ||
-        entry.controlPreparation === null
-      ) {
+      if (entry === undefined || entry.controlPreparation === null) {
         fail();
       }
       if (entry.finalStateHash !== null) {
-        if (
-          entry.finalStateHash !== request.finalStateHash
-        ) {
+        if (entry.finalStateHash !== request.finalStateHash) {
           fail();
         }
         return { next: state, result: undefined };
       }
-      if (
-        request.finalStateHash ===
-        entry.controlPreparation.currentStateHash
-      ) {
+      if (request.finalStateHash === entry.controlPreparation.currentStateHash) {
         fail();
       }
       const scope = interruptionScope(entry.record);
-      if (
-        state.activeInterruptions[scope] !==
-        request.recordHash
-      ) {
+      if (state.activeInterruptions[scope] !== request.recordHash) {
         fail();
       }
       const active = { ...state.activeInterruptions };
@@ -2311,10 +1939,7 @@ export class DurableTrustedOptimizationInterruptionPort
         },
         activeInterruptions: active,
       };
-      assertDurableOptimizationCoordinationState(
-        next,
-        state.storeScopeHash,
-      );
+      assertDurableOptimizationCoordinationState(next, state.storeScopeHash);
       return { next, result: undefined };
     });
   }
@@ -2322,12 +1947,9 @@ export class DurableTrustedOptimizationInterruptionPort
 
 export interface MountedVolumeOptimizationCoordinationPortsOptions {
   readonly durableState: MountedVolumeDurableStateOptions;
-  readonly diagnosticResolver:
-    TrustedTaskFreeOptimizationDiagnosticResolver;
-  readonly resumeAuthority:
-    TrustedOptimizationResumeAttestationAuthority;
-  readonly interruptionAuthority:
-    TrustedOptimizationInterruptionAuthority;
+  readonly diagnosticResolver: TrustedTaskFreeOptimizationDiagnosticResolver;
+  readonly resumeAuthority: TrustedOptimizationResumeAttestationAuthority;
+  readonly interruptionAuthority: TrustedOptimizationInterruptionAuthority;
 }
 
 /**
@@ -2340,28 +1962,20 @@ export class MountedVolumeOptimizationCoordinationPorts {
   readonly interruption: TrustedOptimizationInterruptionPort;
   readonly #state: MountedVolumeAtomicOptimizationCoordinationStateStore;
 
-  public constructor(
-    options: MountedVolumeOptimizationCoordinationPortsOptions,
-  ) {
-    this.#state =
-      new MountedVolumeAtomicOptimizationCoordinationStateStore(
-        options.durableState,
-      );
-    this.inputFactory =
-      new DurableTrustedOptimizationInputFactory({
-        state: this.#state,
-        diagnosticResolver: options.diagnosticResolver,
-      });
-    this.resumeVerifier =
-      new AttestedTrustedOptimizationResumeVerifier({
-        state: this.#state,
-        authority: options.resumeAuthority,
-      });
-    this.interruption =
-      new DurableTrustedOptimizationInterruptionPort({
-        state: this.#state,
-        authority: options.interruptionAuthority,
-      });
+  public constructor(options: MountedVolumeOptimizationCoordinationPortsOptions) {
+    this.#state = new MountedVolumeAtomicOptimizationCoordinationStateStore(options.durableState);
+    this.inputFactory = new DurableTrustedOptimizationInputFactory({
+      state: this.#state,
+      diagnosticResolver: options.diagnosticResolver,
+    });
+    this.resumeVerifier = new AttestedTrustedOptimizationResumeVerifier({
+      state: this.#state,
+      authority: options.resumeAuthority,
+    });
+    this.interruption = new DurableTrustedOptimizationInterruptionPort({
+      state: this.#state,
+      authority: options.interruptionAuthority,
+    });
   }
 
   public close(): Promise<void> {

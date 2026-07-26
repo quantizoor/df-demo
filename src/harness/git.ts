@@ -107,7 +107,9 @@ export class SafeGit {
       gitInvocation(workingDirectory, arguments_, options.timeoutMs),
     );
     if (result.exitCode !== 0 && options.allowFailure !== true) {
-      const detail = redactSensitiveText(result.stderr || result.stdout).trim().slice(0, 500);
+      const detail = redactSensitiveText(result.stderr || result.stdout)
+        .trim()
+        .slice(0, 500);
       throw new GitCommandError(
         detail.length === 0 ? "Git command failed." : `Git command failed: ${detail}`,
         result.exitCode,

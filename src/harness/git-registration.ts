@@ -9,17 +9,10 @@ import type {
   TrustedCloudArtifactRef,
 } from "../cloud/types.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import { fingerprintRemoteUrl, type RemoteFingerprint } from "./git.js";
-import {
-  OFFICIAL_PI_UPSTREAM_URL,
-  type RepositoryRegistration,
-} from "./repository.js";
+import { OFFICIAL_PI_UPSTREAM_URL, type RepositoryRegistration } from "./repository.js";
 import {
   assertExactPlainObjectKeys,
   assertGitObjectId,
@@ -35,8 +28,7 @@ import {
   TrustedGitContractError,
 } from "./trusted-git.js";
 
-const SAFE_HEAD_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_HEAD_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
 const SAFE_AUTHORIZATION_ID = /^registration-auth-[a-f0-9]{48}$/u;
 const EXACT_SEMVER =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
@@ -45,8 +37,7 @@ const REGISTRATION_WORKING_DIRECTORY = "/workspace";
 const REGISTRATION_WORKER_REMOTE_PATH = "/trusted/git/registration-worker.mjs";
 const REGISTRATION_RESULT_REMOTE_PATH = "/trusted/git/registration-result.json";
 
-export const TRUSTED_PI_CODING_AGENT_PACKAGE_NAME =
-  "@earendil-works/pi-coding-agent" as const;
+export const TRUSTED_PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent" as const;
 export const TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION = "1.2.0" as const;
 export const TRUSTED_PI_ADAPTER_ID = "harbor-pi-print-json" as const;
 export const TRUSTED_PI_ADAPTER_EXECUTION_MODE = "print-json" as const;
@@ -250,14 +241,10 @@ function assertHeadRef(ref: string): void {
       .split("/")
       .some(
         (component) =>
-          component.startsWith(".") ||
-          component.endsWith(".") ||
-          component.endsWith(".lock"),
+          component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
       )
   ) {
-    throw new TrustedGitContractError(
-      "Git registration branch ref is invalid.",
-    );
+    throw new TrustedGitContractError("Git registration branch ref is invalid.");
   }
 }
 
@@ -266,17 +253,9 @@ function branchFromRef(ref: string): string {
   return ref.slice("refs/heads/".length);
 }
 
-function assertPackageMetadata(
-  packageName: string,
-  packageVersion: string,
-): void {
-  if (
-    packageName !== TRUSTED_PI_CODING_AGENT_PACKAGE_NAME ||
-    !EXACT_SEMVER.test(packageVersion)
-  ) {
-    throw new TrustedGitContractError(
-      "Git registration Pi package metadata is invalid.",
-    );
+function assertPackageMetadata(packageName: string, packageVersion: string): void {
+  if (packageName !== TRUSTED_PI_CODING_AGENT_PACKAGE_NAME || !EXACT_SEMVER.test(packageVersion)) {
+    throw new TrustedGitContractError("Git registration Pi package metadata is invalid.");
   }
 }
 
@@ -286,9 +265,7 @@ function registrationId(input: {
   readonly upstreamBaseCommit: string;
 }): string {
   return createHash("sha256")
-    .update(
-      `${input.commitSha}:${input.originRepositoryHash}:${input.upstreamBaseCommit}`,
-    )
+    .update(`${input.commitSha}:${input.originRepositoryHash}:${input.upstreamBaseCommit}`)
     .digest("hex");
 }
 
@@ -321,21 +298,14 @@ export function createTrustedGitRegistrationAuthorizationPayload(input: {
   readonly expiresAt: string;
 }): TrustedGitRegistrationAuthorizationPayload {
   assertPrivateGitHubOrigin(input.origin);
-  const originFingerprint = fingerprintRemoteUrl(
-    privateGitHubRemoteUrl(input.origin),
-  );
-  const upstreamFingerprint = fingerprintRemoteUrl(
-    OFFICIAL_PI_UPSTREAM_URL,
-  );
+  const originFingerprint = fingerprintRemoteUrl(privateGitHubRemoteUrl(input.origin));
+  const upstreamFingerprint = fingerprintRemoteUrl(OFFICIAL_PI_UPSTREAM_URL);
   const remoteRef = `refs/heads/${input.expectedBranch}`;
   assertHeadRef(remoteRef);
   assertGitObjectId(input.expectedCommit, "Authorized Pi commit");
   assertGitObjectId(input.expectedTree, "Authorized Pi tree");
   assertSha256(input.expectedLockSha256, "Authorized Pi package lock");
-  assertPackageMetadata(
-    input.expectedPackageName,
-    input.expectedPackageVersion,
-  );
+  assertPackageMetadata(input.expectedPackageName, input.expectedPackageVersion);
   assertTrustedGitArtifact(
     input.workerArtifact,
     "text/javascript",
@@ -350,9 +320,7 @@ export function createTrustedGitRegistrationAuthorizationPayload(input: {
     expiresAt <= issuedAt ||
     expiresAt - issuedAt > MAXIMUM_AUTHORIZATION_LIFETIME_MS
   ) {
-    throw new TrustedGitContractError(
-      "Git registration authorization window is outside policy.",
-    );
+    throw new TrustedGitContractError("Git registration authorization window is outside policy.");
   }
   const identity = {
     originRepositoryHash: originFingerprint.repositoryHash,
@@ -363,8 +331,7 @@ export function createTrustedGitRegistrationAuthorizationPayload(input: {
     lockSha256: input.expectedLockSha256,
     packageName: input.expectedPackageName,
     packageVersion: input.expectedPackageVersion,
-    harnessRegistrationSchemaVersion:
-      TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION,
+    harnessRegistrationSchemaVersion: TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION,
     adapterId: TRUSTED_PI_ADAPTER_ID,
     adapterExecutionMode: TRUSTED_PI_ADAPTER_EXECUTION_MODE,
     sessionsDisabled: true as const,
@@ -454,12 +421,10 @@ export function assertTrustedGitRegistrationAuthorization(
   };
   const now = input.now.getTime();
   if (
-    authorization.sensitivity !==
-      "trusted-git-registration-authorization" ||
+    authorization.sensitivity !== "trusted-git-registration-authorization" ||
     authorization.schemaVersion !== 1 ||
     !SAFE_AUTHORIZATION_ID.test(authorization.authorizationId) ||
-    canonicalHash(unsignedAuthorization(authorization)) !==
-      canonicalHash(expected) ||
+    canonicalHash(unsignedAuthorization(authorization)) !== canonicalHash(expected) ||
     authorization.workerSha256 !== input.workerArtifact.sha256 ||
     !Number.isFinite(now) ||
     now < Date.parse(authorization.issuedAt) ||
@@ -467,10 +432,8 @@ export function assertTrustedGitRegistrationAuthorization(
     authorization.signature.algorithm !== "ed25519" ||
     authorization.signature.keyId !== input.verifier.trustedKeyId ||
     !isCanonicalTimestamp(authorization.signature.signedAt) ||
-    Date.parse(authorization.signature.signedAt) <
-      Date.parse(authorization.issuedAt) ||
-    Date.parse(authorization.signature.signedAt) >
-      Date.parse(authorization.expiresAt) ||
+    Date.parse(authorization.signature.signedAt) < Date.parse(authorization.issuedAt) ||
+    Date.parse(authorization.signature.signedAt) > Date.parse(authorization.expiresAt) ||
     Date.parse(authorization.signature.signedAt) > now ||
     !verifyEd25519Signature(signedDocument, input.verifier.publicKey)
   ) {
@@ -493,18 +456,14 @@ export function createTrustedGitRegistrationSpec(input: {
     "Trusted Git registration worker",
     4 * 1024 * 1024,
   );
-  const originFingerprint = fingerprintRemoteUrl(
-    privateGitHubRemoteUrl(input.origin),
-  );
+  const originFingerprint = fingerprintRemoteUrl(privateGitHubRemoteUrl(input.origin));
   if (
-    originFingerprint.repositoryHash !==
-      input.authorization.originRepositoryHash ||
+    originFingerprint.repositoryHash !== input.authorization.originRepositoryHash ||
     input.authorization.workerSha256 !== input.workerArtifact.sha256 ||
     input.authorization.harnessRegistrationSchemaVersion !==
       TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
     input.authorization.adapterId !== TRUSTED_PI_ADAPTER_ID ||
-    input.authorization.adapterExecutionMode !==
-      TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
+    input.authorization.adapterExecutionMode !== TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
     input.authorization.sessionsDisabled !== true ||
     input.authorization.uncontrolledExtensionsDisabled !== true ||
     input.authorization.uncontrolledContextFilesDisabled !== true
@@ -513,8 +472,7 @@ export function createTrustedGitRegistrationSpec(input: {
       "Git registration authorization does not identify the configured origin.",
     );
   }
-  const authorizationHash =
-    trustedGitRegistrationAuthorizationHash(input.authorization);
+  const authorizationHash = trustedGitRegistrationAuthorizationHash(input.authorization);
   const registrationRequestId = `registration-${canonicalHash({
     requestId: input.requestId,
     authorizationHash,
@@ -588,15 +546,12 @@ export function createTrustedGitRegistrationSpec(input: {
     lockSha256: input.authorization.lockSha256,
     packageName: input.authorization.packageName,
     packageVersion: input.authorization.packageVersion,
-    harnessRegistrationSchemaVersion:
-      input.authorization.harnessRegistrationSchemaVersion,
+    harnessRegistrationSchemaVersion: input.authorization.harnessRegistrationSchemaVersion,
     adapterId: input.authorization.adapterId,
     adapterExecutionMode: input.authorization.adapterExecutionMode,
     sessionsDisabled: input.authorization.sessionsDisabled,
-    uncontrolledExtensionsDisabled:
-      input.authorization.uncontrolledExtensionsDisabled,
-    uncontrolledContextFilesDisabled:
-      input.authorization.uncontrolledContextFilesDisabled,
+    uncontrolledExtensionsDisabled: input.authorization.uncontrolledExtensionsDisabled,
+    uncontrolledContextFilesDisabled: input.authorization.uncontrolledContextFilesDisabled,
     workerArtifact: structuredClone(input.workerArtifact),
     workerRemotePath: REGISTRATION_WORKER_REMOTE_PATH,
     resultRemotePath: REGISTRATION_RESULT_REMOTE_PATH,
@@ -653,10 +608,7 @@ export function assertTrustedGitRegistrationWorkerResult(
   assertGitObjectId(document.upstreamHeadCommit, "Verified upstream HEAD");
   assertGitObjectId(document.upstreamBaseCommit, "Verified upstream merge base");
   assertSha256(document.packageJsonSha256, "Verified Pi package metadata");
-  assertSha256(
-    document.providerRepositoryAttestationHash,
-    "GitHub repository attestation",
-  );
+  assertSha256(document.providerRepositoryAttestationHash, "GitHub repository attestation");
   assertSha256(document.lineageAttestationHash, "Git lineage attestation");
   const expectedRegistrationId = registrationId({
     commitSha: input.spec.commitSha,
@@ -683,14 +635,11 @@ export function assertTrustedGitRegistrationWorkerResult(
     document.lockSha256 !== input.spec.lockSha256 ||
     document.packageName !== input.spec.packageName ||
     document.packageVersion !== input.spec.packageVersion ||
-    document.harnessRegistrationSchemaVersion !==
-      TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
-    document.harnessRegistrationSchemaVersion !==
-      input.spec.harnessRegistrationSchemaVersion ||
+    document.harnessRegistrationSchemaVersion !== TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
+    document.harnessRegistrationSchemaVersion !== input.spec.harnessRegistrationSchemaVersion ||
     document.adapterId !== TRUSTED_PI_ADAPTER_ID ||
     document.adapterId !== input.spec.adapterId ||
-    document.adapterExecutionMode !==
-      TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
+    document.adapterExecutionMode !== TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
     document.adapterExecutionMode !== input.spec.adapterExecutionMode ||
     document.sessionsDisabled !== true ||
     document.uncontrolledExtensionsDisabled !== true ||
@@ -701,14 +650,12 @@ export function assertTrustedGitRegistrationWorkerResult(
     document.privacyEvidence !== "github-rest-private-and-visibility" ||
     document.fetchEvidence !== "authenticated-ls-remote-and-fetch" ||
     document.writeEvidence !== "github-rest-permissions-push" ||
-    document.lineageEvidence !==
-      "canonical-upstream-fetched-merge-base" ||
+    document.lineageEvidence !== "canonical-upstream-fetched-merge-base" ||
     document.lineageAttestationHash !== expectedLineageHash ||
     !isCanonicalTimestamp(document.providerVerifiedAt) ||
     typeof document.contentHash !== "string" ||
     document.contentHash !== computeContentHash(document) ||
-    trustedGitRegistrationAuthorizationHash(input.authorization) !==
-      input.spec.authorizationHash
+    trustedGitRegistrationAuthorizationHash(input.authorization) !== input.spec.authorizationHash
   ) {
     throw new TrustedGitContractError(
       "Git registration worker result does not prove the authorized private fork.",
@@ -723,27 +670,18 @@ export function parseTrustedGitRegistrationWorkerResult(
     readonly spec: TrustedGitRegistrationSpec;
   },
 ): TrustedGitRegistrationWorkerResult {
-  if (
-    Buffer.byteLength(raw, "utf8") <= 0 ||
-    Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024
-  ) {
-    throw new TrustedGitContractError(
-      "Git registration worker result size is outside policy.",
-    );
+  if (Buffer.byteLength(raw, "utf8") <= 0 || Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024) {
+    throw new TrustedGitContractError("Git registration worker result size is outside policy.");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new TrustedGitContractError(
-      "Git registration worker result is not valid JSON.",
-    );
+    throw new TrustedGitContractError("Git registration worker result is not valid JSON.");
   }
   assertTrustedGitRegistrationWorkerResult(parsed, input);
   if (raw !== `${canonicalJson(parsed)}\n`) {
-    throw new TrustedGitContractError(
-      "Git registration worker result is not canonical JSON.",
-    );
+    throw new TrustedGitContractError("Git registration worker result is not canonical JSON.");
   }
   return parsed;
 }
@@ -755,9 +693,7 @@ function unsignedReceipt(
   return payload;
 }
 
-export function gitRegistrationReceiptHash(
-  receipt: TrustedGitRegistrationReceipt,
-): string {
+export function gitRegistrationReceiptHash(receipt: TrustedGitRegistrationReceipt): string {
   return canonicalHash(unsignedReceipt(receipt));
 }
 
@@ -833,10 +769,7 @@ export function assertTrustedGitRegistrationReceipt(
     4 * 1024 * 1024,
   );
   assertGitObjectId(receipt.upstreamHeadCommit, "Registered upstream HEAD");
-  assertGitObjectId(
-    receipt.upstreamBaseCommit,
-    "Registered upstream merge base",
-  );
+  assertGitObjectId(receipt.upstreamBaseCommit, "Registered upstream merge base");
   assertSha256(receipt.packageJsonSha256, "Registered Pi package metadata");
   assertSha256(
     receipt.providerRepositoryAttestationHash,
@@ -872,14 +805,11 @@ export function assertTrustedGitRegistrationReceipt(
     receipt.lockSha256 !== input.spec.lockSha256 ||
     receipt.packageName !== input.spec.packageName ||
     receipt.packageVersion !== input.spec.packageVersion ||
-    receipt.harnessRegistrationSchemaVersion !==
-      TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
-    receipt.harnessRegistrationSchemaVersion !==
-      input.spec.harnessRegistrationSchemaVersion ||
+    receipt.harnessRegistrationSchemaVersion !== TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION ||
+    receipt.harnessRegistrationSchemaVersion !== input.spec.harnessRegistrationSchemaVersion ||
     receipt.adapterId !== TRUSTED_PI_ADAPTER_ID ||
     receipt.adapterId !== input.spec.adapterId ||
-    receipt.adapterExecutionMode !==
-      TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
+    receipt.adapterExecutionMode !== TRUSTED_PI_ADAPTER_EXECUTION_MODE ||
     receipt.adapterExecutionMode !== input.spec.adapterExecutionMode ||
     receipt.sessionsDisabled !== true ||
     receipt.uncontrolledExtensionsDisabled !== true ||
@@ -890,16 +820,12 @@ export function assertTrustedGitRegistrationReceipt(
     receipt.privacyEvidence !== "github-rest-private-and-visibility" ||
     receipt.fetchEvidence !== "authenticated-ls-remote-and-fetch" ||
     receipt.writeEvidence !== "github-rest-permissions-push" ||
-    receipt.lineageEvidence !==
-      "canonical-upstream-fetched-merge-base" ||
+    receipt.lineageEvidence !== "canonical-upstream-fetched-merge-base" ||
     receipt.lineageAttestationHash !== expectedLineageHash ||
     !isCanonicalTimestamp(receipt.providerVerifiedAt) ||
-    Date.parse(receipt.providerVerifiedAt) <
-      Date.parse(input.execution.startedAt) ||
-    Date.parse(receipt.providerVerifiedAt) >
-      Date.parse(input.execution.finishedAt) ||
-    Date.parse(receipt.providerVerifiedAt) >=
-      Date.parse(input.authorization.expiresAt) ||
+    Date.parse(receipt.providerVerifiedAt) < Date.parse(input.execution.startedAt) ||
+    Date.parse(receipt.providerVerifiedAt) > Date.parse(input.execution.finishedAt) ||
+    Date.parse(receipt.providerVerifiedAt) >= Date.parse(input.authorization.expiresAt) ||
     receipt.provider !== input.lease.provider ||
     receipt.sandboxId !== input.lease.sandboxId ||
     receipt.imageReference !== input.lease.imageReference ||
@@ -909,18 +835,14 @@ export function assertTrustedGitRegistrationReceipt(
     receipt.executionReceiptHash !== cloudExecutionReceiptHash(input.execution) ||
     receipt.resultArtifactSha256 !== input.resultArtifact.sha256 ||
     !isCanonicalTimestamp(receipt.attestedAt) ||
-    Date.parse(receipt.attestedAt) <
-      Date.parse(input.execution.finishedAt) ||
-    Date.parse(receipt.attestedAt) >
-      Date.parse(input.lease.expiresAt) ||
+    Date.parse(receipt.attestedAt) < Date.parse(input.execution.finishedAt) ||
+    Date.parse(receipt.attestedAt) > Date.parse(input.lease.expiresAt) ||
     receipt.passed !== true ||
     receipt.signature.algorithm !== "ed25519" ||
     receipt.signature.keyId !== input.verifier.trustedKeyId ||
     !isCanonicalTimestamp(receipt.signature.signedAt) ||
-    Date.parse(receipt.signature.signedAt) <
-      Date.parse(receipt.attestedAt) ||
-    Date.parse(receipt.signature.signedAt) >
-      Date.parse(input.lease.expiresAt) ||
+    Date.parse(receipt.signature.signedAt) < Date.parse(receipt.attestedAt) ||
+    Date.parse(receipt.signature.signedAt) > Date.parse(input.lease.expiresAt) ||
     !verifyEd25519Signature(signedDocument, input.verifier.publicKey)
   ) {
     throw new TrustedGitContractError(
@@ -932,9 +854,7 @@ export function assertTrustedGitRegistrationReceipt(
 function repositoryRegistrationFromReceipt(
   receipt: TrustedGitRegistrationReceipt,
 ): RepositoryRegistration {
-  const upstreamFingerprint = fingerprintRemoteUrl(
-    OFFICIAL_PI_UPSTREAM_URL,
-  );
+  const upstreamFingerprint = fingerprintRemoteUrl(OFFICIAL_PI_UPSTREAM_URL);
   const originFingerprint: RemoteFingerprint = {
     transport: "https",
     hostHash: upstreamFingerprint.hostHash,
@@ -955,8 +875,7 @@ function repositoryRegistrationFromReceipt(
       fetchable: true,
       writable: true,
       checkedAt: receipt.providerVerifiedAt,
-      providerAttestationHash:
-        receipt.providerRepositoryAttestationHash,
+      providerAttestationHash: receipt.providerRepositoryAttestationHash,
     },
     upstreamVerification: {
       fetchable: true,
@@ -1020,6 +939,9 @@ export class TrustedGitRegistrationRunner {
 
   async run(): Promise<TrustedGitRegistrationRunResult> {
     let lease: SandboxLease | undefined;
+    let result: TrustedGitRegistrationRunResult | undefined;
+    let failure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       assertTrustedGitRegistrationAuthorization(this.#options.authorization, {
         origin: this.#options.origin,
@@ -1045,21 +967,14 @@ export class TrustedGitRegistrationRunner {
         this.#spec.workerRemotePath,
       );
       const execution = structuredClone(
-        await this.#options.provider.execute(
-          lease,
-          structuredClone(this.#spec.command),
-        ),
+        await this.#options.provider.execute(lease, structuredClone(this.#spec.command)),
       );
       assertSuccessfulCloudExecution(execution, "Git repository registration");
       const resultArtifact = structuredClone(
-        await this.#options.provider.download(
-          lease,
-          this.#spec.resultRemotePath,
-          {
-            mediaType: "application/json",
-            maximumByteLength: 4 * 1024 * 1024,
-          },
-        ),
+        await this.#options.provider.download(lease, this.#spec.resultRemotePath, {
+          mediaType: "application/json",
+          maximumByteLength: 4 * 1024 * 1024,
+        }),
       );
       const receipt = await this.#options.attestor.attest({
         sensitivity: "trusted-git-registration-attestation-request",
@@ -1077,24 +992,41 @@ export class TrustedGitRegistrationRunner {
         resultArtifact,
         verifier: this.#options.receiptVerifier,
       });
-      return {
+      result = {
         receipt,
         registration: repositoryRegistrationFromReceipt(receipt),
       };
-    } catch {
-      throw new TrustedGitRegistrationError(
-        "Trusted cloud Git repository registration failed closed.",
-      );
+    } catch (error) {
+      failure = { error };
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          throw new TrustedGitRegistrationError(
-            "Trusted Git registration sandbox teardown failed; the registration is invalid.",
-          );
+        } catch (error) {
+          teardownFailure = { error };
         }
       }
     }
+    if (teardownFailure !== undefined) {
+      throw new TrustedGitRegistrationError(
+        "Trusted Git registration sandbox teardown failed; the registration is invalid.",
+        {
+          cause:
+            failure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [failure.error, teardownFailure.error],
+                  "Git registration and sandbox teardown both failed.",
+                ),
+        },
+      );
+    }
+    if (failure !== undefined || result === undefined) {
+      throw new TrustedGitRegistrationError(
+        "Trusted cloud Git repository registration failed closed.",
+        { cause: failure?.error },
+      );
+    }
+    return result;
   }
 }

@@ -1,9 +1,6 @@
 import type { KeyLike } from "node:crypto";
 
-import {
-  createEd25519Signature,
-  verifyEd25519Signature,
-} from "../evidence/signatures.js";
+import { createEd25519Signature, verifyEd25519Signature } from "../evidence/signatures.js";
 import { canonicalHash } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import type { SignedAggregateEnvelope } from "./contracts.js";
@@ -17,10 +14,7 @@ export interface TrustedRawRetentionPolicy {
   readonly localExportAllowed: false;
 }
 
-export type TrustedRawArtifactKind =
-  | "atif"
-  | "grader-output"
-  | "harbor-output";
+export type TrustedRawArtifactKind = "atif" | "grader-output" | "harbor-output";
 
 export interface TrustedEncryptedRawArtifact {
   readonly kind: TrustedRawArtifactKind;
@@ -66,11 +60,7 @@ export interface TrustedRawDestructionReceiptVerifier {
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_KEY_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const RAW_ARTIFACT_KINDS = [
-  "atif",
-  "grader-output",
-  "harbor-output",
-] as const;
+const RAW_ARTIFACT_KINDS = ["atif", "grader-output", "harbor-output"] as const;
 const MAXIMUM_DESTRUCTION_ATTESTATION_LAG_MS = 5 * 60_000;
 const FORBIDDEN_LOCAL_KEYS = new Set([
   "task",
@@ -125,7 +115,7 @@ function assertExactPlainObjectKeys(
   value: unknown,
   expectedKeys: readonly string[],
   label: string,
-): asserts value is Readonly<Record<string, unknown>> {
+): void {
   if (
     value === null ||
     typeof value !== "object" ||
@@ -145,13 +135,8 @@ function assertExactPlainObjectKeys(
 
 function canonicalTimestamp(value: string, label: string): number {
   const timestamp = Date.parse(value);
-  if (
-    !Number.isFinite(timestamp) ||
-    new Date(timestamp).toISOString() !== value
-  ) {
-    throw new RetentionPolicyError(
-      `${label} must be a canonical UTC RFC 3339 timestamp.`,
-    );
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== value) {
+    throw new RetentionPolicyError(`${label} must be a canonical UTC RFC 3339 timestamp.`);
   }
   return timestamp;
 }
@@ -187,9 +172,7 @@ function assertArtifactSet(
   }
 }
 
-function artifactSetMaterial(
-  artifacts: TrustedRawArtifactSet,
-): Readonly<Record<string, unknown>> {
+function artifactSetMaterial(artifacts: TrustedRawArtifactSet): Readonly<Record<string, unknown>> {
   return {
     domain: "dark-factory.raw-artifact-set.v1",
     artifacts: artifacts.map((artifact) => ({
@@ -312,12 +295,7 @@ export function createSignedRawDestructionReceipt(input: {
     destruction: input.policy.destruction,
     artifactCount: 3,
   });
-  const signature = createEd25519Signature(
-    body,
-    input.privateKey,
-    input.keyId,
-    input.signedAt,
-  );
+  const signature = createEd25519Signature(body, input.privateKey, input.keyId, input.signedAt);
   const signed = { ...body, signature };
   return {
     manifestId: input.manifest.manifestId,
@@ -333,11 +311,7 @@ export function createSignedRawDestructionReceipt(input: {
 }
 
 function looksLikeEncodedPrintableText(value: string): boolean {
-  if (
-    value.length < 12 ||
-    value.length > 4096 ||
-    !/^[A-Za-z0-9_-]+={0,2}$/u.test(value)
-  ) {
+  if (value.length < 12 || value.length > 4096 || !/^[A-Za-z0-9_-]+={0,2}$/u.test(value)) {
     return false;
   }
   try {
@@ -348,8 +322,7 @@ function looksLikeEncodedPrintableText(value: string): boolean {
     ).length;
     const normalizedInput = value.replace(/=+$/u, "");
     return (
-      printableBytes / decoded.length >= 0.9 &&
-      decoded.toString("base64url") === normalizedInput
+      printableBytes / decoded.length >= 0.9 && decoded.toString("base64url") === normalizedInput
     );
   } catch {
     return false;
@@ -371,9 +344,7 @@ export function assertRawRetentionPolicy(policy: TrustedRawRetentionPolicy): voi
   );
   if (
     !SHA256.test(policy.policyHash) ||
-    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\/$/u.test(
-      policy.storageRoot,
-    ) ||
+    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\/$/u.test(policy.storageRoot) ||
     policy.storageRoot.includes("..") ||
     !Number.isSafeInteger(policy.maximumRetentionMinutes) ||
     policy.maximumRetentionMinutes <= 0 ||
@@ -433,22 +404,10 @@ export function assertRawDestructionReceipt(
     ["algorithm", "keyId", "signedAt", "signature"],
     "Raw destruction receipt signature",
   );
-  const destroyedAt = canonicalTimestamp(
-    receipt.destroyedAt,
-    "Raw destruction time",
-  );
-  const signedAt = canonicalTimestamp(
-    receipt.signature.signedAt,
-    "Raw destruction signature time",
-  );
-  const createdAt = canonicalTimestamp(
-    manifest.createdAt,
-    "Raw manifest creation time",
-  );
-  const destroyBy = canonicalTimestamp(
-    manifest.destroyBy,
-    "Raw manifest destruction deadline",
-  );
+  const destroyedAt = canonicalTimestamp(receipt.destroyedAt, "Raw destruction time");
+  const signedAt = canonicalTimestamp(receipt.signature.signedAt, "Raw destruction signature time");
+  const createdAt = canonicalTimestamp(manifest.createdAt, "Raw manifest creation time");
+  const destroyBy = canonicalTimestamp(manifest.destroyBy, "Raw manifest destruction deadline");
   const signedDocument = signedDestructionDocument({
     manifestId: receipt.manifestId,
     manifestHash: receipt.manifestHash,
@@ -529,27 +488,14 @@ export function assertRawArtifactManifest(
   ) {
     throw new RetentionPolicyError("Raw artifact manifest escapes its trusted retention policy.");
   }
-  const createdAt = canonicalTimestamp(
-    manifest.createdAt,
-    "Raw manifest creation time",
-  );
-  const destroyBy = canonicalTimestamp(
-    manifest.destroyBy,
-    "Raw manifest destruction deadline",
-  );
-  if (
-    destroyBy <= createdAt ||
-    destroyBy - createdAt > policy.maximumRetentionMinutes * 60_000
-  ) {
+  const createdAt = canonicalTimestamp(manifest.createdAt, "Raw manifest creation time");
+  const destroyBy = canonicalTimestamp(manifest.destroyBy, "Raw manifest destruction deadline");
+  if (destroyBy <= createdAt || destroyBy - createdAt > policy.maximumRetentionMinutes * 60_000) {
     throw new RetentionPolicyError("Raw artifact destruction deadline exceeds policy.");
   }
 }
 
-function scanReleasedValue(
-  value: unknown,
-  path: string,
-  seen: WeakSet<object>,
-): void {
+function scanReleasedValue(value: unknown, path: string, seen: WeakSet<object>): void {
   if (typeof value === "string") {
     if (
       value.startsWith("trusted://") ||
@@ -595,9 +541,7 @@ export function assertSafeForLocalPersistence(value: unknown): void {
   scanReleasedValue(value, "$", new WeakSet());
 }
 
-export function assertEnvelopeSafeForLocalPersistence(
-  envelope: SignedAggregateEnvelope,
-): void {
+export function assertEnvelopeSafeForLocalPersistence(envelope: SignedAggregateEnvelope): void {
   assertSafeForLocalPersistence(envelope);
   if (envelope.body.rawArtifacts.exported !== false) {
     throw new RetentionPolicyError("Envelope permits raw evaluator artifact export.");

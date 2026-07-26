@@ -1,10 +1,6 @@
-import {
-  serializeTrustedPiPrompt,
-  type PiThinkingLevel,
-} from "../harness/pi-rpc.js";
+import { type PiThinkingLevel, serializeTrustedPiPrompt } from "../harness/pi-rpc.js";
 
-export const DARK_FACTORY_PI_HARBOR_IMPORT_PATH =
-  "dark_factory_pi:DarkFactoryPi" as const;
+export const DARK_FACTORY_PI_HARBOR_IMPORT_PATH = "dark_factory_pi:DarkFactoryPi" as const;
 
 export interface PiHarborAgentOptions {
   readonly adapterImportPath: typeof DARK_FACTORY_PI_HARBOR_IMPORT_PATH;
@@ -58,23 +54,13 @@ export interface TrustedTerminalBenchInstruction {
   readonly instruction: string;
 }
 
-const IMPORT_PATH =
-  /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$/u;
+const IMPORT_PATH = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u;
 const SAFE_TOOL = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
-const SAFE_FOUNDRY_RESOURCE =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
-const PI_THINKING_LEVELS = new Set([
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]);
+const SAFE_FOUNDRY_RESOURCE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const PI_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 interface ProviderEnvironmentPolicy {
   readonly authentication: readonly string[];
@@ -86,15 +72,9 @@ interface ProviderEnvironmentPolicy {
  * File-backed ambient credentials are deliberately excluded: evaluated runs
  * receive only explicit one-use cloud secret bindings.
  */
-const PROVIDER_ENVIRONMENT_POLICIES: Readonly<
-  Record<string, ProviderEnvironmentPolicy>
-> = {
+const PROVIDER_ENVIRONMENT_POLICIES: Readonly<Record<string, ProviderEnvironmentPolicy>> = {
   anthropic: {
-    authentication: [
-      "ANTHROPIC_AUTH_TOKEN",
-      "ANTHROPIC_OAUTH_TOKEN",
-      "ANTHROPIC_API_KEY",
-    ],
+    authentication: ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
     optionalConfiguration: [],
   },
   "microsoft-foundry": {
@@ -124,11 +104,7 @@ const PROVIDER_ENVIRONMENT_POLICIES: Readonly<
   },
   "google-vertex": {
     authentication: ["GOOGLE_CLOUD_API_KEY"],
-    optionalConfiguration: [
-      "GOOGLE_CLOUD_PROJECT",
-      "GCLOUD_PROJECT",
-      "GOOGLE_CLOUD_LOCATION",
-    ],
+    optionalConfiguration: ["GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"],
   },
   groq: {
     authentication: ["GROQ_API_KEY"],
@@ -216,20 +192,13 @@ export class PiHarborAgentError extends Error {
   override readonly name = "PiHarborAgentError";
 }
 
-export function allowedPiProviderEnvironmentNames(
-  provider: string,
-): readonly string[] {
+export function allowedPiProviderEnvironmentNames(provider: string): readonly string[] {
   const policy = PROVIDER_ENVIRONMENT_POLICIES[provider];
   if (policy === undefined) return [];
-  return [
-    ...policy.authentication,
-    ...policy.optionalConfiguration,
-  ];
+  return [...policy.authentication, ...policy.optionalConfiguration];
 }
 
-export function createPiHarborAgentSpec(
-  options: PiHarborAgentOptions,
-): PiHarborAgentSpec {
+export function createPiHarborAgentSpec(options: PiHarborAgentOptions): PiHarborAgentSpec {
   if (
     options.adapterImportPath !== DARK_FACTORY_PI_HARBOR_IMPORT_PATH ||
     !IMPORT_PATH.test(options.adapterImportPath) ||
@@ -246,9 +215,7 @@ export function createPiHarborAgentSpec(
     options.enabledTools.length === 0 ||
     options.enabledTools.some((tool) => !SAFE_TOOL.test(tool)) ||
     options.credentialEnvironmentNames.length === 0 ||
-    options.credentialEnvironmentNames.some(
-      (name) => !SAFE_ENVIRONMENT_NAME.test(name),
-    ) ||
+    options.credentialEnvironmentNames.some((name) => !SAFE_ENVIRONMENT_NAME.test(name)) ||
     new Set(options.credentialEnvironmentNames).size !==
       options.credentialEnvironmentNames.length ||
     !Number.isSafeInteger(options.timeoutMs) ||
@@ -257,15 +224,11 @@ export function createPiHarborAgentSpec(
   ) {
     throw new PiHarborAgentError("The evaluated Pi model, tools, or timeout are malformed.");
   }
-  const environmentPolicy =
-    PROVIDER_ENVIRONMENT_POLICIES[options.provider];
-  const allowedEnvironmentNames =
-    allowedPiProviderEnvironmentNames(options.provider);
+  const environmentPolicy = PROVIDER_ENVIRONMENT_POLICIES[options.provider];
+  const allowedEnvironmentNames = allowedPiProviderEnvironmentNames(options.provider);
   if (
     environmentPolicy === undefined ||
-    options.credentialEnvironmentNames.some(
-      (name) => !allowedEnvironmentNames.includes(name),
-    ) ||
+    options.credentialEnvironmentNames.some((name) => !allowedEnvironmentNames.includes(name)) ||
     !options.credentialEnvironmentNames.some((name) =>
       environmentPolicy.authentication.includes(name),
     )
@@ -282,8 +245,7 @@ export function createPiHarborAgentSpec(
         options.foundryResourceName === undefined ||
         !SAFE_FOUNDRY_RESOURCE.test(options.foundryResourceName))) ||
     (!usesMicrosoftFoundry &&
-      (options.foundryResourceName !== undefined ||
-        options.modelFamily !== undefined))
+      (options.foundryResourceName !== undefined || options.modelFamily !== undefined))
   ) {
     throw new PiHarborAgentError(
       "The evaluated Microsoft Foundry deployment binding is malformed.",
@@ -296,9 +258,7 @@ export function createPiHarborAgentSpec(
     evaluatedModel: {
       provider: options.provider,
       modelId: options.modelId,
-      ...(options.modelFamily === undefined
-        ? {}
-        : { modelFamily: options.modelFamily }),
+      ...(options.modelFamily === undefined ? {} : { modelFamily: options.modelFamily }),
       thinkingLevel: options.thinkingLevel,
       ...(options.foundryResourceName === undefined
         ? {}
@@ -307,9 +267,7 @@ export function createPiHarborAgentSpec(
     promptTransport: "harbor-pi-json-events-v1",
     rawEventRetention: "trusted-only",
     enabledTools: [...new Set(options.enabledTools)].sort(),
-    credentialEnvironmentNames: [
-      ...options.credentialEnvironmentNames,
-    ].sort(),
+    credentialEnvironmentNames: [...options.credentialEnvironmentNames].sort(),
     timeoutMs: options.timeoutMs,
   };
 }

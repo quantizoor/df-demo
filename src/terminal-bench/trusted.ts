@@ -1,5 +1,5 @@
-import type { HarnessArtifactReference } from "../evaluator/contracts.js";
 import type { HiddenTaskId } from "../evaluation/types.js";
+import type { HarnessArtifactReference } from "../evaluator/contracts.js";
 
 export type TrustedEvaluationStage = "repair" | "validation" | "shadow";
 export type MatchedArmKind = "candidate" | "champion";
@@ -108,10 +108,7 @@ export function assertTrustedMatchedPanel(
     if (cell.order === "AB") candidateFirst += 1;
     else championFirst += 1;
   }
-  if (
-    panel.stage !== "repair" &&
-    (candidateFirst !== 6 || championFirst !== 6)
-  ) {
+  if (panel.stage !== "repair" && (candidateFirst !== 6 || championFirst !== 6)) {
     throw new TrustedPanelError(
       "Fresh matched panels require exactly six candidate-first and six champion-first cells.",
     );
@@ -177,8 +174,7 @@ export function createTrustedMatchedArmSchedule(
     sensitivity: "hidden-benchmark-schedule",
     requestId: panel.requestId,
     stage: panel.stage,
-    executionPolicy:
-      panel.stage === "repair" ? "candidate-only-repair" : "fresh-matched-pairs",
+    executionPolicy: panel.stage === "repair" ? "candidate-only-repair" : "fresh-matched-pairs",
     cellCount: panel.cells.length,
     armCount: arms.length,
     candidateArmCount: panel.cells.length,

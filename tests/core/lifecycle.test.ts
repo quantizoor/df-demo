@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  RepairAttemptLedger,
   nextExperimentNumber,
+  RepairAttemptLedger,
   transitionExperiment,
   updateChampionPointers,
 } from "../../src/core/lifecycle.js";
@@ -29,9 +29,9 @@ describe("experiment lifecycle", () => {
     expect(transitionExperiment("optimization", "repair-evaluating", "challenger")).toBe(
       "challenger",
     );
-    expect(() =>
-      transitionExperiment("optimization", "repair-evaluating", "promoted"),
-    ).toThrow(/Cannot transition/u);
+    expect(() => transitionExperiment("optimization", "repair-evaluating", "promoted")).toThrow(
+      /Cannot transition/u,
+    );
   });
 
   it("moves active and certified pointers only at their respective gates", () => {
@@ -67,12 +67,7 @@ describe("experiment lifecycle", () => {
 
   it("allocates monotonically and ignores malformed directory names", () => {
     expect(
-      nextExperimentNumber([
-        "000-pi-baseline",
-        "002-command-recovery",
-        "notes",
-        "003_unsafe",
-      ]),
+      nextExperimentNumber(["000-pi-baseline", "002-command-recovery", "notes", "003_unsafe"]),
     ).toBe(3);
   });
 
@@ -84,4 +79,3 @@ describe("experiment lifecycle", () => {
     expect(() => ledger.record("panel-hash", SHA_C)).toThrow(/more than two/u);
   });
 });
-

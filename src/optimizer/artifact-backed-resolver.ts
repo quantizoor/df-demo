@@ -8,19 +8,10 @@ import {
   type TrustedGitSourceSnapshotReceipt,
 } from "../harness/git-source.js";
 import type { RepositoryRegistration } from "../harness/repository.js";
-import type {
-  TrustedGitSourceSnapshotReceiptSource,
-} from "../orchestrator/trusted-port-adapters.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../schemas/canonical.js";
+import type { TrustedGitSourceSnapshotReceiptSource } from "../orchestrator/trusted-port-adapters.js";
+import { canonicalHash, canonicalJson, sha256 } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
-import type {
-  CloudOptimizerAdapterResolver,
-  OptimizerBundleGitSource,
-} from "./cloud-session.js";
+import type { CloudOptimizerAdapterResolver, OptimizerBundleGitSource } from "./cloud-session.js";
 import {
   assertOptimizerBoundArtifactBytesSafe,
   assertOptimizerReleaseArtifactInspectionPolicy,
@@ -34,8 +25,7 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,255}$/u;
 const SAFE_RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const MAXIMUM_METADATA_BYTES = 4 * 1024 * 1024;
 const MAXIMUM_EVIDENCE_BYTES = 64 * 1024 * 1024;
 const MAXIMUM_SOURCE_BUNDLE_BYTES = 256 * 1024 * 1024;
@@ -48,8 +38,7 @@ export type OptimizerResolverSignaturePurpose =
 
 export interface OptimizerResolverPublicKeyRequest {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.optimizer-resolver-public-key-request.v1";
+  readonly domain: "dark-factory.optimizer-resolver-public-key-request.v1";
   readonly purpose: OptimizerResolverSignaturePurpose;
   readonly keyId: string;
   readonly keyVersion: string | null;
@@ -79,8 +68,7 @@ export interface TrustedOptimizerResolverPublicKey {
  * never supplies public key material.
  */
 export interface TrustedOptimizerResolverPublicKeyAuthority {
-  readonly boundary:
-    "trusted-cloud-optimizer-resolver-public-key-authority";
+  readonly boundary: "trusted-cloud-optimizer-resolver-public-key-authority";
   resolve(
     request: OptimizerResolverPublicKeyRequest,
   ): Promise<TrustedOptimizerResolverPublicKey | undefined>;
@@ -88,16 +76,12 @@ export interface TrustedOptimizerResolverPublicKeyAuthority {
 
 export interface TrustedOptimizerResolverArtifactReader {
   readonly boundary: "trusted-cloud";
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 export interface OptimizerProposalDiagnosticEvidenceQuery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.optimizer-proposal-evidence-query.v1";
+  readonly domain: "dark-factory.optimizer-proposal-evidence-query.v1";
   readonly purpose: "proposal-diagnostic";
   readonly campaignId: string;
   readonly experimentId: string;
@@ -109,8 +93,7 @@ export interface OptimizerProposalDiagnosticEvidenceQuery {
 
 export interface OptimizerAnalysisEvidenceQuery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.optimizer-analysis-evidence-query.v1";
+  readonly domain: "dark-factory.optimizer-analysis-evidence-query.v1";
   readonly purpose: "analysis";
   readonly campaignId: string;
   readonly experimentId: string;
@@ -136,9 +119,7 @@ export interface TrustedOptimizerReleasedEvidenceMetadataSource {
    * content-addressed bindings. The resolver requires exactly one, so hidden
    * ambiguity cannot be resolved by ordering.
    */
-  locate(
-    query: OptimizerReleasedEvidenceQuery,
-  ): Promise<readonly TrustedCloudArtifactRef[]>;
+  locate(query: OptimizerReleasedEvidenceQuery): Promise<readonly TrustedCloudArtifactRef[]>;
 }
 
 interface OptimizerReleasedEvidenceSafety {
@@ -149,8 +130,7 @@ interface OptimizerReleasedEvidenceSafety {
   readonly containsGraderIdentifiers: false;
 }
 
-interface OptimizerReleasedEvidenceMetadataBase
-  extends OptimizerReleasedEvidenceSafety {
+interface OptimizerReleasedEvidenceMetadataBase extends OptimizerReleasedEvidenceSafety {
   readonly schemaVersion: 1;
   readonly artifact: TrustedCloudArtifactRef;
   readonly releaseSafetyAttestationHash: string;
@@ -162,8 +142,7 @@ interface OptimizerReleasedEvidenceMetadataBase
 
 export interface OptimizerSourceOnlyBootstrapEvidenceMetadata
   extends OptimizerReleasedEvidenceMetadataBase {
-  readonly domain:
-    "dark-factory.optimizer-source-only-bootstrap-evidence.v1";
+  readonly domain: "dark-factory.optimizer-source-only-bootstrap-evidence.v1";
   readonly purpose: "source-only-bootstrap";
   readonly reviewed: true;
   readonly reviewPolicyHash: string;
@@ -171,8 +150,7 @@ export interface OptimizerSourceOnlyBootstrapEvidenceMetadata
 
 export interface OptimizerProposalDiagnosticEvidenceMetadata
   extends OptimizerReleasedEvidenceMetadataBase {
-  readonly domain:
-    "dark-factory.optimizer-proposal-diagnostic-evidence.v1";
+  readonly domain: "dark-factory.optimizer-proposal-diagnostic-evidence.v1";
   readonly purpose: "proposal-diagnostic";
   readonly campaignId: string;
   readonly experimentId: string;
@@ -181,8 +159,7 @@ export interface OptimizerProposalDiagnosticEvidenceMetadata
   readonly actionable: boolean;
 }
 
-export interface OptimizerAnalysisEvidenceMetadata
-  extends OptimizerReleasedEvidenceMetadataBase {
+export interface OptimizerAnalysisEvidenceMetadata extends OptimizerReleasedEvidenceMetadataBase {
   readonly domain: "dark-factory.optimizer-analysis-evidence.v1";
   readonly purpose: "analysis";
   readonly campaignId: string;
@@ -217,10 +194,8 @@ export interface ArtifactBackedCloudOptimizerAdapterResolverOptions {
    * optimizer. Metadata signatures and contains* booleans are not content
    * inspection and cannot replace this capability.
    */
-  readonly releaseArtifactReader:
-    TrustedOptimizerReleaseArtifactReader;
-  readonly releaseArtifactInspectionPolicy:
-    OptimizerReleaseArtifactInspectionPolicy;
+  readonly releaseArtifactReader: TrustedOptimizerReleaseArtifactReader;
+  readonly releaseArtifactInspectionPolicy: OptimizerReleaseArtifactInspectionPolicy;
   readonly keyAuthority: TrustedOptimizerResolverPublicKeyAuthority;
   readonly authoritySetHash: string;
   readonly verificationKeySetHash: string;
@@ -229,8 +204,7 @@ export interface ArtifactBackedCloudOptimizerAdapterResolverOptions {
 }
 
 export class ArtifactBackedCloudOptimizerAdapterResolverError extends Error {
-  override readonly name =
-    "ArtifactBackedCloudOptimizerAdapterResolverError";
+  override readonly name = "ArtifactBackedCloudOptimizerAdapterResolverError";
 
   constructor() {
     super("Production optimizer input resolution failed closed.");
@@ -241,9 +215,7 @@ function fail(): never {
   throw new ArtifactBackedCloudOptimizerAdapterResolverError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -258,10 +230,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
 }
@@ -285,10 +254,7 @@ function deepFreezeJson<T>(value: T): Readonly<T> {
 function timestamp(value: unknown): number {
   if (typeof value !== "string") fail();
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail();
   }
   return parsed;
@@ -303,8 +269,7 @@ function experimentId(experiment: ExperimentIdentity): string {
     "lineageId",
     "protocolHash",
   ]);
-  const value =
-    `${experiment.number.toString().padStart(3, "0")}-${experiment.slug}`;
+  const value = `${experiment.number.toString().padStart(3, "0")}-${experiment.slug}`;
   if (
     !Number.isSafeInteger(experiment.number) ||
     experiment.number < 1 ||
@@ -442,11 +407,7 @@ function assertMetadataShape(
     fail();
   }
   const metadata = value as unknown as OptimizerReleasedEvidenceMetadata;
-  assertArtifact(
-    metadata.artifact,
-    "application/x-tar",
-    maximumEvidenceBytes,
-  );
+  assertArtifact(metadata.artifact, "application/x-tar", maximumEvidenceBytes);
   assertSignature(metadata.signature);
   if (
     metadata.schemaVersion !== 1 ||
@@ -458,16 +419,14 @@ function assertMetadataShape(
     !SHA256.test(metadata.releaseSafetyAttestationHash) ||
     !SAFE_ID.test(metadata.keyVersion) ||
     !SHA256.test(metadata.metadataHash) ||
-    metadata.metadataHash !==
-      optimizerReleasedEvidenceMetadataHash(metadata) ||
+    metadata.metadataHash !== optimizerReleasedEvidenceMetadataHash(metadata) ||
     timestamp(metadata.signature.signedAt) < timestamp(metadata.issuedAt)
   ) {
     fail();
   }
   if (metadata.purpose === "source-only-bootstrap") {
     if (
-      metadata.domain !==
-        "dark-factory.optimizer-source-only-bootstrap-evidence.v1" ||
+      metadata.domain !== "dark-factory.optimizer-source-only-bootstrap-evidence.v1" ||
       metadata.reviewed !== true ||
       !SHA256.test(metadata.reviewPolicyHash)
     ) {
@@ -475,12 +434,9 @@ function assertMetadataShape(
     }
   } else if (metadata.purpose === "proposal-diagnostic") {
     if (
-      metadata.domain !==
-        "dark-factory.optimizer-proposal-diagnostic-evidence.v1" ||
+      metadata.domain !== "dark-factory.optimizer-proposal-diagnostic-evidence.v1" ||
       !SAFE_ID.test(metadata.campaignId) ||
-      !/^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(
-        metadata.experimentId,
-      ) ||
+      !/^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(metadata.experimentId) ||
       !SHA256.test(metadata.diagnosticHash) ||
       !SAFE_RELEASE_ID.test(metadata.releaseId) ||
       typeof metadata.actionable !== "boolean"
@@ -488,23 +444,18 @@ function assertMetadataShape(
       fail();
     }
   } else if (
-    metadata.domain !==
-      "dark-factory.optimizer-analysis-evidence.v1" ||
+    metadata.domain !== "dark-factory.optimizer-analysis-evidence.v1" ||
     !SAFE_ID.test(metadata.campaignId) ||
-    !/^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(
-      metadata.experimentId,
-    ) ||
+    !/^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(metadata.experimentId) ||
     !SHA256.test(metadata.hypothesisHash) ||
     !SHA256.test(metadata.hypothesisDocumentHash) ||
     !GIT_OBJECT.test(metadata.candidateCommit) ||
     !SHA256.test(metadata.candidatePatchHash) ||
     !SHA256.test(metadata.candidateDocumentHash) ||
-    (metadata.repairAttestationHash !== null &&
-      !SHA256.test(metadata.repairAttestationHash)) ||
+    (metadata.repairAttestationHash !== null && !SHA256.test(metadata.repairAttestationHash)) ||
     (metadata.validationAttestationHash !== null &&
       !SHA256.test(metadata.validationAttestationHash)) ||
-    (metadata.releasedEvidenceHash !== null &&
-      !SHA256.test(metadata.releasedEvidenceHash))
+    (metadata.releasedEvidenceHash !== null && !SHA256.test(metadata.releasedEvidenceHash))
   ) {
     fail();
   }
@@ -537,8 +488,7 @@ function assertPublicKey(
     key.purpose !== request.purpose ||
     key.keyId !== request.keyId ||
     !SAFE_ID.test(key.keyVersion) ||
-    (request.keyVersion !== null &&
-      key.keyVersion !== request.keyVersion) ||
+    (request.keyVersion !== null && key.keyVersion !== request.keyVersion) ||
     key.revoked !== false ||
     key.authoritySetHash !== request.authoritySetHash ||
     key.verificationKeySetHash !== request.verificationKeySetHash ||
@@ -612,15 +562,11 @@ function assertSourceReceiptShape(
     !GIT_OBJECT.test(receipt.baselineCommit) ||
     !["daytona", "e2b", "modal"].includes(receipt.provider) ||
     !SAFE_ID.test(receipt.sandboxId) ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u.test(
-      receipt.imageReference,
-    ) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u.test(receipt.imageReference) ||
     !/^sha256:[a-f0-9]{64}$/u.test(receipt.imageDigest) ||
     !receipt.imageReference.endsWith(`@${receipt.imageDigest}`) ||
     !SHA256.test(receipt.networkPolicyHash) ||
-    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(
-      receipt.remoteRef,
-    ) ||
+    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(receipt.remoteRef) ||
     receipt.remoteRef.includes("..") ||
     receipt.remoteRef.includes("@{") ||
     receipt.remoteRef.includes("//") ||
@@ -632,9 +578,7 @@ function assertSourceReceiptShape(
       .split("/")
       .some(
         (component) =>
-          component.startsWith(".") ||
-          component.endsWith(".") ||
-          component.endsWith(".lock"),
+          component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
       ) ||
     !GIT_OBJECT.test(receipt.commitSha) ||
     !GIT_OBJECT.test(receipt.treeSha) ||
@@ -667,16 +611,8 @@ function assertRegistration(registration: RepositoryRegistration): void {
     "originVerification",
     "upstreamVerification",
   ]);
-  exactKeys(registration.originFingerprint, [
-    "transport",
-    "hostHash",
-    "repositoryHash",
-  ]);
-  exactKeys(registration.upstreamFingerprint, [
-    "transport",
-    "hostHash",
-    "repositoryHash",
-  ]);
+  exactKeys(registration.originFingerprint, ["transport", "hostHash", "repositoryHash"]);
+  exactKeys(registration.upstreamFingerprint, ["transport", "hostHash", "repositoryHash"]);
   exactKeys(registration.originVerification, [
     "private",
     "fetchable",
@@ -700,9 +636,7 @@ function assertRegistration(registration: RepositoryRegistration): void {
     !GIT_OBJECT.test(registration.treeSha) ||
     !SHA256.test(registration.lockSha256) ||
     !GIT_OBJECT.test(registration.upstreamBaseCommit) ||
-    !["https", "ssh"].includes(
-      registration.originFingerprint.transport,
-    ) ||
+    !["https", "ssh"].includes(registration.originFingerprint.transport) ||
     !SHA256.test(registration.originFingerprint.hostHash) ||
     !SHA256.test(registration.originFingerprint.repositoryHash) ||
     registration.upstreamFingerprint.transport !== "https" ||
@@ -713,14 +647,9 @@ function assertRegistration(registration: RepositoryRegistration): void {
     registration.originVerification.writable !== true ||
     !SHA256.test(registration.originVerification.providerAttestationHash) ||
     registration.upstreamVerification.fetchable !== true ||
-    !GIT_OBJECT.test(
-      registration.upstreamVerification.upstreamHeadCommit,
-    ) ||
-    registration.upstreamVerification.mergeBaseCommit !==
-      registration.upstreamBaseCommit ||
-    !SHA256.test(
-      registration.upstreamVerification.providerAttestationHash,
-    )
+    !GIT_OBJECT.test(registration.upstreamVerification.upstreamHeadCommit) ||
+    registration.upstreamVerification.mergeBaseCommit !== registration.upstreamBaseCommit ||
+    !SHA256.test(registration.upstreamVerification.providerAttestationHash)
   ) {
     fail();
   }
@@ -740,12 +669,9 @@ function assertSourceBindings(
   if (
     activeChampion.baselineCommit !== registration.headCommit ||
     receipt.registrationId !== registration.registrationId ||
-    receipt.originRepositoryHash !==
-      registration.originFingerprint.repositoryHash ||
-    receipt.upstreamRepositoryHash !==
-      registration.upstreamFingerprint.repositoryHash ||
-    receipt.upstreamHeadCommit !==
-      registration.upstreamVerification.upstreamHeadCommit ||
+    receipt.originRepositoryHash !== registration.originFingerprint.repositoryHash ||
+    receipt.upstreamRepositoryHash !== registration.upstreamFingerprint.repositoryHash ||
+    receipt.upstreamHeadCommit !== registration.upstreamVerification.upstreamHeadCommit ||
     receipt.upstreamBaseCommit !== registration.upstreamBaseCommit ||
     receipt.baselineCommit !== registration.headCommit ||
     receipt.commitSha !== activeChampion.activeCommit
@@ -763,51 +689,36 @@ function assertSourceBindings(
     }
     return;
   }
-  const prefix =
-    activeChampion.activeExperiment.toString().padStart(3, "0");
+  const prefix = activeChampion.activeExperiment.toString().padStart(3, "0");
   if (
     !Number.isSafeInteger(activeChampion.activeExperiment) ||
     activeChampion.activeExperiment < 1 ||
     activeChampion.activeCommit === registration.headCommit ||
-    !receipt.remoteRef.startsWith(
-      `refs/heads/df/experiment/${prefix}-`,
-    )
+    !receipt.remoteRef.startsWith(`refs/heads/df/experiment/${prefix}-`)
   ) {
     fail();
   }
 }
 
-export class ArtifactBackedCloudOptimizerAdapterResolver
-  implements CloudOptimizerAdapterResolver
-{
-  readonly #findSource:
-    TrustedGitSourceSnapshotReceiptSource["findByCommit"];
-  readonly #locateEvidence:
-    TrustedOptimizerReleasedEvidenceMetadataSource["locate"];
+export class ArtifactBackedCloudOptimizerAdapterResolver implements CloudOptimizerAdapterResolver {
+  readonly #findSource: TrustedGitSourceSnapshotReceiptSource["findByCommit"];
+  readonly #locateEvidence: TrustedOptimizerReleasedEvidenceMetadataSource["locate"];
   readonly #readUtf8: TrustedOptimizerResolverArtifactReader["readUtf8"];
-  readonly #readReleaseBytes:
-    TrustedOptimizerReleaseArtifactReader["readBytes"];
-  readonly #resolveKey:
-    TrustedOptimizerResolverPublicKeyAuthority["resolve"];
+  readonly #readReleaseBytes: TrustedOptimizerReleaseArtifactReader["readBytes"];
+  readonly #resolveKey: TrustedOptimizerResolverPublicKeyAuthority["resolve"];
   readonly #registration: RepositoryRegistration;
   readonly #bootstrapMetadataArtifact: TrustedCloudArtifactRef;
   readonly #authoritySetHash: string;
   readonly #verificationKeySetHash: string;
   readonly #maximumMetadataBytes: number;
   readonly #maximumEvidenceBytes: number;
-  readonly #releaseArtifactInspectionPolicy:
-    OptimizerReleaseArtifactInspectionPolicy;
+  readonly #releaseArtifactInspectionPolicy: OptimizerReleaseArtifactInspectionPolicy;
   readonly #resolved = new Map<string, Readonly<unknown>>();
   readonly #inFlight = new Map<string, Promise<Readonly<unknown>>>();
   readonly #evidenceOwners = new Map<string, string>();
-  readonly #inspectedArtifacts = new Map<
-    string,
-    Promise<void>
-  >();
+  readonly #inspectedArtifacts = new Map<string, Promise<void>>();
 
-  constructor(
-    options: ArtifactBackedCloudOptimizerAdapterResolverOptions,
-  ) {
+  constructor(options: ArtifactBackedCloudOptimizerAdapterResolverOptions) {
     try {
       if (
         options.sourceIndex.boundary !== "trusted-cloud" ||
@@ -815,23 +726,19 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
         options.artifactReader.boundary !== "trusted-cloud" ||
         options.releaseArtifactReader.boundary !==
           "trusted-cloud-optimizer-release-artifact-reader" ||
-        options.keyAuthority.boundary !==
-          "trusted-cloud-optimizer-resolver-public-key-authority" ||
+        options.keyAuthority.boundary !== "trusted-cloud-optimizer-resolver-public-key-authority" ||
         typeof options.sourceIndex.findByCommit !== "function" ||
         typeof options.evidenceSource.locate !== "function" ||
         typeof options.artifactReader.readUtf8 !== "function" ||
-        typeof options.releaseArtifactReader.readBytes !==
-          "function" ||
+        typeof options.releaseArtifactReader.readBytes !== "function" ||
         typeof options.keyAuthority.resolve !== "function" ||
         !SHA256.test(options.authoritySetHash) ||
         !SHA256.test(options.verificationKeySetHash)
       ) {
         fail();
       }
-      const maximumMetadataBytes =
-        options.maximumMetadataBytes ?? MAXIMUM_METADATA_BYTES;
-      const maximumEvidenceBytes =
-        options.maximumEvidenceBytes ?? MAXIMUM_EVIDENCE_BYTES;
+      const maximumMetadataBytes = options.maximumMetadataBytes ?? MAXIMUM_METADATA_BYTES;
+      const maximumEvidenceBytes = options.maximumEvidenceBytes ?? MAXIMUM_EVIDENCE_BYTES;
       if (
         !Number.isSafeInteger(maximumMetadataBytes) ||
         maximumMetadataBytes < 1 ||
@@ -847,33 +754,16 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
       const releaseArtifactInspectionPolicy = cloneCanonical(
         options.releaseArtifactInspectionPolicy,
       );
-      assertOptimizerReleaseArtifactInspectionPolicy(
-        releaseArtifactInspectionPolicy,
+      assertOptimizerReleaseArtifactInspectionPolicy(releaseArtifactInspectionPolicy);
+      const bootstrapMetadataArtifact = cloneCanonical(options.sourceOnlyBootstrapMetadataArtifact);
+      assertArtifact(bootstrapMetadataArtifact, "application/json", maximumMetadataBytes);
+      this.#findSource = options.sourceIndex.findByCommit.bind(options.sourceIndex);
+      this.#locateEvidence = options.evidenceSource.locate.bind(options.evidenceSource);
+      this.#readUtf8 = options.artifactReader.readUtf8.bind(options.artifactReader);
+      this.#readReleaseBytes = options.releaseArtifactReader.readBytes.bind(
+        options.releaseArtifactReader,
       );
-      const bootstrapMetadataArtifact = cloneCanonical(
-        options.sourceOnlyBootstrapMetadataArtifact,
-      );
-      assertArtifact(
-        bootstrapMetadataArtifact,
-        "application/json",
-        maximumMetadataBytes,
-      );
-      this.#findSource = options.sourceIndex.findByCommit.bind(
-        options.sourceIndex,
-      );
-      this.#locateEvidence = options.evidenceSource.locate.bind(
-        options.evidenceSource,
-      );
-      this.#readUtf8 = options.artifactReader.readUtf8.bind(
-        options.artifactReader,
-      );
-      this.#readReleaseBytes =
-        options.releaseArtifactReader.readBytes.bind(
-          options.releaseArtifactReader,
-        );
-      this.#resolveKey = options.keyAuthority.resolve.bind(
-        options.keyAuthority,
-      );
+      this.#resolveKey = options.keyAuthority.resolve.bind(options.keyAuthority);
       this.#registration = deepFreezeJson(registration) as RepositoryRegistration;
       this.#bootstrapMetadataArtifact = deepFreezeJson(
         bootstrapMetadataArtifact,
@@ -897,13 +787,11 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
   ): Promise<void> {
     const frozenArtifact = cloneCanonical(artifact);
     const key = canonicalHash({
-      domain:
-        "dark-factory.optimizer-artifact-inspection-cache-key.v1",
+      domain: "dark-factory.optimizer-artifact-inspection-cache-key.v1",
       kind,
       artifact: frozenArtifact,
       expectedSourceCommit,
-      inspectionPolicyHash:
-        this.#releaseArtifactInspectionPolicy.policyHash,
+      inspectionPolicyHash: this.#releaseArtifactInspectionPolicy.policyHash,
     });
     const existing = this.#inspectedArtifacts.get(key);
     if (existing !== undefined) {
@@ -912,23 +800,15 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
     }
     const operation = (async () => {
       const before = canonicalJson(frozenArtifact);
-      const maximumBytes =
-        maximumOptimizerArtifactInspectionBytes(kind);
+      const maximumBytes = maximumOptimizerArtifactInspectionBytes(kind);
       if (
         frozenArtifact.byteLength > maximumBytes ||
-        (kind === "release-evidence-tar" &&
-          frozenArtifact.byteLength > this.#maximumEvidenceBytes)
+        (kind === "release-evidence-tar" && frozenArtifact.byteLength > this.#maximumEvidenceBytes)
       ) {
         fail();
       }
-      const bytes = await this.#readReleaseBytes(
-        frozenArtifact,
-        maximumBytes,
-      );
-      if (
-        canonicalJson(frozenArtifact) !== before ||
-        !(bytes instanceof Uint8Array)
-      ) {
+      const bytes = await this.#readReleaseBytes(frozenArtifact, maximumBytes);
+      if (canonicalJson(frozenArtifact) !== before || !(bytes instanceof Uint8Array)) {
         fail();
       }
       assertOptimizerBoundArtifactBytesSafe({
@@ -947,23 +827,13 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
     }
   }
 
-  async #inspectSourceArtifactPair(
-    source: TrustedGitSourceSnapshotReceipt,
-  ): Promise<void> {
+  async #inspectSourceArtifactPair(source: TrustedGitSourceSnapshotReceipt): Promise<void> {
     // Git pack bodies are compressed. Never authorize the bundle from its
     // header scan alone: first inspect the independently materialized source
     // tree whose mandatory PAX comment binds the same signed commit, then
     // require the bundle's sole advertised ref to bind that commit too.
-    await this.#inspectArtifact(
-      source.sourceArtifact,
-      "source-tree-tar",
-      source.commitSha,
-    );
-    await this.#inspectArtifact(
-      source.sourceBundleArtifact,
-      "source-git-bundle",
-      source.commitSha,
-    );
+    await this.#inspectArtifact(source.sourceArtifact, "source-tree-tar", source.commitSha);
+    await this.#inspectArtifact(source.sourceBundleArtifact, "source-git-bundle", source.commitSha);
   }
 
   async #verifySignature(
@@ -975,8 +845,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
     assertSignature(signature);
     const request: OptimizerResolverPublicKeyRequest = {
       schemaVersion: 1,
-      domain:
-        "dark-factory.optimizer-resolver-public-key-request.v1",
+      domain: "dark-factory.optimizer-resolver-public-key-request.v1",
       purpose,
       keyId: signature.keyId,
       keyVersion,
@@ -992,7 +861,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
       fail();
     }
     assertPublicKey(key, request);
-    let publicKey;
+    let publicKey: ReturnType<typeof createPublicKey>;
     try {
       publicKey = createPublicKey({
         key: Buffer.from(key.publicKeySpkiDer),
@@ -1002,10 +871,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
     } catch {
       fail();
     }
-    if (
-      publicKey.asymmetricKeyType !== "ed25519" ||
-      !verifyEd25519Signature(document, publicKey)
-    ) {
+    if (publicKey.asymmetricKeyType !== "ed25519" || !verifyEd25519Signature(document, publicKey)) {
       fail();
     }
   }
@@ -1013,17 +879,10 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
   async #readMetadata(
     artifact: TrustedCloudArtifactRef,
   ): Promise<OptimizerReleasedEvidenceMetadata> {
-    assertArtifact(
-      artifact,
-      "application/json",
-      this.#maximumMetadataBytes,
-    );
+    assertArtifact(artifact, "application/json", this.#maximumMetadataBytes);
     const frozenArtifact = cloneCanonical(artifact);
     const artifactBefore = canonicalJson(frozenArtifact);
-    const raw = await this.#readUtf8(
-      frozenArtifact,
-      this.#maximumMetadataBytes,
-    );
+    const raw = await this.#readUtf8(frozenArtifact, this.#maximumMetadataBytes);
     if (
       canonicalJson(frozenArtifact) !== artifactBefore ||
       typeof raw !== "string" ||
@@ -1045,18 +904,14 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
       signaturePurpose(parsed),
       parsed.keyVersion,
     );
-    return deepFreezeJson(
-      cloneCanonical(parsed),
-    ) as OptimizerReleasedEvidenceMetadata;
+    return deepFreezeJson(cloneCanonical(parsed)) as OptimizerReleasedEvidenceMetadata;
   }
 
   async #resolveEvidence(
     key: string,
     query: OptimizerReleasedEvidenceQuery | null,
     metadataArtifact: TrustedCloudArtifactRef | null,
-    assertBindings: (
-      metadata: OptimizerReleasedEvidenceMetadata,
-    ) => void,
+    assertBindings: (metadata: OptimizerReleasedEvidenceMetadata) => void,
   ): Promise<Readonly<{ readonly releasedEvidence: TrustedCloudArtifactRef }>> {
     const existing = this.#resolved.get(key);
     if (existing !== undefined) {
@@ -1090,11 +945,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
       }
       const metadata = await this.#readMetadata(exactMetadataArtifact);
       assertBindings(metadata);
-      await this.#inspectArtifact(
-        metadata.artifact,
-        "release-evidence-tar",
-        null,
-      );
+      await this.#inspectArtifact(metadata.artifact, "release-evidence-tar", null);
       const owner = this.#evidenceOwners.get(metadata.artifact.sha256);
       if (owner !== undefined && owner !== key) fail();
       this.#evidenceOwners.set(metadata.artifact.sha256, key);
@@ -1110,9 +961,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
     return operation;
   }
 
-  public async proposal(
-    input: Parameters<CloudOptimizerAdapterResolver["proposal"]>[0],
-  ) {
+  public async proposal(input: Parameters<CloudOptimizerAdapterResolver["proposal"]>[0]) {
     try {
       const inputBefore = canonicalJson(input);
       const context = cloneCanonical(input);
@@ -1134,51 +983,32 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
       ]);
       if (
         !GIT_OBJECT.test(context.activeChampion.baselineCommit) ||
-        !Number.isSafeInteger(
-          context.activeChampion.activeExperiment,
-        ) ||
+        !Number.isSafeInteger(context.activeChampion.activeExperiment) ||
         context.activeChampion.activeExperiment < 0 ||
-        context.activeChampion.activeExperiment >=
-          context.experiment.number ||
-        context.experiment.parentExperiment !==
-          context.activeChampion.activeExperiment ||
+        context.activeChampion.activeExperiment >= context.experiment.number ||
+        context.experiment.parentExperiment !== context.activeChampion.activeExperiment ||
         !GIT_OBJECT.test(context.activeChampion.activeCommit) ||
         (context.activeChampion.certifiedExperiment !== null &&
-          (!Number.isSafeInteger(
-            context.activeChampion.certifiedExperiment,
-          ) ||
+          (!Number.isSafeInteger(context.activeChampion.certifiedExperiment) ||
             context.activeChampion.certifiedExperiment < 0)) ||
         (context.activeChampion.certifiedCommit !== null &&
-          !GIT_OBJECT.test(
-            context.activeChampion.certifiedCommit,
-          )) ||
+          !GIT_OBJECT.test(context.activeChampion.certifiedCommit)) ||
         (context.activeChampion.certifiedExperiment === null) !==
           (context.activeChampion.certifiedCommit === null) ||
         timestamp(context.activeChampion.updatedAt) < 0 ||
         !SHA256.test(context.activeChampion.sourceSealHash) ||
-        context.sourceOnlyBootstrap !==
-          (context.experiment.number === 1) ||
-        context.sourceOnlyBootstrap !==
-          (context.diagnosticBrief === null)
+        context.sourceOnlyBootstrap !== (context.experiment.number === 1) ||
+        context.sourceOnlyBootstrap !== (context.diagnosticBrief === null)
       ) {
         fail();
       }
-      const sourceReceipt = await this.#findSource(
-        context.activeChampion.activeCommit,
-      );
-      if (
-        canonicalJson(input) !== inputBefore ||
-        sourceReceipt === undefined
-      ) {
+      const sourceReceipt = await this.#findSource(context.activeChampion.activeCommit);
+      if (canonicalJson(input) !== inputBefore || sourceReceipt === undefined) {
         fail();
       }
       const source = cloneCanonical(sourceReceipt);
       assertSourceReceiptShape(source);
-      assertSourceBindings(
-        source,
-        this.#registration,
-        context.activeChampion,
-      );
+      assertSourceBindings(source, this.#registration, context.activeChampion);
       await this.#verifySignature(
         source as unknown as Readonly<Record<string, unknown>>,
         "git-source-snapshot-receipt",
@@ -1219,11 +1049,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
         );
       } else {
         if (context.diagnosticBrief === null) fail();
-        exactKeys(context.diagnosticBrief, [
-          "hash",
-          "releaseId",
-          "actionable",
-        ]);
+        exactKeys(context.diagnosticBrief, ["hash", "releaseId", "actionable"]);
         if (
           !SHA256.test(context.diagnosticBrief.hash) ||
           !SAFE_RELEASE_ID.test(context.diagnosticBrief.releaseId) ||
@@ -1233,8 +1059,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
         }
         const unsigned = {
           schemaVersion: 1 as const,
-          domain:
-            "dark-factory.optimizer-proposal-evidence-query.v1" as const,
+          domain: "dark-factory.optimizer-proposal-evidence-query.v1" as const,
           purpose: "proposal-diagnostic" as const,
           campaignId: context.experiment.lineageId,
           experimentId: id,
@@ -1277,19 +1102,11 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
     }
   }
 
-  public async analysis(
-    input: Parameters<CloudOptimizerAdapterResolver["analysis"]>[0],
-  ) {
+  public async analysis(input: Parameters<CloudOptimizerAdapterResolver["analysis"]>[0]) {
     try {
       const inputBefore = canonicalJson(input);
       const captured = cloneCanonical(input);
-      exactKeys(captured, [
-        "experiment",
-        "hypothesis",
-        "candidate",
-        "repair",
-        "validation",
-      ]);
+      exactKeys(captured, ["experiment", "hypothesis", "candidate", "repair", "validation"]);
       const id = experimentId(captured.experiment);
       exactKeys(captured.hypothesis, [
         "hash",
@@ -1301,12 +1118,7 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
         "falsificationCriteria",
         "rollbackCondition",
       ]);
-      exactKeys(captured.candidate, [
-        "commit",
-        "patchHash",
-        "changedFiles",
-        "mutationCategory",
-      ]);
+      exactKeys(captured.candidate, ["commit", "patchHash", "changedFiles", "mutationCategory"]);
       if (
         !SHA256.test(captured.hypothesis.hash) ||
         !GIT_OBJECT.test(captured.candidate.commit) ||
@@ -1354,26 +1166,19 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
           "attemptAccounting",
         ]);
       }
-      const repairAttestationHash =
-        captured.repair?.attestationHash ?? null;
-      const validationAttestationHash =
-        captured.validation?.attestationHash ?? null;
-      const releasedEvidenceHash =
-        captured.validation?.releasedEvidenceHash ?? null;
+      const repairAttestationHash = captured.repair?.attestationHash ?? null;
+      const validationAttestationHash = captured.validation?.attestationHash ?? null;
+      const releasedEvidenceHash = captured.validation?.releasedEvidenceHash ?? null;
       if (
-        (repairAttestationHash !== null &&
-          !SHA256.test(repairAttestationHash)) ||
-        (validationAttestationHash !== null &&
-          !SHA256.test(validationAttestationHash)) ||
-        (releasedEvidenceHash !== null &&
-          !SHA256.test(releasedEvidenceHash))
+        (repairAttestationHash !== null && !SHA256.test(repairAttestationHash)) ||
+        (validationAttestationHash !== null && !SHA256.test(validationAttestationHash)) ||
+        (releasedEvidenceHash !== null && !SHA256.test(releasedEvidenceHash))
       ) {
         fail();
       }
       const unsigned = {
         schemaVersion: 1 as const,
-        domain:
-          "dark-factory.optimizer-analysis-evidence-query.v1" as const,
+        domain: "dark-factory.optimizer-analysis-evidence-query.v1" as const,
         purpose: "analysis" as const,
         campaignId: captured.experiment.lineageId,
         experimentId: id,
@@ -1400,19 +1205,13 @@ export class ArtifactBackedCloudOptimizerAdapterResolver
             metadata.campaignId !== query.campaignId ||
             metadata.experimentId !== query.experimentId ||
             metadata.hypothesisHash !== query.hypothesisHash ||
-            metadata.hypothesisDocumentHash !==
-              query.hypothesisDocumentHash ||
+            metadata.hypothesisDocumentHash !== query.hypothesisDocumentHash ||
             metadata.candidateCommit !== query.candidateCommit ||
-            metadata.candidatePatchHash !==
-              query.candidatePatchHash ||
-            metadata.candidateDocumentHash !==
-              query.candidateDocumentHash ||
-            metadata.repairAttestationHash !==
-              query.repairAttestationHash ||
-            metadata.validationAttestationHash !==
-              query.validationAttestationHash ||
-            metadata.releasedEvidenceHash !==
-              query.releasedEvidenceHash
+            metadata.candidatePatchHash !== query.candidatePatchHash ||
+            metadata.candidateDocumentHash !== query.candidateDocumentHash ||
+            metadata.repairAttestationHash !== query.repairAttestationHash ||
+            metadata.validationAttestationHash !== query.validationAttestationHash ||
+            metadata.releasedEvidenceHash !== query.releasedEvidenceHash
           ) {
             fail();
           }

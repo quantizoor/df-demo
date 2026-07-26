@@ -21,12 +21,8 @@ import {
 } from "../../src/evaluator/online-error-authority.js";
 
 const CAMPAIGN_ID = "campaign-mounted-online-error-test";
-const CAMPAIGN_HASH =
-  onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID);
-const initialBudget = createOnlineErrorBudget(
-  0.05,
-  "null-calibration-v1",
-);
+const CAMPAIGN_HASH = onlineErrorBudgetCampaignIdHash(CAMPAIGN_ID);
+const initialBudget = createOnlineErrorBudget(0.05, "null-calibration-v1");
 const runtimeGuard: TrustedArtifactRuntimeGuard = {
   assertTrustedCloudRuntime() {},
 };
@@ -105,25 +101,18 @@ function request(): TrustedEvaluationRequest {
 
 describe("mounted-volume online error budget CAS store", () => {
   it("persists a burned reservation across a clean controller handoff", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-online-error-state-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-online-error-state-test-"));
     const firstStore = new MountedVolumeOnlineErrorBudgetCasStore({
-      durableState: durableState(
-        root,
-        "1".repeat(64),
-        "a".repeat(48),
-      ),
+      durableState: durableState(root, "1".repeat(64), "a".repeat(48)),
       campaignId: CAMPAIGN_ID,
       initialBudget,
     });
-    const firstAuthority =
-      new DurableTrustedOnlineErrorBudgetAuthority({
-        store: firstStore,
-        campaignIdHash: CAMPAIGN_HASH,
-        initialBudget,
-        now: () => new Date("2026-07-26T10:01:00.000Z"),
-      });
+    const firstAuthority = new DurableTrustedOnlineErrorBudgetAuthority({
+      store: firstStore,
+      campaignIdHash: CAMPAIGN_HASH,
+      initialBudget,
+      now: () => new Date("2026-07-26T10:01:00.000Z"),
+    });
     const evaluationRequest = request();
     const input = {
       request: evaluationRequest,
@@ -133,38 +122,25 @@ describe("mounted-volume online error budget CAS store", () => {
     const reserved = await firstAuthority.reserve(input);
     await firstStore.close();
 
-    const successorStore =
-      new MountedVolumeOnlineErrorBudgetCasStore({
-        durableState: durableState(
-          root,
-          "2".repeat(64),
-          "b".repeat(48),
-        ),
-        campaignId: CAMPAIGN_ID,
-        initialBudget,
-      });
-    const successorAuthority =
-      new DurableTrustedOnlineErrorBudgetAuthority({
-        store: successorStore,
-        campaignIdHash: CAMPAIGN_HASH,
-        initialBudget,
-        now: () => new Date("2026-07-26T10:02:00.000Z"),
-      });
-    await expect(successorAuthority.reserve(input)).resolves.toEqual(
-      reserved,
-    );
+    const successorStore = new MountedVolumeOnlineErrorBudgetCasStore({
+      durableState: durableState(root, "2".repeat(64), "b".repeat(48)),
+      campaignId: CAMPAIGN_ID,
+      initialBudget,
+    });
+    const successorAuthority = new DurableTrustedOnlineErrorBudgetAuthority({
+      store: successorStore,
+      campaignIdHash: CAMPAIGN_HASH,
+      initialBudget,
+      now: () => new Date("2026-07-26T10:02:00.000Z"),
+    });
+    await expect(successorAuthority.reserve(input)).resolves.toEqual(reserved);
     const state = await successorStore.read();
     expect(state.revision).toBe(1);
-    expect(state.current.spentAlpha).toBe(
-      reserved.accounting.alphaSpent,
-    );
-    await expect(
-      successorAuthority.reconcile(),
-    ).resolves.toMatchObject({
+    expect(state.current.spentAlpha).toBe(reserved.accounting.alphaSpent);
+    await expect(successorAuthority.reconcile()).resolves.toMatchObject({
       storeRevision: 1,
       onlineErrorSpent: reserved.accounting.alphaSpent,
-      resultingStateHash:
-        reserved.accounting.resultingStateHash,
+      resultingStateHash: reserved.accounting.resultingStateHash,
     });
     await successorStore.close();
   });

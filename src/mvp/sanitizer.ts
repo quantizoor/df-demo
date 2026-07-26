@@ -1,12 +1,12 @@
 import {
   CAUSE_CODES,
+  canonicalJson,
   DIAGNOSTIC_CATEGORIES,
   INTERVENTION_CODES,
   MVP_SCHEMA_VERSION,
-  TOOL_CLASSES,
   type PrivateEvaluationObservation,
   type SanitizedDiagnosticBrief,
-  canonicalJson,
+  TOOL_CLASSES,
 } from "./contracts.js";
 import { isMvpModelDeploymentAlias } from "./model-deployment.js";
 import { assertTaskFreeDiagnosticBrief } from "./privacy.js";
@@ -24,9 +24,7 @@ export interface DiagnosticClassifierPort {
  * collection of closed-vocabulary cards with no arbitrary text fields.
  */
 export class ClosedVocabularyLlmSanitizer {
-  public constructor(
-    private readonly classifier: DiagnosticClassifierPort,
-  ) {}
+  public constructor(private readonly classifier: DiagnosticClassifierPort) {}
 
   public async sanitize(input: {
     readonly candidate: readonly PrivateEvaluationObservation[];
@@ -60,9 +58,7 @@ interface FoundryMessageResponse {
  * Minimal Messages API client for an already-deployed Claude model in
  * Microsoft Foundry. It provisions nothing and never writes or logs its key.
  */
-export class FoundryMessagesDiagnosticClassifier
-  implements DiagnosticClassifierPort
-{
+export class FoundryMessagesDiagnosticClassifier implements DiagnosticClassifierPort {
   readonly #baseUrl: string;
   readonly #deployment: string;
   readonly #apiKey: string;
@@ -100,9 +96,7 @@ export class FoundryMessagesDiagnosticClassifier
       champion: classifierObservations(input.champion),
     });
     if (Buffer.byteLength(classifierInput, "utf8") > 2 * 1024 * 1024) {
-      throw new Error(
-        "Trusted diagnostic classifier input exceeds its bounded context",
-      );
+      throw new Error("Trusted diagnostic classifier input exceeds its bounded context");
     }
     const response = await this.#fetch(`${this.#baseUrl}/v1/messages`, {
       method: "POST",
@@ -132,37 +126,23 @@ export class FoundryMessagesDiagnosticClassifier
       signal: AbortSignal.timeout(this.#timeoutMs),
     });
     if (!response.ok) {
-      throw new Error(
-        `Trusted diagnostic classifier failed with HTTP ${response.status}`,
-      );
+      throw new Error(`Trusted diagnostic classifier failed with HTTP ${response.status}`);
     }
     const payload = (await response.json()) as FoundryMessageResponse;
     const textBlocks = (payload.content ?? []).filter(
-      (block) =>
-        block.type === "text" &&
-        typeof block.text === "string",
+      (block) => block.type === "text" && typeof block.text === "string",
     );
     if (textBlocks.length !== 1) {
-      throw new Error(
-        "Trusted diagnostic classifier returned an unexpected response shape",
-      );
+      throw new Error("Trusted diagnostic classifier returned an unexpected response shape");
     }
     const text = textBlocks[0]?.text?.trim();
-    if (
-      text === undefined ||
-      !text.startsWith("{") ||
-      !text.endsWith("}")
-    ) {
-      throw new Error(
-        "Trusted diagnostic classifier did not return one JSON object",
-      );
+    if (text === undefined || !text.startsWith("{") || !text.endsWith("}")) {
+      throw new Error("Trusted diagnostic classifier did not return one JSON object");
     }
     try {
       return JSON.parse(text) as unknown;
     } catch {
-      throw new Error(
-        "Trusted diagnostic classifier returned malformed JSON",
-      );
+      throw new Error("Trusted diagnostic classifier returned malformed JSON");
     }
   }
 }
@@ -203,9 +183,7 @@ function validateFoundryBaseUrl(value: string): string {
     !parsed.hostname.endsWith(".services.ai.azure.com") ||
     parsed.pathname.replace(/\/+$/u, "") !== "/anthropic"
   ) {
-    throw new Error(
-      "Foundry sanitizer must use an HTTPS Microsoft Foundry Anthropic base URL",
-    );
+    throw new Error("Foundry sanitizer must use an HTTPS Microsoft Foundry Anthropic base URL");
   }
   return parsed.toString().replace(/\/$/u, "");
 }
@@ -214,15 +192,13 @@ function sensitiveObservationLiterals(input: {
   readonly candidate: readonly PrivateEvaluationObservation[];
   readonly champion: readonly PrivateEvaluationObservation[];
 }): readonly string[] {
-  return [...input.candidate, ...input.champion].flatMap(
-    (observation) => [
-      observation.taskHandle,
-      observation.taskRevisionDigest,
-      observation.cellId,
-      observation.harnessRevision,
-      observation.environmentDigest,
-    ],
-  );
+  return [...input.candidate, ...input.champion].flatMap((observation) => [
+    observation.taskHandle,
+    observation.taskRevisionDigest,
+    observation.cellId,
+    observation.harnessRevision,
+    observation.environmentDigest,
+  ]);
 }
 
 function classifierObservations(

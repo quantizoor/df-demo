@@ -1,9 +1,6 @@
 import { canonicalHash, withContentHash } from "../../src/schemas/canonical.js";
 import type { ArtifactFileName, SchemaName } from "../../src/schemas/registry.js";
-import {
-  harnessRegistrationFixture,
-  initialCampaignStateFixture,
-} from "../campaign/fixtures.js";
+import { harnessRegistrationFixture, initialCampaignStateFixture } from "../campaign/fixtures.js";
 
 export const HASH_A = "a".repeat(64);
 export const HASH_B = "b".repeat(64);
@@ -91,7 +88,8 @@ export function failureCard(): Readonly<Record<string, unknown>> {
   return {
     cardId: "card-001",
     title: "Recovery after failed execution",
-    failurePattern: "Failed executions were often followed by another execution without inspection.",
+    failurePattern:
+      "Failed executions were often followed by another execution without inspection.",
     causalInterpretation: "The recovery policy may retry too quickly.",
     affectedHarnessComponent: "recovery-policy",
     metricIds: ["metric-001"],

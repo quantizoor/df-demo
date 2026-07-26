@@ -1,21 +1,16 @@
-import {
-  createHash,
-  generateKeyPairSync,
-  sign as signPayload,
-  type KeyObject,
-} from "node:crypto";
+import { createHash, generateKeyPairSync, type KeyObject, sign as signPayload } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import {
-  assertEvaluationRequest,
-  hashEvaluationRequest,
-  type AggregateResultBody,
-  type SignedAggregateEnvelope,
-  type TrustedEvaluationRequest,
-} from "../../src/evaluator/contracts.js";
 import {
   TrustedEvaluatorClient,
   type TrustedEvaluatorTransport,
 } from "../../src/evaluator/client.js";
+import {
+  type AggregateResultBody,
+  assertEvaluationRequest,
+  hashEvaluationRequest,
+  type SignedAggregateEnvelope,
+  type TrustedEvaluationRequest,
+} from "../../src/evaluator/contracts.js";
 import {
   canonicalJson,
   type EnvelopeKeyring,
@@ -255,9 +250,9 @@ describe("trusted evaluation request", () => {
       },
     };
     expect(() => assertEvaluationRequest(official)).not.toThrow();
-    expect(() =>
-      assertEvaluationRequest({ ...official, runMode: "research" }),
-    ).toThrow(/adaptive research/u);
+    expect(() => assertEvaluationRequest({ ...official, runMode: "research" })).toThrow(
+      /adaptive research/u,
+    );
   });
 });
 

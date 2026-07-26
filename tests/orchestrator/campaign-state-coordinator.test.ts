@@ -4,10 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  CampaignStateStore,
-  type CampaignStateData,
-} from "../../src/campaign/index.js";
+import { type CampaignStateData, CampaignStateStore } from "../../src/campaign/index.js";
 import type { BudgetSnapshot } from "../../src/domain/models.js";
 import {
   hashOnlineErrorBudgetReconciliation,
@@ -21,19 +18,9 @@ import {
   type TrustedOptimizationInterruptionPort,
   type TrustedOptimizationResumeVerifier,
 } from "../../src/orchestrator/campaign-state-coordinator.js";
-import type {
-  ExperimentRunInput,
-  ExperimentRunResult,
-} from "../../src/orchestrator/contracts.js";
+import type { ExperimentRunInput, ExperimentRunResult } from "../../src/orchestrator/contracts.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
-import {
-  HASH_A,
-  HASH_B,
-  HASH_C,
-  HASH_D,
-  LATER,
-  campaignSeed,
-} from "../campaign/fixtures.js";
+import { campaignSeed, HASH_A, HASH_B, HASH_C, HASH_D, LATER } from "../campaign/fixtures.js";
 
 const RESULT_SEAL_HASH = "6".repeat(64);
 const ACCOUNTING_HASH = "7".repeat(64);
@@ -47,9 +34,7 @@ const temporaryDirectories: string[] = [];
 async function initializedStore(
   seed: CampaignStateData = campaignSeed(),
 ): Promise<CampaignStateStore> {
-  const root = await mkdtemp(
-    join(tmpdir(), "df-coordinator-test-"),
-  );
+  const root = await mkdtemp(join(tmpdir(), "df-coordinator-test-"));
   temporaryDirectories.push(root);
   const store = new CampaignStateStore(root, "campaign-001", {
     now: () => new Date(LATER),
@@ -69,29 +54,20 @@ async function initializedStore(
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((path) =>
-        rm(path, { recursive: true, force: true }),
-      ),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
 function preparedInput(
-  context: Parameters<
-    TrustedOptimizationInputFactory["prepareOrResume"]
-  >[0],
+  context: Parameters<TrustedOptimizationInputFactory["prepareOrResume"]>[0],
   repairAttemptOrdinal: 1 | 2 = 1,
 ): ExperimentRunInput {
   return {
     experiment: {
       number: context.experimentNumber,
-      slug: context.sourceOnlyBootstrap
-        ? "source-only-bootstrap"
-        : "diagnostic-repair",
+      slug: context.sourceOnlyBootstrap ? "source-only-bootstrap" : "diagnostic-repair",
       kind: "optimization",
-      parentExperiment:
-        context.allocationSnapshot.activeChampion.activeExperiment,
+      parentExperiment: context.allocationSnapshot.activeChampion.activeExperiment,
       lineageId: context.lineageId,
       protocolHash: context.protocolHash,
     },
@@ -104,30 +80,19 @@ function preparedInput(
           releaseId: "diagnostic:001",
           actionable: true,
         },
-    previousDiscoveryAttestationHash:
-      context.sourceOnlyBootstrap ? null : HASH_B,
+    previousDiscoveryAttestationHash: context.sourceOnlyBootstrap ? null : HASH_B,
     repairAttemptOrdinal,
     stop: { requested: false },
   };
 }
 
-function inputFactory(
-  repairAttemptOrdinal: 1 | 2 = 1,
-): TrustedOptimizationInputFactory {
-  let persistedBinding: Parameters<
-    TrustedOptimizationInputFactory["bindClaim"]
-  >[0] | null = null;
+function inputFactory(repairAttemptOrdinal: 1 | 2 = 1): TrustedOptimizationInputFactory {
+  let persistedBinding: Parameters<TrustedOptimizationInputFactory["bindClaim"]>[0] | null = null;
   return {
     boundary: "trusted-cloud",
-    prepareOrResume: vi.fn(async (context) =>
-      preparedInput(context, repairAttemptOrdinal),
-    ),
+    prepareOrResume: vi.fn(async (context) => preparedInput(context, repairAttemptOrdinal)),
     bindClaim: vi.fn(async (binding) => {
-      if (
-        persistedBinding !== null &&
-        canonicalHash(persistedBinding) !==
-          canonicalHash(binding)
-      ) {
+      if (persistedBinding !== null && canonicalHash(persistedBinding) !== canonicalHash(binding)) {
         throw new Error("Conflicting persisted claim binding.");
       }
       persistedBinding = binding;
@@ -148,57 +113,46 @@ function completionMaterial(
 ): TrustedOptimizationCompletionMaterialPort {
   return {
     boundary: "trusted-cloud",
-    createBudgetAccountingAttestation: vi.fn(
-      async (request) => ({
+    createBudgetAccountingAttestation: vi.fn(async (request) => ({
+      accountingAttestationHash: ACCOUNTING_HASH,
+      nextUsage: {
+        ...request.previousUsage,
+        ...request.reportedUsage,
+      },
+    })),
+    createInterruptedBudgetAccountingAttestation: vi.fn(async (request) => {
+      const maximumOnlineError = 0.05;
+      const gatesSpent = interruptedOnlineErrorSpent === 0 ? 0 : 1;
+      const unsigned = {
+        sensitivity: "release-safe-online-error-reconciliation" as const,
+        schemaVersion: 1 as const,
+        campaignIdHash: onlineErrorBudgetCampaignIdHash(request.campaignId),
+        storeRevision: gatesSpent,
+        policyVersion: "online-alpha-spending-v1" as const,
+        maximumOnlineError,
+        onlineErrorSpent: interruptedOnlineErrorSpent,
+        onlineErrorRemaining: maximumOnlineError - interruptedOnlineErrorSpent,
+        gatesSpent,
+        resultingStateHash: HASH_C,
+        durableStateCommitment: HASH_D,
+        observedAt: LATER,
+      };
+      return {
         accountingAttestationHash: ACCOUNTING_HASH,
         nextUsage: {
           ...request.previousUsage,
-          ...request.reportedUsage,
-        },
-      }),
-    ),
-    createInterruptedBudgetAccountingAttestation: vi.fn(
-      async (request) => {
-        const maximumOnlineError = 0.05;
-        const gatesSpent =
-          interruptedOnlineErrorSpent === 0 ? 0 : 1;
-        const unsigned = {
-          sensitivity:
-            "release-safe-online-error-reconciliation" as const,
-          schemaVersion: 1 as const,
-          campaignIdHash: onlineErrorBudgetCampaignIdHash(
-            request.campaignId,
-          ),
-          storeRevision: gatesSpent,
-          policyVersion: "online-alpha-spending-v1" as const,
-          maximumOnlineError,
+          ...interruptedUsage,
           onlineErrorSpent: interruptedOnlineErrorSpent,
-          onlineErrorRemaining:
-            maximumOnlineError - interruptedOnlineErrorSpent,
-          gatesSpent,
-          resultingStateHash: HASH_C,
-          durableStateCommitment: HASH_D,
-          observedAt: LATER,
-        };
-        return {
-          accountingAttestationHash: ACCOUNTING_HASH,
-          nextUsage: {
-            ...request.previousUsage,
-            ...interruptedUsage,
-            onlineErrorSpent: interruptedOnlineErrorSpent,
-          },
-          onlineErrorReconciliation: {
-            ...unsigned,
-            reconciliationHash:
-              hashOnlineErrorBudgetReconciliation(unsigned),
-          },
-        };
-      },
-    ),
+        },
+        onlineErrorReconciliation: {
+          ...unsigned,
+          reconciliationHash: hashOnlineErrorBudgetReconciliation(unsigned),
+        },
+      };
+    }),
     createSealMaterial: vi.fn(async (request) => ({
       decisionAttestationHash: DECISION_HASH,
-      holdoutAvailabilityAttestationHash:
-        request.stage === "validation" ? HOLDOUT_HASH : null,
+      holdoutAvailabilityAttestationHash: request.stage === "validation" ? HOLDOUT_HASH : null,
       sealedAt: LATER,
       ledgers: {
         brokerExposureStateAttestationHash: HASH_B,
@@ -211,8 +165,7 @@ function completionMaterial(
   };
 }
 
-interface MutableInterruptionPort
-  extends TrustedOptimizationInterruptionPort {
+interface MutableInterruptionPort extends TrustedOptimizationInterruptionPort {
   pending: OptimizationInterruptionRecord | null;
 }
 
@@ -238,8 +191,7 @@ function interruptionPort(
     begin: vi.fn(async (draft) => {
       const recordDraft = {
         ...draft,
-        brokerExposureStateAttestationHash:
-          INTERRUPTION_BROKER_HASH,
+        brokerExposureStateAttestationHash: INTERRUPTION_BROKER_HASH,
       };
       const record: OptimizationInterruptionRecord = {
         ...recordDraft,
@@ -268,8 +220,7 @@ function coordinator(input: {
     store: input.store,
     inputFactory: input.inputFactory ?? inputFactory(),
     resumeVerifier: input.resumeVerifier ?? resumeVerifier(),
-    completionMaterial:
-      input.completionMaterial ?? completionMaterial(),
+    completionMaterial: input.completionMaterial ?? completionMaterial(),
     interruption: input.interruption ?? interruptionPort(),
   });
 }
@@ -289,16 +240,13 @@ function spentBudget(
       tokens: before.usage.tokens + 100,
       wallTimeMs: before.usage.wallTimeMs + 1_000,
       attempts: before.usage.attempts + input.attempts,
-      promotionLooks:
-        before.usage.promotionLooks + input.promotionLooks,
+      promotionLooks: before.usage.promotionLooks + input.promotionLooks,
     },
   };
 }
 
 function rejectedResult(
-  claim: Awaited<
-    ReturnType<CampaignStateOptimizationCoordinator["claimNext"]>
-  >,
+  claim: Awaited<ReturnType<CampaignStateOptimizationCoordinator["claimNext"]>>,
   budget: BudgetSnapshot,
 ): ExperimentRunResult {
   if (claim.kind !== "claimed") {
@@ -356,8 +304,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
         ...seed.budget,
         usage: {
           ...seed.budget.usage,
-          onlineErrorSpent:
-            seed.budget.limits.maximumOnlineError,
+          onlineErrorSpent: seed.budget.limits.maximumOnlineError,
         },
       },
     });
@@ -371,9 +318,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
       kind: "terminal",
       reason: "budget-exhausted",
     });
-    expect(
-      (await store.read()).numbering.inFlightExperimentNumber,
-    ).toBeNull();
+    expect((await store.read()).numbering.inFlightExperimentNumber).toBeNull();
   });
 
   it("resumes the same allocation and ordinal after an attested budget checkpoint", async () => {
@@ -408,18 +353,13 @@ describe("CampaignStateOptimizationCoordinator", () => {
     expect(resumed.kind).toBe("claimed");
     if (resumed.kind !== "claimed") return;
     expect(resumed.claimHash).toBe(first.claimHash);
-    expect(resumed.allocationStateHash).toBe(
-      first.allocationStateHash,
-    );
+    expect(resumed.allocationStateHash).toBe(first.allocationStateHash);
     expect(resumed.currentStateHash).toBe(checkpoint.contentHash);
     expect(resumed.input).toEqual(first.input);
     expect(resumed.input.repairAttemptOrdinal).toBe(1);
     expect(factory.bindClaim).toHaveBeenCalledTimes(2);
     expect(resumed.snapshot.budget.usage.attempts).toBe(5);
-    expect(
-      vi.mocked(verifier.verify).mock.calls.at(-1)?.[0]
-        .checkpoints,
-    ).toHaveLength(1);
+    expect(vi.mocked(verifier.verify).mock.calls.at(-1)?.[0].checkpoints).toHaveLength(1);
   });
 
   it.each([
@@ -474,13 +414,8 @@ describe("CampaignStateOptimizationCoordinator", () => {
         budget: result.budget,
       });
       expect(idempotentRetry).toEqual(completed);
-      expect(
-        vi.mocked(materials.createSealMaterial).mock.calls[0]?.[0],
-      ).toMatchObject({
-        stage:
-          promotionLooks === 1
-            ? "validation"
-            : "pre-validation",
+      expect(vi.mocked(materials.createSealMaterial).mock.calls[0]?.[0]).toMatchObject({
+        stage: promotionLooks === 1 ? "validation" : "pre-validation",
         promotionLookDelta: promotionLooks,
       });
       expect(materials.createSealMaterial).toHaveBeenCalledOnce();
@@ -510,9 +445,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
         result,
       }),
     ).rejects.toThrow(/stale or detached/u);
-    expect(
-      (await store.read()).numbering.inFlightExperimentNumber,
-    ).toBe(1);
+    expect((await store.read()).numbering.inFlightExperimentNumber).toBe(1);
   });
 
   it("archives an interrupted claim before applying its trusted pause", async () => {
@@ -537,9 +470,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
       inFlightExperimentNumber: null,
       inFlightKind: null,
     });
-    expect(
-      durable.numbering.lastInterruptedExperimentNumber,
-    ).toBe(1);
+    expect(durable.numbering.lastInterruptedExperimentNumber).toBe(1);
     expect(durable.control).toMatchObject({
       status: "paused",
       pauseReason: "infrastructure",
@@ -571,10 +502,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
     if (claim.kind !== "claimed") {
       throw new Error("Expected a claimed experiment.");
     }
-    const requested = await store.requestStop(
-      claim.currentStateHash,
-      "operator",
-    );
+    const requested = await store.requestStop(claim.currentStateHash, "operator");
 
     const recovered = await control.load();
     const durable = await store.read();
@@ -599,9 +527,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
       status: "stopped",
       stopReason: "operator",
     });
-    expect(
-      materials.createInterruptedBudgetAccountingAttestation,
-    ).toHaveBeenCalledOnce();
+    expect(materials.createInterruptedBudgetAccountingAttestation).toHaveBeenCalledOnce();
     expect(interruption.begin).toHaveBeenCalledOnce();
     expect(interruption.markApplied).toHaveBeenCalledOnce();
   });
@@ -653,15 +579,8 @@ describe("CampaignStateOptimizationCoordinator", () => {
     let preparedStateHash: string | null = null;
     Object.assign(interruption, {
       prepareControl: vi.fn(
-        async (
-          input: Parameters<
-            TrustedOptimizationInterruptionPort["prepareControl"]
-          >[0],
-        ) => {
-          if (
-            preparedStateHash !== null &&
-            preparedStateHash !== input.currentStateHash
-          ) {
+        async (input: Parameters<TrustedOptimizationInterruptionPort["prepareControl"]>[0]) => {
+          if (preparedStateHash !== null && preparedStateHash !== input.currentStateHash) {
             throw new Error("Control binding changed during recovery.");
           }
           preparedStateHash = input.currentStateHash;
@@ -670,9 +589,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
       ),
       markApplied: vi
         .fn()
-        .mockRejectedValueOnce(
-          new Error("Simulated crash before interruption finalization."),
-        )
+        .mockRejectedValueOnce(new Error("Simulated crash before interruption finalization."))
         .mockImplementationOnce(async () => {
           interruption.pending = null;
         }),
@@ -715,9 +632,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
     }
     await store.requestStop(claim.currentStateHash, "sigterm");
 
-    await expect(control.load()).rejects.toThrow(
-      /coordination failed/u,
-    );
+    await expect(control.load()).rejects.toThrow(/coordination failed/u);
     expect((await store.read()).control).toMatchObject({
       status: "stop-requested",
       stopReason: "sigterm",
@@ -765,9 +680,7 @@ describe("CampaignStateOptimizationCoordinator", () => {
     });
     expect(repeated).toEqual(completed);
     expect(durable.numbering.lastInterruptedExperimentNumber).toBeNull();
-    expect(
-      durable.reconstruction.lastFullySealedExperimentNumber,
-    ).toBe(1);
+    expect(durable.reconstruction.lastFullySealedExperimentNumber).toBe(1);
     expect(durable.control).toMatchObject({
       status: "stopped",
       stopReason: "operator",
@@ -833,12 +746,8 @@ describe("CampaignStateOptimizationCoordinator", () => {
       attempts: 5,
       promotionLooks: 1,
     });
-    expect(durable.budget.accountingAttestationHash).toBe(
-      ACCOUNTING_HASH,
-    );
-    expect(
-      materials.createInterruptedBudgetAccountingAttestation,
-    ).toHaveBeenCalledOnce();
+    expect(durable.budget.accountingAttestationHash).toBe(ACCOUNTING_HASH);
+    expect(materials.createInterruptedBudgetAccountingAttestation).toHaveBeenCalledOnce();
     expect(durable.numbering.inFlightExperimentNumber).toBeNull();
     expect(durable.numbering.lastInterruptedExperimentNumber).toBe(1);
   });
@@ -881,16 +790,11 @@ describe("CampaignStateOptimizationCoordinator", () => {
 
     expect(recovered.status).toBe("paused");
     expect(recovered.budget.usage.onlineErrorSpent).toBe(0.01);
+    expect((await store.read()).budget.accountingAttestationHash).toBe(ACCOUNTING_HASH);
+    expect(materials.createInterruptedBudgetAccountingAttestation).toHaveBeenCalledOnce();
     expect(
-      (await store.read()).budget.accountingAttestationHash,
-    ).toBe(ACCOUNTING_HASH);
-    expect(
-      materials.createInterruptedBudgetAccountingAttestation,
-    ).toHaveBeenCalledOnce();
-    expect(
-      vi.mocked(
-        materials.createInterruptedBudgetAccountingAttestation,
-      ).mock.calls[0]?.[0].currentStateHash,
+      vi.mocked(materials.createInterruptedBudgetAccountingAttestation).mock.calls[0]?.[0]
+        .currentStateHash,
     ).toBe(checkpoint.contentHash);
     expect(record.recordHash).toMatch(/^[a-f0-9]{64}$/u);
   });

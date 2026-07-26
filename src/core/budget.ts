@@ -1,8 +1,5 @@
+import type { BudgetSnapshot, BudgetUsage } from "../domain/models.js";
 import { DarkFactoryError } from "./errors.js";
-import type {
-  BudgetSnapshot,
-  BudgetUsage,
-} from "../domain/models.js";
 
 const USAGE_FIELDS = [
   "spentUsd",
@@ -37,10 +34,7 @@ export function validateBudgetSnapshot(snapshot: BudgetSnapshot): void {
   for (const [field, value] of Object.entries(snapshot.usage)) {
     nonNegativeFinite(`usage.${field}`, value);
   }
-  if (
-    snapshot.limits.maximumOnlineError > 1 ||
-    snapshot.usage.onlineErrorSpent > 1
-  ) {
+  if (snapshot.limits.maximumOnlineError > 1 || snapshot.usage.onlineErrorSpent > 1) {
     throw new DarkFactoryError(
       "CONFIG_INVALID",
       "Online error accounting must remain within [0, 1]",
@@ -59,27 +53,18 @@ export function validateBudgetSnapshot(snapshot: BudgetSnapshot): void {
     snapshot.usage.promotionLooks,
   ];
   if (integerValues.some((value) => !Number.isSafeInteger(value))) {
-    throw new DarkFactoryError(
-      "CONFIG_INVALID",
-      "Count budget dimensions must be safe integers",
-    );
+    throw new DarkFactoryError("CONFIG_INVALID", "Count budget dimensions must be safe integers");
   }
   if (
     snapshot.usage.spentUsd > snapshot.limits.maximumUsd ||
     snapshot.usage.tokens > snapshot.limits.maximumTokens ||
     snapshot.usage.wallTimeMs > snapshot.limits.maximumWallTimeMs ||
     snapshot.usage.attempts > snapshot.limits.maximumAttempts ||
-    snapshot.usage.privacyReleases >
-      snapshot.limits.maximumPrivacyReleases ||
-    snapshot.usage.promotionLooks >
-      snapshot.limits.maximumPromotionLooks ||
-    snapshot.usage.onlineErrorSpent >
-      snapshot.limits.maximumOnlineError
+    snapshot.usage.privacyReleases > snapshot.limits.maximumPrivacyReleases ||
+    snapshot.usage.promotionLooks > snapshot.limits.maximumPromotionLooks ||
+    snapshot.usage.onlineErrorSpent > snapshot.limits.maximumOnlineError
   ) {
-    throw new DarkFactoryError(
-      "BUDGET_EXHAUSTED",
-      "Budget usage exceeds its sealed limits",
-    );
+    throw new DarkFactoryError("BUDGET_EXHAUSTED", "Budget usage exceeds its sealed limits");
   }
 }
 
@@ -87,26 +72,14 @@ export function checkBudget(snapshot: BudgetSnapshot, delta: BudgetDelta): Budge
   validateBudgetSnapshot(snapshot);
   for (const [field, value] of Object.entries(delta)) {
     if (!USAGE_FIELDS.includes(field as (typeof USAGE_FIELDS)[number])) {
-      throw new DarkFactoryError(
-        "CONFIG_INVALID",
-        `Unknown budget delta field ${field}`,
-      );
+      throw new DarkFactoryError("CONFIG_INVALID", `Unknown budget delta field ${field}`);
     }
     nonNegativeFinite(`delta.${field}`, value);
     if (
-      [
-        "tokens",
-        "wallTimeMs",
-        "attempts",
-        "privacyReleases",
-        "promotionLooks",
-      ].includes(field) &&
+      ["tokens", "wallTimeMs", "attempts", "privacyReleases", "promotionLooks"].includes(field) &&
       !Number.isSafeInteger(value)
     ) {
-      throw new DarkFactoryError(
-        "CONFIG_INVALID",
-        `delta.${field} must be a safe integer`,
-      );
+      throw new DarkFactoryError("CONFIG_INVALID", `delta.${field} must be a safe integer`);
     }
   }
   const projected: BudgetUsage = {
@@ -116,8 +89,7 @@ export function checkBudget(snapshot: BudgetSnapshot, delta: BudgetDelta): Budge
     attempts: snapshot.usage.attempts + (delta.attempts ?? 0),
     privacyReleases: snapshot.usage.privacyReleases + (delta.privacyReleases ?? 0),
     promotionLooks: snapshot.usage.promotionLooks + (delta.promotionLooks ?? 0),
-    onlineErrorSpent:
-      snapshot.usage.onlineErrorSpent + (delta.onlineErrorSpent ?? 0),
+    onlineErrorSpent: snapshot.usage.onlineErrorSpent + (delta.onlineErrorSpent ?? 0),
   };
 
   const limitsByUsage: Readonly<Record<(typeof USAGE_FIELDS)[number], number>> = {

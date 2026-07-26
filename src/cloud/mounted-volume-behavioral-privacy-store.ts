@@ -1,7 +1,7 @@
 import type { HiddenPrivacyBudgetState } from "../evaluation/privacy.js";
 import {
-  hashHiddenPrivacyBudgetState,
   type BehavioralReleaseArtifact,
+  hashHiddenPrivacyBudgetState,
   type TrustedBehavioralPrivacyArtifactStore,
   type TrustedBehavioralPrivacySnapshot,
   type TrustedBehavioralReleaseCommitInspection,
@@ -9,27 +9,20 @@ import {
   type TrustedBehavioralReleaseOrphanReceipt,
 } from "../evaluator/behavioral-release-producer.js";
 import { assertSafeForLocalPersistence } from "../evaluator/retention.js";
-import {
-  canonicalHash,
-  canonicalJson,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
+import {
+  type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
+} from "./mounted-volume-state.js";
 import type {
   ProductionOptimizeLifecycleRegistrar,
   TrustedProductionOptimizeCloseable,
 } from "./production-optimize-composition-owner.js";
-import {
-  MountedVolumeTransactionalJsonStore,
-  type MountedVolumeDurableStateOptions,
-} from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MAXIMUM_RELEASES = 4_096;
-const DANGEROUS_RECORD_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
+const DANGEROUS_RECORD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const PURPOSES = Object.freeze([
   "behavioral-evidence",
   "failure-cards",
@@ -43,11 +36,7 @@ const PRIVACY_STATE_KEYS = [
   "releasesUsed",
   "priorReleases",
 ] as const;
-const PRIVACY_RELEASE_KEYS = [
-  "experimentDigest",
-  "analysisWindowDigest",
-  "taskIds",
-] as const;
+const PRIVACY_RELEASE_KEYS = ["experimentDigest", "analysisWindowDigest", "taskIds"] as const;
 const STATE_KEYS = [
   "schemaVersion",
   "sensitivity",
@@ -114,16 +103,13 @@ interface DurableBehavioralReleaseCommit {
 
 interface DurableBehavioralPrivacyState {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "trusted-hidden-privacy-ledger-and-release-artifacts";
+  readonly sensitivity: "trusted-hidden-privacy-ledger-and-release-artifacts";
   readonly scopeHash: string;
   readonly revision: number;
   readonly privacyState: HiddenPrivacyBudgetState;
   readonly privacyStateHash: string;
   readonly commitOrder: readonly string[];
-  readonly commits: Readonly<
-    Record<string, DurableBehavioralReleaseCommit>
-  >;
+  readonly commits: Readonly<Record<string, DurableBehavioralReleaseCommit>>;
   readonly requestOwners: Readonly<Record<string, string>>;
   readonly sourceResultOwners: Readonly<Record<string, string>>;
   readonly releaseOwners: Readonly<Record<string, string>>;
@@ -141,13 +127,10 @@ export interface MountedVolumeBehavioralPrivacyArtifactStoreOptions {
 }
 
 export class MountedVolumeBehavioralPrivacyArtifactStoreError extends Error {
-  override readonly name =
-    "MountedVolumeBehavioralPrivacyArtifactStoreError";
+  override readonly name = "MountedVolumeBehavioralPrivacyArtifactStoreError";
 
   constructor() {
-    super(
-      "Trusted behavioral privacy and artifact transaction failed closed.",
-    );
+    super("Trusted behavioral privacy and artifact transaction failed closed.");
   }
 }
 
@@ -155,9 +138,7 @@ function fail(): never {
   throw new MountedVolumeBehavioralPrivacyArtifactStoreError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -172,10 +153,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -191,34 +169,23 @@ function canonicalClone<Value>(value: Value): Value {
 function isCanonicalTimestamp(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const parsed = Date.parse(value);
-  return (
-    Number.isFinite(parsed) &&
-    new Date(parsed).toISOString() === value
-  );
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function assertHash(value: unknown): asserts value is string {
   if (typeof value !== "string" || !SHA256.test(value)) fail();
 }
 
-function assertSafeHashRecord(
-  value: unknown,
-): asserts value is Readonly<Record<string, string>> {
+function assertSafeHashRecord(value: unknown): asserts value is Readonly<Record<string, string>> {
   if (!isPlainRecord(value)) fail();
   for (const [key, owner] of Object.entries(value)) {
-    if (
-      DANGEROUS_RECORD_KEYS.has(key) ||
-      !SHA256.test(key) ||
-      !SHA256.test(String(owner))
-    ) {
+    if (DANGEROUS_RECORD_KEYS.has(key) || !SHA256.test(key) || !SHA256.test(String(owner))) {
       fail();
     }
   }
 }
 
-function assertPrivacyState(
-  value: unknown,
-): asserts value is HiddenPrivacyBudgetState {
+function assertPrivacyState(value: unknown): asserts value is HiddenPrivacyBudgetState {
   exactKeys(value, PRIVACY_STATE_KEYS);
   if (
     value.policyVersion !== "aggregate-firewall-v1" ||
@@ -227,8 +194,7 @@ function assertPrivacyState(
     (value.maximumReleases as number) > MAXIMUM_RELEASES ||
     !Number.isSafeInteger(value.releasesUsed) ||
     (value.releasesUsed as number) < 0 ||
-    (value.releasesUsed as number) >
-      (value.maximumReleases as number) ||
+    (value.releasesUsed as number) > (value.maximumReleases as number) ||
     !Array.isArray(value.priorReleases) ||
     value.priorReleases.length !== value.releasesUsed
   ) {
@@ -273,9 +239,7 @@ function privacyPrefix(
   };
 }
 
-function artifactSetHash(
-  artifacts: readonly BehavioralReleaseArtifact[],
-): string {
+function artifactSetHash(artifacts: readonly BehavioralReleaseArtifact[]): string {
   return canonicalHash({
     domain: "dark-factory.behavioral-release-artifact-set.v1",
     artifacts: artifacts
@@ -283,9 +247,7 @@ function artifactSetHash(
         purpose,
         contentHash: document.contentHash,
       }))
-      .sort((left, right) =>
-        left.purpose.localeCompare(right.purpose),
-      ),
+      .sort((left, right) => left.purpose.localeCompare(right.purpose)),
   });
 }
 
@@ -303,11 +265,7 @@ function bindingHash(input: {
 
 function schemaForPurpose(
   purpose: BehavioralReleaseArtifact["purpose"],
-):
-  | "behavioralEvidence"
-  | "failureCards"
-  | "diagnosticBrief"
-  | "signedBehavioralRelease" {
+): "behavioralEvidence" | "failureCards" | "diagnosticBrief" | "signedBehavioralRelease" {
   switch (purpose) {
     case "behavioral-evidence":
       return "behavioralEvidence";
@@ -322,27 +280,19 @@ function schemaForPurpose(
 
 function artifactsByPurpose(
   artifacts: readonly BehavioralReleaseArtifact[],
-): ReadonlyMap<
-  BehavioralReleaseArtifact["purpose"],
-  BehavioralReleaseArtifact
-> {
+): ReadonlyMap<BehavioralReleaseArtifact["purpose"], BehavioralReleaseArtifact> {
   if (artifacts.length !== PURPOSES.length) fail();
-  const result = new Map<
-    BehavioralReleaseArtifact["purpose"],
-    BehavioralReleaseArtifact
-  >();
+  const result = new Map<BehavioralReleaseArtifact["purpose"], BehavioralReleaseArtifact>();
   for (const artifact of artifacts) {
     exactKeys(artifact, ARTIFACT_KEYS);
-    if (
-      !PURPOSES.includes(artifact.purpose) ||
-      result.has(artifact.purpose)
-    ) {
+    if (!PURPOSES.includes(artifact.purpose) || result.has(artifact.purpose)) {
       fail();
     }
-    assertValidDocument(
-      schemaForPurpose(artifact.purpose),
-      artifact.document,
-    );
+    try {
+      assertValidDocument(schemaForPurpose(artifact.purpose), artifact.document);
+    } catch {
+      fail();
+    }
     assertHash(artifact.document.contentHash);
     result.set(artifact.purpose, artifact);
   }
@@ -355,21 +305,13 @@ function artifactsByPurpose(
   return result;
 }
 
-function artifactFor<
-  Purpose extends BehavioralReleaseArtifact["purpose"],
->(
-  artifacts: ReadonlyMap<
-    BehavioralReleaseArtifact["purpose"],
-    BehavioralReleaseArtifact
-  >,
+function artifactFor<Purpose extends BehavioralReleaseArtifact["purpose"]>(
+  artifacts: ReadonlyMap<BehavioralReleaseArtifact["purpose"], BehavioralReleaseArtifact>,
   purpose: Purpose,
 ): Extract<BehavioralReleaseArtifact, { readonly purpose: Purpose }> {
   const artifact = artifacts.get(purpose);
   if (artifact === undefined || artifact.purpose !== purpose) fail();
-  return artifact as Extract<
-    BehavioralReleaseArtifact,
-    { readonly purpose: Purpose }
-  >;
+  return artifact as Extract<BehavioralReleaseArtifact, { readonly purpose: Purpose }>;
 }
 
 function assertArtifactBindings(
@@ -378,30 +320,17 @@ function assertArtifactBindings(
   releaseContentHash: string,
 ): void {
   const byPurpose = artifactsByPurpose(artifacts);
-  const evidence = artifactFor(
-    byPurpose,
-    "behavioral-evidence",
-  ).document;
+  const evidence = artifactFor(byPurpose, "behavioral-evidence").document;
   const cards = artifactFor(byPurpose, "failure-cards").document;
-  const brief = artifactFor(
-    byPurpose,
-    "diagnostic-brief",
-  ).document;
-  const release = artifactFor(
-    byPurpose,
-    "behavioral-release",
-  ).document;
+  const brief = artifactFor(byPurpose, "diagnostic-brief").document;
+  const release = artifactFor(byPurpose, "behavioral-release").document;
   if (
     release.contentHash !== releaseContentHash ||
-    release.sourceResultEnvelopeHash !==
-      sourceResultEnvelopeHash ||
+    release.sourceResultEnvelopeHash !== sourceResultEnvelopeHash ||
     evidence.sourceEnvelopeHash !== sourceResultEnvelopeHash ||
-    release.aggregateArtifactHashes.behavioralEvidence !==
-      evidence.contentHash ||
-    release.aggregateArtifactHashes.failureCards !==
-      cards.contentHash ||
-    release.aggregateArtifactHashes.diagnosticBrief !==
-      brief.contentHash ||
+    release.aggregateArtifactHashes.behavioralEvidence !== evidence.contentHash ||
+    release.aggregateArtifactHashes.failureCards !== cards.contentHash ||
+    release.aggregateArtifactHashes.diagnosticBrief !== brief.contentHash ||
     cards.behavioralEvidenceHash !== evidence.contentHash ||
     brief.aggregateEvidenceHash !== evidence.contentHash ||
     brief.failureCardsHash !== cards.contentHash ||
@@ -410,18 +339,13 @@ function assertArtifactBindings(
     cards.experimentNumber !== release.experimentNumber ||
     brief.experimentNumber !== release.experimentNumber ||
     brief.sourceExperimentNumber !== release.experimentNumber ||
-    canonicalJson(evidence.policyVersions) !==
-      canonicalJson(release.policyVersions) ||
-    canonicalJson(cards.policyVersions) !==
-      canonicalJson(release.policyVersions) ||
-    canonicalJson(brief.policyVersions) !==
-      canonicalJson(release.policyVersions)
+    canonicalJson(evidence.policyVersions) !== canonicalJson(release.policyVersions) ||
+    canonicalJson(cards.policyVersions) !== canonicalJson(release.policyVersions) ||
+    canonicalJson(brief.policyVersions) !== canonicalJson(release.policyVersions)
   ) {
     fail();
   }
-  const hashes = artifacts.map(
-    (artifact) => artifact.document.contentHash,
-  );
+  const hashes = artifacts.map((artifact) => artifact.document.contentHash);
   if (new Set(hashes).size !== hashes.length) fail();
 }
 
@@ -429,23 +353,17 @@ function assertArtifactsContainNoHiddenTaskIds(
   artifacts: readonly BehavioralReleaseArtifact[],
   privacyState: HiddenPrivacyBudgetState,
 ): void {
-  const serialized = canonicalJson(artifacts).toLocaleLowerCase(
-    "en-US",
-  );
+  const serialized = canonicalJson(artifacts).toLocaleLowerCase("en-US");
   if (
     privacyState.priorReleases.some((release) =>
-      release.taskIds.some((taskId) =>
-        serialized.includes(taskId.toLocaleLowerCase("en-US")),
-      ),
+      release.taskIds.some((taskId) => serialized.includes(taskId.toLocaleLowerCase("en-US"))),
     )
   ) {
     fail();
   }
 }
 
-function assertCommit(
-  value: unknown,
-): asserts value is DurableBehavioralReleaseCommit {
+function assertCommit(value: unknown): asserts value is DurableBehavioralReleaseCommit {
   exactKeys(value, COMMIT_KEYS);
   assertHash(value.authorizationHash);
   assertHash(value.requestHash);
@@ -456,26 +374,19 @@ function assertCommit(
   assertHash(value.bindingHash);
   assertHash(value.artifactSetHash);
   if (
-    (value.orphanedAt !== null &&
-      !isCanonicalTimestamp(value.orphanedAt)) ||
+    (value.orphanedAt !== null && !isCanonicalTimestamp(value.orphanedAt)) ||
     !Array.isArray(value.artifacts)
   ) {
     fail();
   }
-  const artifacts =
-    value.artifacts as unknown as readonly BehavioralReleaseArtifact[];
-  assertArtifactBindings(
-    artifacts,
-    value.sourceResultEnvelopeHash,
-    value.releaseContentHash,
-  );
+  const artifacts = value.artifacts as unknown as readonly BehavioralReleaseArtifact[];
+  assertArtifactBindings(artifacts, value.sourceResultEnvelopeHash, value.releaseContentHash);
   if (
     value.bindingHash !==
       bindingHash({
         authorizationHash: value.authorizationHash,
         requestHash: value.requestHash,
-        sourceResultEnvelopeHash:
-          value.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: value.sourceResultEnvelopeHash,
         releaseContentHash: value.releaseContentHash,
       }) ||
     value.artifactSetHash !== artifactSetHash(artifacts)
@@ -483,14 +394,8 @@ function assertCommit(
     fail();
   }
   if (value.orphanedAt !== null) {
-    const release = artifactFor(
-      artifactsByPurpose(artifacts),
-      "behavioral-release",
-    ).document;
-    if (
-      Date.parse(value.orphanedAt) <
-      Date.parse(release.createdAt)
-    ) {
+    const release = artifactFor(artifactsByPurpose(artifacts), "behavioral-release").document;
+    if (Date.parse(value.orphanedAt) < Date.parse(release.createdAt)) {
       fail();
     }
   }
@@ -513,8 +418,7 @@ function assertState(
   exactKeys(value, STATE_KEYS);
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "trusted-hidden-privacy-ledger-and-release-artifacts" ||
+    value.sensitivity !== "trusted-hidden-privacy-ledger-and-release-artifacts" ||
     value.scopeHash !== input.scopeHash ||
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
@@ -531,20 +435,14 @@ function assertState(
   assertSafeHashRecord(value.releaseOwners);
   assertSafeHashRecord(value.artifactOwners);
   if (
-    value.privacyStateHash !==
-      hashHiddenPrivacyBudgetState(value.privacyState) ||
-    value.privacyState.policyVersion !==
-      input.initialPrivacyState.policyVersion ||
-    value.privacyState.maximumReleases !==
-      input.initialPrivacyState.maximumReleases ||
-    value.privacyState.releasesUsed !==
-      value.commitOrder.length ||
+    value.privacyStateHash !== hashHiddenPrivacyBudgetState(value.privacyState) ||
+    value.privacyState.policyVersion !== input.initialPrivacyState.policyVersion ||
+    value.privacyState.maximumReleases !== input.initialPrivacyState.maximumReleases ||
+    value.privacyState.releasesUsed !== value.commitOrder.length ||
     value.revision !==
       value.commitOrder.length +
         Object.values(value.commits).filter(
-          (commit) =>
-            isPlainRecord(commit) &&
-            commit["orphanedAt"] !== null,
+          (commit) => isPlainRecord(commit) && commit["orphanedAt"] !== null,
         ).length ||
     Object.keys(value.commits).length !== value.commitOrder.length ||
     new Set(value.commitOrder).size !== value.commitOrder.length
@@ -557,30 +455,21 @@ function assertState(
   const expectedReleases: Record<string, string> = {};
   const expectedArtifacts: Record<string, string> = {};
   let priorState = input.initialPrivacyState;
-  for (const [index, authorizationHash] of
-    value.commitOrder.entries()) {
+  for (const [index, authorizationHash] of value.commitOrder.entries()) {
     assertHash(authorizationHash);
-    const commit = value.commits[authorizationHash];
+    const commit: unknown = value.commits[authorizationHash];
     if (commit === undefined) fail();
     assertCommit(commit);
-    const nextState = privacyPrefix(
-      input.initialPrivacyState,
-      value.privacyState,
-      index + 1,
-    );
-    const releaseLedger =
-      value.privacyState.priorReleases[index];
+    const nextState = privacyPrefix(input.initialPrivacyState, value.privacyState, index + 1);
+    const releaseLedger = value.privacyState.priorReleases[index];
     if (
       commit.authorizationHash !== authorizationHash ||
-      commit.priorPrivacyStateHash !==
-        hashHiddenPrivacyBudgetState(priorState) ||
-      commit.privacyStateHash !==
-        hashHiddenPrivacyBudgetState(nextState) ||
+      commit.priorPrivacyStateHash !== hashHiddenPrivacyBudgetState(priorState) ||
+      commit.privacyStateHash !== hashHiddenPrivacyBudgetState(nextState) ||
       releaseLedger === undefined ||
       releaseLedger.experimentDigest !==
         canonicalHash({
-          domain:
-            "dark-factory.behavioral-release-experiment.v1",
+          domain: "dark-factory.behavioral-release-experiment.v1",
           requestHash: commit.requestHash,
         })
     ) {
@@ -588,22 +477,17 @@ function assertState(
     }
     if (
       expectedRequests[commit.requestHash] !== undefined ||
-      expectedSources[commit.sourceResultEnvelopeHash] !==
-        undefined ||
+      expectedSources[commit.sourceResultEnvelopeHash] !== undefined ||
       expectedReleases[commit.releaseContentHash] !== undefined
     ) {
       fail();
     }
-    assertArtifactsContainNoHiddenTaskIds(
-      commit.artifacts,
-      value.privacyState,
-    );
+    assertArtifactsContainNoHiddenTaskIds(commit.artifacts, value.privacyState);
     expectedRequests[commit.requestHash] = authorizationHash;
-    expectedSources[commit.sourceResultEnvelopeHash] =
-      authorizationHash;
-    expectedReleases[commit.releaseContentHash] =
-      authorizationHash;
-    for (const artifact of commit.artifacts) {
+    expectedSources[commit.sourceResultEnvelopeHash] = authorizationHash;
+    expectedReleases[commit.releaseContentHash] = authorizationHash;
+    const artifacts: readonly BehavioralReleaseArtifact[] = commit.artifacts;
+    for (const artifact of artifacts) {
       const hash = artifact.document.contentHash;
       if (expectedArtifacts[hash] !== undefined) fail();
       expectedArtifacts[hash] = authorizationHash;
@@ -616,9 +500,7 @@ function assertState(
   assertOwnerIndex(value.artifactOwners, expectedArtifacts);
 }
 
-function assertPristineInitialPrivacyState(
-  value: HiddenPrivacyBudgetState,
-): void {
+function assertPristineInitialPrivacyState(value: HiddenPrivacyBudgetState): void {
   assertPrivacyState(value);
   if (value.releasesUsed !== 0 || value.priorReleases.length !== 0) {
     fail();
@@ -635,16 +517,13 @@ function assertNextPrivacyTransition(
     next.policyVersion !== current.policyVersion ||
     next.maximumReleases !== current.maximumReleases ||
     next.releasesUsed !== current.releasesUsed + 1 ||
-    next.priorReleases.length !==
-      current.priorReleases.length + 1 ||
-    canonicalJson(
-      next.priorReleases.slice(0, current.priorReleases.length),
-    ) !== canonicalJson(current.priorReleases)
+    next.priorReleases.length !== current.priorReleases.length + 1 ||
+    canonicalJson(next.priorReleases.slice(0, current.priorReleases.length)) !==
+      canonicalJson(current.priorReleases)
   ) {
     fail();
   }
-  const appended =
-    next.priorReleases[next.priorReleases.length - 1];
+  const appended = next.priorReleases[next.priorReleases.length - 1];
   if (
     appended === undefined ||
     appended.experimentDigest !==
@@ -671,9 +550,7 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
   readonly lifecycleResource: TrustedProductionOptimizeCloseable;
   readonly #store: MountedVolumeTransactionalJsonStore<DurableBehavioralPrivacyState>;
 
-  constructor(
-    options: MountedVolumeBehavioralPrivacyArtifactStoreOptions,
-  ) {
+  constructor(options: MountedVolumeBehavioralPrivacyArtifactStoreOptions) {
     exactKeys(options, [
       "durableState",
       "initialPrivacyState",
@@ -681,60 +558,49 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
     ]);
     if (
       options.lifecycle !== undefined &&
-      (options.lifecycle.boundary !==
-        "production-optimize-composition-owner" ||
+      (options.lifecycle.boundary !== "production-optimize-composition-owner" ||
         typeof options.lifecycle.register !== "function")
     ) {
       fail();
     }
-    const initialPrivacyState = canonicalClone(
-      options.initialPrivacyState,
-    );
+    const initialPrivacyState = canonicalClone(options.initialPrivacyState);
     assertPristineInitialPrivacyState(initialPrivacyState);
     const scopeHash = canonicalHash({
-      domain:
-        "dark-factory.behavioral-privacy-artifact-store-scope.v1",
+      domain: "dark-factory.behavioral-privacy-artifact-store-scope.v1",
       storeId: options.durableState.storeId,
       initialPrivacyState,
     });
     this.lifecycleId = `behavioral-privacy-${scopeHash.slice(0, 24)}`;
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableBehavioralPrivacyState>(
-        options.durableState,
-        `behavioral-privacy-${options.durableState.storeId}`,
-        {
-          domain:
-            "dark-factory.behavioral-privacy-artifact-state.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity:
-              "trusted-hidden-privacy-ledger-and-release-artifacts",
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableBehavioralPrivacyState>(
+      options.durableState,
+      `behavioral-privacy-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.behavioral-privacy-artifact-state.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "trusted-hidden-privacy-ledger-and-release-artifacts",
+          scopeHash,
+          revision: 0,
+          privacyState: initialPrivacyState,
+          privacyStateHash: hashHiddenPrivacyBudgetState(initialPrivacyState),
+          commitOrder: [],
+          commits: {},
+          requestOwners: {},
+          sourceResultOwners: {},
+          releaseOwners: {},
+          artifactOwners: {},
+        }),
+        assertState(value): asserts value is DurableBehavioralPrivacyState {
+          assertState(value, {
             scopeHash,
-            revision: 0,
-            privacyState: initialPrivacyState,
-            privacyStateHash:
-              hashHiddenPrivacyBudgetState(initialPrivacyState),
-            commitOrder: [],
-            commits: {},
-            requestOwners: {},
-            sourceResultOwners: {},
-            releaseOwners: {},
-            artifactOwners: {},
-          }),
-          assertState(
-            value,
-          ): asserts value is DurableBehavioralPrivacyState {
-            assertState(value, {
-              scopeHash,
-              initialPrivacyState,
-            });
-          },
-          revision: (state) => state.revision,
+            initialPrivacyState,
+          });
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
     this.lifecycleResource = Object.freeze({
-      boundary:
-        "trusted-cloud-production-optimize-lifecycle" as const,
+      boundary: "trusted-cloud-production-optimize-lifecycle" as const,
       lifecycleId: this.lifecycleId,
       close: (): Promise<void> => this.close(),
     });
@@ -757,15 +623,11 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
     readonly contentHash: string;
   }): Promise<BehavioralReleaseArtifact | undefined> {
     const query = canonicalClone(input);
-    if (
-      !PURPOSES.includes(query.purpose) ||
-      !SHA256.test(query.contentHash)
-    ) {
+    if (!PURPOSES.includes(query.purpose) || !SHA256.test(query.contentHash)) {
       fail();
     }
     const artifact = await this.#store.transact((state) => {
-      const authorizationHash =
-        state.artifactOwners[query.contentHash];
+      const authorizationHash = state.artifactOwners[query.contentHash];
       if (authorizationHash === undefined) {
         return { next: state, result: undefined };
       }
@@ -781,15 +643,11 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
       );
       return { next: state, result: exact };
     });
-    return artifact === undefined
-      ? undefined
-      : canonicalClone(artifact);
+    return artifact === undefined ? undefined : canonicalClone(artifact);
   }
 
   async inspectCommit(
-    originalInput: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-    >[0],
+    originalInput: Parameters<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]>[0],
   ): Promise<TrustedBehavioralReleaseCommitInspection> {
     try {
       const input = canonicalClone(originalInput);
@@ -799,99 +657,74 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
       assertHash(input.sourceResultEnvelopeHash);
       assertHash(input.releaseContentHash);
       assertHash(input.artifactSetHash);
-      const result =
-        await this.#store.transact<TrustedBehavioralReleaseCommitInspection>(
-          (state) => {
-            const authorizationCommit =
-              state.commits[input.authorizationHash];
-            const requestOwner =
-              state.requestOwners[input.requestHash];
-            const sourceOwner =
-              state.sourceResultOwners[
-                input.sourceResultEnvelopeHash
-              ];
-            const releaseOwner =
-              state.releaseOwners[input.releaseContentHash];
-            const artifactSetOwner = Object.values(
-              state.commits,
-            ).find(
-              (commit) =>
-                commit.artifactSetHash === input.artifactSetHash,
-            )?.authorizationHash;
-            if (
-              authorizationCommit === undefined &&
-              requestOwner === undefined &&
-              sourceOwner === undefined &&
-              releaseOwner === undefined &&
-              artifactSetOwner === undefined
-            ) {
-              return {
-                next: state,
-                result: { status: "absent" as const },
-              };
-            }
-            if (
-              authorizationCommit === undefined ||
-              requestOwner !== input.authorizationHash ||
-              sourceOwner !== input.authorizationHash ||
-              releaseOwner !== input.authorizationHash ||
-              artifactSetOwner !== input.authorizationHash ||
-              authorizationCommit.requestHash !==
-                input.requestHash ||
-              authorizationCommit.sourceResultEnvelopeHash !==
-                input.sourceResultEnvelopeHash ||
-              authorizationCommit.releaseContentHash !==
-                input.releaseContentHash ||
-              authorizationCommit.artifactSetHash !==
-                input.artifactSetHash
-            ) {
-              return {
-                next: state,
-                result: { status: "conflict" as const },
-              };
-            }
-            const artifactReferences =
-              authorizationCommit.artifacts.map(
-                ({ purpose, document }) => ({
-                  purpose,
-                  contentHash: document.contentHash,
-                }),
-              );
-            const [first, second, third, fourth] =
-              artifactReferences;
-            if (
-              artifactReferences.length !== PURPOSES.length ||
-              first === undefined ||
-              second === undefined ||
-              third === undefined ||
-              fourth === undefined
-            ) {
-              fail();
-            }
+      const result = await this.#store.transact<TrustedBehavioralReleaseCommitInspection>(
+        (state) => {
+          const authorizationCommit = state.commits[input.authorizationHash];
+          const requestOwner = state.requestOwners[input.requestHash];
+          const sourceOwner = state.sourceResultOwners[input.sourceResultEnvelopeHash];
+          const releaseOwner = state.releaseOwners[input.releaseContentHash];
+          const artifactSetOwner = Object.values(state.commits).find(
+            (commit) => commit.artifactSetHash === input.artifactSetHash,
+          )?.authorizationHash;
+          if (
+            authorizationCommit === undefined &&
+            requestOwner === undefined &&
+            sourceOwner === undefined &&
+            releaseOwner === undefined &&
+            artifactSetOwner === undefined
+          ) {
             return {
               next: state,
-              result: {
-                status: "committed" as const,
-                receipt: {
-                  status: "already-committed" as const,
-                  authorizationHash: input.authorizationHash,
-                  bindingHash: authorizationCommit.bindingHash,
-                  privacyStateHash:
-                    authorizationCommit.privacyStateHash,
-                  artifactSetHash:
-                    authorizationCommit.artifactSetHash,
-                },
-                artifactReferences: [
-                  first,
-                  second,
-                  third,
-                  fourth,
-                ],
-                orphanedAt: authorizationCommit.orphanedAt,
-              },
+              result: { status: "absent" as const },
             };
-          },
-        );
+          }
+          if (
+            authorizationCommit === undefined ||
+            requestOwner !== input.authorizationHash ||
+            sourceOwner !== input.authorizationHash ||
+            releaseOwner !== input.authorizationHash ||
+            artifactSetOwner !== input.authorizationHash ||
+            authorizationCommit.requestHash !== input.requestHash ||
+            authorizationCommit.sourceResultEnvelopeHash !== input.sourceResultEnvelopeHash ||
+            authorizationCommit.releaseContentHash !== input.releaseContentHash ||
+            authorizationCommit.artifactSetHash !== input.artifactSetHash
+          ) {
+            return {
+              next: state,
+              result: { status: "conflict" as const },
+            };
+          }
+          const artifactReferences = authorizationCommit.artifacts.map(({ purpose, document }) => ({
+            purpose,
+            contentHash: document.contentHash,
+          }));
+          const [first, second, third, fourth] = artifactReferences;
+          if (
+            artifactReferences.length !== PURPOSES.length ||
+            first === undefined ||
+            second === undefined ||
+            third === undefined ||
+            fourth === undefined
+          ) {
+            fail();
+          }
+          return {
+            next: state,
+            result: {
+              status: "committed" as const,
+              receipt: {
+                status: "already-committed" as const,
+                authorizationHash: input.authorizationHash,
+                bindingHash: authorizationCommit.bindingHash,
+                privacyStateHash: authorizationCommit.privacyStateHash,
+                artifactSetHash: authorizationCommit.artifactSetHash,
+              },
+              artifactReferences: [first, second, third, fourth],
+              orphanedAt: authorizationCommit.orphanedAt,
+            },
+          };
+        },
+      );
       return canonicalClone(result);
     } catch {
       return { status: "ambiguous" };
@@ -899,9 +732,7 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
   }
 
   async commit(
-    originalInput: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["commit"]
-    >[0],
+    originalInput: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0],
   ): Promise<TrustedBehavioralReleaseCommitReceipt> {
     const input = canonicalClone(originalInput);
     assertHash(input.authorizationHash);
@@ -915,36 +746,29 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
       input.sourceResultEnvelopeHash,
       input.releaseContentHash,
     );
-    assertArtifactsContainNoHiddenTaskIds(
-      input.artifacts,
-      input.nextPrivacyState,
-    );
-    const nextPrivacyStateHash = hashHiddenPrivacyBudgetState(
-      input.nextPrivacyState,
-    );
-    const expectedBindingHash = bindingHash(input);
-    const expectedArtifactSetHash = artifactSetHash(
-      input.artifacts,
-    );
+    assertArtifactsContainNoHiddenTaskIds(input.artifacts, input.nextPrivacyState);
+    const nextPrivacyStateHash = hashHiddenPrivacyBudgetState(input.nextPrivacyState);
+    const expectedBindingHash = bindingHash({
+      authorizationHash: input.authorizationHash,
+      requestHash: input.requestHash,
+      sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
+      releaseContentHash: input.releaseContentHash,
+    });
+    const expectedArtifactSetHash = artifactSetHash(input.artifacts);
 
     const transact = (): Promise<TrustedBehavioralReleaseCommitReceipt> =>
-      this.#store.transact((state) => {
+      this.#store.transact<TrustedBehavioralReleaseCommitReceipt>((state) => {
         const existing = state.commits[input.authorizationHash];
         if (existing !== undefined) {
           if (
             existing.requestHash !== input.requestHash ||
-            existing.sourceResultEnvelopeHash !==
-              input.sourceResultEnvelopeHash ||
-            existing.releaseContentHash !==
-              input.releaseContentHash ||
-            existing.priorPrivacyStateHash !==
-              input.priorPrivacyStateHash ||
+            existing.sourceResultEnvelopeHash !== input.sourceResultEnvelopeHash ||
+            existing.releaseContentHash !== input.releaseContentHash ||
+            existing.priorPrivacyStateHash !== input.priorPrivacyStateHash ||
             existing.privacyStateHash !== nextPrivacyStateHash ||
             existing.bindingHash !== expectedBindingHash ||
-            existing.artifactSetHash !==
-              expectedArtifactSetHash ||
-            canonicalJson(existing.artifacts) !==
-              canonicalJson(input.artifacts)
+            existing.artifactSetHash !== expectedArtifactSetHash ||
+            canonicalJson(existing.artifacts) !== canonicalJson(input.artifacts)
           ) {
             fail();
           }
@@ -960,35 +784,22 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
           };
         }
         if (
-          input.priorPrivacyStateHash !==
-            state.privacyStateHash ||
-          state.commitOrder.length >=
-            state.privacyState.maximumReleases ||
+          input.priorPrivacyStateHash !== state.privacyStateHash ||
+          state.commitOrder.length >= state.privacyState.maximumReleases ||
           state.requestOwners[input.requestHash] !== undefined ||
-          state.sourceResultOwners[
-            input.sourceResultEnvelopeHash
-          ] !== undefined ||
-          state.releaseOwners[input.releaseContentHash] !==
-            undefined ||
+          state.sourceResultOwners[input.sourceResultEnvelopeHash] !== undefined ||
+          state.releaseOwners[input.releaseContentHash] !== undefined ||
           input.artifacts.some(
-            (artifact) =>
-              state.artifactOwners[
-                artifact.document.contentHash
-              ] !== undefined,
+            (artifact) => state.artifactOwners[artifact.document.contentHash] !== undefined,
           )
         ) {
           fail();
         }
-        assertNextPrivacyTransition(
-          state.privacyState,
-          input.nextPrivacyState,
-          input.requestHash,
-        );
+        assertNextPrivacyTransition(state.privacyState, input.nextPrivacyState, input.requestHash);
         const commit: DurableBehavioralReleaseCommit = {
           authorizationHash: input.authorizationHash,
           requestHash: input.requestHash,
-          sourceResultEnvelopeHash:
-            input.sourceResultEnvelopeHash,
+          sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
           releaseContentHash: input.releaseContentHash,
           priorPrivacyStateHash: input.priorPrivacyStateHash,
           privacyStateHash: nextPrivacyStateHash,
@@ -1001,18 +812,14 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
           ...state.artifactOwners,
         };
         for (const artifact of input.artifacts) {
-          artifactOwners[artifact.document.contentHash] =
-            input.authorizationHash;
+          artifactOwners[artifact.document.contentHash] = input.authorizationHash;
         }
         const next: DurableBehavioralPrivacyState = {
           ...state,
           revision: state.revision + 1,
           privacyState: input.nextPrivacyState,
           privacyStateHash: nextPrivacyStateHash,
-          commitOrder: [
-            ...state.commitOrder,
-            input.authorizationHash,
-          ],
+          commitOrder: [...state.commitOrder, input.authorizationHash],
           commits: {
             ...state.commits,
             [input.authorizationHash]: commit,
@@ -1023,8 +830,7 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
           },
           sourceResultOwners: {
             ...state.sourceResultOwners,
-            [input.sourceResultEnvelopeHash]:
-              input.authorizationHash,
+            [input.sourceResultEnvelopeHash]: input.authorizationHash,
           },
           releaseOwners: {
             ...state.releaseOwners,
@@ -1056,9 +862,7 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
   }
 
   async orphan(
-    originalInput: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["orphan"]
-    >[0],
+    originalInput: Parameters<TrustedBehavioralPrivacyArtifactStore["orphan"]>[0],
   ): Promise<TrustedBehavioralReleaseOrphanReceipt> {
     const input = canonicalClone(originalInput);
     exactKeys(input, ORPHAN_KEYS);
@@ -1067,17 +871,14 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
     assertHash(input.releaseContentHash);
     if (!isCanonicalTimestamp(input.orphanedAt)) fail();
     const transact = (): Promise<TrustedBehavioralReleaseOrphanReceipt> =>
-      this.#store.transact((state) => {
+      this.#store.transact<TrustedBehavioralReleaseOrphanReceipt>((state) => {
         const commit = state.commits[input.authorizationHash];
         if (
           commit === undefined ||
           commit.requestHash !== input.requestHash ||
-          commit.releaseContentHash !==
-            input.releaseContentHash ||
-          state.requestOwners[input.requestHash] !==
-            input.authorizationHash ||
-          state.releaseOwners[input.releaseContentHash] !==
-            input.authorizationHash
+          commit.releaseContentHash !== input.releaseContentHash ||
+          state.requestOwners[input.requestHash] !== input.authorizationHash ||
+          state.releaseOwners[input.releaseContentHash] !== input.authorizationHash
         ) {
           fail();
         }
@@ -1086,11 +887,9 @@ export class MountedVolumeBehavioralPrivacyArtifactStore
           "behavioral-release",
         ).document;
         if (
-          Date.parse(input.orphanedAt) <
-            Date.parse(release.createdAt) ||
+          Date.parse(input.orphanedAt) < Date.parse(release.createdAt) ||
           (commit.orphanedAt !== null &&
-            Date.parse(input.orphanedAt) <
-              Date.parse(commit.orphanedAt))
+            Date.parse(input.orphanedAt) < Date.parse(commit.orphanedAt))
         ) {
           fail();
         }

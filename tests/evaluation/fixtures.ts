@@ -1,10 +1,10 @@
 import {
-  extractBehaviorSummary,
-  hiddenPanelId,
-  hiddenTaskId,
   type BehaviorSummary,
   type CacheKeyMaterial,
+  extractBehaviorSummary,
   type HiddenTaskLedgerEntry,
+  hiddenPanelId,
+  hiddenTaskId,
   type SelectionBucket,
 } from "../../src/evaluation/index.js";
 
@@ -110,9 +110,7 @@ export function behaviorWithFailure(overrides: Partial<BehaviorSummary> = {}): B
   };
 }
 
-export function behaviorWithoutFailure(
-  overrides: Partial<BehaviorSummary> = {},
-): BehaviorSummary {
+export function behaviorWithoutFailure(overrides: Partial<BehaviorSummary> = {}): BehaviorSummary {
   return {
     ...extractBehaviorSummary({
       elapsedMs: 120_000,

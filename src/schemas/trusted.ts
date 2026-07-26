@@ -1,4 +1,4 @@
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 import {
   AggregateCostSchema,
@@ -21,11 +21,7 @@ import {
 export const NormalizedGraderOutcomeSchema = Type.Object(
   {
     ...ArtifactMetadataProperties,
-    outcome: Type.Union([
-      Type.Literal("pass"),
-      Type.Literal("fail"),
-      Type.Literal("invalid"),
-    ]),
+    outcome: Type.Union([Type.Literal("pass"), Type.Literal("fail"), Type.Literal("invalid")]),
     boundedReward: UnitIntervalSchema,
     infrastructureInvalidClass: Nullable(
       Type.Union([

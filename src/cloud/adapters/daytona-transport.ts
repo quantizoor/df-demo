@@ -108,14 +108,8 @@ interface DaytonaProcessLike {
     },
     timeoutSeconds?: number,
   ): Promise<DaytonaSessionExecuteResponseLike>;
-  getSessionCommand(
-    sessionId: string,
-    commandId: string,
-  ): Promise<DaytonaSessionCommandLike>;
-  getSessionCommandLogs(
-    sessionId: string,
-    commandId: string,
-  ): Promise<DaytonaCommandLogsLike>;
+  getSessionCommand(sessionId: string, commandId: string): Promise<DaytonaSessionCommandLike>;
+  getSessionCommandLogs(sessionId: string, commandId: string): Promise<DaytonaCommandLogsLike>;
 }
 
 interface DaytonaSandboxLike {
@@ -196,27 +190,18 @@ export class OfficialDaytonaSdkFactory implements DaytonaSdkFactory {
     this.#environment = options.environment ?? (() => process.env);
   }
 
-  async createClient(
-    configuration: ProviderConfiguration,
-  ): Promise<DaytonaClient> {
-    const credentials = providerCredentialValues(
-      configuration,
-      this.#environment(),
-    );
+  async createClient(configuration: ProviderConfiguration): Promise<DaytonaClient> {
+    const credentials = providerCredentialValues(configuration, this.#environment());
     const apiKey = credentials["DAYTONA_API_KEY"];
     if (apiKey === undefined) {
-      throw new DaytonaTransportError(
-        "The Daytona SDK credential binding is unavailable.",
-      );
+      throw new DaytonaTransportError("The Daytona SDK credential binding is unavailable.");
     }
     const sdk = await import("@daytona/sdk");
     const clientConfiguration = {
       apiKey,
       apiUrl: configuration.endpoint,
       otelEnabled: false as const,
-      ...(configuration.target === undefined
-        ? {}
-        : { target: configuration.target }),
+      ...(configuration.target === undefined ? {} : { target: configuration.target }),
     };
     return new sdk.Daytona(clientConfiguration) as unknown as DaytonaClient;
   }
@@ -291,13 +276,9 @@ function toSafeUriSegment(value: string): string {
   return sha256(value).slice(0, 40);
 }
 
-function assertDaytonaConfiguration(
-  configuration: ProviderConfiguration,
-): void {
+function assertDaytonaConfiguration(configuration: ProviderConfiguration): void {
   if (configuration.provider !== "daytona") {
-    throw new DaytonaTransportError(
-      "Daytona transport received another provider configuration.",
-    );
+    throw new DaytonaTransportError("Daytona transport received another provider configuration.");
   }
 }
 
@@ -306,16 +287,10 @@ function exactResourceReasons(
   request: Pick<ProviderProbeRequest, "regionClass" | "resources">,
 ): string[] {
   const reasons: string[] = [];
-  if (
-    configuration.target === undefined ||
-    configuration.target !== request.regionClass
-  ) {
+  if (configuration.target === undefined || configuration.target !== request.regionClass) {
     reasons.push("daytona-target-does-not-exactly-match-region-class");
   }
-  if (
-    request.resources.memoryMiB % 1_024 !== 0 ||
-    request.resources.diskMiB % 1_024 !== 0
-  ) {
+  if (request.resources.memoryMiB % 1_024 !== 0 || request.resources.diskMiB % 1_024 !== 0) {
     reasons.push("daytona-resources-require-whole-gibibytes");
   }
   if (request.resources.gpuClass !== undefined) {
@@ -334,9 +309,7 @@ function assertCreateProfile(
   }
   if (reasons.length > 0) {
     throw new DaytonaTransportError(
-      `Daytona cannot represent the exact sandbox profile: ${reasons.join(
-        ", ",
-      )}.`,
+      `Daytona cannot represent the exact sandbox profile: ${reasons.join(", ")}.`,
     );
   }
 }
@@ -353,12 +326,9 @@ function secretMap(
       !SAFE_ENVIRONMENT_NAME.test(reference.sourceEnvironmentName) ||
       !SAFE_ENVIRONMENT_NAME.test(reference.targetEnvironmentName)
     ) {
-      throw new DaytonaTransportError(
-        "Daytona organization-secret bindings are malformed.",
-      );
+      throw new DaytonaTransportError("Daytona organization-secret bindings are malformed.");
     }
-    result[reference.targetEnvironmentName] =
-      reference.sourceEnvironmentName;
+    result[reference.targetEnvironmentName] = reference.sourceEnvironmentName;
   }
   return result;
 }
@@ -373,18 +343,14 @@ function normalizeDomains(value: string | undefined): readonly string[] {
 function extractCommandOutput(response: DaytonaExecuteResponseLike): string {
   const value = response.artifacts?.stdout ?? response.result;
   if (typeof value !== "string") {
-    throw new DaytonaTransportError(
-      "Daytona returned a malformed command attestation.",
-    );
+    throw new DaytonaTransportError("Daytona returned a malformed command attestation.");
   }
   return value.trim();
 }
 
 function assertRemotePath(remotePath: string): void {
   if (!SAFE_REMOTE_PATH.test(remotePath) || remotePath.includes("/../")) {
-    throw new DaytonaTransportError(
-      "Daytona remote path is not absolute and traversal-free.",
-    );
+    throw new DaytonaTransportError("Daytona remote path is not absolute and traversal-free.");
   }
 }
 
@@ -408,9 +374,7 @@ export function encodePosixCommand(command: RemoteCommandSpec): string {
     command.executable.includes("\u0000") ||
     command.arguments.some((argument) => argument.includes("\u0000"))
   ) {
-    throw new DaytonaTransportError(
-      "Daytona command cannot be encoded safely.",
-    );
+    throw new DaytonaTransportError("Daytona command cannot be encoded safely.");
   }
   const environment = Object.entries(command.environment)
     .sort(([left], [right]) => left.localeCompare(right))
@@ -421,9 +385,7 @@ export function encodePosixCommand(command: RemoteCommandSpec): string {
         value.includes("\r") ||
         value.includes("\n")
       ) {
-        throw new DaytonaTransportError(
-          "Daytona command environment cannot be encoded safely.",
-        );
+        throw new DaytonaTransportError("Daytona command environment cannot be encoded safely.");
       }
       return quotePosixArgument(`${name}=${value}`);
     });
@@ -456,9 +418,7 @@ function validateMetrics(sample: DaytonaMetricsLike): void {
     sample.diskTotal <= 0 ||
     sample.diskUsed > sample.diskTotal
   ) {
-    throw new DaytonaTransportError(
-      "Daytona returned malformed resource metrics.",
-    );
+    throw new DaytonaTransportError("Daytona returned malformed resource metrics.");
   }
 }
 
@@ -475,9 +435,7 @@ function resourceReport(
   cpuCores: number,
 ): RemoteExecutionReceipt["resourceReport"] {
   if (rawSamples.length === 0) {
-    throw new DaytonaTransportError(
-      "Daytona returned no resource metrics for the execution.",
-    );
+    throw new DaytonaTransportError("Daytona returned no resource metrics for the execution.");
   }
   const byTimestamp = new Map<number, DaytonaMetricsLike>();
   for (const sample of rawSamples) {
@@ -498,29 +456,18 @@ function resourceReport(
   if (samples.length === 1) {
     const only = samples[0];
     if (only === undefined) {
-      throw new DaytonaTransportError(
-        "Daytona resource metric aggregation failed.",
-      );
+      throw new DaytonaTransportError("Daytona resource metric aggregation failed.");
     }
-    cpuTimeMs =
-      wallTimeMs * cpuCores * (only.cpuUsedPct / 100);
+    cpuTimeMs = wallTimeMs * cpuCores * (only.cpuUsedPct / 100);
   } else {
     for (let index = 1; index < samples.length; index += 1) {
       const previous = samples[index - 1];
       const current = samples[index];
       if (previous === undefined || current === undefined) {
-        throw new DaytonaTransportError(
-          "Daytona resource metric aggregation failed.",
-        );
+        throw new DaytonaTransportError("Daytona resource metric aggregation failed.");
       }
-      const intervalMs = Math.max(
-        0,
-        metricTimestamp(current) - metricTimestamp(previous),
-      );
-      cpuTimeMs +=
-        intervalMs *
-        cpuCores *
-        ((previous.cpuUsedPct + current.cpuUsedPct) / 200);
+      const intervalMs = Math.max(0, metricTimestamp(current) - metricTimestamp(previous));
+      cpuTimeMs += intervalMs * cpuCores * ((previous.cpuUsedPct + current.cpuUsedPct) / 200);
     }
   }
   return {
@@ -540,18 +487,11 @@ async function* boundedChunks(
   let byteLength = 0;
   for await (const chunk of source) {
     if (!(chunk instanceof Uint8Array)) {
-      throw new DaytonaTransportError(
-        "Daytona download returned a non-byte chunk.",
-      );
+      throw new DaytonaTransportError("Daytona download returned a non-byte chunk.");
     }
     byteLength += chunk.byteLength;
-    if (
-      !Number.isSafeInteger(byteLength) ||
-      byteLength > maximumByteLength
-    ) {
-      throw new DaytonaTransportError(
-        "Daytona download exceeded its caller-sealed byte limit.",
-      );
+    if (!Number.isSafeInteger(byteLength) || byteLength > maximumByteLength) {
+      throw new DaytonaTransportError("Daytona download exceeded its caller-sealed byte limit.");
     }
     yield chunk;
   }
@@ -565,33 +505,24 @@ function capturedLogs(value: DaytonaCommandLogsLike): CapturedLogs {
   const stdout = value.stdout ?? "";
   const stderr = value.stderr ?? "";
   if (typeof stdout !== "string" || typeof stderr !== "string") {
-    throw new DaytonaTransportError(
-      "Daytona returned malformed command logs.",
-    );
+    throw new DaytonaTransportError("Daytona returned malformed command logs.");
   }
   if (
     Buffer.byteLength(stdout, "utf8") > MAX_CAPTURED_LOG_BYTES ||
     Buffer.byteLength(stderr, "utf8") > MAX_CAPTURED_LOG_BYTES
   ) {
-    throw new DaytonaTransportError(
-      "Daytona command logs exceed the trusted streaming limit.",
-    );
+    throw new DaytonaTransportError("Daytona command logs exceed the trusted streaming limit.");
   }
   return { stdout, stderr };
 }
 
-function makeExecutionState(
-  executionId: string,
-  startedAt: Date,
-): ActiveExecution {
+function makeExecutionState(executionId: string, startedAt: Date): ActiveExecution {
   let resolveTermination!: (outcome: TerminationOutcome) => void;
   let rejectTermination!: (error: unknown) => void;
-  const terminationSignal = new Promise<TerminationOutcome>(
-    (resolve, reject) => {
-      resolveTermination = resolve;
-      rejectTermination = reject;
-    },
-  );
+  const terminationSignal = new Promise<TerminationOutcome>((resolve, reject) => {
+    resolveTermination = resolve;
+    rejectTermination = reject;
+  });
   return {
     executionId,
     sessionId: executionId,
@@ -611,8 +542,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
 
   constructor(options: DaytonaCloudProviderTransportOptions) {
     this.#artifactBridge = options.artifactBridge;
-    this.#sdkFactory =
-      options.sdkFactory ?? new OfficialDaytonaSdkFactory();
+    this.#sdkFactory = options.sdkFactory ?? new OfficialDaytonaSdkFactory();
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -646,9 +576,9 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
     assertCreateProfile(configuration, request);
     const client = await this.#sdkFactory.createClient(configuration);
     const ttlMinutes = request.lifetimeMs / 60_000;
-    const domains = [...new Set(request.network.allowDomains.map((domain) =>
-      domain.toLowerCase(),
-    ))].sort();
+    const domains = [
+      ...new Set(request.network.allowDomains.map((domain) => domain.toLowerCase())),
+    ].sort();
     const parameters: DaytonaCreateParameters = {
       image: request.imageReference,
       resources: {
@@ -680,10 +610,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       sandbox = await client.create(parameters, {
         timeout: SDK_CREATE_TIMEOUT_SECONDS,
       });
-      if (
-        !SAFE_ID.test(sandbox.id) ||
-        this.#sandboxes.has(sandbox.id)
-      ) {
+      if (!SAFE_ID.test(sandbox.id) || this.#sandboxes.has(sandbox.id)) {
         throw new DaytonaTransportError(
           "Daytona returned a malformed or reused sandbox identifier.",
         );
@@ -706,8 +633,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         request.resources.architecture === "x86_64" ? "x86_64" : "aarch64";
       const actualDestroyAt = Date.parse(sandbox.autoDestroyAt ?? "");
       const createdAt = this.#now();
-      const maximumDestroyAt =
-        createdAt.getTime() + request.lifetimeMs + 60_000;
+      const maximumDestroyAt = createdAt.getTime() + request.lifetimeMs + 60_000;
       const actualDomains = normalizeDomains(sandbox.domainAllowList);
       if (
         sandbox.target !== request.regionClass ||
@@ -727,8 +653,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         actualDestroyAt <= createdAt.getTime() ||
         actualDestroyAt > maximumDestroyAt ||
         (domains.length === 0
-          ? sandbox.networkBlockAll !== true ||
-            actualDomains.length !== 0
+          ? sandbox.networkBlockAll !== true || actualDomains.length !== 0
           : sandbox.networkBlockAll === true ||
             JSON.stringify(actualDomains) !== JSON.stringify(domains))
       ) {
@@ -741,10 +666,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         sandboxId: sandbox.id,
         createdAt: createdAt.toISOString(),
         expiresAt: new Date(
-          Math.min(
-            actualDestroyAt,
-            createdAt.getTime() + request.lifetimeMs,
-          ),
+          Math.min(actualDestroyAt, createdAt.getTime() + request.lifetimeMs),
         ).toISOString(),
         imageReference: request.imageReference,
         imageDigest: request.imageDigest,
@@ -796,8 +718,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         "Daytona sandbox permits only one secret-scoped execution at a time.",
       );
     }
-    const terminationReserveMs =
-      2 * (SDK_TERMINATION_TIMEOUT_SECONDS + 1) * 1_000;
+    const terminationReserveMs = 2 * (SDK_TERMINATION_TIMEOUT_SECONDS + 1) * 1_000;
     if (
       command.timeoutMs + terminationReserveMs >
       Date.parse(lease.expiresAt) - this.#now().getTime()
@@ -812,13 +733,8 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       `dfexec-${sha256(
         `${lease.sandboxId}:${String(active.sequence)}:${this.#now().toISOString()}`,
       ).slice(0, 48)}`;
-    if (
-      !SAFE_EXECUTION_ID.test(executionId) ||
-      active.completedExecutionIds.has(executionId)
-    ) {
-      throw new DaytonaTransportError(
-        "Daytona execution identifier is malformed or reused.",
-      );
+    if (!SAFE_EXECUTION_ID.test(executionId) || active.completedExecutionIds.has(executionId)) {
+      throw new DaytonaTransportError("Daytona execution identifier is malformed or reused.");
     }
 
     const startedAt = this.#now();
@@ -833,26 +749,18 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
           // execution race; this branch only prevents an ignored timer promise.
         });
       }, command.timeoutMs);
-      const executionPromise = (async (): Promise<
-        CompletedCommand | TerminationOutcome
-      > => {
+      const executionPromise = (async (): Promise<CompletedCommand | TerminationOutcome> => {
         const beforeSecrets = await this.#requestedTermination(state);
         if (beforeSecrets !== undefined) return beforeSecrets;
-        await active.sandbox.updateSecrets(
-          secretMap(command.secretReferences),
-        );
+        await active.sandbox.updateSecrets(secretMap(command.secretReferences));
         const afterSecrets = await this.#requestedTermination(state);
         if (afterSecrets !== undefined) return afterSecrets;
         if (command.stdinArtifact !== undefined) {
           stdinPath = `/tmp/.df-transport/stdin/${toSafeUriSegment(executionId)}`;
-          const chunks = await this.#artifactBridge.openVerified(
-            command.stdinArtifact,
-          );
-          await active.sandbox.fs.uploadFileStream(
-            Readable.from(chunks),
-            stdinPath,
-            { timeout: SDK_TRANSFER_TIMEOUT_SECONDS },
-          );
+          const chunks = await this.#artifactBridge.openVerified(command.stdinArtifact);
+          await active.sandbox.fs.uploadFileStream(Readable.from(chunks), stdinPath, {
+            timeout: SDK_TRANSFER_TIMEOUT_SECONDS,
+          });
           const afterStdin = await this.#requestedTermination(state);
           if (afterStdin !== undefined) return afterStdin;
         }
@@ -864,9 +772,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         const afterSession = await this.#requestedTermination(state);
         if (afterSession !== undefined) return afterSession;
         const encodedCommand = `${encodePosixCommand(command)}${
-          stdinPath === undefined
-            ? ""
-            : ` < ${quotePosixArgument(stdinPath)}`
+          stdinPath === undefined ? "" : ` < ${quotePosixArgument(stdinPath)}`
         }`;
         const launch = await active.sandbox.process.executeSessionCommand(
           state.sessionId,
@@ -875,50 +781,30 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
             runAsync: true,
             suppressInputEcho: true,
           },
-          Math.min(
-            SDK_CONTROL_TIMEOUT_SECONDS,
-            Math.max(1, Math.ceil(command.timeoutMs / 1_000)),
-          ),
+          Math.min(SDK_CONTROL_TIMEOUT_SECONDS, Math.max(1, Math.ceil(command.timeoutMs / 1_000))),
         );
-        if (
-          launch.cmdId === undefined ||
-          !SAFE_EXECUTION_ID.test(launch.cmdId)
-        ) {
-          throw new DaytonaTransportError(
-            "Daytona returned a malformed command identifier.",
-          );
+        if (launch.cmdId === undefined || !SAFE_EXECUTION_ID.test(launch.cmdId)) {
+          throw new DaytonaTransportError("Daytona returned a malformed command identifier.");
         }
         state.commandId = launch.cmdId;
         const afterLaunch = await this.#requestedTermination(state);
         if (afterLaunch !== undefined) return afterLaunch;
         return this.#waitForCompletion(active, state);
       })();
-      let outcome:
-        | CompletedCommand
-        | TerminationOutcome = await Promise.race([
+      let outcome: CompletedCommand | TerminationOutcome = await Promise.race([
         executionPromise,
         state.terminationSignal,
       ]);
-      if (
-        outcome.kind === "completed" &&
-        state.terminationOperation !== undefined
-      ) {
+      if (outcome.kind === "completed" && state.terminationOperation !== undefined) {
         outcome = await state.terminationOperation;
       }
       if (timeout !== undefined) clearTimeout(timeout);
       if (outcome.kind === "failure") {
-        throw new DaytonaTransportError(
-          "Daytona execution entered provider quarantine.",
-        );
+        throw new DaytonaTransportError("Daytona execution entered provider quarantine.");
       }
       const finishedAt = this.#now();
       if (!active.destroyed) {
-        await this.#collectHistoricalMetrics(
-          active,
-          state,
-          startedAt,
-          finishedAt,
-        );
+        await this.#collectHistoricalMetrics(active, state, startedAt, finishedAt);
       }
       const stdout = await this.#persistLog(
         lease.sandboxId,
@@ -939,11 +825,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         requestCpuCores(active.request),
       );
       if (!active.destroyed) {
-        await this.#cleanupCompletedExecution(
-          active,
-          state,
-          stdinPath,
-        );
+        await this.#cleanupCompletedExecution(active, state, stdinPath);
       }
       active.executions.delete(executionId);
       active.completedExecutionIds.add(executionId);
@@ -969,9 +851,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       }
       active.executions.delete(executionId);
       active.completedExecutionIds.add(executionId);
-      throw new DaytonaTransportError(
-        "Daytona execution failed and its sandbox was quarantined.",
-      );
+      throw new DaytonaTransportError("Daytona execution failed and its sandbox was quarantined.");
     }
   }
 
@@ -986,26 +866,16 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
     assertRemotePath(remotePath);
     const active = this.#requireSandbox(lease);
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.#remainingTransferTime(lease),
-    );
+    const timeout = setTimeout(() => controller.abort(), this.#remainingTransferTime(lease));
     try {
-      const chunks = await this.#artifactBridge.openVerified(
-        artifact,
-        controller.signal,
-      );
-      await active.sandbox.fs.uploadFileStream(
-        Readable.from(chunks),
-        remotePath,
-        {
-          signal: controller.signal,
-          timeout: Math.min(
-            SDK_TRANSFER_TIMEOUT_SECONDS,
-            Math.ceil(this.#remainingTransferTime(lease) / 1_000),
-          ),
-        },
-      );
+      const chunks = await this.#artifactBridge.openVerified(artifact, controller.signal);
+      await active.sandbox.fs.uploadFileStream(Readable.from(chunks), remotePath, {
+        signal: controller.signal,
+        timeout: Math.min(
+          SDK_TRANSFER_TIMEOUT_SECONDS,
+          Math.ceil(this.#remainingTransferTime(lease) / 1_000),
+        ),
+      });
     } catch {
       throw new DaytonaTransportError(
         "Daytona trusted artifact upload failed integrity validation.",
@@ -1030,18 +900,13 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       expectation.maximumByteLength <= 0 ||
       expectation.maximumByteLength > MAXIMUM_DOWNLOAD_BYTES
     ) {
-      throw new DaytonaTransportError(
-        "Daytona download expectation is malformed or unbounded.",
-      );
+      throw new DaytonaTransportError("Daytona download expectation is malformed or unbounded.");
     }
     const active = this.#requireSandbox(lease);
     active.transferSequence += 1;
     const transferId = `${String(active.transferSequence)}:${remotePath}`;
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.#remainingTransferTime(lease),
-    );
+    const timeout = setTimeout(() => controller.abort(), this.#remainingTransferTime(lease));
     try {
       const chunks = await active.sandbox.fs.downloadFileStream(remotePath, {
         signal: controller.signal,
@@ -1085,10 +950,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
     await this.#terminate(active, execution, "cancelled");
   }
 
-  async destroy(
-    configuration: ProviderConfiguration,
-    lease: SandboxLease,
-  ): Promise<void> {
+  async destroy(configuration: ProviderConfiguration, lease: SandboxLease): Promise<void> {
     this.#artifactBridge.assertTrustedRuntime();
     assertDaytonaConfiguration(configuration);
     const active = this.#sandboxes.get(lease.sandboxId);
@@ -1102,16 +964,11 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       active.destroyed = true;
       this.#sandboxes.delete(lease.sandboxId);
     } catch {
-      throw new DaytonaTransportError(
-        "Daytona sandbox destruction was not confirmed.",
-      );
+      throw new DaytonaTransportError("Daytona sandbox destruction was not confirmed.");
     }
   }
 
-  #requireSandbox(
-    lease: SandboxLease,
-    allowDestroyed = false,
-  ): ActiveSandbox {
+  #requireSandbox(lease: SandboxLease, allowDestroyed = false): ActiveSandbox {
     const active = this.#sandboxes.get(lease.sandboxId);
     if (
       active === undefined ||
@@ -1121,9 +978,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       active.lease.regionClass !== lease.regionClass ||
       (!allowDestroyed && active.destroyed)
     ) {
-      throw new DaytonaTransportError(
-        "Daytona sandbox lease is unknown, mutated, or destroyed.",
-      );
+      throw new DaytonaTransportError("Daytona sandbox lease is unknown, mutated, or destroyed.");
     }
     return active;
   }
@@ -1134,29 +989,16 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
   ): Promise<CompletedCommand> {
     const commandId = state.commandId;
     if (commandId === undefined) {
-      throw new DaytonaTransportError(
-        "Daytona command has not been launched.",
-      );
+      throw new DaytonaTransportError("Daytona command has not been launched.");
     }
     while (true) {
-      const status = await active.sandbox.process.getSessionCommand(
-        state.sessionId,
-        commandId,
-      );
-      if (
-        status.exitCode !== undefined &&
-        status.exitCode !== null
-      ) {
+      const status = await active.sandbox.process.getSessionCommand(state.sessionId, commandId);
+      if (status.exitCode !== undefined && status.exitCode !== null) {
         if (!Number.isSafeInteger(status.exitCode)) {
-          throw new DaytonaTransportError(
-            "Daytona returned a malformed exit status.",
-          );
+          throw new DaytonaTransportError("Daytona returned a malformed exit status.");
         }
         const logs = capturedLogs(
-          await active.sandbox.process.getSessionCommandLogs(
-            state.sessionId,
-            commandId,
-          ),
+          await active.sandbox.process.getSessionCommandLogs(state.sessionId, commandId),
         );
         state.samples.push(await active.sandbox.getMetricsLatest());
         return {
@@ -1170,9 +1012,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
     }
   }
 
-  async #requestedTermination(
-    state: ActiveExecution,
-  ): Promise<TerminationOutcome | undefined> {
+  async #requestedTermination(state: ActiveExecution): Promise<TerminationOutcome | undefined> {
     const operation = state.terminationOperation;
     return operation === undefined ? undefined : operation;
   }
@@ -1211,33 +1051,19 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
       let terminated = false;
       try {
         await Promise.race([
-          active.sandbox.stop(
-            SDK_TERMINATION_TIMEOUT_SECONDS,
-            true,
-          ),
-          delay((SDK_TERMINATION_TIMEOUT_SECONDS + 1) * 1_000).then(
-            () => {
-              throw new DaytonaTransportError(
-                "Daytona force-stop confirmation timed out.",
-              );
-            },
-          ),
+          active.sandbox.stop(SDK_TERMINATION_TIMEOUT_SECONDS, true),
+          delay((SDK_TERMINATION_TIMEOUT_SECONDS + 1) * 1_000).then(() => {
+            throw new DaytonaTransportError("Daytona force-stop confirmation timed out.");
+          }),
         ]);
         terminated = true;
       } catch {
         try {
           await Promise.race([
-            active.sandbox.delete(
-              SDK_TERMINATION_TIMEOUT_SECONDS,
-              true,
-            ),
-            delay((SDK_TERMINATION_TIMEOUT_SECONDS + 1) * 1_000).then(
-              () => {
-                throw new DaytonaTransportError(
-                  "Daytona delete confirmation timed out.",
-                );
-              },
-            ),
+            active.sandbox.delete(SDK_TERMINATION_TIMEOUT_SECONDS, true),
+            delay((SDK_TERMINATION_TIMEOUT_SECONDS + 1) * 1_000).then(() => {
+              throw new DaytonaTransportError("Daytona delete confirmation timed out.");
+            }),
           ]);
           terminated = true;
         } catch {
@@ -1245,9 +1071,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
         }
       }
       if (!terminated) {
-        throw new DaytonaTransportError(
-          "Daytona could not confirm hard sandbox termination.",
-        );
+        throw new DaytonaTransportError("Daytona could not confirm hard sandbox termination.");
       }
       active.destroyed = true;
       const outcome = { kind, logs } as const;
@@ -1264,10 +1088,7 @@ export class DaytonaCloudProviderTransport implements CloudProviderTransport {
     startedAt: Date,
     finishedAt: Date,
   ): Promise<void> {
-    const historical = await active.sandbox.getMetrics(
-      startedAt,
-      finishedAt,
-    );
+    const historical = await active.sandbox.getMetrics(startedAt, finishedAt);
     state.samples.push(...historical);
   }
 

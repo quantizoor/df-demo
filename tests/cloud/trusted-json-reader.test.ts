@@ -8,10 +8,7 @@ import {
 } from "../../src/cloud/trusted-json-reader.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 
-function artifact(
-  value: Uint8Array,
-  mediaType = "application/json",
-): TrustedCloudArtifactRef {
+function artifact(value: Uint8Array, mediaType = "application/json"): TrustedCloudArtifactRef {
   return {
     uri: "trusted://tests/document",
     sha256: createHash("sha256").update(value).digest("hex"),
@@ -55,9 +52,9 @@ describe("verifying trusted JSON reader", () => {
     ]);
     const reader = new VerifyingTrustedJsonArtifactReader(bridge);
 
-    await expect(
-      reader.readUtf8(artifact(value), value.byteLength),
-    ).resolves.toBe(value.toString("utf8"));
+    await expect(reader.readUtf8(artifact(value), value.byteLength)).resolves.toBe(
+      value.toString("utf8"),
+    );
     expect(bridge.opened).toBe(true);
   });
 
@@ -69,9 +66,9 @@ describe("verifying trusted JSON reader", () => {
     await expect(
       reader.readUtf8(artifact(value, "application/x-tar"), 1024),
     ).rejects.toBeInstanceOf(TrustedJsonArtifactReaderError);
-    await expect(
-      reader.readUtf8(artifact(value), value.byteLength - 1),
-    ).rejects.toBeInstanceOf(TrustedJsonArtifactReaderError);
+    await expect(reader.readUtf8(artifact(value), value.byteLength - 1)).rejects.toBeInstanceOf(
+      TrustedJsonArtifactReaderError,
+    );
     expect(bridge.opened).toBe(false);
   });
 
@@ -86,25 +83,20 @@ describe("verifying trusted JSON reader", () => {
 
     const bom = Buffer.from("\ufeff{}\n", "utf8");
     await expect(
-      new VerifyingTrustedJsonArtifactReader(new Bridge([bom])).readUtf8(
-        artifact(bom),
-        1024,
-      ),
+      new VerifyingTrustedJsonArtifactReader(new Bridge([bom])).readUtf8(artifact(bom), 1024),
     ).rejects.toBeInstanceOf(TrustedJsonArtifactReaderError);
 
     const nul = Buffer.from('{"x":"\u0000"}\n', "utf8");
     await expect(
-      new VerifyingTrustedJsonArtifactReader(new Bridge([nul])).readUtf8(
-        artifact(nul),
-        1024,
-      ),
+      new VerifyingTrustedJsonArtifactReader(new Bridge([nul])).readUtf8(artifact(nul), 1024),
     ).rejects.toBeInstanceOf(TrustedJsonArtifactReaderError);
 
     const full = Buffer.from("{}\n", "utf8");
     await expect(
-      new VerifyingTrustedJsonArtifactReader(
-        new Bridge([full.subarray(0, 1)]),
-      ).readUtf8(artifact(full), 1024),
+      new VerifyingTrustedJsonArtifactReader(new Bridge([full.subarray(0, 1)])).readUtf8(
+        artifact(full),
+        1024,
+      ),
     ).rejects.toBeInstanceOf(TrustedJsonArtifactReaderError);
   });
 });

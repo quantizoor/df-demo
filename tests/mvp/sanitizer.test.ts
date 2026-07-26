@@ -38,17 +38,20 @@ describe("MVP trusted diagnostic sanitizer", () => {
   });
 
   it("calls only the existing Foundry Messages endpoint and never returns the key", async () => {
-    const request = vi.fn(async () =>
-      new Response(JSON.stringify({
-        content: [{ type: "text", text: JSON.stringify(safeBrief()) }],
-      }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const request = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: JSON.stringify(safeBrief()) }],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
     );
     const classifier = new FoundryMessagesDiagnosticClassifier({
-      baseUrl:
-        "https://existing-resource.services.ai.azure.com/anthropic",
+      baseUrl: "https://existing-resource.services.ai.azure.com/anthropic",
       deployment: "existing-sanitizer-deployment",
       apiKey: "protected-api-key",
       fetch: request,
@@ -65,10 +68,12 @@ describe("MVP trusted diagnostic sanitizer", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(
-      JSON.stringify(await classifier.classify({
-        candidate: [observation("candidate")],
-        champion: [observation("champion")],
-      })),
+      JSON.stringify(
+        await classifier.classify({
+          candidate: [observation("candidate")],
+          champion: [observation("champion")],
+        }),
+      ),
     ).not.toContain("protected-api-key");
   });
 });
@@ -96,9 +101,7 @@ function safeBrief() {
   };
 }
 
-function observation(
-  arm: "candidate" | "champion",
-): PrivateEvaluationObservation {
+function observation(arm: "candidate" | "champion"): PrivateEvaluationObservation {
   return {
     schemaVersion: MVP_SCHEMA_VERSION,
     experimentId: "001-change-system-prompt",
@@ -107,9 +110,7 @@ function observation(
     taskRevisionDigest: "3".repeat(64),
     repetition: 1,
     arm,
-    harnessRevision: arm === "candidate"
-      ? "4".repeat(40)
-      : "5".repeat(40),
+    harnessRevision: arm === "candidate" ? "4".repeat(40) : "5".repeat(40),
     environmentDigest: "6".repeat(64),
     source: "fresh",
     passed: false,

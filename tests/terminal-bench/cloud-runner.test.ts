@@ -14,6 +14,7 @@ import type {
   SandboxLease,
   TrustedCloudArtifactRef,
 } from "../../src/cloud/types.js";
+import { hiddenTaskId } from "../../src/evaluation/types.js";
 import {
   createSignedRawDestructionReceipt,
   createTrustedRawArtifactManifest,
@@ -22,7 +23,6 @@ import {
   type TrustedRawDestructionReceiptVerifier,
   type TrustedRawRetentionPolicy,
 } from "../../src/evaluator/retention.js";
-import { hiddenTaskId } from "../../src/evaluation/types.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
 import {
   computeTrustedHarborJobHash,
@@ -30,13 +30,10 @@ import {
   type TrustedHarborJobArtifact,
 } from "../../src/terminal-bench/harbor.js";
 import {
-  hashTerminalBench21Pin,
-  type TerminalBench21Pin,
-} from "../../src/terminal-bench/pin.js";
-import {
-  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
   createPiHarborAgentSpec,
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
 } from "../../src/terminal-bench/pi-agent.js";
+import { hashTerminalBench21Pin, type TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 import {
   TerminalBenchCloudRunner,
   type TrustedRawRun,
@@ -187,8 +184,7 @@ function harborJob(): TrustedHarborJobArtifact {
         configSha256: "1".repeat(64),
         remoteConfigPath: "/trusted/uploads/config-ab.json",
         remoteHarborJobPath: "/trusted/results/request-001-ab",
-        remoteOutputPath:
-          "/trusted/results/request-001-ab.harbor-output.tar",
+        remoteOutputPath: "/trusted/results/request-001-ab.harbor-output.tar",
         cellCount: 6,
         armCount: 12,
         agentOrder: ["candidate", "champion"],
@@ -202,8 +198,7 @@ function harborJob(): TrustedHarborJobArtifact {
         configSha256: "2".repeat(64),
         remoteConfigPath: "/trusted/uploads/config-ba.json",
         remoteHarborJobPath: "/trusted/results/request-001-ba",
-        remoteOutputPath:
-          "/trusted/results/request-001-ba.harbor-output.tar",
+        remoteOutputPath: "/trusted/results/request-001-ba.harbor-output.tar",
         cellCount: 6,
         armCount: 12,
         agentOrder: ["champion", "candidate"],
@@ -280,10 +275,7 @@ class FakeProvider implements CloudSandboxProvider {
     });
   }
 
-  execute(
-    lease: SandboxLease,
-    command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     this.calls.push("execute");
     this.commands.push(command);
     const ordinal = this.commands.length;
@@ -422,9 +414,7 @@ function rawManifest(): TrustedRawArtifactManifest {
   });
 }
 
-function destructionReceipt(
-  manifest: TrustedRawArtifactManifest,
-): TrustedRawDestructionReceipt {
+function destructionReceipt(manifest: TrustedRawArtifactManifest): TrustedRawDestructionReceipt {
   return createSignedRawDestructionReceipt({
     policy: retentionPolicy,
     manifest,
@@ -461,13 +451,7 @@ function createRunner(
       build: () => Promise.resolve(harborJob()),
     },
     rawIngress: {
-      persist: ({
-        requestId,
-        job,
-        executions,
-        downloadedBundles,
-        runtimeVerification,
-      }) =>
+      persist: ({ requestId, job, executions, downloadedBundles, runtimeVerification }) =>
         Promise.resolve({
           sensitivity: "raw-terminal-bench-run",
           requestId,
@@ -478,9 +462,7 @@ function createRunner(
           rawBundles: downloadedBundles,
           manifest: rawManifest(),
         }),
-      discard:
-        discard ??
-        ((rawRun) => Promise.resolve(destructionReceipt(rawRun.manifest))),
+      discard: discard ?? ((rawRun) => Promise.resolve(destructionReceipt(rawRun.manifest))),
     },
   });
 }
@@ -491,11 +473,7 @@ function runRequest() {
     sensitivity: "hidden-terminal-bench-run-request" as const,
     requestId: "request-001",
     panel: hiddenPanel,
-    schedule: createTrustedMatchedArmSchedule(
-      hiddenPanel,
-      candidate,
-      champion,
-    ),
+    schedule: createTrustedMatchedArmSchedule(hiddenPanel, candidate, champion),
     agent: createPiHarborAgentSpec({
       adapterImportPath: DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
       adapterSha256: pin.piHarborAdapterSha256,
@@ -510,147 +488,140 @@ function runRequest() {
 }
 
 describe("cloud-only Terminal-Bench runner", () => {
-  it(
-    "uploads the sealed bundle, runs AB then BA once, ingests both outputs, and destroys the sandbox",
-    async () => {
-      const provider = new FakeProvider();
-      const rawRun = await createRunner(provider).run(runRequest());
+  it("uploads the sealed bundle, runs AB then BA once, ingests both outputs, and destroys the sandbox", async () => {
+    const provider = new FakeProvider();
+    const rawRun = await createRunner(provider).run(runRequest());
 
-      expect(rawRun).toMatchObject({
-        sensitivity: "raw-terminal-bench-run",
-        requestId: "request-001",
-      });
-      expect(rawRun.executions.map((execution) => execution.executionId)).toEqual([
-        "execution-001",
-        "execution-002",
-      ]);
-      expect(rawRun.rawBundles.map((bundle) => bundle.uri)).toEqual([
-        "trusted://results/raw-bundle-1",
-        "trusted://results/raw-bundle-2",
-      ]);
-      expect(provider.probeRequests).toHaveLength(1);
-      expect(provider.probeRequests[0]).toMatchObject({
-        requireDockerInDocker: true,
-        requireGpu: false,
-      });
-      expect(provider.calls).toEqual([
-        "probe",
-        "create",
-        "upload",
-        "upload",
-        "upload",
-        "upload",
-        "upload",
-        "upload",
-        "execute",
-        "execute",
-        "execute",
-        "execute",
-        "download",
-        "download",
-        "destroy",
-      ]);
-      expect(provider.uploadedPaths).toEqual([
-        "/trusted/uploads/config-ab.json",
-        "/trusted/uploads/config-ba.json",
+    expect(rawRun).toMatchObject({
+      sensitivity: "raw-terminal-bench-run",
+      requestId: "request-001",
+    });
+    expect(rawRun.executions.map((execution) => execution.executionId)).toEqual([
+      "execution-001",
+      "execution-002",
+    ]);
+    expect(rawRun.rawBundles.map((bundle) => bundle.uri)).toEqual([
+      "trusted://results/raw-bundle-1",
+      "trusted://results/raw-bundle-2",
+    ]);
+    expect(provider.probeRequests).toHaveLength(1);
+    expect(provider.probeRequests[0]).toMatchObject({
+      requireDockerInDocker: true,
+      requireGpu: false,
+    });
+    expect(provider.calls).toEqual([
+      "probe",
+      "create",
+      "upload",
+      "upload",
+      "upload",
+      "upload",
+      "upload",
+      "upload",
+      "execute",
+      "execute",
+      "execute",
+      "execute",
+      "download",
+      "download",
+      "destroy",
+    ]);
+    expect(provider.uploadedPaths).toEqual([
+      "/trusted/uploads/config-ab.json",
+      "/trusted/uploads/config-ba.json",
+      "/trusted/uploads/package-harbor-output.mjs",
+      "/trusted/uploads/dark_factory_pi.py",
+      "/trusted/uploads/candidate.tar.gz",
+      "/trusted/uploads/champion.tar.gz",
+    ]);
+    expect(provider.commands.map((command) => command.arguments)).toEqual([
+      ["run", "-c", "/trusted/uploads/config-ab.json"],
+      ["run", "-c", "/trusted/uploads/config-ba.json"],
+      [
         "/trusted/uploads/package-harbor-output.mjs",
-        "/trusted/uploads/dark_factory_pi.py",
-        "/trusted/uploads/candidate.tar.gz",
-        "/trusted/uploads/champion.tar.gz",
-      ]);
-      expect(provider.commands.map((command) => command.arguments)).toEqual([
-        ["run", "-c", "/trusted/uploads/config-ab.json"],
-        ["run", "-c", "/trusted/uploads/config-ba.json"],
-        [
-          "/trusted/uploads/package-harbor-output.mjs",
-          "--source-directory",
-          "/trusted/results/request-001-ab",
-          "--output",
-          "/trusted/results/request-001-ab.harbor-output.tar",
-          "--request-id",
-          "request-001",
-          "--job-sha256",
-          harborJob().jobSha256,
-          "--pin-sha256",
-          hashTerminalBench21Pin(pin),
-          "--invocation-id",
-          "request-001-ab",
-          "--order",
-          "AB",
-          "--config-sha256",
-          "1".repeat(64),
-          "--execution-id",
-          "execution-001",
-          "--expected-trials",
-          "12",
-        ],
-        [
-          "/trusted/uploads/package-harbor-output.mjs",
-          "--source-directory",
-          "/trusted/results/request-001-ba",
-          "--output",
-          "/trusted/results/request-001-ba.harbor-output.tar",
-          "--request-id",
-          "request-001",
-          "--job-sha256",
-          harborJob().jobSha256,
-          "--pin-sha256",
-          hashTerminalBench21Pin(pin),
-          "--invocation-id",
-          "request-001-ba",
-          "--order",
-          "BA",
-          "--config-sha256",
-          "2".repeat(64),
-          "--execution-id",
-          "execution-002",
-          "--expected-trials",
-          "12",
-        ],
-      ]);
-      expect(
-        provider.commands.map((command) => command.secretReferences),
-      ).toEqual([
-        [
-          {
-            sourceEnvironmentName: "DAYTONA_API_KEY",
-            targetEnvironmentName: "DAYTONA_API_KEY",
-          },
-          {
-            sourceEnvironmentName: "EVALUATED_OPENAI_API_KEY",
-            targetEnvironmentName: "OPENAI_API_KEY",
-          },
-        ],
-        [
-          {
-            sourceEnvironmentName: "DAYTONA_API_KEY",
-            targetEnvironmentName: "DAYTONA_API_KEY",
-          },
-          {
-            sourceEnvironmentName: "EVALUATED_OPENAI_API_KEY",
-            targetEnvironmentName: "OPENAI_API_KEY",
-          },
-        ],
-        [],
-        [],
-      ]);
-      expect(provider.downloadedPaths).toEqual([
+        "--source-directory",
+        "/trusted/results/request-001-ab",
+        "--output",
         "/trusted/results/request-001-ab.harbor-output.tar",
+        "--request-id",
+        "request-001",
+        "--job-sha256",
+        harborJob().jobSha256,
+        "--pin-sha256",
+        hashTerminalBench21Pin(pin),
+        "--invocation-id",
+        "request-001-ab",
+        "--order",
+        "AB",
+        "--config-sha256",
+        "1".repeat(64),
+        "--execution-id",
+        "execution-001",
+        "--expected-trials",
+        "12",
+      ],
+      [
+        "/trusted/uploads/package-harbor-output.mjs",
+        "--source-directory",
+        "/trusted/results/request-001-ba",
+        "--output",
         "/trusted/results/request-001-ba.harbor-output.tar",
-      ]);
-      for (const cell of panel().cells) {
-        expect(JSON.stringify(provider.commands)).not.toContain(cell.taskId);
-      }
-    },
-  );
+        "--request-id",
+        "request-001",
+        "--job-sha256",
+        harborJob().jobSha256,
+        "--pin-sha256",
+        hashTerminalBench21Pin(pin),
+        "--invocation-id",
+        "request-001-ba",
+        "--order",
+        "BA",
+        "--config-sha256",
+        "2".repeat(64),
+        "--execution-id",
+        "execution-002",
+        "--expected-trials",
+        "12",
+      ],
+    ]);
+    expect(provider.commands.map((command) => command.secretReferences)).toEqual([
+      [
+        {
+          sourceEnvironmentName: "DAYTONA_API_KEY",
+          targetEnvironmentName: "DAYTONA_API_KEY",
+        },
+        {
+          sourceEnvironmentName: "EVALUATED_OPENAI_API_KEY",
+          targetEnvironmentName: "OPENAI_API_KEY",
+        },
+      ],
+      [
+        {
+          sourceEnvironmentName: "DAYTONA_API_KEY",
+          targetEnvironmentName: "DAYTONA_API_KEY",
+        },
+        {
+          sourceEnvironmentName: "EVALUATED_OPENAI_API_KEY",
+          targetEnvironmentName: "OPENAI_API_KEY",
+        },
+      ],
+      [],
+      [],
+    ]);
+    expect(provider.downloadedPaths).toEqual([
+      "/trusted/results/request-001-ab.harbor-output.tar",
+      "/trusted/results/request-001-ba.harbor-output.tar",
+    ]);
+    for (const cell of panel().cells) {
+      expect(JSON.stringify(provider.commands)).not.toContain(cell.taskId);
+    }
+  });
 
   it("fails closed after the first invocation when the BA invocation fails", async () => {
     const provider = new FakeProvider();
     provider.failExecutionOrdinal = 2;
 
-    await expect(createRunner(provider).run(runRequest())).rejects.toThrow(
-      /failed closed/u,
-    );
+    await expect(createRunner(provider).run(runRequest())).rejects.toThrow(/failed closed/u);
 
     expect(provider.calls).toEqual([
       "probe",
@@ -679,9 +650,7 @@ describe("cloud-only Terminal-Bench runner", () => {
       Promise.resolve(destructionReceipt(rawRun.manifest)),
     );
 
-    await expect(createRunner(provider, discard).run(runRequest())).rejects.toThrow(
-      /discarded/u,
-    );
+    await expect(createRunner(provider, discard).run(runRequest())).rejects.toThrow(/discarded/u);
 
     expect(provider.calls).toEqual([
       "probe",
@@ -709,9 +678,7 @@ describe("cloud-only Terminal-Bench runner", () => {
     const provider = new FakeProvider();
     provider.failExecutionOrdinal = 3;
 
-    await expect(createRunner(provider).run(runRequest())).rejects.toThrow(
-      /failed closed/u,
-    );
+    await expect(createRunner(provider).run(runRequest())).rejects.toThrow(/failed closed/u);
 
     expect(provider.commands).toHaveLength(3);
     expect(provider.commands[2]?.secretReferences).toEqual([]);
@@ -723,13 +690,9 @@ describe("cloud-only Terminal-Bench runner", () => {
     const provider = new FakeProvider();
     provider.downloadMediaType = "application/gzip";
 
-    await expect(createRunner(provider).run(runRequest())).rejects.toThrow(
-      /failed closed/u,
-    );
+    await expect(createRunner(provider).run(runRequest())).rejects.toThrow(/failed closed/u);
 
-    expect(provider.downloadedPaths).toEqual([
-      "/trusted/results/request-001-ab.harbor-output.tar",
-    ]);
+    expect(provider.downloadedPaths).toEqual(["/trusted/results/request-001-ab.harbor-output.tar"]);
     expect(provider.calls.at(-1)).toBe("destroy");
   });
 });

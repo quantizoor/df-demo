@@ -21,18 +21,13 @@ import type {
   DiagnosticBrief,
   FailureCards,
 } from "../schemas/artifacts.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash, sha256 } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type { SignedBehavioralRelease } from "../schemas/trusted.js";
 import type { TrustedArtifactBridge } from "./artifact-bridge.js";
 import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 import type {
   ProductionCompositionAttestationArtifactSet,
@@ -59,11 +54,9 @@ import type { VerifyingTrustedJsonArtifactReader } from "./trusted-json-reader.j
 import type { TrustedCloudArtifactRef } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const SAFE_PURPOSE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const ISO_TIMESTAMP =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 16 * 1024 * 1024;
 const MAXIMUM_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const MAXIMUM_REGISTRY_ENTRIES = 100_000;
@@ -125,8 +118,7 @@ export type TrustedArtifactRegistryPurpose =
 
 export interface TrustedArtifactRegistryExactLocator {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-artifact-registry-exact-locator.v1";
+  readonly domain: "dark-factory.trusted-artifact-registry-exact-locator.v1";
   readonly namespace: TrustedArtifactRegistryNamespace;
   readonly purpose: TrustedArtifactRegistryPurpose;
   readonly lookupHash: string;
@@ -197,9 +189,7 @@ interface DurableArtifactRegistryState {
   readonly schemaVersion: 1;
   readonly sensitivity: "trusted-task-free-artifact-registry";
   readonly revision: number;
-  readonly entries: Readonly<
-    Record<string, DurableArtifactRegistryEntry>
-  >;
+  readonly entries: Readonly<Record<string, DurableArtifactRegistryEntry>>;
   readonly artifactOwners: Readonly<Record<string, string>>;
 }
 
@@ -227,8 +217,7 @@ export interface MountedVolumeTrustedArtifactRegistryOptions {
 }
 
 export class MountedVolumeTrustedArtifactRegistryError extends Error {
-  override readonly name =
-    "MountedVolumeTrustedArtifactRegistryError";
+  override readonly name = "MountedVolumeTrustedArtifactRegistryError";
 
   constructor() {
     super("Trusted content-addressed artifact registry failed closed.");
@@ -239,9 +228,7 @@ function fail(): never {
   throw new MountedVolumeTrustedArtifactRegistryError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -262,10 +249,7 @@ function exactKeys(
       (key) =>
         typeof key !== "string" ||
         !keys.includes(key) ||
-        !Object.hasOwn(
-          Object.getOwnPropertyDescriptor(value, key) ?? {},
-          "value",
-        ),
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, "value"),
     )
   ) {
     fail();
@@ -306,11 +290,7 @@ function assertTaskFreeDocument(value: unknown): void {
     const current = pending.pop();
     nodes += 1;
     if (nodes > 1_000_000) fail();
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
+    if (current === null || typeof current === "string" || typeof current === "boolean") {
       continue;
     }
     if (typeof current === "number") {
@@ -350,19 +330,13 @@ function allowedPurpose(
         "diagnostic-brief",
       ]).has(purpose);
     case "optimizer-released-evidence-metadata":
-      return new Set<string>([
-        "source-only-bootstrap",
-        "proposal-diagnostic",
-        "analysis",
-      ]).has(purpose);
+      return new Set<string>(["source-only-bootstrap", "proposal-diagnostic", "analysis"]).has(
+        purpose,
+      );
     case "production-composition-attestation":
       return purpose === "production-composition-attestation-set";
     case "campaign-attestation":
-      return new Set<string>([
-        "ledger-transition",
-        "decision",
-        "control",
-      ]).has(purpose);
+      return new Set<string>(["ledger-transition", "decision", "control"]).has(purpose);
     case "production-optimize-prerequisite":
       return new Set<string>([
         "production-optimize-private-pi-registration",
@@ -372,20 +346,11 @@ function allowedPurpose(
   }
 }
 
-function assertLocator(
-  value: unknown,
-): asserts value is TrustedArtifactRegistryExactLocator {
-  exactKeys(value, [
-    "schemaVersion",
-    "domain",
-    "namespace",
-    "purpose",
-    "lookupHash",
-  ]);
+function assertLocator(value: unknown): asserts value is TrustedArtifactRegistryExactLocator {
+  exactKeys(value, ["schemaVersion", "domain", "namespace", "purpose", "lookupHash"]);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.trusted-artifact-registry-exact-locator.v1" ||
+    value.domain !== "dark-factory.trusted-artifact-registry-exact-locator.v1" ||
     !TRUSTED_ARTIFACT_REGISTRY_NAMESPACES.includes(
       value.namespace as TrustedArtifactRegistryNamespace,
     ) ||
@@ -421,8 +386,7 @@ function locator(
 ): TrustedArtifactRegistryExactLocator {
   const value: TrustedArtifactRegistryExactLocator = {
     schemaVersion: 1,
-    domain:
-      "dark-factory.trusted-artifact-registry-exact-locator.v1",
+    domain: "dark-factory.trusted-artifact-registry-exact-locator.v1",
     namespace,
     purpose,
     lookupHash,
@@ -466,9 +430,7 @@ function artifactOwnerKey(artifact: TrustedCloudArtifactRef): string {
   });
 }
 
-function entryHash(
-  entry: Omit<DurableArtifactRegistryEntry, "entryHash">,
-): string {
+function entryHash(entry: Omit<DurableArtifactRegistryEntry, "entryHash">): string {
   return canonicalHash(entry);
 }
 
@@ -490,11 +452,7 @@ function assertEntry(
     "entryHash",
   ]);
   const entry = value as unknown as DurableArtifactRegistryEntry;
-  const expectedLocator = locator(
-    entry.namespace,
-    entry.purpose,
-    entry.lookupHash,
-  );
+  const expectedLocator = locator(entry.namespace, entry.purpose, entry.lookupHash);
   assertArtifact(entry.artifact, maximumBytes);
   canonicalTimestamp(entry.publishedAt);
   const unsigned = {
@@ -510,14 +468,11 @@ function assertEntry(
   } as const;
   if (
     entry.schemaVersion !== 1 ||
-    entry.domain !==
-      "dark-factory.trusted-artifact-registry-entry.v1" ||
+    entry.domain !== "dark-factory.trusted-artifact-registry-entry.v1" ||
     key !== entry.locatorHash ||
-    entry.locatorHash !==
-      trustedArtifactRegistryLocatorHash(expectedLocator) ||
+    entry.locatorHash !== trustedArtifactRegistryLocatorHash(expectedLocator) ||
     !SHA256.test(entry.documentHash) ||
-    entry.artifact.uri !==
-      artifactUri(expectedLocator, entry.artifact.sha256) ||
+    entry.artifact.uri !== artifactUri(expectedLocator, entry.artifact.sha256) ||
     !SHA256.test(entry.entryHash) ||
     entry.entryHash !== entryHash(unsigned)
   ) {
@@ -529,13 +484,7 @@ function assertState(
   value: unknown,
   maximumBytes: number,
 ): asserts value is DurableArtifactRegistryState {
-  exactKeys(value, [
-    "schemaVersion",
-    "sensitivity",
-    "revision",
-    "entries",
-    "artifactOwners",
-  ]);
+  exactKeys(value, ["schemaVersion", "sensitivity", "revision", "entries", "artifactOwners"]);
   if (
     value.schemaVersion !== 1 ||
     value.sensitivity !== "trusted-task-free-artifact-registry" ||
@@ -546,9 +495,7 @@ function assertState(
   ) {
     fail();
   }
-  const entries = value.entries as Readonly<
-    Record<string, DurableArtifactRegistryEntry>
-  >;
+  const entries = value.entries as Readonly<Record<string, DurableArtifactRegistryEntry>>;
   const owners = value.artifactOwners as Readonly<Record<string, unknown>>;
   const entryKeys = Object.keys(entries);
   if (
@@ -563,10 +510,7 @@ function assertState(
     const entry = entries[key];
     assertEntry(entry, key, maximumBytes);
     const ownerKey = artifactOwnerKey(entry.artifact);
-    if (
-      observedOwners.has(ownerKey) ||
-      owners[ownerKey] !== entry.locatorHash
-    ) {
+    if (observedOwners.has(ownerKey) || owners[ownerKey] !== entry.locatorHash) {
       fail();
     }
     observedOwners.add(ownerKey);
@@ -590,9 +534,7 @@ function nowTimestamp(now: (() => Date) | undefined): string {
   return value.toISOString();
 }
 
-function exactQueryHash(
-  query: Readonly<Record<string, unknown>>,
-): string {
+function exactQueryHash(query: Readonly<Record<string, unknown>>): string {
   if (typeof query.queryHash !== "string" || !SHA256.test(query.queryHash)) {
     fail();
   }
@@ -604,24 +546,12 @@ function exactQueryHash(
   return query.queryHash;
 }
 
-function assertEvaluationQuery(
-  value: unknown,
-): asserts value is EvaluationReleaseArtifactQuery {
-  exactKeys(value, [
-    "schemaVersion",
-    "domain",
-    "purpose",
-    "contentHash",
-    "queryHash",
-  ]);
+function assertEvaluationQuery(value: unknown): asserts value is EvaluationReleaseArtifactQuery {
+  exactKeys(value, ["schemaVersion", "domain", "purpose", "contentHash", "queryHash"]);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.evaluation-release-artifact-query.v1" ||
-    !allowedPurpose(
-      "evaluation-release",
-      value.purpose as TrustedArtifactRegistryPurpose,
-    ) ||
+    value.domain !== "dark-factory.evaluation-release-artifact-query.v1" ||
+    !allowedPurpose("evaluation-release", value.purpose as TrustedArtifactRegistryPurpose) ||
     typeof value.contentHash !== "string" ||
     !SHA256.test(value.contentHash)
   ) {
@@ -666,11 +596,7 @@ function captureEvaluationPublication(
   assertValidDocument(evaluationSchema(query.purpose), document);
   assertSafeForLocalPersistence(document);
   if (document.contentHash !== query.contentHash) fail();
-  const exactLocator = locator(
-    "evaluation-release",
-    query.purpose,
-    query.queryHash,
-  );
+  const exactLocator = locator("evaluation-release", query.purpose, query.queryHash);
   return {
     locator: exactLocator,
     locatorHash: trustedArtifactRegistryLocatorHash(exactLocator),
@@ -683,47 +609,33 @@ function captureEvaluationPublication(
   };
 }
 
-function assertBehavioralReleaseBatch(
-  captured: readonly CapturedPublication[],
-): void {
+function assertBehavioralReleaseBatch(captured: readonly CapturedPublication[]): void {
   const purposes = new Set(captured.map((item) => item.locator.purpose));
   if (purposes.size !== captured.length) fail();
-  const cacheOnly =
-    purposes.size === 1 && purposes.has("cache-attestation");
+  const cacheOnly = purposes.size === 1 && purposes.has("cache-attestation");
   const behavioral = [
     "behavioral-release",
     "behavioral-evidence",
     "failure-cards",
     "diagnostic-brief",
   ] as const;
-  const completeBehavioral = behavioral.every((purpose) =>
-    purposes.has(purpose),
-  );
+  const completeBehavioral = behavioral.every((purpose) => purposes.has(purpose));
   if (
     !cacheOnly &&
     !(purposes.size === 4 && completeBehavioral) &&
-    !(
-      purposes.size === 5 &&
-      completeBehavioral &&
-      purposes.has("cache-attestation")
-    )
+    !(purposes.size === 5 && completeBehavioral && purposes.has("cache-attestation"))
   ) {
     fail();
   }
   if (!completeBehavioral) return;
-  const byPurpose = new Map(
-    captured.map((item) => [item.locator.purpose, item] as const),
-  );
+  const byPurpose = new Map(captured.map((item) => [item.locator.purpose, item] as const));
   const rawRelease = byPurpose.get("behavioral-release");
   if (rawRelease === undefined) fail();
-  const release = JSON.parse(
-    rawRelease.canonicalDocument,
-  ) as SignedBehavioralRelease;
+  const release = JSON.parse(rawRelease.canonicalDocument) as SignedBehavioralRelease;
   if (
     release.aggregateArtifactHashes.behavioralEvidence !==
       byPurpose.get("behavioral-evidence")?.documentHash ||
-    release.aggregateArtifactHashes.failureCards !==
-      byPurpose.get("failure-cards")?.documentHash ||
+    release.aggregateArtifactHashes.failureCards !== byPurpose.get("failure-cards")?.documentHash ||
     release.aggregateArtifactHashes.diagnosticBrief !==
       byPurpose.get("diagnostic-brief")?.documentHash
   ) {
@@ -731,9 +643,7 @@ function assertBehavioralReleaseBatch(
   }
 }
 
-function assertOptimizerQuery(
-  value: unknown,
-): asserts value is OptimizerReleasedEvidenceQuery {
+function assertOptimizerQuery(value: unknown): asserts value is OptimizerReleasedEvidenceQuery {
   if (!isPlainRecord(value) || typeof value.purpose !== "string") fail();
   if (value.purpose === "proposal-diagnostic") {
     exactKeys(value, [
@@ -747,10 +657,7 @@ function assertOptimizerQuery(
       "actionable",
       "queryHash",
     ]);
-    if (
-      value.domain !==
-        "dark-factory.optimizer-proposal-evidence-query.v1"
-    ) {
+    if (value.domain !== "dark-factory.optimizer-proposal-evidence-query.v1") {
       fail();
     }
   } else if (value.purpose === "analysis") {
@@ -770,10 +677,7 @@ function assertOptimizerQuery(
       "releasedEvidenceHash",
       "queryHash",
     ]);
-    if (
-      value.domain !==
-        "dark-factory.optimizer-analysis-evidence-query.v1"
-    ) {
+    if (value.domain !== "dark-factory.optimizer-analysis-evidence-query.v1") {
       fail();
     }
   } else {
@@ -791,9 +695,7 @@ function assertOptimizerQuery(
   exactQueryHash(value);
 }
 
-function optimizerMetadataHash(
-  document: OptimizerReleasedEvidenceMetadata,
-): string {
+function optimizerMetadataHash(document: OptimizerReleasedEvidenceMetadata): string {
   const unsigned: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(document)) {
     if (key !== "metadataHash" && key !== "signature") {
@@ -823,9 +725,7 @@ function captureOptimizerPublication(
     typeof document.metadataHash !== "string" ||
     !SHA256.test(document.metadataHash) ||
     document.metadataHash !==
-      optimizerMetadataHash(
-        document as unknown as OptimizerReleasedEvidenceMetadata,
-      )
+      optimizerMetadataHash(document as unknown as OptimizerReleasedEvidenceMetadata)
   ) {
     fail();
   }
@@ -877,9 +777,7 @@ function captureOptimizerSourceOnlyPublication(
     document.containsGraderIdentifiers !== false ||
     document.metadataHash !== query.metadataHash ||
     document.metadataHash !==
-      optimizerMetadataHash(
-        document as unknown as OptimizerReleasedEvidenceMetadata,
-      )
+      optimizerMetadataHash(document as unknown as OptimizerReleasedEvidenceMetadata)
   ) {
     fail();
   }
@@ -888,8 +786,7 @@ function captureOptimizerSourceOnlyPublication(
     "optimizer-released-evidence-metadata",
     "source-only-bootstrap",
     canonicalHash({
-      domain:
-        "dark-factory.optimizer-source-only-bootstrap-registry-query.v1",
+      domain: "dark-factory.optimizer-source-only-bootstrap-registry-query.v1",
       query,
     }),
   );
@@ -921,8 +818,7 @@ function assertCompositionQuery(
   ]);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-composition-attestation-query.v1"
+    value.domain !== "dark-factory.production-composition-attestation-query.v1"
   ) {
     fail();
   }
@@ -941,8 +837,7 @@ function captureCompositionPublication(
   if (
     !isPlainRecord(document) ||
     document.schemaVersion !== 1 ||
-    document.domain !==
-      "dark-factory.production-composition-attestation-artifact-set.v1" ||
+    document.domain !== "dark-factory.production-composition-attestation-artifact-set.v1" ||
     document.sensitivity !== "release-safe-control" ||
     document.deployment !== "trusted-cloud" ||
     document.campaignId !== query.campaignId ||
@@ -976,18 +871,9 @@ function captureCompositionPublication(
 function assertCampaignQuery(
   value: unknown,
 ): asserts value is TrustedCampaignAttestationArtifactQuery {
-  exactKeys(value, [
-    "evidenceKind",
-    "campaignId",
-    "protocolHash",
-    "lookupHash",
-    "payloadHash",
-  ]);
+  exactKeys(value, ["evidenceKind", "campaignId", "protocolHash", "lookupHash", "payloadHash"]);
   if (
-    !allowedPurpose(
-      "campaign-attestation",
-      value.evidenceKind as TrustedArtifactRegistryPurpose,
-    ) ||
+    !allowedPurpose("campaign-attestation", value.evidenceKind as TrustedArtifactRegistryPurpose) ||
     typeof value.lookupHash !== "string" ||
     !SHA256.test(value.lookupHash) ||
     typeof value.payloadHash !== "string" ||
@@ -997,9 +883,7 @@ function assertCampaignQuery(
   }
 }
 
-function campaignQueryHash(
-  query: TrustedCampaignAttestationArtifactQuery,
-): string {
+function campaignQueryHash(query: TrustedCampaignAttestationArtifactQuery): string {
   assertCampaignQuery(query);
   return canonicalHash({
     domain: "dark-factory.campaign-attestation-registry-query.v1",
@@ -1019,8 +903,7 @@ function captureCampaignPublication(
   if (
     !isPlainRecord(document) ||
     document.schemaVersion !== 1 ||
-    document.domain !==
-      "dark-factory.campaign-attestation-evidence.v1" ||
+    document.domain !== "dark-factory.campaign-attestation-evidence.v1" ||
     document.sensitivity !== "release-safe-control" ||
     document.evidenceKind !== query.evidenceKind ||
     document.campaignId !== query.campaignId ||
@@ -1102,8 +985,7 @@ function assertCatalogGenesisQuery(
     "catalogPrerequisiteHash",
   ]);
   if (
-    value.purpose !==
-      "production-optimize-hidden-catalog-genesis" ||
+    value.purpose !== "production-optimize-hidden-catalog-genesis" ||
     typeof value.protocolHash !== "string" ||
     !SHA256.test(value.protocolHash) ||
     typeof value.genesisPrerequisiteHash !== "string" ||
@@ -1140,9 +1022,8 @@ function capturePrivatePiPublication(
     !isPlainRecord(document) ||
     document.sensitivity !== "trusted-git-registration" ||
     document.schemaVersion !== 1 ||
-    gitRegistrationReceiptHash(
-      document as unknown as TrustedGitRegistrationReceipt,
-    ) !== query.sourcePrerequisiteHash
+    gitRegistrationReceiptHash(document as unknown as TrustedGitRegistrationReceipt) !==
+      query.sourcePrerequisiteHash
   ) {
     fail();
   }
@@ -1177,15 +1058,13 @@ function captureCampaignGenesisPublication(
   if (
     !isPlainRecord(document) ||
     document.schemaVersion !== 1 ||
-    document.domain !==
-      "dark-factory.production-optimize-campaign-genesis.v1" ||
+    document.domain !== "dark-factory.production-optimize-campaign-genesis.v1" ||
     document.sensitivity !== "release-safe-control" ||
     document.deployment !== "trusted-cloud" ||
     document.campaignId !== query.campaignId ||
     document.lineageId !== query.lineageId ||
     document.protocolHash !== query.protocolHash ||
-    document.sourcePrerequisiteHash !==
-      query.sourcePrerequisiteHash ||
+    document.sourcePrerequisiteHash !== query.sourcePrerequisiteHash ||
     document.contentHash !== query.genesisPrerequisiteHash ||
     document.contentHash !== computeContentHash(document)
   ) {
@@ -1222,16 +1101,13 @@ function captureCatalogGenesisPublication(
   if (
     !isPlainRecord(document) ||
     document.schemaVersion !== 1 ||
-    document.domain !==
-      "dark-factory.production-optimize-hidden-catalog-genesis.v1" ||
-    document.sensitivity !==
-      "trusted-control-task-free-commitment" ||
+    document.domain !== "dark-factory.production-optimize-hidden-catalog-genesis.v1" ||
+    document.sensitivity !== "trusted-control-task-free-commitment" ||
     document.deployment !== "trusted-cloud" ||
     document.campaignId !== query.campaignId ||
     document.lineageId !== query.lineageId ||
     document.protocolHash !== query.protocolHash ||
-    document.campaignGenesisPrerequisiteHash !==
-      query.genesisPrerequisiteHash ||
+    document.campaignGenesisPrerequisiteHash !== query.genesisPrerequisiteHash ||
     document.contentHash !== query.catalogPrerequisiteHash ||
     document.contentHash !== computeContentHash(document) ||
     !isPlainRecord(document.informationBoundary) ||
@@ -1267,8 +1143,7 @@ function captureCatalogGenesisPublication(
  * batch commits; abandoned object writes are unreachable orphans.
  */
 export class MountedVolumeTrustedArtifactRegistry {
-  readonly boundary =
-    "trusted-cloud-content-addressed-artifact-registry" as const;
+  readonly boundary = "trusted-cloud-content-addressed-artifact-registry" as const;
   readonly lifecycleId: string;
   readonly lifecycleResource: TrustedProductionOptimizeCloseable;
   readonly #store: MountedVolumeTransactionalJsonStore<DurableArtifactRegistryState>;
@@ -1283,20 +1158,15 @@ export class MountedVolumeTrustedArtifactRegistry {
       "bridge",
       "reader",
       ...(options.lifecycle === undefined ? [] : ["lifecycle"]),
-      ...(options.maximumArtifactBytes === undefined
-        ? []
-        : ["maximumArtifactBytes"]),
+      ...(options.maximumArtifactBytes === undefined ? [] : ["maximumArtifactBytes"]),
     ]);
-    const maximumArtifactBytes =
-      options.maximumArtifactBytes ??
-      DEFAULT_MAXIMUM_ARTIFACT_BYTES;
+    const maximumArtifactBytes = options.maximumArtifactBytes ?? DEFAULT_MAXIMUM_ARTIFACT_BYTES;
     if (
       typeof options.bridge?.assertTrustedRuntime !== "function" ||
       typeof options.bridge?.persistVerified !== "function" ||
       options.reader?.boundary !== "trusted-cloud" ||
       typeof options.reader?.readUtf8 !== "function" ||
-      (options.lifecycle !== undefined &&
-        typeof options.lifecycle.register !== "function") ||
+      (options.lifecycle !== undefined && typeof options.lifecycle.register !== "function") ||
       !Number.isSafeInteger(maximumArtifactBytes) ||
       maximumArtifactBytes < 4_096 ||
       maximumArtifactBytes > MAXIMUM_ARTIFACT_BYTES
@@ -1304,8 +1174,7 @@ export class MountedVolumeTrustedArtifactRegistry {
       fail();
     }
     options.bridge.assertTrustedRuntime();
-    this.#persistVerified =
-      options.bridge.persistVerified.bind(options.bridge);
+    this.#persistVerified = options.bridge.persistVerified.bind(options.bridge);
     this.#readUtf8 = options.reader.readUtf8.bind(options.reader);
     this.#maximumArtifactBytes = maximumArtifactBytes;
     this.#now = options.durableState.now ?? (() => new Date());
@@ -1313,30 +1182,26 @@ export class MountedVolumeTrustedArtifactRegistry {
       domain: "dark-factory.artifact-registry-lifecycle.v1",
       storeId: options.durableState.storeId,
     }).slice(0, 24)}`;
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableArtifactRegistryState>(
-        options.durableState,
-        "trusted-artifact-registry-v1",
-        {
-          domain: "dark-factory.trusted-artifact-registry-state.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity: "trusted-task-free-artifact-registry",
-            revision: 0,
-            entries: {},
-            artifactOwners: {},
-          }),
-          assertState: (
-            value: unknown,
-          ): asserts value is DurableArtifactRegistryState => {
-            assertState(value, maximumArtifactBytes);
-          },
-          revision: (state) => state.revision,
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableArtifactRegistryState>(
+      options.durableState,
+      "trusted-artifact-registry-v1",
+      {
+        domain: "dark-factory.trusted-artifact-registry-state.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "trusted-task-free-artifact-registry",
+          revision: 0,
+          entries: {},
+          artifactOwners: {},
+        }),
+        assertState: (value: unknown): asserts value is DurableArtifactRegistryState => {
+          assertState(value, maximumArtifactBytes);
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
     this.lifecycleResource = Object.freeze({
-      boundary:
-        "trusted-cloud-production-optimize-lifecycle" as const,
+      boundary: "trusted-cloud-production-optimize-lifecycle" as const,
       lifecycleId: this.lifecycleId,
       close: (): Promise<void> => this.close(),
     });
@@ -1354,10 +1219,7 @@ export class MountedVolumeTrustedArtifactRegistry {
       if (locatorHashes.has(item.locatorHash)) fail();
       locatorHashes.add(item.locatorHash);
       const bytes = Buffer.from(item.canonicalDocument, "utf8");
-      if (
-        bytes.byteLength <= 0 ||
-        bytes.byteLength > this.#maximumArtifactBytes
-      ) {
+      if (bytes.byteLength <= 0 || bytes.byteLength > this.#maximumArtifactBytes) {
         fail();
       }
       const byteHash = sha256(bytes);
@@ -1392,9 +1254,7 @@ export class MountedVolumeTrustedArtifactRegistry {
     }
     const publishedAt = nowTimestamp(this.#now);
     return this.#store.transact((state) => {
-      const existing = persisted.map(
-        (item) => state.entries[item.locatorHash],
-      );
+      const existing = persisted.map((item) => state.entries[item.locatorHash]);
       if (existing.every((entry) => entry !== undefined)) {
         const receipts = persisted.map((item, index) => {
           const entry = existing[index];
@@ -1416,10 +1276,7 @@ export class MountedVolumeTrustedArtifactRegistry {
         return { next: state, result: receipts };
       }
       if (existing.some((entry) => entry !== undefined)) fail();
-      if (
-        Object.keys(state.entries).length + persisted.length >
-        MAXIMUM_REGISTRY_ENTRIES
-      ) {
+      if (Object.keys(state.entries).length + persisted.length > MAXIMUM_REGISTRY_ENTRIES) {
         fail();
       }
       const entries: Record<string, DurableArtifactRegistryEntry> = {
@@ -1434,8 +1291,7 @@ export class MountedVolumeTrustedArtifactRegistry {
         if (Object.hasOwn(artifactOwners, owner)) fail();
         const unsigned = {
           schemaVersion: 1 as const,
-          domain:
-            "dark-factory.trusted-artifact-registry-entry.v1" as const,
+          domain: "dark-factory.trusted-artifact-registry-entry.v1" as const,
           namespace: item.locator.namespace,
           purpose: item.locator.purpose,
           lookupHash: item.locator.lookupHash,
@@ -1448,11 +1304,7 @@ export class MountedVolumeTrustedArtifactRegistry {
           ...unsigned,
           entryHash: entryHash(unsigned),
         };
-        assertEntry(
-          entry,
-          item.locatorHash,
-          this.#maximumArtifactBytes,
-        );
+        assertEntry(entry, item.locatorHash, this.#maximumArtifactBytes);
         entries[item.locatorHash] = entry;
         artifactOwners[owner] = item.locatorHash;
         receipts.push({
@@ -1493,9 +1345,7 @@ export class MountedVolumeTrustedArtifactRegistry {
     document: OptimizerReleasedEvidenceMetadata,
   ): Promise<TrustedArtifactRegistryPublicationReceipt> {
     try {
-      const [receipt] = await this.#publishCaptured([
-        captureOptimizerPublication(query, document),
-      ]);
+      const [receipt] = await this.#publishCaptured([captureOptimizerPublication(query, document)]);
       return receipt ?? fail();
     } catch {
       fail();
@@ -1535,9 +1385,7 @@ export class MountedVolumeTrustedArtifactRegistry {
     document: SignedTrustedCampaignAttestationEvidence,
   ): Promise<TrustedArtifactRegistryPublicationReceipt> {
     try {
-      const [receipt] = await this.#publishCaptured([
-        captureCampaignPublication(query, document),
-      ]);
+      const [receipt] = await this.#publishCaptured([captureCampaignPublication(query, document)]);
       return receipt ?? fail();
     } catch {
       fail();
@@ -1549,9 +1397,7 @@ export class MountedVolumeTrustedArtifactRegistry {
     document: TrustedGitRegistrationReceipt,
   ): Promise<TrustedArtifactRegistryPublicationReceipt> {
     try {
-      const [receipt] = await this.#publishCaptured([
-        capturePrivatePiPublication(query, document),
-      ]);
+      const [receipt] = await this.#publishCaptured([capturePrivatePiPublication(query, document)]);
       return receipt ?? fail();
     } catch {
       fail();
@@ -1599,9 +1445,7 @@ export class MountedVolumeTrustedArtifactRegistry {
         result: state.entries[hash]?.artifact,
       }));
       if (!unchanged(input, inputJson)) fail();
-      return result === undefined
-        ? undefined
-        : cloneCanonical(result);
+      return result === undefined ? undefined : cloneCanonical(result);
     } catch {
       fail();
     }
@@ -1638,10 +1482,7 @@ export class MountedVolumeTrustedArtifactRegistry {
       } catch {
         fail();
       }
-      if (
-        !isPlainRecord(parsed) ||
-        raw !== `${canonicalJson(parsed)}\n`
-      ) {
+      if (!isPlainRecord(parsed) || raw !== `${canonicalJson(parsed)}\n`) {
         fail();
       }
       return cloneCanonical(parsed);
@@ -1656,16 +1497,11 @@ export class MountedVolumeTrustedArtifactRegistry {
 }
 
 abstract class RegistrySource {
-  protected readonly locateRegistryExact:
-    MountedVolumeTrustedArtifactRegistry["locateExact"];
-  protected readonly readRegistryExact:
-    MountedVolumeTrustedArtifactRegistry["readExact"];
+  protected readonly locateRegistryExact: MountedVolumeTrustedArtifactRegistry["locateExact"];
+  protected readonly readRegistryExact: MountedVolumeTrustedArtifactRegistry["readExact"];
 
   constructor(registry: MountedVolumeTrustedArtifactRegistry) {
-    if (
-      registry.boundary !==
-      "trusted-cloud-content-addressed-artifact-registry"
-    ) {
+    if (registry.boundary !== "trusted-cloud-content-addressed-artifact-registry") {
       fail();
     }
     this.locateRegistryExact = registry.locateExact.bind(registry);
@@ -1711,11 +1547,7 @@ export class MountedVolumeOptimizerReleasedEvidenceMetadataSource
       const query = cloneCanonical(queryInput);
       assertOptimizerQuery(query);
       const result = await this.locateRegistryExact(
-        locator(
-          "optimizer-released-evidence-metadata",
-          query.purpose,
-          query.queryHash,
-        ),
+        locator("optimizer-released-evidence-metadata", query.purpose, query.queryHash),
       );
       if (!unchanged(queryInput, before)) fail();
       return result === undefined ? [] : [result];
@@ -1725,9 +1557,7 @@ export class MountedVolumeOptimizerReleasedEvidenceMetadataSource
   }
 }
 
-export class MountedVolumeOptimizerSourceOnlyBootstrapMetadataSource
-  extends RegistrySource
-{
+export class MountedVolumeOptimizerSourceOnlyBootstrapMetadataSource extends RegistrySource {
   readonly boundary = "trusted-cloud" as const;
 
   async locate(
@@ -1749,8 +1579,7 @@ export class MountedVolumeOptimizerSourceOnlyBootstrapMetadataSource
           "optimizer-released-evidence-metadata",
           "source-only-bootstrap",
           canonicalHash({
-            domain:
-              "dark-factory.optimizer-source-only-bootstrap-registry-query.v1",
+            domain: "dark-factory.optimizer-source-only-bootstrap-registry-query.v1",
             query,
           }),
         ),
@@ -1790,9 +1619,7 @@ export class MountedVolumeProductionCompositionAttestationArtifactSource
         query,
         document as unknown as ProductionCompositionAttestationArtifactSet,
       );
-      return cloneCanonical(
-        document,
-      ) as unknown as ProductionCompositionAttestationArtifactSet;
+      return cloneCanonical(document) as unknown as ProductionCompositionAttestationArtifactSet;
     } catch {
       fail();
     }
@@ -1813,11 +1640,7 @@ export class MountedVolumeCampaignAttestationArtifactSource
       const query = cloneCanonical(queryInput);
       assertCampaignQuery(query);
       const result = await this.locateRegistryExact(
-        locator(
-          "campaign-attestation",
-          query.evidenceKind,
-          campaignQueryHash(query),
-        ),
+        locator("campaign-attestation", query.evidenceKind, campaignQueryHash(query)),
       );
       if (!unchanged(queryInput, before)) fail();
       return result;
@@ -1831,8 +1654,7 @@ export class MountedVolumeProductionOptimizePrerequisiteSource
   extends RegistrySource
   implements TrustedProductionOptimizePrerequisiteSource
 {
-  readonly boundary =
-    "trusted-cloud-production-optimize-prerequisite-source" as const;
+  readonly boundary = "trusted-cloud-production-optimize-prerequisite-source" as const;
 
   async locatePrivatePiRegistration(
     queryInput: ProductionOptimizePrivatePiRegistrationQuery,
@@ -1842,22 +1664,13 @@ export class MountedVolumeProductionOptimizePrerequisiteSource
       const query = cloneCanonical(queryInput);
       assertPrivatePiQuery(query);
       const document = await this.readRegistryExact(
-        locator(
-          "production-optimize-prerequisite",
-          query.purpose,
-          prerequisiteQueryHash(query),
-        ),
+        locator("production-optimize-prerequisite", query.purpose, prerequisiteQueryHash(query)),
         4 * 1024 * 1024,
       );
       if (!unchanged(queryInput, before)) fail();
       if (document === undefined) return undefined;
-      capturePrivatePiPublication(
-        query,
-        document as unknown as TrustedGitRegistrationReceipt,
-      );
-      return cloneCanonical(
-        document,
-      ) as unknown as TrustedGitRegistrationReceipt;
+      capturePrivatePiPublication(query, document as unknown as TrustedGitRegistrationReceipt);
+      return cloneCanonical(document) as unknown as TrustedGitRegistrationReceipt;
     } catch {
       fail();
     }
@@ -1871,11 +1684,7 @@ export class MountedVolumeProductionOptimizePrerequisiteSource
       const query = cloneCanonical(queryInput);
       assertCampaignGenesisQuery(query);
       const document = await this.readRegistryExact(
-        locator(
-          "production-optimize-prerequisite",
-          query.purpose,
-          prerequisiteQueryHash(query),
-        ),
+        locator("production-optimize-prerequisite", query.purpose, prerequisiteQueryHash(query)),
         4 * 1024 * 1024,
       );
       if (!unchanged(queryInput, before)) fail();
@@ -1884,9 +1693,7 @@ export class MountedVolumeProductionOptimizePrerequisiteSource
         query,
         document as unknown as SignedProductionOptimizeCampaignGenesis,
       );
-      return cloneCanonical(
-        document,
-      ) as unknown as SignedProductionOptimizeCampaignGenesis;
+      return cloneCanonical(document) as unknown as SignedProductionOptimizeCampaignGenesis;
     } catch {
       fail();
     }
@@ -1900,11 +1707,7 @@ export class MountedVolumeProductionOptimizePrerequisiteSource
       const query = cloneCanonical(queryInput);
       assertCatalogGenesisQuery(query);
       const document = await this.readRegistryExact(
-        locator(
-          "production-optimize-prerequisite",
-          query.purpose,
-          prerequisiteQueryHash(query),
-        ),
+        locator("production-optimize-prerequisite", query.purpose, prerequisiteQueryHash(query)),
         4 * 1024 * 1024,
       );
       if (!unchanged(queryInput, before)) fail();
@@ -1913,9 +1716,7 @@ export class MountedVolumeProductionOptimizePrerequisiteSource
         query,
         document as unknown as SignedProductionOptimizeHiddenCatalogGenesis,
       );
-      return cloneCanonical(
-        document,
-      ) as unknown as SignedProductionOptimizeHiddenCatalogGenesis;
+      return cloneCanonical(document) as unknown as SignedProductionOptimizeHiddenCatalogGenesis;
     } catch {
       fail();
     }
@@ -1937,19 +1738,13 @@ export class MountedVolumeTrustedArtifactJsonReader
   readonly #readUtf8: VerifyingTrustedJsonArtifactReader["readUtf8"];
 
   constructor(reader: VerifyingTrustedJsonArtifactReader) {
-    if (
-      reader.boundary !== "trusted-cloud" ||
-      typeof reader.readUtf8 !== "function"
-    ) {
+    if (reader.boundary !== "trusted-cloud" || typeof reader.readUtf8 !== "function") {
       fail();
     }
     this.#readUtf8 = reader.readUtf8.bind(reader);
   }
 
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string> {
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string> {
     const snapshot = cloneCanonical(artifact);
     assertArtifact(snapshot, maximumBytes);
     return this.#readUtf8(snapshot, maximumBytes);

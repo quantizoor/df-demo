@@ -1,28 +1,24 @@
 import { randomUUID } from "node:crypto";
 import {
+  type FileHandle,
   lstat,
   mkdir,
   open,
-  readFile,
   readdir,
+  readFile,
   rename,
   unlink,
-  type FileHandle,
 } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { atomicWriteFile } from "../evidence/atomic.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../schemas/canonical.js";
-import {
-  CONTROL_SCHEMA_VERSION,
   type CampaignPauseReason,
   type CampaignState,
   type CampaignStopReason,
+  CONTROL_SCHEMA_VERSION,
 } from "../schemas/control.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import {
@@ -32,16 +28,12 @@ import {
   CampaignNotInitializedError,
   CampaignTransitionError,
 } from "./errors.js";
-import {
-  assertCampaignStateTransition,
-  assertInitialCampaignState,
-} from "./invariants.js";
+import { assertCampaignStateTransition, assertInitialCampaignState } from "./invariants.js";
 
 const SAFE_IDENTIFIER = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u;
 const HASH = /^[a-f0-9]{64}$/u;
 const STATE_FILE = /^(?<revision>\d{16})-(?<hash>[a-f0-9]{64})\.json$/u;
-const STATE_TEMP_FILE =
-  /^\.\d{16}-[a-f0-9]{64}\.json\.[a-f0-9]{32}\.tmp$/u;
+const STATE_TEMP_FILE = /^\.\d{16}-[a-f0-9]{64}\.json\.[a-f0-9]{32}\.tmp$/u;
 
 type CampaignMetadataKey =
   | "schemaVersion"
@@ -52,9 +44,7 @@ type CampaignMetadataKey =
   | "previousStateHash";
 
 export type CampaignStateData = Omit<CampaignState, CampaignMetadataKey>;
-type CampaignStateUpdater = (
-  current: Readonly<CampaignState>,
-) => CampaignStateData;
+type CampaignStateUpdater = (current: Readonly<CampaignState>) => CampaignStateData;
 
 export interface CampaignStateStoreOptions {
   readonly now?: () => Date;
@@ -75,10 +65,7 @@ export interface ExperimentAllocation {
   readonly state: CampaignState;
 }
 
-export type CampaignExperimentKind = Exclude<
-  CampaignState["numbering"]["inFlightKind"],
-  null
->;
+export type CampaignExperimentKind = Exclude<CampaignState["numbering"]["inFlightKind"], null>;
 
 export interface CampaignLedgerPointers {
   readonly brokerExposureStateAttestationHash: string;
@@ -149,12 +136,7 @@ export interface CampaignDecisionAttestationVerifier {
 export interface SealExperimentInput {
   readonly experimentNumber: number;
   readonly stage: "pre-validation" | "validation" | "shadow";
-  readonly disposition:
-    | "promoted"
-    | "rejected"
-    | "inconclusive"
-    | "certified"
-    | "not-certified";
+  readonly disposition: "promoted" | "rejected" | "inconclusive" | "certified" | "not-certified";
   readonly candidateCommit: string | null;
   readonly sealHash: string;
   readonly decisionAttestationHash: string;
@@ -255,15 +237,11 @@ class LockHeldError extends Error {
 }
 
 function isMissingFile(error: unknown): boolean {
-  return (
-    typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function isAlreadyExists(error: unknown): boolean {
-  return (
-    typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
 }
 
 function isSafeProcessId(value: unknown): value is number {
@@ -278,9 +256,7 @@ function assertSafeIdentifier(value: string): void {
 
 function assertHash(value: string, label: string): void {
   if (!HASH.test(value)) {
-    throw new CampaignIntegrityError(`${label} must be a lowercase SHA-256 digest`, [
-      value,
-    ]);
+    throw new CampaignIntegrityError(`${label} must be a lowercase SHA-256 digest`, [value]);
   }
 }
 
@@ -291,10 +267,7 @@ function assertCommit(value: string): void {
 }
 
 function assertLedgerPointers(pointers: CampaignLedgerPointers): void {
-  assertHash(
-    pointers.brokerExposureStateAttestationHash,
-    "Broker exposure state attestation hash",
-  );
+  assertHash(pointers.brokerExposureStateAttestationHash, "Broker exposure state attestation hash");
   assertHash(pointers.repeatedTestingLedgerHash, "Repeated-testing ledger hash");
   assertHash(pointers.privacyLedgerHash, "Privacy ledger hash");
   if (pointers.cacheStateAttestationHash !== null) {
@@ -305,23 +278,19 @@ function assertLedgerPointers(pointers: CampaignLedgerPointers): void {
   }
 }
 
-function ledgerPointersFromState(
-  state: Readonly<CampaignState>,
-): CampaignLedgerPointers {
+function ledgerPointersFromState(state: Readonly<CampaignState>): CampaignLedgerPointers {
   const reconstruction = state.reconstruction;
   if (
     reconstruction.brokerExposureStateAttestationHash === null ||
     reconstruction.repeatedTestingLedgerHash === null ||
     reconstruction.privacyLedgerHash === null
   ) {
-    throw new CampaignIntegrityError(
-      "Campaign is missing a mandatory reconstruction ledger",
-      [state.contentHash],
-    );
+    throw new CampaignIntegrityError("Campaign is missing a mandatory reconstruction ledger", [
+      state.contentHash,
+    ]);
   }
   return {
-    brokerExposureStateAttestationHash:
-      reconstruction.brokerExposureStateAttestationHash,
+    brokerExposureStateAttestationHash: reconstruction.brokerExposureStateAttestationHash,
     repeatedTestingLedgerHash: reconstruction.repeatedTestingLedgerHash,
     privacyLedgerHash: reconstruction.privacyLedgerHash,
     cacheStateAttestationHash: reconstruction.cacheStateAttestationHash,
@@ -356,9 +325,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-export function campaignStateData(
-  state: Readonly<CampaignState>,
-): CampaignStateData {
+export function campaignStateData(state: Readonly<CampaignState>): CampaignStateData {
   return {
     campaignId: state.campaignId,
     mode: state.mode,
@@ -466,10 +433,7 @@ async function readOwnedLockSnapshot(path: string): Promise<OwnedLockSnapshot> {
     before.dev !== after.dev ||
     before.ino !== after.ino
   ) {
-    throw new CampaignIntegrityError(
-      "Campaign update lock changed while it was inspected",
-      [path],
-    );
+    throw new CampaignIntegrityError("Campaign update lock changed while it was inspected", [path]);
   }
   let value: unknown;
   try {
@@ -538,18 +502,10 @@ export class CampaignStateStore {
   readonly #lockWaitMs: number;
   readonly #lockRetryMs: number;
   readonly #ledgerTransitionVerifier: CampaignLedgerTransitionVerifier | undefined;
-  readonly #decisionAttestationVerifier:
-    | CampaignDecisionAttestationVerifier
-    | undefined;
-  readonly #controlAttestationVerifier:
-    | CampaignControlAttestationVerifier
-    | undefined;
+  readonly #decisionAttestationVerifier: CampaignDecisionAttestationVerifier | undefined;
+  readonly #controlAttestationVerifier: CampaignControlAttestationVerifier | undefined;
 
-  public constructor(
-    root: string,
-    campaignId: string,
-    options: CampaignStateStoreOptions = {},
-  ) {
+  public constructor(root: string, campaignId: string, options: CampaignStateStoreOptions = {}) {
     assertSafeIdentifier(campaignId);
     this.#campaignId = campaignId;
     this.#root = resolve(root);
@@ -597,12 +553,7 @@ export class CampaignStateStore {
       if (existing.length > 0) {
         throw new CampaignAlreadyInitializedError(this.#campaignId);
       }
-      const initial = createState(
-        dataSnapshot,
-        0,
-        null,
-        this.#now().toISOString(),
-      );
+      const initial = createState(dataSnapshot, 0, null, this.#now().toISOString());
       assertInitialCampaignState(initial);
       await this.#verifyInitialCampaignAttestation(initial);
       await this.#writeState(initial, ownerToken);
@@ -626,24 +577,18 @@ export class CampaignStateStore {
     assertHash(expectedContentHash, "Expected state hash");
     assertHash(authorizationHash, "Controller recovery authorization hash");
     await this.#initializeDirectories();
-    const recoveryGuard = await this.#acquireOwnedLock(
-      this.#recoveryLockPath,
-    );
+    const recoveryGuard = await this.#acquireOwnedLock(this.#recoveryLockPath);
     let primaryLock: AcquiredLock | null = null;
     let recoveryGuardReleased = false;
     try {
       const before = await this.reconstruct();
       if (before.current.contentHash !== expectedContentHash) {
-        throw new CampaignConflictError(
-          expectedContentHash,
-          before.current.contentHash,
-        );
+        throw new CampaignConflictError(expectedContentHash, before.current.contentHash);
       }
       if (
         before.states.some(
           (state) =>
-            state.reconstruction.lastControllerRecoveryAuthorizationHash ===
-            authorizationHash,
+            state.reconstruction.lastControllerRecoveryAuthorizationHash === authorizationHash,
         )
       ) {
         throw new CampaignTransitionError(
@@ -690,10 +635,7 @@ export class CampaignStateStore {
       }
       primaryLock = await this.#acquireOwnedLock(this.#lockPath);
       await recoveryGuard.handle.close().catch(() => undefined);
-      await this.#releaseOwnedLock(
-        this.#recoveryLockPath,
-        recoveryGuard.record.ownerToken,
-      );
+      await this.#releaseOwnedLock(this.#recoveryLockPath, recoveryGuard.record.ownerToken);
       recoveryGuardReleased = true;
 
       const history = await this.#historyLocked();
@@ -716,18 +658,12 @@ export class CampaignStateStore {
         if (recoveryGuardReleased) {
           await this.#releaseLock(primaryLock.record.ownerToken);
         } else {
-          await this.#releaseOwnedLock(
-            this.#lockPath,
-            primaryLock.record.ownerToken,
-          );
+          await this.#releaseOwnedLock(this.#lockPath, primaryLock.record.ownerToken);
         }
       }
       if (!recoveryGuardReleased) {
         await recoveryGuard.handle.close().catch(() => undefined);
-        await this.#releaseOwnedLock(
-          this.#recoveryLockPath,
-          recoveryGuard.record.ownerToken,
-        );
+        await this.#releaseOwnedLock(this.#recoveryLockPath, recoveryGuard.record.ownerToken);
       }
     }
   }
@@ -763,10 +699,7 @@ export class CampaignStateStore {
           "No experiment can be allocated while a hard campaign budget is exhausted",
         );
       }
-      if (
-        kind === "optimization" &&
-        current.holdout.freshValidationSetsRemaining === 0
-      ) {
+      if (kind === "optimization" && current.holdout.freshValidationSetsRemaining === 0) {
         throw new CampaignTransitionError(
           "Optimization cannot continue without fresh-validation capacity",
         );
@@ -813,8 +746,7 @@ export class CampaignStateStore {
       }
       if (
         history.states.some(
-          (state) =>
-            state.budget.accountingAttestationHash === accountingAttestationHash,
+          (state) => state.budget.accountingAttestationHash === accountingAttestationHash,
         )
       ) {
         throw new CampaignTransitionError(
@@ -861,11 +793,7 @@ export class CampaignStateStore {
       if (current.contentHash !== expectedContentHash) {
         throw new CampaignConflictError(expectedContentHash, current.contentHash);
       }
-      if (
-        history.states.some(
-          (state) => state.budget.authorizationHash === authorizationHash,
-        )
-      ) {
+      if (history.states.some((state) => state.budget.authorizationHash === authorizationHash)) {
         throw new CampaignTransitionError(
           "Budget extension authorization hash has already been consumed",
         );
@@ -924,8 +852,7 @@ export class CampaignStateStore {
       if (
         history.states.some(
           (state) =>
-            state.holdout.replenishmentAuthorizationHash ===
-            replenishmentAuthorizationHash,
+            state.holdout.replenishmentAuthorizationHash === replenishmentAuthorizationHash,
         )
       ) {
         throw new CampaignTransitionError(
@@ -1000,10 +927,7 @@ export class CampaignStateStore {
   ): Promise<CampaignState> {
     const inputSnapshot = deepFreeze(cloneJson(input));
     assertHash(inputSnapshot.sealHash, "Experiment seal hash");
-    assertHash(
-      inputSnapshot.decisionAttestationHash,
-      "Decision attestation hash",
-    );
+    assertHash(inputSnapshot.decisionAttestationHash, "Decision attestation hash");
     assertLedgerPointers(inputSnapshot.ledgers);
     if (
       !Number.isSafeInteger(inputSnapshot.experimentNumber) ||
@@ -1035,16 +959,10 @@ export class CampaignStateStore {
         decisionAttestationHash: inputSnapshot.decisionAttestationHash,
       },
       (state) => {
-        if (
-          state.numbering.inFlightExperimentNumber !==
-          inputSnapshot.experimentNumber
-        ) {
-          throw new CampaignTransitionError(
-            "Only the current in-flight experiment can be sealed",
-          );
+        if (state.numbering.inFlightExperimentNumber !== inputSnapshot.experimentNumber) {
+          throw new CampaignTransitionError("Only the current in-flight experiment can be sealed");
         }
-        const expectedKind =
-          inputSnapshot.stage === "shadow" ? "shadow" : "optimization";
+        const expectedKind = inputSnapshot.stage === "shadow" ? "shadow" : "optimization";
         if (state.numbering.inFlightKind !== expectedKind) {
           throw new CampaignTransitionError(
             `A ${inputSnapshot.stage} decision cannot seal ` +
@@ -1052,11 +970,9 @@ export class CampaignStateStore {
           );
         }
         const promoted =
-          inputSnapshot.stage === "validation" &&
-          inputSnapshot.disposition === "promoted";
+          inputSnapshot.stage === "validation" && inputSnapshot.disposition === "promoted";
         const certified =
-          inputSnapshot.stage === "shadow" &&
-          inputSnapshot.disposition === "certified";
+          inputSnapshot.stage === "shadow" && inputSnapshot.disposition === "certified";
         const validDisposition =
           (inputSnapshot.stage === "pre-validation" &&
             (inputSnapshot.disposition === "rejected" ||
@@ -1083,12 +999,8 @@ export class CampaignStateStore {
           );
         }
         const consumesHoldout =
-          inputSnapshot.stage === "validation" ||
-          inputSnapshot.stage === "shadow";
-        if (
-          consumesHoldout &&
-          inputSnapshot.holdoutAvailabilityAttestationHash === null
-        ) {
+          inputSnapshot.stage === "validation" || inputSnapshot.stage === "shadow";
+        if (consumesHoldout && inputSnapshot.holdoutAvailabilityAttestationHash === null) {
           throw new CampaignTransitionError(
             "Validation and shadow decisions require a new holdout attestation",
           );
@@ -1101,10 +1013,7 @@ export class CampaignStateStore {
             "Validation decision cannot consume exhausted fresh capacity",
           );
         }
-        if (
-          inputSnapshot.stage === "shadow" &&
-          state.holdout.shadowSlicesRemaining === 0
-        ) {
+        if (inputSnapshot.stage === "shadow" && state.holdout.shadowSlicesRemaining === 0) {
           throw new CampaignTransitionError(
             "Shadow decision cannot consume exhausted shadow capacity",
           );
@@ -1135,16 +1044,14 @@ export class CampaignStateStore {
           inputSnapshot.stage === "validation"
             ? {
                 ...state.holdout,
-                freshValidationSetsRemaining:
-                  state.holdout.freshValidationSetsRemaining - 1,
+                freshValidationSetsRemaining: state.holdout.freshValidationSetsRemaining - 1,
                 availabilityAttestationHash:
                   inputSnapshot.holdoutAvailabilityAttestationHash as string,
               }
             : inputSnapshot.stage === "shadow"
               ? {
                   ...state.holdout,
-                  shadowSlicesRemaining:
-                    state.holdout.shadowSlicesRemaining - 1,
+                  shadowSlicesRemaining: state.holdout.shadowSlicesRemaining - 1,
                   availabilityAttestationHash:
                     inputSnapshot.holdoutAvailabilityAttestationHash as string,
                 }
@@ -1167,12 +1074,9 @@ export class CampaignStateStore {
               experimentNumber: inputSnapshot.experimentNumber,
               stage: inputSnapshot.stage,
               disposition: inputSnapshot.disposition,
-              decisionAttestationHash:
-                inputSnapshot.decisionAttestationHash,
+              decisionAttestationHash: inputSnapshot.decisionAttestationHash,
               sealedAt: inputSnapshot.sealedAt,
-            } as NonNullable<
-              CampaignState["reconstruction"]["lastSealedDecision"]
-            >,
+            } as NonNullable<CampaignState["reconstruction"]["lastSealedDecision"]>,
           },
         };
       },
@@ -1186,10 +1090,7 @@ export class CampaignStateStore {
     brokerExposureStateAttestationHash: string,
   ): Promise<CampaignState> {
     assertHash(expectedContentHash, "Expected state hash");
-    assertHash(
-      brokerExposureStateAttestationHash,
-      "Broker exposure state attestation hash",
-    );
+    assertHash(brokerExposureStateAttestationHash, "Broker exposure state attestation hash");
     if (!Number.isSafeInteger(experimentNumber) || experimentNumber < 1) {
       throw new CampaignIntegrityError("Interrupted experiment number is invalid", [
         String(experimentNumber),
@@ -1265,10 +1166,7 @@ export class CampaignStateStore {
     return this.#withLock(async (ownerToken) => {
       const history = await this.#historyLocked();
       const current = history.current;
-      if (
-        current.control.status === "stop-requested" ||
-        current.control.status === "stopped"
-      ) {
+      if (current.control.status === "stop-requested" || current.control.status === "stopped") {
         const recordedRequest = history.states.find(
           (state) =>
             state.control.status === "stop-requested" &&
@@ -1278,8 +1176,7 @@ export class CampaignStateStore {
         if (
           recordedRequest !== undefined &&
           current.control.stopReason === recordedRequest.control.stopReason &&
-          current.control.stopRequestedAt ===
-            recordedRequest.control.stopRequestedAt
+          current.control.stopRequestedAt === recordedRequest.control.stopRequestedAt
         ) {
           return current;
         }
@@ -1315,15 +1212,12 @@ export class CampaignStateStore {
       if (current.control.status === "stopped") {
         const recordedAcknowledgement = history.states.find(
           (state) =>
-            state.control.status === "stopped" &&
-            state.previousStateHash === expectedContentHash,
+            state.control.status === "stopped" && state.previousStateHash === expectedContentHash,
         );
         if (
           recordedAcknowledgement !== undefined &&
-          current.control.stoppedAt ===
-            recordedAcknowledgement.control.stoppedAt &&
-          current.control.stopRequestedAt ===
-            recordedAcknowledgement.control.stopRequestedAt
+          current.control.stoppedAt === recordedAcknowledgement.control.stoppedAt &&
+          current.control.stopRequestedAt === recordedAcknowledgement.control.stopRequestedAt
         ) {
           return current;
         }
@@ -1401,14 +1295,8 @@ export class CampaignStateStore {
           "A holdout-exhausted pause requires zero validation and shadow capacity",
         );
       }
-      if (
-        history.states.some(
-          (state) => state.control.pauseAttestationHash === attestationHash,
-        )
-      ) {
-        throw new CampaignTransitionError(
-          "Pause attestation hash has already been consumed",
-        );
+      if (history.states.some((state) => state.control.pauseAttestationHash === attestationHash)) {
+        throw new CampaignTransitionError("Pause attestation hash has already been consumed");
       }
       const pausedAt = this.#now().toISOString();
       await this.#verifyControlAttestation({
@@ -1507,13 +1395,10 @@ export class CampaignStateStore {
       }
       if (
         history.states.some(
-          (state) =>
-            state.control.lastResumeAuthorizationHash === authorizationHash,
+          (state) => state.control.lastResumeAuthorizationHash === authorizationHash,
         )
       ) {
-        throw new CampaignTransitionError(
-          "Resume authorization hash has already been consumed",
-        );
+        throw new CampaignTransitionError("Resume authorization hash has already been consumed");
       }
       await this.#verifyControlAttestation({
         kind: "resume",
@@ -1621,9 +1506,7 @@ export class CampaignStateStore {
     return this.#validateHistory(await this.#readStates());
   }
 
-  async #validateHistory(
-    states: readonly CampaignState[],
-  ): Promise<CampaignHistory> {
+  async #validateHistory(states: readonly CampaignState[]): Promise<CampaignHistory> {
     if (states.length === 0) {
       throw new CampaignNotInitializedError(this.#campaignId);
     }
@@ -1638,9 +1521,7 @@ export class CampaignStateStore {
       const previous = states[index - 1];
       const current = states[index];
       if (previous === undefined || current === undefined) {
-        throw new CampaignIntegrityError("Campaign state history is sparse", [
-          index.toString(),
-        ]);
+        throw new CampaignIntegrityError("Campaign state history is sparse", [index.toString()]);
       }
       assertCampaignStateTransition(previous, current);
       await this.#verifyPersistedTransition(previous, current);
@@ -1660,10 +1541,7 @@ export class CampaignStateStore {
       }
       const values = seen.get(label) ?? new Set<string>();
       if (values.has(value)) {
-        throw new CampaignIntegrityError(
-          `Campaign history reuses ${label}`,
-          [value],
-        );
+        throw new CampaignIntegrityError(`Campaign history reuses ${label}`, [value]);
       }
       values.add(value);
       seen.set(label, values);
@@ -1674,18 +1552,9 @@ export class CampaignStateStore {
       return;
     }
     consume("budget authorization", initial.budget.authorizationHash);
-    consume(
-      "budget accounting attestation",
-      initial.budget.accountingAttestationHash,
-    );
-    consume(
-      "holdout availability attestation",
-      initial.holdout.availabilityAttestationHash,
-    );
-    consume(
-      "experiment seal-chain head",
-      initial.reconstruction.experimentSealChainHead,
-    );
+    consume("budget accounting attestation", initial.budget.accountingAttestationHash);
+    consume("holdout availability attestation", initial.holdout.availabilityAttestationHash);
+    consume("experiment seal-chain head", initial.reconstruction.experimentSealChainHead);
     for (const field of [
       "brokerExposureStateAttestationHash",
       "repeatedTestingLedgerHash",
@@ -1693,10 +1562,7 @@ export class CampaignStateStore {
       "cacheStateAttestationHash",
       "publicationQueueHash",
     ] as const) {
-      consume(
-        `reconstruction pointer ${field}`,
-        initial.reconstruction[field],
-      );
+      consume(`reconstruction pointer ${field}`, initial.reconstruction[field]);
     }
 
     for (let index = 1; index < states.length; index += 1) {
@@ -1706,36 +1572,18 @@ export class CampaignStateStore {
         continue;
       }
       if (
-        current.control.lastResumeAuthorizationHash !==
-        previous.control.lastResumeAuthorizationHash
+        current.control.lastResumeAuthorizationHash !== previous.control.lastResumeAuthorizationHash
       ) {
-        consume(
-          "resume authorization",
-          current.control.lastResumeAuthorizationHash,
-        );
+        consume("resume authorization", current.control.lastResumeAuthorizationHash);
       }
-      if (
-        current.control.pauseAttestationHash !==
-        previous.control.pauseAttestationHash
-      ) {
-        consume(
-          "pause attestation",
-          current.control.pauseAttestationHash,
-        );
+      if (current.control.pauseAttestationHash !== previous.control.pauseAttestationHash) {
+        consume("pause attestation", current.control.pauseAttestationHash);
       }
-      if (
-        current.budget.authorizationHash !== previous.budget.authorizationHash
-      ) {
+      if (current.budget.authorizationHash !== previous.budget.authorizationHash) {
         consume("budget authorization", current.budget.authorizationHash);
       }
-      if (
-        current.budget.accountingAttestationHash !==
-        previous.budget.accountingAttestationHash
-      ) {
-        consume(
-          "budget accounting attestation",
-          current.budget.accountingAttestationHash,
-        );
+      if (current.budget.accountingAttestationHash !== previous.budget.accountingAttestationHash) {
+        consume("budget accounting attestation", current.budget.accountingAttestationHash);
       }
       if (
         current.holdout.replenishmentAuthorizationHash !==
@@ -1747,13 +1595,9 @@ export class CampaignStateStore {
         );
       }
       if (
-        current.holdout.availabilityAttestationHash !==
-        previous.holdout.availabilityAttestationHash
+        current.holdout.availabilityAttestationHash !== previous.holdout.availabilityAttestationHash
       ) {
-        consume(
-          "holdout availability attestation",
-          current.holdout.availabilityAttestationHash,
-        );
+        consume("holdout availability attestation", current.holdout.availabilityAttestationHash);
       }
       if (
         current.reconstruction.lastControllerRecoveryAuthorizationHash !==
@@ -1774,13 +1618,9 @@ export class CampaignStateStore {
       ) {
         consume(
           "decision attestation",
-          current.reconstruction.lastSealedDecision
-            ?.decisionAttestationHash ?? null,
+          current.reconstruction.lastSealedDecision?.decisionAttestationHash ?? null,
         );
-        consume(
-          "experiment seal-chain head",
-          current.reconstruction.experimentSealChainHead,
-        );
+        consume("experiment seal-chain head", current.reconstruction.experimentSealChainHead);
       }
       for (const field of [
         "brokerExposureStateAttestationHash",
@@ -1789,22 +1629,14 @@ export class CampaignStateStore {
         "cacheStateAttestationHash",
         "publicationQueueHash",
       ] as const) {
-        if (
-          current.reconstruction[field] !== previous.reconstruction[field]
-        ) {
-          consume(
-            `reconstruction pointer ${field}`,
-            current.reconstruction[field],
-          );
+        if (current.reconstruction[field] !== previous.reconstruction[field]) {
+          consume(`reconstruction pointer ${field}`, current.reconstruction[field]);
         }
       }
     }
   }
 
-  async #verifyPersistedTransition(
-    previous: CampaignState,
-    next: CampaignState,
-  ): Promise<void> {
+  async #verifyPersistedTransition(previous: CampaignState, next: CampaignState): Promise<void> {
     const previousLedgers = ledgerPointersFromState(previous);
     const nextLedgers = ledgerPointersFromState(next);
     const sealAdvanced =
@@ -1824,8 +1656,7 @@ export class CampaignStateStore {
         );
       }
       const candidateCommit =
-        decision.stage === "validation" &&
-        decision.disposition === "promoted"
+        decision.stage === "validation" && decision.disposition === "promoted"
           ? next.champions.active.commit
           : null;
       const holdoutAvailabilityAttestationHash =
@@ -1877,16 +1708,12 @@ export class CampaignStateStore {
         campaignId: previous.campaignId,
         protocolHash: previous.protocolHash,
         currentStateHash: previous.contentHash,
-        authorizationOrAttestationHash:
-          next.budget.accountingAttestationHash,
+        authorizationOrAttestationHash: next.budget.accountingAttestationHash,
         previousUsage: previous.budget.usage,
         nextUsage: next.budget.usage,
       });
     }
-    if (
-      canonicalJson(previous.budget.limits) !==
-      canonicalJson(next.budget.limits)
-    ) {
+    if (canonicalJson(previous.budget.limits) !== canonicalJson(next.budget.limits)) {
       await this.#verifyControlAttestation({
         kind: "budget-extension",
         campaignId: previous.campaignId,
@@ -1898,8 +1725,7 @@ export class CampaignStateStore {
       });
     }
     if (next.holdout.generation > previous.holdout.generation) {
-      const authorizationHash =
-        next.holdout.replenishmentAuthorizationHash;
+      const authorizationHash = next.holdout.replenishmentAuthorizationHash;
       if (authorizationHash === null) {
         throw new CampaignIntegrityError(
           "Holdout generation lacks its replenishment authorization",
@@ -1914,21 +1740,17 @@ export class CampaignStateStore {
         authorizationOrAttestationHash: authorizationHash,
         previousGeneration: previous.holdout.generation,
         nextGeneration: next.holdout.generation,
-        freshValidationSetsRemaining:
-          next.holdout.freshValidationSetsRemaining,
+        freshValidationSetsRemaining: next.holdout.freshValidationSetsRemaining,
         shadowSlicesRemaining: next.holdout.shadowSlicesRemaining,
-        availabilityAttestationHash:
-          next.holdout.availabilityAttestationHash,
+        availabilityAttestationHash: next.holdout.availabilityAttestationHash,
       });
     }
     if (next.control.runEpoch > previous.control.runEpoch) {
-      const authorizationHash =
-        next.control.lastResumeAuthorizationHash;
+      const authorizationHash = next.control.lastResumeAuthorizationHash;
       if (authorizationHash === null) {
-        throw new CampaignIntegrityError(
-          "Resumed campaign transition lacks its authorization",
-          [next.contentHash],
-        );
+        throw new CampaignIntegrityError("Resumed campaign transition lacks its authorization", [
+          next.contentHash,
+        ]);
       }
       await this.#verifyControlAttestation({
         kind: "resume",
@@ -1940,22 +1762,14 @@ export class CampaignStateStore {
         nextRunEpoch: next.control.runEpoch,
       });
     }
-    if (
-      next.control.status === "paused" &&
-      previous.control.status !== "paused"
-    ) {
+    if (next.control.status === "paused" && previous.control.status !== "paused") {
       const attestationHash = next.control.pauseAttestationHash;
       const reason = next.control.pauseReason;
       const pausedAt = next.control.pausedAt;
-      if (
-        attestationHash === null ||
-        reason === null ||
-        pausedAt === null
-      ) {
-        throw new CampaignIntegrityError(
-          "Paused campaign transition lacks its attested reason",
-          [next.contentHash],
-        );
+      if (attestationHash === null || reason === null || pausedAt === null) {
+        throw new CampaignIntegrityError("Paused campaign transition lacks its attested reason", [
+          next.contentHash,
+        ]);
       }
       await this.#verifyControlAttestation({
         kind: "pause",
@@ -1971,10 +1785,8 @@ export class CampaignStateStore {
       next.reconstruction.lastControllerRecoveryAuthorizationHash !==
       previous.reconstruction.lastControllerRecoveryAuthorizationHash
     ) {
-      const authorizationHash =
-        next.reconstruction.lastControllerRecoveryAuthorizationHash;
-      const observedLockHash =
-        next.reconstruction.lastControllerRecoveryLockHash;
+      const authorizationHash = next.reconstruction.lastControllerRecoveryAuthorizationHash;
+      const observedLockHash = next.reconstruction.lastControllerRecoveryLockHash;
       if (authorizationHash === null || observedLockHash === null) {
         throw new CampaignIntegrityError(
           "Controller recovery transition lacks its bound lock evidence",
@@ -1998,12 +1810,7 @@ export class CampaignStateStore {
     ownerToken: string,
   ): Promise<CampaignState> {
     const current = (await this.#historyLocked()).current;
-    return this.#compareAndSwapCurrent(
-      current,
-      expectedContentHash,
-      updater,
-      ownerToken,
-    );
+    return this.#compareAndSwapCurrent(current, expectedContentHash, updater, ownerToken);
   }
 
   async #compareAndSwapWithVerifiedLedgers(
@@ -2043,27 +1850,17 @@ export class CampaignStateStore {
       }
       if (
         operation.kind === "seal" &&
-        operation.nextExperimentSealHash ===
-          verifiedCurrent.reconstruction.experimentSealChainHead
+        operation.nextExperimentSealHash === verifiedCurrent.reconstruction.experimentSealChainHead
       ) {
         throw new CampaignTransitionError(
           "A sealed experiment must advance to a distinct seal-chain head",
         );
       }
-      await this.#verifyLedgerTransition(
-        verifiedCurrent,
-        verifiedNextLedgers,
-        operation,
-      );
+      await this.#verifyLedgerTransition(verifiedCurrent, verifiedNextLedgers, operation);
       if (preflight !== null) {
         await preflight(verifiedCurrent);
       }
-      return this.#compareAndSwapCurrent(
-        current,
-        expectedContentHash,
-        updater,
-        ownerToken,
-      );
+      return this.#compareAndSwapCurrent(current, expectedContentHash, updater, ownerToken);
     });
   }
 
@@ -2076,36 +1873,34 @@ export class CampaignStateStore {
         "A trusted decision-attestation verifier is required to seal an experiment",
       );
     }
-    const previousExperimentSealHash =
-      current.reconstruction.experimentSealChainHead;
+    const previousExperimentSealHash = current.reconstruction.experimentSealChainHead;
     if (previousExperimentSealHash === null) {
-      throw new CampaignIntegrityError(
-        "Campaign is missing its experiment seal-chain head",
-        [current.contentHash],
-      );
+      throw new CampaignIntegrityError("Campaign is missing its experiment seal-chain head", [
+        current.contentHash,
+      ]);
     }
-    const attestation = deepFreeze(cloneJson<CampaignDecisionAttestation>({
-      campaignId: current.campaignId,
-      baselineLineageId: current.baselineLineageId,
-      protocolHash: current.protocolHash,
-      currentStateHash: current.contentHash,
-      currentRevision: current.revision,
-      experimentNumber: input.experimentNumber,
-      stage: input.stage,
-      disposition: input.disposition,
-      candidateCommit: input.candidateCommit,
-      activeChampion: current.champions.active,
-      previousExperimentSealHash,
-      sealHash: input.sealHash,
-      decisionAttestationHash: input.decisionAttestationHash,
-      holdoutGeneration: current.holdout.generation,
-      priorHoldoutAvailabilityAttestationHash:
-        current.holdout.availabilityAttestationHash,
-      holdoutAvailabilityAttestationHash:
-        input.holdoutAvailabilityAttestationHash,
-      sealedAt: input.sealedAt,
-      ledgers: input.ledgers,
-    }));
+    const attestation = deepFreeze(
+      cloneJson<CampaignDecisionAttestation>({
+        campaignId: current.campaignId,
+        baselineLineageId: current.baselineLineageId,
+        protocolHash: current.protocolHash,
+        currentStateHash: current.contentHash,
+        currentRevision: current.revision,
+        experimentNumber: input.experimentNumber,
+        stage: input.stage,
+        disposition: input.disposition,
+        candidateCommit: input.candidateCommit,
+        activeChampion: current.champions.active,
+        previousExperimentSealHash,
+        sealHash: input.sealHash,
+        decisionAttestationHash: input.decisionAttestationHash,
+        holdoutGeneration: current.holdout.generation,
+        priorHoldoutAvailabilityAttestationHash: current.holdout.availabilityAttestationHash,
+        holdoutAvailabilityAttestationHash: input.holdoutAvailabilityAttestationHash,
+        sealedAt: input.sealedAt,
+        ledgers: input.ledgers,
+      }),
+    );
     await this.#decisionAttestationVerifier.verify(attestation);
   }
 
@@ -2119,44 +1914,38 @@ export class CampaignStateStore {
         "A trusted ledger-transition verifier is required for this operation",
       );
     }
-    const previousExperimentSealHash =
-      current.reconstruction.experimentSealChainHead;
+    const previousExperimentSealHash = current.reconstruction.experimentSealChainHead;
     if (previousExperimentSealHash === null) {
-      throw new CampaignIntegrityError(
-        "Campaign is missing its experiment seal-chain head",
-        [current.contentHash],
-      );
+      throw new CampaignIntegrityError("Campaign is missing its experiment seal-chain head", [
+        current.contentHash,
+      ]);
     }
-    const transition = deepFreeze(cloneJson<CampaignLedgerTransition>({
-      campaignId: current.campaignId,
-      protocolHash: current.protocolHash,
-      currentStateHash: current.contentHash,
-      currentRevision: current.revision,
-      reason: operation.kind,
-      previousExperimentSealHash,
-      operation: deepFreeze(cloneJson(operation)),
-      previous: ledgerPointersFromState(current),
-      next,
-    }));
+    const transition = deepFreeze(
+      cloneJson<CampaignLedgerTransition>({
+        campaignId: current.campaignId,
+        protocolHash: current.protocolHash,
+        currentStateHash: current.contentHash,
+        currentRevision: current.revision,
+        reason: operation.kind,
+        previousExperimentSealHash,
+        operation: deepFreeze(cloneJson(operation)),
+        previous: ledgerPointersFromState(current),
+        next,
+      }),
+    );
     await this.#ledgerTransitionVerifier.verify(transition);
   }
 
-  async #verifyControlAttestation(
-    attestation: CampaignControlAttestation,
-  ): Promise<void> {
+  async #verifyControlAttestation(attestation: CampaignControlAttestation): Promise<void> {
     if (this.#controlAttestationVerifier === undefined) {
       throw new CampaignTransitionError(
         "A trusted control-attestation verifier is required for this operation",
       );
     }
-    await this.#controlAttestationVerifier.verify(
-      deepFreeze(cloneJson(attestation)),
-    );
+    await this.#controlAttestationVerifier.verify(deepFreeze(cloneJson(attestation)));
   }
 
-  async #verifyInitialCampaignAttestation(
-    state: CampaignState,
-  ): Promise<void> {
+  async #verifyInitialCampaignAttestation(state: CampaignState): Promise<void> {
     await this.#verifyControlAttestation({
       kind: "genesis",
       campaignId: state.campaignId,
@@ -2165,11 +1954,9 @@ export class CampaignStateStore {
       harnessRegistrationHash: state.harnessRegistrationHash,
       budgetPolicyHash: state.budget.policyHash,
       budgetAuthorizationHash: state.budget.authorizationHash,
-      budgetAccountingAttestationHash:
-        state.budget.accountingAttestationHash,
+      budgetAccountingAttestationHash: state.budget.accountingAttestationHash,
       holdoutPolicyHash: state.holdout.policyHash,
-      holdoutAvailabilityAttestationHash:
-        state.holdout.availabilityAttestationHash,
+      holdoutAvailabilityAttestationHash: state.holdout.availabilityAttestationHash,
       baselineChampion: state.champions.baseline,
       initialLedgers: ledgerPointersFromState(state),
     });
@@ -2213,10 +2000,7 @@ export class CampaignStateStore {
       );
     } finally {
       await commitGuard.handle.close().catch(() => undefined);
-      await this.#releaseOwnedLock(
-        this.#recoveryLockPath,
-        commitGuard.record.ownerToken,
-      );
+      await this.#releaseOwnedLock(this.#recoveryLockPath, commitGuard.record.ownerToken);
     }
   }
 
@@ -2243,17 +2027,12 @@ export class CampaignStateStore {
   }
 
   async #acquireLock(): Promise<AcquiredLock> {
-    const acquisitionGuard = await this.#acquireOwnedLock(
-      this.#recoveryLockPath,
-    );
+    const acquisitionGuard = await this.#acquireOwnedLock(this.#recoveryLockPath);
     try {
       return await this.#acquireOwnedLock(this.#lockPath);
     } finally {
       await acquisitionGuard.handle.close().catch(() => undefined);
-      await this.#releaseOwnedLock(
-        this.#recoveryLockPath,
-        acquisitionGuard.record.ownerToken,
-      );
+      await this.#releaseOwnedLock(this.#recoveryLockPath, acquisitionGuard.record.ownerToken);
     }
   }
 
@@ -2316,10 +2095,7 @@ export class CampaignStateStore {
       await this.#releaseOwnedLock(this.#lockPath, ownerToken);
     } finally {
       await releaseGuard.handle.close().catch(() => undefined);
-      await this.#releaseOwnedLock(
-        this.#recoveryLockPath,
-        releaseGuard.record.ownerToken,
-      );
+      await this.#releaseOwnedLock(this.#recoveryLockPath, releaseGuard.record.ownerToken);
     }
   }
 

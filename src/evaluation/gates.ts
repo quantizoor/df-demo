@@ -1,19 +1,15 @@
+import { reproduceFreshValidationDisposition } from "../core/validation-decision.js";
 import {
   allocateOnlineGate,
   assertOnlineGateAllocation,
   jeffreysPosterior,
-  summarizePairedDirichletJeffreys,
-  summarizeWeightedBetaDifference,
   type OnlineErrorBudgetState,
   type OnlineGateAllocation,
   type PairedCategoryCounts,
+  summarizePairedDirichletJeffreys,
+  summarizeWeightedBetaDifference,
 } from "./statistics.js";
-import { reproduceFreshValidationDisposition } from "../core/validation-decision.js";
-import type {
-  ArmOrder,
-  HiddenTaskId,
-  SelectionBucket,
-} from "./types.js";
+import type { ArmOrder, HiddenTaskId, SelectionBucket } from "./types.js";
 
 export const REPAIR_GATE_POLICY_VERSION = "repair-gate-v1";
 export const VALIDATION_GATE_POLICY_VERSION = "fresh-paired-validation-v1";
@@ -169,18 +165,11 @@ export function evaluateRepairGate(input: RepairGateInput): HiddenRepairGateResu
     }
     return tasks.map((task) => ({
       candidate: jeffreysPosterior(task.candidatePass ? 1 : 0, task.candidatePass ? 0 : 1),
-      champion: jeffreysPosterior(
-        task.championEvidence.passes,
-        task.championEvidence.failures,
-      ),
+      champion: jeffreysPosterior(task.championEvidence.passes, task.championEvidence.failures),
       weight: stratumWeight / tasks.length,
     }));
   });
-  const posterior = summarizeWeightedBetaDifference(
-    terms,
-    -0.1,
-    input.integrationPoints,
-  );
+  const posterior = summarizeWeightedBetaDifference(terms, -0.1, input.integrationPoints);
   const nonInferiorityProbability = posterior.probabilityGreaterThanThreshold;
   const hardVeto =
     input.integrityVeto ||
@@ -195,9 +184,7 @@ export function evaluateRepairGate(input: RepairGateInput): HiddenRepairGateResu
       task.championEvidence.passes === 0 &&
       task.championEvidence.failures === 1,
   );
-  const behaviorImprovementCount = input.tasks.filter(
-    (task) => task.targetBehaviorImproved,
-  ).length;
+  const behaviorImprovementCount = input.tasks.filter((task) => task.targetBehaviorImproved).length;
   const evidenceRoute = confirmedTransition
     ? "confirmed-transition"
     : behaviorImprovementCount >= 3
@@ -251,13 +238,8 @@ export function evaluateFreshValidation(
     }
     return { counts: pairedCounts(pairs), weight };
   });
-  const posterior = summarizePairedDirichletJeffreys(
-    weightedStrata,
-    0,
-    input.integrationPoints,
-  );
-  const onlineGate =
-    input.reservedOnlineGate ?? allocateOnlineGate(input.onlineErrorBudget);
+  const posterior = summarizePairedDirichletJeffreys(weightedStrata, 0, input.integrationPoints);
+  const onlineGate = input.reservedOnlineGate ?? allocateOnlineGate(input.onlineErrorBudget);
   assertOnlineGateAllocation(input.onlineErrorBudget, onlineGate);
   const noStratumRegression = posterior.stratumProbabilityBelowMinusPointOne.every(
     (probability) => probability <= 0.8,
@@ -359,12 +341,12 @@ export function validateExperimentAttemptBudget(
             : "outside-budget",
     replacementBand:
       accounting.infrastructureReplacementAttempts === 0
-          ? "0"
-          : accounting.infrastructureReplacementAttempts <= 2
-            ? "1-2"
-            : accounting.infrastructureReplacementAttempts <= 4
-              ? "3-4"
-              : "outside-budget",
+        ? "0"
+        : accounting.infrastructureReplacementAttempts <= 2
+          ? "1-2"
+          : accounting.infrastructureReplacementAttempts <= 4
+            ? "3-4"
+            : "outside-budget",
     hardMaximumAttempts: 38,
     containsPerTaskAccounting: false,
   };
@@ -411,8 +393,7 @@ function validateRepairPanel(
       task.championEvidence.passes + task.championEvidence.failures < 1 ||
       (task.championEvidence.source === "fresh" &&
         task.championEvidence.passes + task.championEvidence.failures !== 1) ||
-      (task.championEvidence.source === "cache" &&
-        task.championEvidence.presealedFreshControl)
+      (task.championEvidence.source === "cache" && task.championEvidence.presealedFreshControl)
     ) {
       throw new Error("Invalid repair evidence");
     }
@@ -420,10 +401,7 @@ function validateRepairPanel(
 }
 
 function validateFreshValidation(input: FreshValidationInput): void {
-  if (
-    input.pairs.length !== 12 ||
-    new Set(input.pairs.map((pair) => pair.taskId)).size !== 12
-  ) {
+  if (input.pairs.length !== 12 || new Set(input.pairs.map((pair) => pair.taskId)).size !== 12) {
     throw new Error("Validation requires exactly twelve distinct fresh pairs");
   }
   const orderA = input.pairs.filter((pair) => pair.order === "AB").length;
@@ -447,8 +425,7 @@ function validateFreshValidation(input: FreshValidationInput): void {
     if (
       candidateStarted < panelSealedAt ||
       championStarted < panelSealedAt ||
-      pair.candidate.environmentFingerprintHash !==
-        pair.champion.environmentFingerprintHash ||
+      pair.candidate.environmentFingerprintHash !== pair.champion.environmentFingerprintHash ||
       Math.abs(candidateStarted - championStarted) > 24 * 60 * 60 * 1000
     ) {
       throw new Error("Fresh pair violates sealing, environment, or 24-hour matching");
@@ -464,10 +441,7 @@ function validateFreshValidation(input: FreshValidationInput): void {
   }
   const earliestStart = Math.min(...allStartTimes);
   const latestStart = Math.max(...allStartTimes);
-  if (
-    environmentFingerprints.size !== 1 ||
-    latestStart - earliestStart > 24 * 60 * 60 * 1000
-  ) {
+  if (environmentFingerprints.size !== 1 || latestStart - earliestStart > 24 * 60 * 60 * 1000) {
     throw new Error("Validation panel must use one environment cohort inside 24 hours");
   }
   if (new Set(input.pairs.map((pair) => pair.stratum)).size < 2) {
@@ -550,9 +524,7 @@ function validateStratumWeights(
   }
 }
 
-function countBuckets(
-  tasks: readonly RepairTaskEvidence[],
-): Record<SelectionBucket, number> {
+function countBuckets(tasks: readonly RepairTaskEvidence[]): Record<SelectionBucket, number> {
   return tasks.reduce<Record<SelectionBucket, number>>(
     (counts, task) => ({ ...counts, [task.bucket]: counts[task.bucket] + 1 }),
     { hard: 0, uncertain: 0, easy: 0, coverage: 0 },

@@ -19,8 +19,8 @@ import type {
   SealMaterialRequest,
 } from "../../src/orchestrator/campaign-state-coordinator.js";
 import {
-  assertDurableExperimentJournalState,
   type AtomicExperimentJournalStateStore,
+  assertDurableExperimentJournalState,
   type DurableExperimentJournalRecord,
   type DurableExperimentJournalState,
 } from "../../src/orchestrator/experiment-journal.js";
@@ -215,9 +215,7 @@ function interruptedRecord(): DurableExperimentJournalRecord {
   };
 }
 
-function journalState(
-  record: DurableExperimentJournalRecord,
-): DurableExperimentJournalState {
+function journalState(record: DurableExperimentJournalRecord): DurableExperimentJournalState {
   const sealed = record.status === "sealed";
   const state: DurableExperimentJournalState = {
     schemaVersion: 1,
@@ -250,12 +248,9 @@ class MemoryJournalStore implements AtomicExperimentJournalStateStore {
   }
 }
 
-function reconciliation(
-  onlineErrorSpent = 0.02,
-): TrustedOnlineErrorBudgetReconciliation {
+function reconciliation(onlineErrorSpent = 0.02): TrustedOnlineErrorBudgetReconciliation {
   const unsigned = {
-    sensitivity:
-      "release-safe-online-error-reconciliation" as const,
+    sensitivity: "release-safe-online-error-reconciliation" as const,
     schemaVersion: 1 as const,
     campaignIdHash: onlineErrorBudgetCampaignIdHash(CAMPAIGN),
     storeRevision: onlineErrorSpent === 0 ? 0 : 1,
@@ -270,8 +265,7 @@ function reconciliation(
   };
   return {
     ...unsigned,
-    reconciliationHash:
-      hashOnlineErrorBudgetReconciliation(unsigned),
+    reconciliationHash: hashOnlineErrorBudgetReconciliation(unsigned),
   };
 }
 
@@ -279,15 +273,11 @@ function reobserveReconciliation(
   receipt: TrustedOnlineErrorBudgetReconciliation,
   observedAt: string,
 ): TrustedOnlineErrorBudgetReconciliation {
-  const {
-    reconciliationHash: _reconciliationHash,
-    ...priorUnsigned
-  } = receipt;
+  const { reconciliationHash: _reconciliationHash, ...priorUnsigned } = receipt;
   const unsigned = { ...priorUnsigned, observedAt };
   return {
     ...unsigned,
-    reconciliationHash:
-      hashOnlineErrorBudgetReconciliation(unsigned),
+    reconciliationHash: hashOnlineErrorBudgetReconciliation(unsigned),
   };
 }
 
@@ -327,9 +317,7 @@ function interruptionRequest(
   };
 }
 
-function sealRequest(
-  changes: Partial<SealMaterialRequest> = {},
-): SealMaterialRequest {
+function sealRequest(changes: Partial<SealMaterialRequest> = {}): SealMaterialRequest {
   return {
     schemaVersion: 1,
     domain: "dark-factory.optimization-seal-material.v1",
@@ -352,19 +340,13 @@ interface FixtureControls {
   operationBudget: BudgetSnapshot;
   reconciliation: TrustedOnlineErrorBudgetReconciliation;
   completionMutation:
-    | ((
-        value: TrustedCompletionAccountingAttestation,
-      ) => TrustedCompletionAccountingAttestation)
+    | ((value: TrustedCompletionAccountingAttestation) => TrustedCompletionAccountingAttestation)
     | null;
   interruptionMutation:
-    | ((
-        value: TrustedInterruptedAccountingAttestation,
-      ) => TrustedInterruptedAccountingAttestation)
+    | ((value: TrustedInterruptedAccountingAttestation) => TrustedInterruptedAccountingAttestation)
     | null;
   sealMutation:
-    | ((
-        value: TrustedCampaignSealAuthorization,
-      ) => TrustedCampaignSealAuthorization)
+    | ((value: TrustedCampaignSealAuthorization) => TrustedCampaignSealAuthorization)
     | null;
 }
 
@@ -400,8 +382,7 @@ function fixture(record: DurableExperimentJournalRecord) {
     ): Promise<TrustedCompletionAccountingAttestation> => {
       const value: TrustedCompletionAccountingAttestation = {
         schemaVersion: 1,
-        sensitivity:
-          "release-safe-optimization-completion-accounting-attestation",
+        sensitivity: "release-safe-optimization-completion-accounting-attestation",
         requestHash: request.requestHash,
         accountingAttestationHash: H8,
         nextUsage: request.request.reportedUsage,
@@ -415,13 +396,11 @@ function fixture(record: DurableExperimentJournalRecord) {
     ): Promise<TrustedInterruptedAccountingAttestation> => {
       const value: TrustedInterruptedAccountingAttestation = {
         schemaVersion: 1,
-        sensitivity:
-          "release-safe-optimization-interruption-accounting-attestation",
+        sensitivity: "release-safe-optimization-interruption-accounting-attestation",
         requestHash: request.requestHash,
         accountingAttestationHash: H8,
         nextUsage: request.mergedUsage,
-        onlineErrorReconciliation:
-          request.observedOnlineErrorReconciliation,
+        onlineErrorReconciliation: request.observedOnlineErrorReconciliation,
       };
       return controls.interruptionMutation?.(value) ?? value;
     },
@@ -432,12 +411,10 @@ function fixture(record: DurableExperimentJournalRecord) {
     ): Promise<TrustedCampaignSealAuthorization> => {
       const value: TrustedCampaignSealAuthorization = {
         schemaVersion: 1,
-        sensitivity:
-          "release-safe-optimization-campaign-seal-authorization",
+        sensitivity: "release-safe-optimization-campaign-seal-authorization",
         requestHash: request.requestHash,
         decisionAttestationHash: H8,
-        holdoutAvailabilityAttestationHash:
-          request.request.stage === "validation" ? H9 : null,
+        holdoutAvailabilityAttestationHash: request.request.stage === "validation" ? H9 : null,
         sealedAt: SEALED_AT,
         ledgers,
       };
@@ -449,9 +426,7 @@ function fixture(record: DurableExperimentJournalRecord) {
     reserve: async () => {
       throw new Error("Not used by completion material.");
     },
-    reconcile: vi.fn(async () =>
-      structuredClone(controls.reconciliation),
-    ),
+    reconcile: vi.fn(async () => structuredClone(controls.reconciliation)),
   };
   const port = new ProductionOptimizationCompletionMaterial({
     journalStateStore: new MemoryJournalStore(journalState(record)),
@@ -481,117 +456,89 @@ function fixture(record: DurableExperimentJournalRecord) {
 }
 
 describe("ProductionOptimizationCompletionMaterial", () => {
-  it(
-    "binds normal accounting and seal material to the exact sealed journal and replays exactly",
-    async () => {
-      const context = fixture(sealedRecord());
+  it("binds normal accounting and seal material to the exact sealed journal and replays exactly", async () => {
+    const context = fixture(sealedRecord());
 
-      const firstAccounting =
-        await context.port.createBudgetAccountingAttestation(
-          completionRequest(),
-        );
-      const secondAccounting =
-        await context.port.createBudgetAccountingAttestation(
-          completionRequest(),
-        );
-      expect(secondAccounting).toEqual(firstAccounting);
-      expect(firstAccounting.nextUsage).toEqual(journalUsage);
-      expect(context.attestCompletion).toHaveBeenCalledTimes(2);
-      expect(
-        context.attestCompletion.mock.calls.map(
-          ([request]) => request.requestHash,
-        ),
-      ).toEqual([
-        context.attestCompletion.mock.calls[0]?.[0].requestHash,
-        context.attestCompletion.mock.calls[0]?.[0].requestHash,
-      ]);
+    const firstAccounting = await context.port.createBudgetAccountingAttestation(
+      completionRequest(),
+    );
+    const secondAccounting = await context.port.createBudgetAccountingAttestation(
+      completionRequest(),
+    );
+    expect(secondAccounting).toEqual(firstAccounting);
+    expect(firstAccounting.nextUsage).toEqual(journalUsage);
+    expect(context.attestCompletion).toHaveBeenCalledTimes(2);
+    expect(context.attestCompletion.mock.calls.map(([request]) => request.requestHash)).toEqual([
+      context.attestCompletion.mock.calls[0]?.[0].requestHash,
+      context.attestCompletion.mock.calls[0]?.[0].requestHash,
+    ]);
 
-      const firstSeal =
-        await context.port.createSealMaterial(sealRequest());
-      const secondSeal =
-        await context.port.createSealMaterial(sealRequest());
-      expect(secondSeal).toEqual(firstSeal);
-      expect(firstSeal).toEqual({
-        decisionAttestationHash: H8,
-        holdoutAvailabilityAttestationHash: null,
-        sealedAt: SEALED_AT,
-        ledgers,
-      });
-      expect(context.authorize).toHaveBeenCalledTimes(2);
-      expect(context.authorize.mock.calls[1]?.[0].requestHash).toBe(
-        context.authorize.mock.calls[0]?.[0].requestHash,
-      );
-    },
-  );
+    const firstSeal = await context.port.createSealMaterial(sealRequest());
+    const secondSeal = await context.port.createSealMaterial(sealRequest());
+    expect(secondSeal).toEqual(firstSeal);
+    expect(firstSeal).toEqual({
+      decisionAttestationHash: H8,
+      holdoutAvailabilityAttestationHash: null,
+      sealedAt: SEALED_AT,
+      ledgers,
+    });
+    expect(context.authorize).toHaveBeenCalledTimes(2);
+    expect(context.authorize.mock.calls[1]?.[0].requestHash).toBe(
+      context.authorize.mock.calls[0]?.[0].requestHash,
+    );
+  });
 
-  it(
-    "rejects stale or detached journal identity, seal, and reported usage before attestation",
-    async () => {
-      const context = fixture(sealedRecord());
-      await expect(
-        context.port.createBudgetAccountingAttestation(
-          completionRequest({ lineageId: "lineage-detached" }),
-        ),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
-      await expect(
-        context.port.createBudgetAccountingAttestation(
-          completionRequest({ resultSealHash: H1 }),
-        ),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
-      await expect(
-        context.port.createBudgetAccountingAttestation(
-          completionRequest({
-            reportedUsage: { ...journalUsage, tokens: 31 },
-          }),
-        ),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
-      expect(context.attestCompletion).not.toHaveBeenCalled();
-    },
-  );
-
-  it(
-    "burns evaluator alpha ahead of the journal and merges cost and promotion looks ahead in the operation ledger",
-    async () => {
-      const context = fixture(interruptedRecord());
-      context.controls.operationBudget = {
-        limits,
-        usage: {
-          ...journalUsage,
-          spentUsd: 9,
-          tokens: 90,
-          promotionLooks: 1,
-        },
-      };
-      context.controls.reconciliation = reconciliation(0.02);
-
-      const material =
-        await context.port.createInterruptedBudgetAccountingAttestation(
-          interruptionRequest(),
-        );
-
-      expect(material.nextUsage).toEqual({
-        ...context.controls.operationBudget.usage,
-        onlineErrorSpent: 0.02,
-      });
-      expect(material.onlineErrorReconciliation).toEqual(
-        context.controls.reconciliation,
-      );
-      expect(context.attestInterruption).toHaveBeenCalledWith(
-        expect.objectContaining({
-          mergedUsage: material.nextUsage,
-          onlineErrorState: expect.objectContaining({
-            onlineErrorSpent: 0.02,
-          }),
+  it("rejects stale or detached journal identity, seal, and reported usage before attestation", async () => {
+    const context = fixture(sealedRecord());
+    await expect(
+      context.port.createBudgetAccountingAttestation(
+        completionRequest({ lineageId: "lineage-detached" }),
+      ),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
+    await expect(
+      context.port.createBudgetAccountingAttestation(completionRequest({ resultSealHash: H1 })),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
+    await expect(
+      context.port.createBudgetAccountingAttestation(
+        completionRequest({
+          reportedUsage: { ...journalUsage, tokens: 31 },
         }),
-      );
-    },
-  );
+      ),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
+    expect(context.attestCompletion).not.toHaveBeenCalled();
+  });
+
+  it("burns evaluator alpha ahead of the journal and merges cost and promotion looks ahead in the operation ledger", async () => {
+    const context = fixture(interruptedRecord());
+    context.controls.operationBudget = {
+      limits,
+      usage: {
+        ...journalUsage,
+        spentUsd: 9,
+        tokens: 90,
+        promotionLooks: 1,
+      },
+    };
+    context.controls.reconciliation = reconciliation(0.02);
+
+    const material = await context.port.createInterruptedBudgetAccountingAttestation(
+      interruptionRequest(),
+    );
+
+    expect(material.nextUsage).toEqual({
+      ...context.controls.operationBudget.usage,
+      onlineErrorSpent: 0.02,
+    });
+    expect(material.onlineErrorReconciliation).toEqual(context.controls.reconciliation);
+    expect(context.attestInterruption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mergedUsage: material.nextUsage,
+        onlineErrorState: expect.objectContaining({
+          onlineErrorSpent: 0.02,
+        }),
+      }),
+    );
+  });
 
   it("rejects operation-ledger limit changes, resets, and evaluator-alpha detachment", async () => {
     const alteredLimits = fixture(interruptedRecord());
@@ -600,12 +547,8 @@ describe("ProductionOptimizationCompletionMaterial", () => {
       usage: journalUsage,
     };
     await expect(
-      alteredLimits.port.createInterruptedBudgetAccountingAttestation(
-        interruptionRequest(),
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionOptimizationCompletionMaterialError,
-    );
+      alteredLimits.port.createInterruptedBudgetAccountingAttestation(interruptionRequest()),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
 
     const reset = fixture(interruptedRecord());
     reset.controls.operationBudget = {
@@ -613,12 +556,8 @@ describe("ProductionOptimizationCompletionMaterial", () => {
       usage: { ...initialUsage, spentUsd: 1 },
     };
     await expect(
-      reset.port.createInterruptedBudgetAccountingAttestation(
-        interruptionRequest(),
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionOptimizationCompletionMaterialError,
-    );
+      reset.port.createInterruptedBudgetAccountingAttestation(interruptionRequest()),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
 
     const alphaReset = fixture(interruptedRecord());
     alphaReset.controls.reconciliation = reconciliation(0);
@@ -631,89 +570,65 @@ describe("ProductionOptimizationCompletionMaterial", () => {
           },
         }),
       ),
-    ).rejects.toBeInstanceOf(
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
+  });
+
+  it("rejects accounting-authority counter tamper and seal-authority timestamp or pointer tamper", async () => {
+    const accounting = fixture(interruptedRecord());
+    accounting.controls.interruptionMutation = (value) => ({
+      ...value,
+      nextUsage: {
+        ...value.nextUsage,
+        spentUsd: value.nextUsage.spentUsd - 1,
+      },
+    });
+    await expect(
+      accounting.port.createInterruptedBudgetAccountingAttestation(interruptionRequest()),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
+
+    const seal = fixture(sealedRecord());
+    seal.controls.sealMutation = (value) => ({
+      ...value,
+      sealedAt: "2026-07-26T10:05:01.000Z",
+    });
+    await expect(seal.port.createSealMaterial(sealRequest())).rejects.toBeInstanceOf(
+      ProductionOptimizationCompletionMaterialError,
+    );
+    seal.controls.sealMutation = (value) => ({
+      ...value,
+      ledgers: {
+        ...value.ledgers,
+        privacyLedgerHash: "not-a-hash",
+      },
+    });
+    await expect(seal.port.createSealMaterial(sealRequest())).rejects.toBeInstanceOf(
       ProductionOptimizationCompletionMaterialError,
     );
   });
 
-  it(
-    "rejects accounting-authority counter tamper and seal-authority timestamp or pointer tamper",
-    async () => {
-      const accounting = fixture(interruptedRecord());
-      accounting.controls.interruptionMutation = (value) => ({
-        ...value,
-        nextUsage: {
-          ...value.nextUsage,
-          spentUsd: value.nextUsage.spentUsd - 1,
-        },
-      });
-      await expect(
-        accounting.port.createInterruptedBudgetAccountingAttestation(
-          interruptionRequest(),
-        ),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
+  it("replays interruption material with one stable request hash and rejects a changed authority replay", async () => {
+    const context = fixture(interruptedRecord());
+    const first = await context.port.createInterruptedBudgetAccountingAttestation(
+      interruptionRequest(),
+    );
+    const second = await context.port.createInterruptedBudgetAccountingAttestation(
+      interruptionRequest(),
+    );
+    expect(second).toEqual(first);
+    expect(context.attestInterruption).toHaveBeenCalledTimes(2);
+    expect(context.attestInterruption.mock.calls[1]?.[0].requestHash).toBe(
+      context.attestInterruption.mock.calls[0]?.[0].requestHash,
+    );
 
-      const seal = fixture(sealedRecord());
-      seal.controls.sealMutation = (value) => ({
-        ...value,
-        sealedAt: "2026-07-26T10:05:01.000Z",
-      });
-      await expect(
-        seal.port.createSealMaterial(sealRequest()),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
-      seal.controls.sealMutation = (value) => ({
-        ...value,
-        ledgers: {
-          ...value.ledgers,
-          privacyLedgerHash: "not-a-hash",
-        },
-      });
-      await expect(
-        seal.port.createSealMaterial(sealRequest()),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
-    },
-  );
-
-  it(
-    "replays interruption material with one stable request hash and rejects a changed authority replay",
-    async () => {
-      const context = fixture(interruptedRecord());
-      const first =
-        await context.port.createInterruptedBudgetAccountingAttestation(
-          interruptionRequest(),
-        );
-      const second =
-        await context.port.createInterruptedBudgetAccountingAttestation(
-          interruptionRequest(),
-        );
-      expect(second).toEqual(first);
-      expect(context.attestInterruption).toHaveBeenCalledTimes(2);
-      expect(
-        context.attestInterruption.mock.calls[1]?.[0].requestHash,
-      ).toBe(
-        context.attestInterruption.mock.calls[0]?.[0].requestHash,
-      );
-
-      context.controls.interruptionMutation = (value) => ({
-        ...value,
-        onlineErrorReconciliation: reobserveReconciliation(
-          value.onlineErrorReconciliation,
-          "2026-07-26T10:06:01.000Z",
-        ),
-      });
-      await expect(
-        context.port.createInterruptedBudgetAccountingAttestation(
-          interruptionRequest(),
-        ),
-      ).rejects.toBeInstanceOf(
-        ProductionOptimizationCompletionMaterialError,
-      );
-    },
-  );
+    context.controls.interruptionMutation = (value) => ({
+      ...value,
+      onlineErrorReconciliation: reobserveReconciliation(
+        value.onlineErrorReconciliation,
+        "2026-07-26T10:06:01.000Z",
+      ),
+    });
+    await expect(
+      context.port.createInterruptedBudgetAccountingAttestation(interruptionRequest()),
+    ).rejects.toBeInstanceOf(ProductionOptimizationCompletionMaterialError);
+  });
 });

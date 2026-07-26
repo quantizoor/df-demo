@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  type CacheDistribution,
+  type CacheObservationSignatureVerifier,
   cacheKeyDigest,
   evaluateCacheEntry,
   evaluateDrift,
-  makeReleaseSafeCacheAttestation,
-  selectDriftAnchors,
-  type CacheDistribution,
-  type CacheObservationSignatureVerifier,
   type HiddenCacheHit,
+  makeReleaseSafeCacheAttestation,
   type SignedCacheObservation,
+  selectDriftAnchors,
 } from "../../src/evaluation/index.js";
 import { cacheKey, digest, ociImageDigest, taskId } from "./fixtures.js";
 
@@ -61,15 +61,13 @@ describe("exact-key champion cache", () => {
     expect(() =>
       cacheKeyDigest(cacheKey({ harnessCommit: digest(12).slice(0, 40) })),
     ).not.toThrow();
-    expect(() =>
-      cacheKeyDigest(cacheKey({ harnessCommit: digest(12) })),
-    ).not.toThrow();
-    expect(() =>
-      cacheKeyDigest(cacheKey({ harnessCommit: ociImageDigest(12) })),
-    ).toThrow(/Git commit/u);
-    expect(() =>
-      cacheKeyDigest(cacheKey({ imageDigest: digest(12) })),
-    ).toThrow(/OCI sha256 digest/u);
+    expect(() => cacheKeyDigest(cacheKey({ harnessCommit: digest(12) }))).not.toThrow();
+    expect(() => cacheKeyDigest(cacheKey({ harnessCommit: ociImageDigest(12) }))).toThrow(
+      /Git commit/u,
+    );
+    expect(() => cacheKeyDigest(cacheKey({ imageDigest: digest(12) }))).toThrow(
+      /OCI sha256 digest/u,
+    );
   });
 
   it("expires observations individually and never lets a new sample refresh old evidence", () => {
@@ -93,14 +91,15 @@ describe("exact-key champion cache", () => {
   it("deduplicates signed attempt digests and excludes observations rejected by the verifier", () => {
     const key = cacheKey();
     const valid = observation(1, key, "2026-07-25T10:00:00.000Z");
+    const untrusted = observation(2, key, "2026-07-25T11:00:00.000Z");
     const result = evaluateCacheEntry(
       cacheEntry(key, [
         valid,
         { ...valid },
         {
-          ...observation(2, key, "2026-07-25T11:00:00.000Z"),
+          ...untrusted,
           evaluatorSignature: {
-            ...valid.evaluatorSignature,
+            ...untrusted.evaluatorSignature,
             keyId: "untrusted-evaluator-key",
           },
         },
@@ -130,10 +129,7 @@ describe("exact-key champion cache", () => {
   it("rejects observations signed before or long after they were recorded", () => {
     const key = cacheKey();
     const base = observation(1, key, "2026-07-25T10:00:00.000Z");
-    for (const signedAt of [
-      "2026-07-25T09:59:59.000Z",
-      "2026-07-25T10:05:01.000Z",
-    ]) {
+    for (const signedAt of ["2026-07-25T09:59:59.000Z", "2026-07-25T10:05:01.000Z"]) {
       expect(() =>
         evaluateCacheEntry(
           cacheEntry(key, [
@@ -175,13 +171,7 @@ describe("exact-key champion cache", () => {
       taskId: taskId(2),
     };
     expect(() =>
-      evaluateCacheEntry(
-        cacheEntry(key, [detached]),
-        key,
-        ENVIRONMENT,
-        NOW,
-        SIGNATURE_VERIFIER,
-      ),
+      evaluateCacheEntry(cacheEntry(key, [detached]), key, ENVIRONMENT, NOW, SIGNATURE_VERIFIER),
     ).toThrow(/entry task$/u);
   });
 
@@ -192,13 +182,7 @@ describe("exact-key champion cache", () => {
       taskRevisionDigest: digest(999),
     };
     expect(() =>
-      evaluateCacheEntry(
-        cacheEntry(key, [detached]),
-        key,
-        ENVIRONMENT,
-        NOW,
-        SIGNATURE_VERIFIER,
-      ),
+      evaluateCacheEntry(cacheEntry(key, [detached]), key, ENVIRONMENT, NOW, SIGNATURE_VERIFIER),
     ).toThrow(/entry task revision/u);
   });
 

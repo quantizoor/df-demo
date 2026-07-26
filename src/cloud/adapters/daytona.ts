@@ -7,8 +7,8 @@ import {
 import type { CloudProviderTransport } from "../types.js";
 import {
   DaytonaCloudProviderTransport,
-  OfficialDaytonaSdkFactory,
   type DaytonaSdkFactory,
+  OfficialDaytonaSdkFactory,
 } from "./daytona-transport.js";
 
 export function createDaytonaProvider(
@@ -39,8 +39,7 @@ export function createOfficialDaytonaProvider(
   options: CreateOfficialDaytonaProviderOptions,
 ): ConfiguredCloudSandboxProvider {
   const sdkFactory =
-    options.sdkFactory ??
-    new OfficialDaytonaSdkFactory({ environment: () => environment });
+    options.sdkFactory ?? new OfficialDaytonaSdkFactory({ environment: () => environment });
   const transport = new DaytonaCloudProviderTransport({
     artifactBridge: options.artifactBridge,
     sdkFactory,

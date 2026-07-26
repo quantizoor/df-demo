@@ -1,15 +1,12 @@
-import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import type { TrustedHarborInvocation } from "../terminal-bench/harbor.js";
-import type {
-  MatchedArmKind,
-  MatchedArmOrder,
-} from "../terminal-bench/trusted.js";
-import type { HiddenTaskId } from "../evaluation/types.js";
 import type {
   RawTrajectory,
   RawTrajectoryEvent,
   ScalarGraderOutcomeInput,
 } from "../evaluation/behavior.js";
+import type { HiddenTaskId } from "../evaluation/types.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
+import type { TrustedHarborInvocation } from "../terminal-bench/harbor.js";
+import type { MatchedArmKind, MatchedArmOrder } from "../terminal-bench/trusted.js";
 import type {
   TrustedDecodedAttemptCost,
   TrustedDecodedEvaluation,
@@ -35,10 +32,8 @@ export const HARBOR_0_20_0_VERSION = "0.20.0" as const;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u;
-const SAFE_TASK_NAME =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const UUID =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
+const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 const MAXIMUM_DOCUMENT_BYTES = 256 * 1024 * 1024;
 const MAXIMUM_STEPS = 20_000;
 const MAXIMUM_EVENTS = 20_000;
@@ -125,16 +120,10 @@ function record(value: unknown): PlainRecord {
   return value as PlainRecord;
 }
 
-function exactKeys(
-  value: unknown,
-  keys: readonly string[],
-): PlainRecord {
+function exactKeys(value: unknown, keys: readonly string[]): PlainRecord {
   const object = record(value);
   const actual = Object.keys(object);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
   return object;
@@ -168,13 +157,8 @@ function stringValue(value: unknown, maximumBytes = 4_096): string {
   return value;
 }
 
-function optionalString(
-  value: unknown,
-  maximumBytes = 4_096,
-): string | null {
-  return value === null || value === undefined
-    ? null
-    : stringValue(value, maximumBytes);
+function optionalString(value: unknown, maximumBytes = 4_096): string | null {
+  return value === null || value === undefined ? null : stringValue(value, maximumBytes);
 }
 
 function digest(value: unknown): string {
@@ -195,22 +179,14 @@ function uuid(value: unknown): string {
 }
 
 function safeInteger(value: unknown): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < 0
-  ) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     fail();
   }
   return value;
 }
 
 function finiteNonNegative(value: unknown): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    value < 0
-  ) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     fail();
   }
   return value;
@@ -288,9 +264,7 @@ function parseCanonicalDocument(bytes: Uint8Array): PlainRecord {
   return record(parsed);
 }
 
-function decodingPlanMaterial(
-  plan: Omit<TrustedHarbor020DecodingPlan, "planHash">,
-): PlainRecord {
+function decodingPlanMaterial(plan: Omit<TrustedHarbor020DecodingPlan, "planHash">): PlainRecord {
   return {
     domain: "dark-factory.harbor-0.20.0-decoding-plan.v1",
     sensitivity: plan.sensitivity,
@@ -357,13 +331,7 @@ function assertPlan(
   const scheduleArmIds = new Set<string>();
   const taskArmPairs = new Set<string>();
   for (const invocation of plan.invocations) {
-    exactKeys(invocation, [
-      "invocationId",
-      "order",
-      "configSha256",
-      "executionId",
-      "arms",
-    ]);
+    exactKeys(invocation, ["invocationId", "order", "configSha256", "executionId", "arms"]);
     const invocationId = safeId(invocation.invocationId);
     const executionId = safeId(invocation.executionId);
     if (
@@ -470,10 +438,7 @@ function assertEnvelopeHeader(
   }
 }
 
-function validateJobStats(
-  value: unknown,
-  expectedTrials: number,
-): ValidatedJobStats {
+function validateJobStats(value: unknown, expectedTrials: number): ValidatedJobStats {
   const stats = exactKeys(value, [
     "n_completed_trials",
     "n_errored_trials",
@@ -499,22 +464,10 @@ function validateJobStats(
   }
   record(stats["evals"]);
   return {
-    inputTokens:
-      stats["n_input_tokens"] === null
-        ? null
-        : safeInteger(stats["n_input_tokens"]),
-    cachedTokens:
-      stats["n_cache_tokens"] === null
-        ? null
-        : safeInteger(stats["n_cache_tokens"]),
-    outputTokens:
-      stats["n_output_tokens"] === null
-        ? null
-        : safeInteger(stats["n_output_tokens"]),
-    modelUsd:
-      stats["cost_usd"] === null
-        ? null
-        : finiteNonNegative(stats["cost_usd"]),
+    inputTokens: stats["n_input_tokens"] === null ? null : safeInteger(stats["n_input_tokens"]),
+    cachedTokens: stats["n_cache_tokens"] === null ? null : safeInteger(stats["n_cache_tokens"]),
+    outputTokens: stats["n_output_tokens"] === null ? null : safeInteger(stats["n_output_tokens"]),
+    modelUsd: stats["cost_usd"] === null ? null : finiteNonNegative(stats["cost_usd"]),
   };
 }
 
@@ -532,10 +485,7 @@ interface ValidatedJobResult {
   readonly stats: ValidatedJobStats;
 }
 
-function validateJobResult(
-  value: unknown,
-  expectedTrials: number,
-): ValidatedJobResult {
+function validateJobResult(value: unknown, expectedTrials: number): ValidatedJobResult {
   const result = exactKeys(value, [
     "id",
     "started_at",
@@ -570,10 +520,7 @@ function validateTaskId(value: unknown): void {
           keys[1] === "git_url" &&
           keys[2] === "path"
         ? "git"
-        : keys.length === 3 &&
-            keys[0] === "name" &&
-            keys[1] === "org" &&
-            keys[2] === "ref"
+        : keys.length === 3 && keys[0] === "name" && keys[1] === "org" && keys[2] === "ref"
           ? "package"
           : null;
   if (variant === null) fail();
@@ -585,16 +532,7 @@ function validateTaskId(value: unknown): void {
 function validateTaskConfig(value: unknown): PlainRecord {
   const task = allowedKeys(
     value,
-    [
-      "path",
-      "git_url",
-      "git_commit_id",
-      "name",
-      "ref",
-      "overwrite",
-      "download_dir",
-      "source",
-    ],
+    ["path", "git_url", "git_commit_id", "name", "ref", "overwrite", "download_dir", "source"],
     ["path", "name"],
   );
   if (task["overwrite"] !== undefined && typeof task["overwrite"] !== "boolean") {
@@ -649,9 +587,7 @@ function validateAgentConfig(
     "thinking",
     "enabled_tools",
     "credential_environment_names",
-    ...(model.provider === "microsoft-foundry"
-      ? ["foundry_resource_name", "model_family"]
-      : []),
+    ...(model.provider === "microsoft-foundry" ? ["foundry_resource_name", "model_family"] : []),
   ]);
   const expectedModel = `${model.provider}/${model.modelId}`;
   if (
@@ -661,8 +597,7 @@ function validateAgentConfig(
     typeof config["import_path"] !== "string" ||
     !String(config["import_path"]).endsWith(":DarkFactoryPi") ||
     config["resume_trajectory"] === true ||
-    config["load_trajectory"] !== undefined &&
-      config["load_trajectory"] !== null
+    (config["load_trajectory"] !== undefined && config["load_trajectory"] !== null)
   ) {
     fail();
   }
@@ -689,15 +624,11 @@ function validateAgentConfig(
   if (
     !Array.isArray(kwargs["enabled_tools"]) ||
     kwargs["enabled_tools"].length < 1 ||
-    kwargs["enabled_tools"].some(
-      (tool) => typeof tool !== "string" || !SAFE_ID.test(tool),
-    ) ||
+    kwargs["enabled_tools"].some((tool) => typeof tool !== "string" || !SAFE_ID.test(tool)) ||
     !Array.isArray(kwargs["credential_environment_names"]) ||
     kwargs["credential_environment_names"].length < 1 ||
     kwargs["credential_environment_names"].some(
-      (name) =>
-        typeof name !== "string" ||
-        !/^[A-Z_][A-Z0-9_]{0,127}$/u.test(name),
+      (name) => typeof name !== "string" || !/^[A-Z_][A-Z0-9_]{0,127}$/u.test(name),
     )
   ) {
     fail();
@@ -728,10 +659,7 @@ function validateAgentContext(value: unknown): ValidatedAgentContext {
     "rollout_details",
     "metadata",
   ]);
-  if (
-    context["rollout_details"] !== null ||
-    context["metadata"] !== null
-  ) {
+  if (context["rollout_details"] !== null || context["metadata"] !== null) {
     fail();
   }
   const inputTokens = safeInteger(context["n_input_tokens"]);
@@ -795,9 +723,7 @@ function validateTrial(
   if (
     trial["task_name"] !== expected.harborTaskName ||
     trial["task_checksum"] !== expected.harborTaskChecksum ||
-    !new Set(["shared", "separate"]).has(
-      trial["verifier_environment_mode"] as string,
-    ) ||
+    !new Set(["shared", "separate"]).has(trial["verifier_environment_mode"] as string) ||
     trial["exception_info"] !== null ||
     trial["step_results"] !== null
   ) {
@@ -836,18 +762,13 @@ function validateTrial(
     config["trial_name"] !== trial["trial_name"] ||
     uuid(config["job_id"]) !== jobId ||
     config["install_only"] === true ||
-    (config["source_trial"] !== undefined &&
-      config["source_trial"] !== null)
+    (config["source_trial"] !== undefined && config["source_trial"] !== null)
   ) {
     fail();
   }
   validateAgentConfig(config["agent"], expected, model);
 
-  const agentInfo = exactKeys(trial["agent_info"], [
-    "name",
-    "version",
-    "model_info",
-  ]);
+  const agentInfo = exactKeys(trial["agent_info"], ["name", "version", "model_info"]);
   const modelInfo = exactKeys(agentInfo["model_info"], ["name", "provider"]);
   if (
     agentInfo["name"] !== "dark-factory-pi" ||
@@ -904,11 +825,7 @@ function decodeHarborDocument(
     "sourceEvidenceHash",
     "invocations",
   ]);
-  assertEnvelopeHeader(
-    value,
-    "dark-factory.harbor-0.20.0-results.v1",
-    plan,
-  );
+  assertEnvelopeHeader(value, "dark-factory.harbor-0.20.0-results.v1", plan);
   if (
     !Array.isArray(value["invocations"]) ||
     value["invocations"].length !== plan.invocations.length
@@ -916,10 +833,7 @@ function decodeHarborDocument(
     fail();
   }
   const byInvocation = new Map(
-    plan.invocations.map((invocation) => [
-      invocation.invocationId,
-      invocation,
-    ] as const),
+    plan.invocations.map((invocation) => [invocation.invocationId, invocation] as const),
   );
   const joined = new Map<string, HarborTrialJoin>();
   for (const rawInvocation of value["invocations"]) {
@@ -931,9 +845,7 @@ function decodeHarborDocument(
       "jobResult",
       "trials",
     ]);
-    const expectedInvocation = byInvocation.get(
-      safeId(invocation["invocationId"]),
-    );
+    const expectedInvocation = byInvocation.get(safeId(invocation["invocationId"]));
     if (
       expectedInvocation === undefined ||
       invocation["order"] !== expectedInvocation.order ||
@@ -944,20 +856,11 @@ function decodeHarborDocument(
     ) {
       fail();
     }
-    const job = validateJobResult(
-      invocation["jobResult"],
-      expectedInvocation.arms.length,
-    );
-    const byArm = new Map(
-      expectedInvocation.arms.map((arm) => [arm.scheduleArmId, arm] as const),
-    );
+    const job = validateJobResult(invocation["jobResult"], expectedInvocation.arms.length);
+    const byArm = new Map(expectedInvocation.arms.map((arm) => [arm.scheduleArmId, arm] as const));
     const invocationTrials: ValidatedTrial[] = [];
     for (const rawTrial of invocation["trials"]) {
-      const item = exactKeys(rawTrial, [
-        "scheduleArmId",
-        "attemptOrdinal",
-        "result",
-      ]);
+      const item = exactKeys(rawTrial, ["scheduleArmId", "attemptOrdinal", "result"]);
       const scheduleArmId = safeId(item["scheduleArmId"]);
       const expected = byArm.get(scheduleArmId);
       if (
@@ -967,12 +870,7 @@ function decodeHarborDocument(
       ) {
         fail();
       }
-      const trial = validateTrial(
-        item["result"],
-        expected,
-        job.id,
-        plan.evaluatedModel,
-      );
+      const trial = validateTrial(item["result"], expected, job.id, plan.evaluatedModel);
       invocationTrials.push(trial);
       joined.set(scheduleArmId, { expected, trial });
     }
@@ -1012,10 +910,7 @@ interface GraderJoin {
   readonly trialId: string;
   readonly scheduleArmId: string;
   readonly attemptOrdinal: 1;
-  readonly grader: Omit<
-    ScalarGraderOutcomeInput,
-    "oneUseAttemptDigest"
-  >;
+  readonly grader: Omit<ScalarGraderOutcomeInput, "oneUseAttemptDigest">;
   readonly sandboxUsd: number;
 }
 
@@ -1033,15 +928,8 @@ function decodeGraderDocument(
     "sourceEvidenceHash",
     "records",
   ]);
-  assertEnvelopeHeader(
-    value,
-    "dark-factory.harbor-0.20.0-graders.v1",
-    plan,
-  );
-  if (
-    !Array.isArray(value["records"]) ||
-    value["records"].length !== harbor.size
-  ) {
+  assertEnvelopeHeader(value, "dark-factory.harbor-0.20.0-graders.v1", plan);
+  if (!Array.isArray(value["records"]) || value["records"].length !== harbor.size) {
     fail();
   }
   const result = new Map<string, GraderJoin>();
@@ -1065,9 +953,7 @@ function decodeGraderDocument(
     const source = harbor.get(scheduleArmId);
     const reward = finiteNonNegative(recordValue["boundedReward"]);
     const elapsedMs = safeInteger(recordValue["elapsedMs"]);
-    const cpuUtilizationPercent = nullableFiniteNonNegative(
-      recordValue["cpuUtilizationPercent"],
-    );
+    const cpuUtilizationPercent = nullableFiniteNonNegative(recordValue["cpuUtilizationPercent"]);
     if (
       source === undefined ||
       result.has(scheduleArmId) ||
@@ -1080,11 +966,8 @@ function decodeGraderDocument(
       recordValue["infrastructureInvalidClass"] !== null ||
       recordValue["integrityStatus"] !== "passed" ||
       recordValue["protocolHash"] !== plan.protocolHash ||
-      recordValue["environmentFingerprintHash"] !==
-        plan.environmentFingerprintHash ||
-      elapsedMs !==
-        Date.parse(source.trial.completedAt) -
-          Date.parse(source.trial.startedAt) ||
+      recordValue["environmentFingerprintHash"] !== plan.environmentFingerprintHash ||
+      elapsedMs !== Date.parse(source.trial.completedAt) - Date.parse(source.trial.startedAt) ||
       (cpuUtilizationPercent !== null && cpuUtilizationPercent > 100)
     ) {
       fail();
@@ -1191,14 +1074,7 @@ function validateAtifTrajectory(
       "extra",
       "subagent_trajectories",
     ],
-    [
-      "schema_version",
-      "session_id",
-      "trajectory_id",
-      "agent",
-      "steps",
-      "final_metrics",
-    ],
+    ["schema_version", "session_id", "trajectory_id", "agent", "steps", "final_metrics"],
   );
   if (
     trajectory["schema_version"] !== "ATIF-v1.7" ||
@@ -1218,13 +1094,9 @@ function validateAtifTrajectory(
     "bash_update_count",
     "agent_settled",
   ]);
-  const compactionCount = safeInteger(
-    darkFactoryExtra["compaction_count"],
-  );
+  const compactionCount = safeInteger(darkFactoryExtra["compaction_count"]);
   const retryCount = safeInteger(darkFactoryExtra["retry_count"]);
-  const bashUpdateCount = safeInteger(
-    darkFactoryExtra["bash_update_count"],
-  );
+  const bashUpdateCount = safeInteger(darkFactoryExtra["bash_update_count"]);
   if (
     darkFactoryExtra["agent_settled"] !== true ||
     compactionCount > 1_000 ||
@@ -1246,10 +1118,8 @@ function validateAtifTrajectory(
   if (
     agent["name"] !== "dark-factory-pi" ||
     agent["version"] !== source.expected.harnessArchiveSha256 ||
-    agent["model_name"] !==
-      `${expectedModel.provider}/${expectedModel.modelId}` ||
-    agentExtra["runtime_sha256"] !==
-      source.expected.harnessArchiveSha256 ||
+    agent["model_name"] !== `${expectedModel.provider}/${expectedModel.modelId}` ||
+    agentExtra["runtime_sha256"] !== source.expected.harnessArchiveSha256 ||
     agent["tool_definitions"] !== undefined
   ) {
     fail();
@@ -1315,16 +1185,14 @@ function validateAtifTrajectory(
       (typeof step["reasoning_effort"] === "number" &&
         !Number.isFinite(step["reasoning_effort"])) ||
       step["llm_call_count"] !== 1 ||
-      step["observation"] !== undefined &&
-        step["tool_calls"] === undefined
+      (step["observation"] !== undefined && step["tool_calls"] === undefined)
     ) {
       fail();
     }
     if (
       step["reasoning_content"] !== undefined &&
       (typeof step["reasoning_content"] !== "string" ||
-        Buffer.byteLength(step["reasoning_content"], "utf8") >
-          MAXIMUM_TEXT_BYTES)
+        Buffer.byteLength(step["reasoning_content"], "utf8") > MAXIMUM_TEXT_BYTES)
     ) {
       fail();
     }
@@ -1386,12 +1254,7 @@ function validateAtifTrajectory(
       for (const rawResult of observation["results"]) {
         const result = allowedKeys(
           rawResult,
-          [
-            "source_call_id",
-            "content",
-            "subagent_trajectory_ref",
-            "extra",
-          ],
+          ["source_call_id", "content", "subagent_trajectory_ref", "extra"],
           ["source_call_id", "content", "extra"],
         );
         const sourceCallId = safeId(result["source_call_id"]);
@@ -1400,8 +1263,7 @@ function validateAtifTrajectory(
           !stepToolIds.has(sourceCallId) ||
           observed.has(sourceCallId) ||
           typeof result["content"] !== "string" ||
-          Buffer.byteLength(result["content"], "utf8") >
-            MAXIMUM_TEXT_BYTES ||
+          Buffer.byteLength(result["content"], "utf8") > MAXIMUM_TEXT_BYTES ||
           typeof extra["is_error"] !== "boolean" ||
           result["subagent_trajectory_ref"] !== undefined
         ) {
@@ -1441,8 +1303,7 @@ function validateAtifTrajectory(
   ]);
   if (
     safeInteger(finalMetrics["total_prompt_tokens"]) !== promptTokens ||
-    safeInteger(finalMetrics["total_completion_tokens"]) !==
-      completionTokens ||
+    safeInteger(finalMetrics["total_completion_tokens"]) !== completionTokens ||
     safeInteger(finalMetrics["total_cached_tokens"]) !== cachedTokens ||
     finiteNonNegative(finalMetrics["total_cost_usd"]) !== costUsd ||
     safeInteger(finalMetrics["total_steps"]) !== trajectory["steps"].length ||
@@ -1456,9 +1317,7 @@ function validateAtifTrajectory(
   return {
     trajectory: {
       events,
-      elapsedMs:
-        Date.parse(source.trial.completedAt) -
-        Date.parse(source.trial.startedAt),
+      elapsedMs: Date.parse(source.trial.completedAt) - Date.parse(source.trial.startedAt),
       planningTokens: 0,
       actionTokens: completionTokens,
       totalTokens: promptTokens + completionTokens,
@@ -1483,15 +1342,8 @@ function decodeAtifDocument(
     "sourceEvidenceHash",
     "records",
   ]);
-  assertEnvelopeHeader(
-    value,
-    "dark-factory.harbor-0.20.0-atif.v1",
-    plan,
-  );
-  if (
-    !Array.isArray(value["records"]) ||
-    value["records"].length !== harbor.size
-  ) {
+  assertEnvelopeHeader(value, "dark-factory.harbor-0.20.0-atif.v1", plan);
+  if (!Array.isArray(value["records"]) || value["records"].length !== harbor.size) {
     fail();
   }
   const result = new Map<string, AtifDecodeResult>();
@@ -1514,11 +1366,7 @@ function decodeAtifDocument(
     }
     result.set(
       scheduleArmId,
-      validateAtifTrajectory(
-        recordValue["trajectory"],
-        source,
-        plan.evaluatedModel,
-      ),
+      validateAtifTrajectory(recordValue["trajectory"], source, plan.evaluatedModel),
     );
   }
   return result;
@@ -1554,17 +1402,13 @@ function attemptDigest(input: {
  * discarded. The emitted object contains opaque task digests, scalar grader
  * data, generic behavioral events, hashes, counts, and costs only.
  */
-export class StrictHarbor020RawArtifactDecoder
-  implements TrustedHarborRawArtifactDecoder
-{
+export class StrictHarbor020RawArtifactDecoder implements TrustedHarborRawArtifactDecoder {
   readonly boundary: TrustedEvaluatorPortBoundary;
   readonly #plans: TrustedHarbor020DecodingPlanProvider;
 
   constructor(options: StrictHarbor020RawArtifactDecoderOptions) {
     const expectedBoundary =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
     if (options.plans.boundary !== expectedBoundary) fail();
     this.boundary = expectedBoundary;
     this.#plans = options.plans;
@@ -1577,9 +1421,7 @@ export class StrictHarbor020RawArtifactDecoder
     readonly sourceEvidenceHash: string;
     readonly rawManifestHash: string;
     readonly rawArtifactSetHash: string;
-    readonly plaintexts: Readonly<
-      Record<"atif" | "grader-output" | "harbor-output", Uint8Array>
-    >;
+    readonly plaintexts: Readonly<Record<"atif" | "grader-output" | "harbor-output", Uint8Array>>;
     readonly inputBindingHash: string;
   }): Promise<TrustedHarborRawDecoderResult> {
     try {
@@ -1609,11 +1451,7 @@ export class StrictHarbor020RawArtifactDecoder
         plan,
         harbor,
       );
-      const atif = decodeAtifDocument(
-        parseCanonicalDocument(input.plaintexts.atif),
-        plan,
-        harbor,
-      );
+      const atif = decodeAtifDocument(parseCanonicalDocument(input.plaintexts.atif), plan, harbor);
 
       const attempts: TrustedDecodedEvaluationAttempt[] = [];
       for (const expectedInvocation of plan.invocations) {
@@ -1621,11 +1459,7 @@ export class StrictHarbor020RawArtifactDecoder
           const source = harbor.get(expected.scheduleArmId);
           const graderJoin = graders.get(expected.scheduleArmId);
           const atifJoin = atif.get(expected.scheduleArmId);
-          if (
-            source === undefined ||
-            graderJoin === undefined ||
-            atifJoin === undefined
-          ) {
+          if (source === undefined || graderJoin === undefined || atifJoin === undefined) {
             fail();
           }
           const cost: TrustedDecodedAttemptCost = {

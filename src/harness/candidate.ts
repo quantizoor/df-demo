@@ -58,8 +58,7 @@ export interface CandidateBuildOptions {
 
 const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
-const SAFE_TEST_PATH =
-  /^(?:packages\/[A-Za-z0-9._-]+\/)?test\/[A-Za-z0-9._/-]+\.test\.ts$/u;
+const SAFE_TEST_PATH = /^(?:packages\/[A-Za-z0-9._-]+\/)?test\/[A-Za-z0-9._/-]+\.test\.ts$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_REMOTE_ROOT = /^\/(?:[A-Za-z0-9._-]+\/)+$/u;
 
@@ -101,9 +100,7 @@ function assertTrustedArtifact(
   label: string,
 ): void {
   if (
-    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(
-      artifact.uri,
-    ) ||
+    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(artifact.uri) ||
     artifact.uri.includes("..") ||
     !SHA256.test(artifact.sha256) ||
     !Number.isSafeInteger(artifact.byteLength) ||
@@ -128,7 +125,9 @@ export function createCandidateWorktreeSpec(input: {
     throw new CandidateSpecificationError("Repository and worktree roots must be absolute.");
   }
   if (resolve(input.canonicalRepositoryPath) === "/" || resolve(input.worktreeRoot) === "/") {
-    throw new CandidateSpecificationError("Repository and worktree roots cannot be filesystem root.");
+    throw new CandidateSpecificationError(
+      "Repository and worktree roots cannot be filesystem root.",
+    );
   }
   const worktreeRoot = resolve(input.worktreeRoot);
   const worktreePath = resolve(worktreeRoot, input.experimentId);
@@ -144,14 +143,7 @@ export function createCandidateWorktreeSpec(input: {
     worktreePath,
     createOperation: {
       executable: "git",
-      arguments: [
-        "worktree",
-        "add",
-        "-b",
-        branchName,
-        worktreePath,
-        input.baseCommit,
-      ],
+      arguments: ["worktree", "add", "-b", branchName, worktreePath, input.baseCommit],
       workingDirectory: resolve(input.canonicalRepositoryPath),
     },
   };
@@ -185,11 +177,7 @@ export function createCandidateBuildSpec(options: CandidateBuildOptions): Candid
   if (options.remoteInputRoot === options.remoteOutputRoot) {
     throw new CandidateSpecificationError("Input and output roots must be distinct.");
   }
-  assertTrustedArtifact(
-    options.sourceArtifact,
-    new Set(["application/x-tar"]),
-    "Candidate source",
-  );
+  assertTrustedArtifact(options.sourceArtifact, new Set(["application/x-tar"]), "Candidate source");
   assertTrustedArtifact(
     options.extractorArtifact,
     new Set(["text/javascript", "application/javascript"]),
@@ -207,9 +195,7 @@ export function createCandidateBuildSpec(options: CandidateBuildOptions): Candid
     !SHA256.test(options.buildPolicyHash) ||
     options.architecture !== "x86_64"
   ) {
-    throw new CandidateSpecificationError(
-      "Candidate build lineage or architecture is malformed.",
-    );
+    throw new CandidateSpecificationError("Candidate build lineage or architecture is malformed.");
   }
   for (const testFile of options.focusedTestFiles) {
     if (!SAFE_TEST_PATH.test(testFile) || testFile.includes("..")) {
@@ -221,8 +207,7 @@ export function createCandidateBuildSpec(options: CandidateBuildOptions): Candid
   const sourceRemotePath = `${options.remoteInputRoot}candidate-source.tar`;
   const extractorRemotePath = `${options.remoteInputRoot}extract-pi-source.mjs`;
   const packagerRemotePath = `${options.remoteInputRoot}package-pi-runtime.mjs`;
-  const outputRemotePath =
-    `${options.remoteOutputRoot}${options.experimentId}-pi-runtime.tar`;
+  const outputRemotePath = `${options.remoteOutputRoot}${options.experimentId}-pi-runtime.tar`;
   const parentWorkingDirectory = resolve(options.cloudWorkingDirectory, "..");
   const commands: RemoteCommandSpec[] = [
     remoteCommand(
@@ -244,13 +229,7 @@ export function createCandidateBuildSpec(options: CandidateBuildOptions): Candid
     ),
     remoteCommand(
       "npm",
-      [
-        "ci",
-        "--offline",
-        "--ignore-scripts",
-        "--no-audit",
-        "--no-fund",
-      ],
+      ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"],
       options.cloudWorkingDirectory,
       15 * 60_000,
       secretReferences,
@@ -306,11 +285,7 @@ export function createCandidateBuildSpec(options: CandidateBuildOptions): Candid
       : []),
     remoteCommand(
       "npm",
-      [
-        "run",
-        "build:binary",
-        "--workspace=@earendil-works/pi-coding-agent",
-      ],
+      ["run", "build:binary", "--workspace=@earendil-works/pi-coding-agent"],
       options.cloudWorkingDirectory,
       30 * 60_000,
       secretReferences,

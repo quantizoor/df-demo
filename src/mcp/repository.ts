@@ -1,17 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import {
-  atomicWriteFile,
-  withExclusiveFileLock,
-} from "../evidence/atomic.js";
+import { atomicWriteFile, withExclusiveFileLock } from "../evidence/atomic.js";
 import { assertValidDocument } from "../schemas/registry.js";
-import {
-  assertTaskAgnosticSubmission,
-  boundedJson,
-  isWithin,
-  opaqueDigest,
-} from "./security.js";
+import { assertTaskAgnosticSubmission, boundedJson, isWithin, opaqueDigest } from "./security.js";
 
 export interface McpSessionState {
   readonly schemaVersion: "1.0.0";
@@ -48,11 +40,7 @@ export interface ExperimentSummary {
 
 export interface SubmissionReceipt {
   readonly receiptId: string;
-  readonly kind:
-    | "hypothesis"
-    | "candidate"
-    | "analysis"
-    | "contamination";
+  readonly kind: "hypothesis" | "candidate" | "analysis" | "contamination";
   readonly campaignId: string;
   readonly payloadHash: string;
   readonly createdAt: string;
@@ -76,8 +64,7 @@ interface ReleasedCampaignContext {
 const SAFE_IDENTIFIER = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
-const OPERATOR_ONLY_CAPACITY_BAND =
-  /(?:capacity|holdout|panel|shadow|slice|validation)/u;
+const OPERATOR_ONLY_CAPACITY_BAND = /(?:capacity|holdout|panel|shadow|slice|validation)/u;
 const ALLOWED_ACTIONS = new Set([
   "get-diagnostic-brief",
   "submit-hypothesis",
@@ -109,10 +96,7 @@ function hasExactKeys(
 ): boolean {
   const keys = Object.keys(value).sort();
   const allowed = [...expected].sort();
-  return (
-    keys.length === allowed.length &&
-    keys.every((key, index) => key === allowed[index])
-  );
+  return keys.length === allowed.length && keys.every((key, index) => key === allowed[index]);
 }
 
 const SESSION_STATE_KEYS = [
@@ -163,25 +147,15 @@ function assertSessionState(
       throw new Error("Optimizer session state contains an invalid phase flag");
     }
   }
-  for (const field of [
-    "briefHash",
-    "currentResultHash",
-  ] as const) {
+  for (const field of ["briefHash", "currentResultHash"] as const) {
     const item = value[field];
     if (item !== null && (typeof item !== "string" || !/^[a-f0-9]{64}$/u.test(item))) {
       throw new Error("Optimizer session state contains an invalid evidence hash");
     }
   }
-  for (const field of [
-    "hypothesisReceiptId",
-    "candidateReceiptId",
-    "analysisReceiptId",
-  ] as const) {
+  for (const field of ["hypothesisReceiptId", "candidateReceiptId", "analysisReceiptId"] as const) {
     const item = value[field];
-    if (
-      item !== null &&
-      (typeof item !== "string" || !/^[A-Za-z0-9_-]{16,128}$/u.test(item))
-    ) {
+    if (item !== null && (typeof item !== "string" || !/^[A-Za-z0-9_-]{16,128}$/u.test(item))) {
       throw new Error("Optimizer session state contains an invalid receipt");
     }
   }
@@ -192,17 +166,13 @@ function assertSessionState(
     value.candidateStaged !== (value.candidateReceiptId !== null) ||
     value.analysisSubmitted !== (value.analysisReceiptId !== null) ||
     (value.candidateStaged && !value.hypothesisSubmitted) ||
-    (value.analysisSubmitted &&
-      (!value.candidateStaged || !value.currentResultReleased))
+    (value.analysisSubmitted && (!value.candidateStaged || !value.currentResultReleased))
   ) {
     throw new Error("Optimizer session phase and receipt lineage is inconsistent");
   }
 }
 
-function assertStateTransition(
-  previous: McpSessionState,
-  next: McpSessionState,
-): void {
+function assertStateTransition(previous: McpSessionState, next: McpSessionState): void {
   assertSessionState(next, previous.campaignId, previous.projectDigest);
   if (
     next.queryCount < previous.queryCount ||
@@ -246,18 +216,12 @@ function numberField(value: Readonly<Record<string, unknown>>, name: string): nu
   return typeof field === "number" && Number.isFinite(field) ? field : null;
 }
 
-function booleanField(
-  value: Readonly<Record<string, unknown>>,
-  name: string,
-): boolean | null {
+function booleanField(value: Readonly<Record<string, unknown>>, name: string): boolean | null {
   const field = value[name];
   return typeof field === "boolean" ? field : null;
 }
 
-function parseCampaignContext(
-  value: unknown,
-  campaignId: string,
-): ReleasedCampaignContext {
+function parseCampaignContext(value: unknown, campaignId: string): ReleasedCampaignContext {
   const keys = [
     "schemaVersion",
     "campaignId",
@@ -344,16 +308,13 @@ function parseExperimentSummary(value: unknown): ExperimentSummary {
     typeof value.lifecycleState !== "string" ||
     !SAFE_IDENTIFIER.test(value.lifecycleState) ||
     (value.disposition !== null &&
-      !new Set(["promoted", "rejected", "inconclusive"]).has(
-        String(value.disposition),
-      )) ||
+      !new Set(["promoted", "rejected", "inconclusive"]).has(String(value.disposition))) ||
     (value.mutationCategory !== null &&
       (typeof value.mutationCategory !== "string" ||
         !SAFE_IDENTIFIER.test(value.mutationCategory))) ||
     !Array.isArray(value.changedComponents) ||
     value.changedComponents.some(
-      (component) =>
-        typeof component !== "string" || !ALLOWED_COMPONENTS.has(component),
+      (component) => typeof component !== "string" || !ALLOWED_COMPONENTS.has(component),
     ) ||
     new Set(value.changedComponents).size !== value.changedComponents.length ||
     typeof value.activeChampionChanged !== "boolean" ||
@@ -433,11 +394,7 @@ export class ReleasedEvidenceRepository {
   }
 
   public get sessionStatePath(): string {
-    return join(
-      this.#pluginData,
-      "sessions",
-      `${opaqueDigest(this.#projectRoot)}.json`,
-    );
+    return join(this.#pluginData, "sessions", `${opaqueDigest(this.#projectRoot)}.json`);
   }
 
   public async initialize(): Promise<void> {
@@ -552,11 +509,7 @@ export class ReleasedEvidenceRepository {
 
   async #readStateUnlocked(): Promise<McpSessionState> {
     const value = await readJson(this.sessionStatePath);
-    assertSessionState(
-      value,
-      this.#campaignId,
-      opaqueDigest(this.#projectRoot),
-    );
+    assertSessionState(value, this.#campaignId, opaqueDigest(this.#projectRoot));
     return value;
   }
 
@@ -707,100 +660,96 @@ export class ReleasedEvidenceRepository {
     return withExclusiveFileLock(`${this.sessionStatePath}.submit.lock`, async () => {
       assertTaskAgnosticSubmission(payload);
       const state = await this.readState();
-    const record = isRecord(payload) ? payload : {};
-    if (kind === "hypothesis") {
-      if (state.hypothesisSubmitted) {
-        throw new Error("A hypothesis is already frozen for this optimizer session");
+      const record = isRecord(payload) ? payload : {};
+      if (kind === "hypothesis") {
+        if (state.hypothesisSubmitted) {
+          throw new Error("A hypothesis is already frozen for this optimizer session");
+        }
+        const suppliedBriefHash = stringField(record, "sourceBriefHash");
+        if (
+          (state.briefReleased && suppliedBriefHash !== state.briefHash) ||
+          (!state.briefReleased && record.sourceBriefHash !== null)
+        ) {
+          throw new Error("Hypothesis does not bind the one released diagnostic brief");
+        }
       }
-      const suppliedBriefHash = stringField(record, "sourceBriefHash");
-      if (
-        (state.briefReleased && suppliedBriefHash !== state.briefHash) ||
-        (!state.briefReleased && record.sourceBriefHash !== null)
-      ) {
-        throw new Error("Hypothesis does not bind the one released diagnostic brief");
-      }
-    }
-    if (kind === "candidate" && (!state.hypothesisSubmitted || state.candidateStaged)) {
-      throw new Error("Candidate handoff requires exactly one previously frozen hypothesis");
-    }
-    if (
-      kind === "candidate" &&
-      stringField(record, "hypothesisReceiptId") !== state.hypothesisReceiptId
-    ) {
-      throw new Error("Candidate handoff does not bind the frozen hypothesis receipt");
-    }
-    if (kind === "analysis") {
-      if (
-        !state.candidateStaged ||
-        !state.currentResultReleased ||
-        state.analysisSubmitted
-      ) {
-        throw new Error(
-          "Analysis requires a staged candidate and one released aggregate result",
-        );
+      if (kind === "candidate" && (!state.hypothesisSubmitted || state.candidateStaged)) {
+        throw new Error("Candidate handoff requires exactly one previously frozen hypothesis");
       }
       if (
-        stringField(record, "hypothesisReceiptId") !==
-          state.hypothesisReceiptId ||
-        stringField(record, "candidateReceiptId") !== state.candidateReceiptId ||
-        stringField(record, "resultHash") !== state.currentResultHash
+        kind === "candidate" &&
+        stringField(record, "hypothesisReceiptId") !== state.hypothesisReceiptId
       ) {
-        throw new Error(
-          "Analysis does not bind the hypothesis, candidate, and released result receipts",
-        );
+        throw new Error("Candidate handoff does not bind the frozen hypothesis receipt");
       }
-    }
-    if (kind === "contamination" && state.contaminationReported) {
-      throw new Error("Contamination has already been reported for this session");
-    }
-    const serialized = JSON.stringify(payload);
-    const payloadHash = opaqueDigest(serialized);
-    const receipt: SubmissionReceipt = {
-      receiptId: randomBytes(18).toString("base64url"),
-      kind,
-      campaignId: this.#campaignId,
-      payloadHash,
-      createdAt: this.#now().toISOString(),
-    };
-    const inbox = this.#submissionPath(this.#campaignId, kind);
-    const envelope = {
-      schemaVersion: "1.0.0",
-      receipt,
-      payload,
-      projectDigest: opaqueDigest(this.#projectRoot),
-    };
-    await mkdir(inbox, { recursive: true, mode: 0o700 });
-    const file = join(inbox, `${receipt.createdAt.replaceAll(":", "-")}-${receipt.receiptId}.json`);
-    await writeFile(file, `${JSON.stringify(envelope, null, 2)}\n`, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600,
-    });
+      if (kind === "analysis") {
+        if (!state.candidateStaged || !state.currentResultReleased || state.analysisSubmitted) {
+          throw new Error("Analysis requires a staged candidate and one released aggregate result");
+        }
+        if (
+          stringField(record, "hypothesisReceiptId") !== state.hypothesisReceiptId ||
+          stringField(record, "candidateReceiptId") !== state.candidateReceiptId ||
+          stringField(record, "resultHash") !== state.currentResultHash
+        ) {
+          throw new Error(
+            "Analysis does not bind the hypothesis, candidate, and released result receipts",
+          );
+        }
+      }
+      if (kind === "contamination" && state.contaminationReported) {
+        throw new Error("Contamination has already been reported for this session");
+      }
+      const serialized = JSON.stringify(payload);
+      const payloadHash = opaqueDigest(serialized);
+      const receipt: SubmissionReceipt = {
+        receiptId: randomBytes(18).toString("base64url"),
+        kind,
+        campaignId: this.#campaignId,
+        payloadHash,
+        createdAt: this.#now().toISOString(),
+      };
+      const inbox = this.#submissionPath(this.#campaignId, kind);
+      const envelope = {
+        schemaVersion: "1.0.0",
+        receipt,
+        payload,
+        projectDigest: opaqueDigest(this.#projectRoot),
+      };
+      await mkdir(inbox, { recursive: true, mode: 0o700 });
+      const file = join(
+        inbox,
+        `${receipt.createdAt.replaceAll(":", "-")}-${receipt.receiptId}.json`,
+      );
+      await writeFile(file, `${JSON.stringify(envelope, null, 2)}\n`, {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600,
+      });
 
-    if (kind === "hypothesis") {
-      await this.updateState((state) => ({
-        ...state,
-        hypothesisSubmitted: true,
-        hypothesisReceiptId: receipt.receiptId,
-      }));
-    } else if (kind === "candidate") {
-      await this.updateState((state) => ({
-        ...state,
-        candidateStaged: true,
-        candidateReceiptId: receipt.receiptId,
-      }));
-    } else if (kind === "analysis") {
-      await this.updateState((state) => ({
-        ...state,
-        analysisSubmitted: true,
-        analysisReceiptId: receipt.receiptId,
-      }));
-    } else if (kind === "contamination") {
-      await this.updateState((state) => ({
-        ...state,
-        contaminationReported: true,
-      }));
-    }
+      if (kind === "hypothesis") {
+        await this.updateState((state) => ({
+          ...state,
+          hypothesisSubmitted: true,
+          hypothesisReceiptId: receipt.receiptId,
+        }));
+      } else if (kind === "candidate") {
+        await this.updateState((state) => ({
+          ...state,
+          candidateStaged: true,
+          candidateReceiptId: receipt.receiptId,
+        }));
+      } else if (kind === "analysis") {
+        await this.updateState((state) => ({
+          ...state,
+          analysisSubmitted: true,
+          analysisReceiptId: receipt.receiptId,
+        }));
+      } else if (kind === "contamination") {
+        await this.updateState((state) => ({
+          ...state,
+          contaminationReported: true,
+        }));
+      }
       await this.#audit(`submit-${kind}`, "allowed", payloadHash);
       return receipt;
     });

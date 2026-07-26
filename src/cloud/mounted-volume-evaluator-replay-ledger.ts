@@ -2,44 +2,23 @@ import type {
   CanonicalEvaluatorReplayClaim,
   CanonicalEvaluatorReplayLedger,
 } from "../evaluator/canonical-client.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-} from "../schemas/canonical.js";
-import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const SAFE_REQUEST_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const SAFE_STORE_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+const SAFE_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const SAFE_STORE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const MAXIMUM_CLAIMS = 100_000;
-const DANGEROUS_RECORD_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
+const DANGEROUS_RECORD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-const STATE_KEYS = [
-  "schemaVersion",
-  "sensitivity",
-  "revision",
-  "claims",
-  "requestHashes",
-] as const;
+const STATE_KEYS = ["schemaVersion", "sensitivity", "revision", "claims", "requestHashes"] as const;
 
-const CLAIM_KEYS = [
-  "requestId",
-  "requestHash",
-  "claimedAt",
-  "claimHash",
-] as const;
+const CLAIM_KEYS = ["requestId", "requestHash", "claimedAt", "claimHash"] as const;
 
-interface DurableEvaluatorReplayClaim
-  extends CanonicalEvaluatorReplayClaim {
+interface DurableEvaluatorReplayClaim extends CanonicalEvaluatorReplayClaim {
   readonly claimHash: string;
 }
 
@@ -47,15 +26,12 @@ interface DurableEvaluatorReplayState {
   readonly schemaVersion: 1;
   readonly sensitivity: "trusted-evaluator-replay-ledger";
   readonly revision: number;
-  readonly claims: Readonly<
-    Record<string, DurableEvaluatorReplayClaim>
-  >;
+  readonly claims: Readonly<Record<string, DurableEvaluatorReplayClaim>>;
   readonly requestHashes: Readonly<Record<string, string>>;
 }
 
 export class MountedVolumeEvaluatorReplayLedgerError extends Error {
-  override readonly name =
-    "MountedVolumeEvaluatorReplayLedgerError";
+  override readonly name = "MountedVolumeEvaluatorReplayLedgerError";
 
   public constructor() {
     super("Trusted evaluator replay ledger failed closed.");
@@ -66,9 +42,7 @@ function fail(): never {
   throw new MountedVolumeEvaluatorReplayLedgerError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -83,10 +57,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail();
   }
 }
@@ -94,23 +65,16 @@ function exactKeys(
 function canonicalTimestamp(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const parsed = Date.parse(value);
-  return (
-    Number.isFinite(parsed) &&
-    new Date(parsed).toISOString() === value
-  );
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function safeRequestId(value: unknown): value is string {
   return (
-    typeof value === "string" &&
-    SAFE_REQUEST_ID.test(value) &&
-    !DANGEROUS_RECORD_KEYS.has(value)
+    typeof value === "string" && SAFE_REQUEST_ID.test(value) && !DANGEROUS_RECORD_KEYS.has(value)
   );
 }
 
-function claimHash(
-  claim: CanonicalEvaluatorReplayClaim,
-): string {
+function claimHash(claim: CanonicalEvaluatorReplayClaim): string {
   return canonicalHash({
     schemaVersion: 1,
     domain: "dark-factory.evaluator-replay-claim.v1",
@@ -120,9 +84,7 @@ function claimHash(
   });
 }
 
-function assertClaim(
-  value: unknown,
-): asserts value is CanonicalEvaluatorReplayClaim {
+function assertClaim(value: unknown): asserts value is CanonicalEvaluatorReplayClaim {
   exactKeys(value, ["requestId", "requestHash", "claimedAt"]);
   if (
     !safeRequestId(value.requestId) ||
@@ -156,9 +118,7 @@ function assertStoredClaim(
   }
 }
 
-function assertState(
-  value: unknown,
-): asserts value is DurableEvaluatorReplayState {
+function assertState(value: unknown): asserts value is DurableEvaluatorReplayState {
   exactKeys(value, STATE_KEYS);
   if (
     value.schemaVersion !== 1 ||
@@ -224,11 +184,8 @@ function cloneCanonical<Value>(value: Value): Value {
  * close(). A transport failure therefore cannot make a claimed hidden panel
  * reusable after a controller restart.
  */
-export class MountedVolumeCanonicalEvaluatorReplayLedger
-  implements CanonicalEvaluatorReplayLedger
-{
-  readonly #store:
-    MountedVolumeTransactionalJsonStore<DurableEvaluatorReplayState>;
+export class MountedVolumeCanonicalEvaluatorReplayLedger implements CanonicalEvaluatorReplayLedger {
+  readonly #store: MountedVolumeTransactionalJsonStore<DurableEvaluatorReplayState>;
 
   public constructor(options: MountedVolumeDurableStateOptions) {
     if (!SAFE_STORE_ID.test(options.storeId)) fail();
@@ -244,9 +201,7 @@ export class MountedVolumeCanonicalEvaluatorReplayLedger
     );
   }
 
-  public async claim(
-    input: CanonicalEvaluatorReplayClaim,
-  ): Promise<boolean> {
+  public async claim(input: CanonicalEvaluatorReplayClaim): Promise<boolean> {
     assertClaim(input);
     const claim = cloneCanonical(input);
     const stored: DurableEvaluatorReplayClaim = {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-
+import { hiddenTaskHandle, MVP_SCHEMA_VERSION } from "../../src/mvp/contracts.js";
 import {
   assertCanonicalFreshMvpHarborEvaluation,
   buildCanonicalFreshMvpHarborExecutionPlan,
   buildTrustedMvpHarborExecutionPlan,
   buildTrustedMvpHarborPlan,
-  decodeTrustedMvpHarborRequestedOutput,
   decodeTrustedMvpHarborOutput,
+  decodeTrustedMvpHarborRequestedOutput,
   MVP_HARBOR_TRIAL_COUNT,
   type MvpHarborBuildInput,
   type MvpHarborExecutionRequest,
@@ -17,19 +17,11 @@ import {
   type TrustedMvpHarborRequestedRawOutput,
   type TrustedMvpHarborRequestedRawTrial,
 } from "../../src/mvp/harbor.js";
-import {
-  hiddenTaskHandle,
-  MVP_SCHEMA_VERSION,
-} from "../../src/mvp/contracts.js";
 
 const digest = (value: string): string => value.repeat(64).slice(0, 64);
 const revision = (value: string): string => value.repeat(40).slice(0, 40);
 
-function artifact(
-  name: string,
-  sha256: string,
-  mediaType: string,
-) {
+function artifact(name: string, sha256: string, mediaType: string) {
   return {
     uri: `trusted://mvp/${name}` as const,
     sha256,
@@ -56,38 +48,22 @@ function buildInput(
       hiddenTaskId: hiddenTaskHandle(digest(String(index + 1))),
       taskRevisionDigest: digest(String(index + 6)),
       harborTaskName: `terminal-bench/hidden-${index + 1}`,
-      cellIds: [
-        digest(`${index + 1}a`),
-        digest(`${index + 1}b`),
-        digest(`${index + 1}c`),
-      ],
+      cellIds: [digest(`${index + 1}a`), digest(`${index + 1}b`), digest(`${index + 1}c`)],
     })),
     candidateRuntime: {
       arm: "candidate",
       harnessRevision: revision("a"),
-      artifact: artifact(
-        "candidate.tar",
-        digest("a"),
-        "application/x-tar",
-      ),
+      artifact: artifact("candidate.tar", digest("a"), "application/x-tar"),
       remotePath: "/trusted/input/candidate.tar",
     },
     championRuntime: {
       arm: "champion",
       harnessRevision: revision("b"),
-      artifact: artifact(
-        "champion.tar",
-        digest("b"),
-        "application/x-tar",
-      ),
+      artifact: artifact("champion.tar", digest("b"), "application/x-tar"),
       remotePath: "/trusted/input/champion.tar",
     },
     adapter: {
-      artifact: artifact(
-        "dark-factory-pi.py",
-        digest("c"),
-        "text/x-python",
-      ),
+      artifact: artifact("dark-factory-pi.py", digest("c"), "text/x-python"),
       remotePath: "/trusted/input/dark_factory_pi.py",
       importPath: "dark_factory_pi:DarkFactoryPi",
     },
@@ -115,9 +91,7 @@ function rawTrials(plan: TrustedMvpHarborPlan): TrustedMvpHarborRawTrial[] {
         return {
           trialId: `trial-${String(trialOrdinal).padStart(2, "0")}`,
           harborTaskName: task.harborTaskName,
-          agentName: candidate
-            ? "dark-factory-candidate"
-            : "dark-factory-champion",
+          agentName: candidate ? "dark-factory-candidate" : "dark-factory-champion",
           attemptOrdinal,
           runtimeArchiveSha256: candidate
             ? plan.candidateRuntime.artifact.sha256
@@ -164,9 +138,7 @@ function requestedRawTrials(
         invocationId: invocation.invocationId,
         trialId: `requested-trial-${String(trialOrdinal).padStart(2, "0")}`,
         harborTaskName: expected.harborTaskName,
-        agentName: candidate
-          ? "dark-factory-candidate"
-          : "dark-factory-champion",
+        agentName: candidate ? "dark-factory-candidate" : "dark-factory-champion",
         attemptOrdinal: expected.harborAttemptOrdinal,
         runtimeArchiveSha256: candidate
           ? plan.basePlan.candidateRuntime.artifact.sha256
@@ -201,9 +173,7 @@ function requestedRawOutput(
   };
 }
 
-function allCandidateCells(
-  plan: TrustedMvpHarborPlan,
-): MvpHarborExecutionRequest["cells"] {
+function allCandidateCells(plan: TrustedMvpHarborPlan): MvpHarborExecutionRequest["cells"] {
   return plan.tasks.flatMap((task) =>
     ([1, 2, 3] as const).map((replicateOrdinal) => ({
       hiddenTaskId: task.hiddenTaskId,
@@ -219,28 +189,15 @@ describe("MVP Harbor matched scheduling", () => {
     const repeated = buildTrustedMvpHarborPlan(buildInput());
 
     expect(first).toEqual(repeated);
-    expect(first.tasks.map((task) => task.order)).toEqual([
-      "AB",
-      "AB",
-      "AB",
-      "BA",
-      "BA",
-    ]);
+    expect(first.tasks.map((task) => task.order)).toEqual(["AB", "AB", "AB", "BA", "BA"]);
     expect(first.configs.map((config) => config.taskCount)).toEqual([3, 2]);
-    expect(first.configs.map((config) => config.expectedTrialCount)).toEqual([
-      18, 12,
-    ]);
-    expect(first.configs.every((entry) => entry.config.n_attempts === 3)).toBe(
-      true,
-    );
-    expect(first.configs.every((entry) => entry.config.n_concurrent_trials === 5)).toBe(
-      true,
-    );
+    expect(first.configs.map((config) => config.expectedTrialCount)).toEqual([18, 12]);
+    expect(first.configs.every((entry) => entry.config.n_attempts === 3)).toBe(true);
+    expect(first.configs.every((entry) => entry.config.n_concurrent_trials === 5)).toBe(true);
     expect(
       first.configs.every(
         (entry) =>
-          entry.config.environment.kwargs.secrets
-            .ANTHROPIC_FOUNDRY_API_KEY ===
+          entry.config.environment.kwargs.secrets.ANTHROPIC_FOUNDRY_API_KEY ===
           "DF_EVALUATED_FOUNDRY",
       ),
     ).toBe(true);
@@ -252,28 +209,19 @@ describe("MVP Harbor matched scheduling", () => {
       "dark-factory-champion",
       "dark-factory-candidate",
     ]);
-    expect(
-      first.configs.reduce(
-        (sum, config) => sum + config.expectedTrialCount,
-        0,
-      ),
-    ).toBe(MVP_HARBOR_TRIAL_COUNT);
+    expect(first.configs.reduce((sum, config) => sum + config.expectedTrialCount, 0)).toBe(
+      MVP_HARBOR_TRIAL_COUNT,
+    );
   });
 
   it("rotates opaque tasks between arm orders across experiments", () => {
     const first = buildTrustedMvpHarborPlan(buildInput());
-    const second = buildTrustedMvpHarborPlan(
-      buildInput(2, "002-second-improvement"),
-    );
+    const second = buildTrustedMvpHarborPlan(buildInput(2, "002-second-improvement"));
     const firstAb = new Set(
-      first.tasks
-        .filter((task) => task.order === "AB")
-        .map((task) => task.hiddenTaskId),
+      first.tasks.filter((task) => task.order === "AB").map((task) => task.hiddenTaskId),
     );
     const secondAb = new Set(
-      second.tasks
-        .filter((task) => task.order === "AB")
-        .map((task) => task.hiddenTaskId),
+      second.tasks.filter((task) => task.order === "AB").map((task) => task.hiddenTaskId),
     );
 
     expect(secondAb).not.toEqual(firstAb);
@@ -318,9 +266,9 @@ describe("MVP Harbor matched scheduling", () => {
       ],
     };
 
-    expect(() =>
-      decodeTrustedMvpHarborOutput(tampered, rawOutput(plan)),
-    ).toThrow(/sealed schedule/u);
+    expect(() => decodeTrustedMvpHarborOutput(tampered, rawOutput(plan))).toThrow(
+      /sealed schedule/u,
+    );
   });
 });
 
@@ -334,12 +282,8 @@ describe("MVP Harbor strict decoding", () => {
     expect(decoded.trustedMatrix.champion).toHaveLength(15);
     expect(
       new Set(
-        [
-          ...decoded.trustedMatrix.candidate,
-          ...decoded.trustedMatrix.champion,
-        ].map(
-          (trial) =>
-            `${trial.hiddenTaskId}|${trial.arm}|${trial.replicateOrdinal}`,
+        [...decoded.trustedMatrix.candidate, ...decoded.trustedMatrix.champion].map(
+          (trial) => `${trial.hiddenTaskId}|${trial.arm}|${trial.replicateOrdinal}`,
         ),
       ).size,
     ).toBe(30);
@@ -364,10 +308,7 @@ describe("MVP Harbor strict decoding", () => {
 
   it("keeps every task ID and task name out of the release receipt", () => {
     const plan = buildTrustedMvpHarborPlan(buildInput());
-    const { releaseReceipt } = decodeTrustedMvpHarborOutput(
-      plan,
-      rawOutput(plan),
-    );
+    const { releaseReceipt } = decodeTrustedMvpHarborOutput(plan, rawOutput(plan));
     const serialized = JSON.stringify(releaseReceipt);
 
     for (const task of plan.tasks) {
@@ -379,18 +320,18 @@ describe("MVP Harbor strict decoding", () => {
   it("rejects incomplete and duplicate identity matrices", () => {
     const plan = buildTrustedMvpHarborPlan(buildInput());
     const complete = rawTrials(plan);
-    expect(() =>
-      decodeTrustedMvpHarborOutput(plan, rawOutput(plan, complete.slice(1))),
-    ).toThrow(/thirty trials/u);
+    expect(() => decodeTrustedMvpHarborOutput(plan, rawOutput(plan, complete.slice(1)))).toThrow(
+      /thirty trials/u,
+    );
 
     const duplicated = [...complete];
     duplicated[29] = {
       ...duplicated[0]!,
       trialId: "replacement-trial",
     };
-    expect(() =>
-      decodeTrustedMvpHarborOutput(plan, rawOutput(plan, duplicated)),
-    ).toThrow(/duplicate or unexpected/u);
+    expect(() => decodeTrustedMvpHarborOutput(plan, rawOutput(plan, duplicated))).toThrow(
+      /duplicate or unexpected/u,
+    );
   });
 
   it("rejects unknown tasks, runtime substitution, and extra output fields", () => {
@@ -400,26 +341,26 @@ describe("MVP Harbor strict decoding", () => {
       ...unknownTask[0]!,
       harborTaskName: "terminal-bench/not-selected",
     };
-    expect(() =>
-      decodeTrustedMvpHarborOutput(plan, rawOutput(plan, unknownTask)),
-    ).toThrow(/outside the sealed/u);
+    expect(() => decodeTrustedMvpHarborOutput(plan, rawOutput(plan, unknownTask))).toThrow(
+      /outside the sealed/u,
+    );
 
     const substituted = rawTrials(plan);
     substituted[0] = {
       ...substituted[0]!,
       runtimeArchiveSha256: plan.championRuntime.artifact.sha256,
     };
-    expect(() =>
-      decodeTrustedMvpHarborOutput(plan, rawOutput(plan, substituted)),
-    ).toThrow(/execution bindings/u);
+    expect(() => decodeTrustedMvpHarborOutput(plan, rawOutput(plan, substituted))).toThrow(
+      /execution bindings/u,
+    );
 
     const extraField = {
       ...rawOutput(plan),
       leakedTask: "terminal-bench/hidden-1",
     };
-    expect(() =>
-      decodeTrustedMvpHarborOutput(plan, extraField),
-    ).toThrow(/missing or unexpected fields/u);
+    expect(() => decodeTrustedMvpHarborOutput(plan, extraField)).toThrow(
+      /missing or unexpected fields/u,
+    );
   });
 });
 
@@ -449,10 +390,7 @@ describe("MVP Harbor cache-aware requested executions", () => {
     expect(executionPlan.totalTrialCount).toBe(17);
     expect(executionPlan.fullFreshMatchedMatrix).toBe(false);
     expect(
-      executionPlan.invocations.reduce(
-        (sum, invocation) => sum + invocation.expectedTrialCount,
-        0,
-      ),
+      executionPlan.invocations.reduce((sum, invocation) => sum + invocation.expectedTrialCount, 0),
     ).toBe(17);
     expect(
       executionPlan.invocations
@@ -519,29 +457,21 @@ describe("MVP Harbor cache-aware requested executions", () => {
       cells: [championCell],
     });
 
-    const screenNames = new Set(
-      screen.invocations.map((entry) => entry.config.job_name),
+    const screenNames = new Set(screen.invocations.map((entry) => entry.config.job_name));
+    expect(refresh.invocations.every((entry) => !screenNames.has(entry.config.job_name))).toBe(
+      true,
     );
-    expect(
-      refresh.invocations.every(
-        (entry) => !screenNames.has(entry.config.job_name),
-      ),
-    ).toBe(true);
   });
 
   it("retains a strict helper for the canonical all-fresh 30-trial matrix", () => {
-    const executionPlan = buildCanonicalFreshMvpHarborExecutionPlan(
-      buildInput(),
-    );
+    const executionPlan = buildCanonicalFreshMvpHarborExecutionPlan(buildInput());
     const decoded = decodeTrustedMvpHarborRequestedOutput(
       executionPlan,
       requestedRawOutput(executionPlan),
     );
 
     expect(executionPlan.invocations).toHaveLength(2);
-    expect(executionPlan.invocations.every((entry) => entry.config.n_attempts === 3)).toBe(
-      true,
-    );
+    expect(executionPlan.invocations.every((entry) => entry.config.n_attempts === 3)).toBe(true);
     expect(() => assertCanonicalFreshMvpHarborEvaluation(decoded)).not.toThrow();
   });
 

@@ -1,21 +1,15 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach } from "vitest";
-import { describe, expect, it } from "vitest";
-import {
-  evaluatePreToolUse,
-  evaluatePreToolUseSecure,
-} from "../../src/mcp/hook-guard.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { evaluatePreToolUse, evaluatePreToolUseSecure } from "../../src/mcp/hook-guard.js";
 
 const projectRoot = "/candidate/pi";
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories.splice(0).map((path) =>
-      rm(path, { recursive: true, force: true }),
-    ),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
@@ -81,10 +75,7 @@ describe("Claude optimizer hook guard", () => {
       mkdir(join(root, "packages/coding-agent/src"), { recursive: true }),
       writeFile(join(outside, "secret.ts"), "export const secret = true;\n"),
     ]);
-    await symlink(
-      join(outside, "secret.ts"),
-      join(root, "packages/coding-agent/src/linked.ts"),
-    );
+    await symlink(join(outside, "secret.ts"), join(root, "packages/coding-agent/src/linked.ts"));
     await expect(
       evaluatePreToolUseSecure(
         {
@@ -102,8 +93,7 @@ describe("Claude optimizer hook guard", () => {
     expect(
       evaluatePreToolUse(
         {
-          tool_name:
-            "mcp__plugin_dark-factory_evidence__df_get_latest_diagnostic_brief",
+          tool_name: "mcp__plugin_dark-factory_evidence__df_get_latest_diagnostic_brief",
           tool_input: {},
         },
         projectRoot,

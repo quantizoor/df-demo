@@ -10,10 +10,10 @@ import {
   type TrustedGitSourceSnapshotReceipt,
 } from "../../src/harness/git-source.js";
 import {
-  emptyBlindBrokerLeaseState,
   type AtomicBlindBrokerLeaseStore,
   type BlindBrokerEvaluationConfiguration,
   type DurableBlindBrokerLeaseState,
+  emptyBlindBrokerLeaseState,
 } from "../../src/orchestrator/blind-broker.js";
 import {
   CasBlindBrokerEvaluationConfigurationResolver,
@@ -73,11 +73,13 @@ function configuration(): BlindBrokerEvaluationConfiguration {
   };
 }
 
-function configurationFixture(input: {
-  readonly recordExperiment?: ExperimentIdentity;
-  readonly rawMutation?: (raw: string) => string;
-  readonly boundary?: "trusted-cloud";
-} = {}): {
+function configurationFixture(
+  input: {
+    readonly recordExperiment?: ExperimentIdentity;
+    readonly rawMutation?: (raw: string) => string;
+    readonly boundary?: "trusted-cloud";
+  } = {},
+): {
   readonly resolver: CasBlindBrokerEvaluationConfigurationResolver;
   readonly artifact: TrustedCloudArtifactRef;
 } {
@@ -113,9 +115,9 @@ function configurationFixture(input: {
 }
 
 function sourceReceipt(
-  mutate: (
-    receipt: TrustedGitSourceSnapshotReceipt,
-  ) => TrustedGitSourceSnapshotReceipt = (receipt) => receipt,
+  mutate: (receipt: TrustedGitSourceSnapshotReceipt) => TrustedGitSourceSnapshotReceipt = (
+    receipt,
+  ) => receipt,
 ): {
   readonly receipt: TrustedGitSourceSnapshotReceipt;
   readonly publicKey: KeyObject;
@@ -179,9 +181,7 @@ function sourceReceipt(
 describe("trusted blind-broker production port adapters", () => {
   it("resolves an exact experiment-bound configuration from canonical CAS JSON", async () => {
     const fixture = configurationFixture();
-    await expect(fixture.resolver.resolve(experiment())).resolves.toEqual(
-      configuration(),
-    );
+    await expect(fixture.resolver.resolve(experiment())).resolves.toEqual(configuration());
   });
 
   it("rejects detached and non-canonical configuration records", async () => {

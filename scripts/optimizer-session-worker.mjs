@@ -9,23 +9,15 @@ import {
   mkdir,
   mkdtemp,
   open,
-  readFile,
   readdir,
+  readFile,
   realpath,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 process.umask(0o077);
 
@@ -38,16 +30,12 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const SAFE_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
 const SAFE_RECEIPT = /^[A-Za-z0-9_-]{16,128}$/u;
 const SAFE_PATH = /^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
 const SAFE_ENV = /^[A-Z_][A-Z0-9_]{0,127}$/u;
-const ALLOWED_OPTIMIZER_SECRETS = new Set([
-  "ANTHROPIC_FOUNDRY_API_KEY",
-]);
-const SAFE_FOUNDRY_RESOURCE =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const ALLOWED_OPTIMIZER_SECRETS = new Set(["ANTHROPIC_FOUNDRY_API_KEY"]);
+const SAFE_FOUNDRY_RESOURCE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const REGULAR_TREE_MODES = new Set(["100644", "100755"]);
 const MAX_COMMAND_OUTPUT_BYTES = 128 * 1024 * 1024;
 const MAX_STDERR_BYTES = 16 * 1024 * 1024;
@@ -58,11 +46,7 @@ const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024;
 const MINIMUM_CLAUDE_VERSION = [2, 1, 217];
 const INTEGRITY_POLICY = {
   version: "pi-candidate-integrity-v2",
-  allowedRoots: [
-    "packages/agent/src/",
-    "packages/coding-agent/src/",
-    "packages/ai/src/",
-  ],
+  allowedRoots: ["packages/agent/src/", "packages/coding-agent/src/", "packages/ai/src/"],
   allowedFileExtensions: [
     ".cjs",
     ".css",
@@ -84,8 +68,7 @@ const INTEGRITY_POLICY = {
       flags: "iu",
     },
     {
-      source:
-        "(^|\\/)(terminal-bench|terminalbench|tbench|harbor)(\\/|$)",
+      source: "(^|\\/)(terminal-bench|terminalbench|tbench|harbor)(\\/|$)",
       flags: "iu",
     },
     { source: "(^|\\/)\\.github\\/", flags: "u" },
@@ -100,13 +83,11 @@ const INTEGRITY_POLICY = {
       flags: "u",
     },
     {
-      source:
-        "(^|\\/)(scripts|evals?|benchmarks?|fixtures?|examples?)\\/",
+      source: "(^|\\/)(scripts|evals?|benchmarks?|fixtures?|examples?)\\/",
       flags: "iu",
     },
     {
-      source:
-        "(^|\\/)(Dockerfile|docker-compose(?:\\.[A-Za-z0-9._-]+)?\\.ya?ml)$",
+      source: "(^|\\/)(Dockerfile|docker-compose(?:\\.[A-Za-z0-9._-]+)?\\.ya?ml)$",
       flags: "iu",
     },
   ],
@@ -123,8 +104,7 @@ const PROTECTED_PATHS = [
   /(^|\/)(scripts|evals?|benchmarks?|fixtures?|examples?)\//iu,
   /(^|\/)(Dockerfile|docker-compose(?:\.[A-Za-z0-9._-]+)?\.ya?ml)$/iu,
 ];
-const BASE64_PAYLOAD =
-  /(?:["'`])[A-Za-z0-9+/]{160,}={0,2}(?:["'`])/u;
+const BASE64_PAYLOAD = /(?:["'`])[A-Za-z0-9+/]{160,}={0,2}(?:["'`])/u;
 const HEX_PAYLOAD = /(?:["'`])(?:[a-f0-9]{2}){100,}(?:["'`])/iu;
 const NETWORK_ADDITION =
   /\b(?:curl|wget|fetch\s*\(|axios|undici|node:https|node:http|WebSocket)\b/u;
@@ -152,11 +132,7 @@ function sha256(value) {
 }
 
 function canonicalJson(value) {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
@@ -166,10 +142,7 @@ function canonicalJson(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
   }
-  if (
-    typeof value !== "object" ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
     reject("Canonical JSON accepts only plain JSON values.");
   }
   return `{${Object.keys(value)
@@ -219,6 +192,7 @@ function parseFlags(argv, specification) {
       typeof value !== "string" ||
       specification[name] === undefined ||
       values.has(name) ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Worker CLI values must reject NUL and line breaks to prevent argument-boundary injection.
       /[\u0000\r\n]/u.test(value)
     ) {
       reject("Optimizer worker received an unsupported argument.");
@@ -234,12 +208,7 @@ function parseFlags(argv, specification) {
 }
 
 function assertAbsolutePath(value, label) {
-  if (
-    !SAFE_PATH.test(value) ||
-    !isAbsolute(value) ||
-    value.includes("/../") ||
-    value === "/"
-  ) {
+  if (!SAFE_PATH.test(value) || !isAbsolute(value) || value.includes("/../") || value === "/") {
     reject(`${label} is not a safe cloud path.`);
   }
 }
@@ -256,12 +225,7 @@ function assertRef(value, label) {
     value
       .slice("refs/heads/".length)
       .split("/")
-      .some(
-        (part) =>
-          part.startsWith(".") ||
-          part.endsWith(".") ||
-          part.endsWith(".lock"),
-      )
+      .some((part) => part.startsWith(".") || part.endsWith(".") || part.endsWith(".lock"))
   ) {
     reject(`${label} is not a safe Git ref.`);
   }
@@ -293,11 +257,7 @@ async function hashFile(path, maximumBytes = MAX_ARCHIVE_BYTES) {
   let byteLength = 0;
   try {
     const opened = await handle.stat();
-    if (
-      opened.dev !== initial.dev ||
-      opened.ino !== initial.ino ||
-      opened.size !== initial.size
-    ) {
+    if (opened.dev !== initial.dev || opened.ino !== initial.ino || opened.size !== initial.size) {
       reject("Optimizer artifact changed before hashing.");
     }
     const buffer = Buffer.allocUnsafe(1024 * 1024);
@@ -443,8 +403,8 @@ async function extractTar(archive, destination) {
   const entries = listing.split("\n").filter((line) => line.length > 0);
   const verbose = run("/usr/bin/tar", ["-tvf", archive], {
     env: { PATH: "/usr/bin:/bin", LC_ALL: "C", LANG: "C" },
-  }).stdout
-    .toString("utf8")
+  })
+    .stdout.toString("utf8")
     .split("\n")
     .filter((line) => line.length > 0);
   if (
@@ -510,11 +470,7 @@ async function pathExists(path) {
     await lstat(path);
     return true;
   } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return false;
     }
     throw error;
@@ -531,22 +487,10 @@ async function assertRegularFile(path, label) {
 async function assertReleasedEvidenceLayout(input) {
   const allowedRoots =
     input.phase === "analysis"
-      ? new Set([
-          "campaign-context.json",
-          "current-result.json",
-          "experiments",
-        ])
-      : new Set([
-          "campaign-context.json",
-          "latest-brief.json",
-          "briefs",
-          "experiments",
-        ]);
+      ? new Set(["campaign-context.json", "current-result.json", "experiments"])
+      : new Set(["campaign-context.json", "latest-brief.json", "briefs", "experiments"]);
   const roots = await readdir(input["evidence-root"]);
-  if (
-    roots.length < 1 ||
-    roots.some((entry) => !allowedRoots.has(entry))
-  ) {
+  if (roots.length < 1 || roots.some((entry) => !allowedRoots.has(entry))) {
     reject("Released evidence archive contains an unapproved root.");
   }
   for (const directory of ["briefs", "experiments"]) {
@@ -557,28 +501,19 @@ async function assertReleasedEvidenceLayout(input) {
     if (
       !metadata.isDirectory() ||
       metadata.isSymbolicLink() ||
-      files.some(
-        (file) => !/^\d{3,}-[a-z0-9-]+\.json$/u.test(file),
-      )
+      files.some((file) => !/^\d{3,}-[a-z0-9-]+\.json$/u.test(file))
     ) {
       reject("Released evidence archive contains an invalid collection.");
     }
     for (const file of files) {
-      await assertRegularFile(
-        join(path, file),
-        "Released evidence document",
-      );
+      await assertRegularFile(join(path, file), "Released evidence document");
     }
   }
 }
 
 async function materializeState(input) {
   if (input["input-state"] === undefined) return null;
-  await assertArtifact(
-    input["input-state"],
-    input["input-state-sha256"],
-    512 * 1024 * 1024,
-  );
+  await assertArtifact(input["input-state"], input["input-state-sha256"], 512 * 1024 * 1024);
   const temporary = await mkdtemp(join(tmpdir(), "df-state-input-"));
   try {
     await extractTar(input["input-state"], temporary);
@@ -591,14 +526,8 @@ async function materializeState(input) {
     ) {
       reject("Optimizer state archive has an unexpected root.");
     }
-    await replaceDirectory(
-      join(temporary, "optimizer-audit"),
-      input["audit-root"],
-    );
-    await replaceDirectory(
-      join(temporary, "optimizer-submissions"),
-      input["submission-root"],
-    );
+    await replaceDirectory(join(temporary, "optimizer-audit"), input["audit-root"]);
+    await replaceDirectory(join(temporary, "optimizer-submissions"), input["submission-root"]);
     await mkdir(input["plugin-data-root"], { recursive: true, mode: 0o700 });
     await replaceDirectory(
       join(temporary, "plugin-sessions"),
@@ -626,11 +555,7 @@ async function setupSource(input) {
     await lstat(input["project-root"]);
     reject("Optimizer project root already exists.");
   } catch (error) {
-    if (
-      !(error instanceof Error) ||
-      !("code" in error) ||
-      error.code !== "ENOENT"
-    ) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
       throw error;
     }
   }
@@ -666,9 +591,8 @@ async function setupSource(input) {
         remote.hash !== "" ||
         remoteMatch?.groups?.owner === undefined ||
         remoteMatch.groups.repository === undefined ||
-        sha256(
-          `github.com/${remoteMatch.groups.owner}/${remoteMatch.groups.repository}`,
-        ) !== input["origin-repository-sha256"]
+        sha256(`github.com/${remoteMatch.groups.owner}/${remoteMatch.groups.repository}`) !==
+          input["origin-repository-sha256"]
       ) {
         reject("Private Git setup lacks its one-command credential.");
       }
@@ -679,18 +603,19 @@ async function setupSource(input) {
         { encoding: "utf8", mode: 0o700, flag: "wx" },
       );
       git(context, ["remote", "add", "source", input.remote]);
-      git(context, ["fetch", "--no-tags", "--no-recurse-submodules", "source", input["source-ref"]], {
-        env: {
-          GIT_ASKPASS: askpass,
-          GIT_ASKPASS_REQUIRE: "force",
-          DF_GITHUB_TOKEN: token,
+      git(
+        context,
+        ["fetch", "--no-tags", "--no-recurse-submodules", "source", input["source-ref"]],
+        {
+          env: {
+            GIT_ASKPASS: askpass,
+            GIT_ASKPASS_REQUIRE: "force",
+            DF_GITHUB_TOKEN: token,
+          },
         },
-      });
+      );
     } else if (input["source-mode"] === "trusted-bundle") {
-      if (
-        input["source-bundle"] === undefined ||
-        input["source-bundle-sha256"] === undefined
-      ) {
+      if (input["source-bundle"] === undefined || input["source-bundle-sha256"] === undefined) {
         reject("Trusted bundle setup is incomplete.");
       }
       await assertArtifact(
@@ -714,18 +639,12 @@ async function setupSource(input) {
       reject("Optimizer source ref did not resolve to the frozen commit.");
     }
     git(context, ["checkout", "--quiet", "--detach", input["source-commit"]]);
-    const tree = text(
-      git(context, ["rev-parse", `${input["source-commit"]}^{tree}`]).stdout,
-    );
-    const lock = git(context, [
-      "show",
-      `${input["source-commit"]}:package-lock.json`,
-    ]).stdout;
+    const tree = text(git(context, ["rev-parse", `${input["source-commit"]}^{tree}`]).stdout);
+    const lock = git(context, ["show", `${input["source-commit"]}:package-lock.json`]).stdout;
     if (
       tree !== input["source-tree"] ||
       sha256(lock) !== input["lock-sha256"] ||
-      text(git(context, ["status", "--porcelain=v1", "--untracked-files=all"]).stdout) !==
-        ""
+      text(git(context, ["status", "--porcelain=v1", "--untracked-files=all"]).stdout) !== ""
     ) {
       reject("Optimizer source checkout does not match its frozen identity.");
     }
@@ -748,9 +667,7 @@ async function setup(input) {
   assertIdentity(input);
   if (
     !new Set(["proposal", "analysis"]).has(input.phase) ||
-    !new Set(["private-github", "trusted-bundle"]).has(
-      input["source-mode"],
-    )
+    !new Set(["private-github", "trusted-bundle"]).has(input["source-mode"])
   ) {
     reject("Optimizer setup phase or source mode is invalid.");
   }
@@ -793,16 +710,8 @@ async function setup(input) {
     reject("Optimizer sandbox contains a pre-existing session root.");
   }
   await Promise.all([
-    assertArtifact(
-      input["plugin-archive"],
-      input["plugin-archive-sha256"],
-      512 * 1024 * 1024,
-    ),
-    assertArtifact(
-      input["evidence-archive"],
-      input["evidence-archive-sha256"],
-      512 * 1024 * 1024,
-    ),
+    assertArtifact(input["plugin-archive"], input["plugin-archive-sha256"], 512 * 1024 * 1024),
+    assertArtifact(input["evidence-archive"], input["evidence-archive-sha256"], 512 * 1024 * 1024),
   ]);
   await setupSource(input);
   await extractTar(input["plugin-archive"], input["plugin-root"]);
@@ -814,18 +723,9 @@ async function setup(input) {
       join(input["plugin-root"], ".claude-plugin", "plugin.json"),
       "Claude plugin manifest",
     ),
-    assertRegularFile(
-      join(input["plugin-root"], ".mcp.json"),
-      "Claude MCP manifest",
-    ),
-    assertRegularFile(
-      join(input["plugin-root"], "server", "server.js"),
-      "Claude MCP server",
-    ),
-    assertRegularFile(
-      join(input["plugin-root"], "server", "hook-guard.js"),
-      "Claude hook guard",
-    ),
+    assertRegularFile(join(input["plugin-root"], ".mcp.json"), "Claude MCP manifest"),
+    assertRegularFile(join(input["plugin-root"], "server", "server.js"), "Claude MCP server"),
+    assertRegularFile(join(input["plugin-root"], "server", "hook-guard.js"), "Claude hook guard"),
     assertRegularFile(
       join(input["evidence-root"], "campaign-context.json"),
       "Released campaign context",
@@ -834,10 +734,7 @@ async function setup(input) {
   await assertReleasedEvidenceLayout(input);
   const forbiddenEvidence =
     input.phase === "analysis"
-      ? [
-          join(input["evidence-root"], "latest-brief.json"),
-          join(input["evidence-root"], "briefs"),
-        ]
+      ? [join(input["evidence-root"], "latest-brief.json"), join(input["evidence-root"], "briefs")]
       : [
           join(input["evidence-root"], "current-result.json"),
           ...(input.experiment.startsWith("001-")
@@ -850,9 +747,7 @@ async function setup(input) {
   if (
     (await Promise.all(forbiddenEvidence.map(pathExists))).some(Boolean) ||
     (input.phase === "analysis" &&
-      !(await pathExists(
-        join(input["evidence-root"], "current-result.json"),
-      )))
+      !(await pathExists(join(input["evidence-root"], "current-result.json"))))
   ) {
     reject("Released evidence archive exposes the wrong optimizer phase.");
   }
@@ -897,19 +792,13 @@ function exactKeys(value, expected, label) {
     reject(`${label} must be a plain object.`);
   }
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.length ||
-    keys.some((key) => !expected.includes(key))
-  ) {
+  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
     reject(`${label} contains non-canonical fields.`);
   }
 }
 
 function decodeCommand(value) {
-  if (
-    !/^[A-Za-z0-9_-]{1,100000}$/u.test(value) ||
-    value.length % 4 === 1
-  ) {
+  if (!/^[A-Za-z0-9_-]{1,100000}$/u.test(value) || value.length % 4 === 1) {
     reject("Claude command envelope is malformed.");
   }
   const raw = Buffer.from(value, "base64url").toString("utf8");
@@ -921,14 +810,7 @@ function decodeCommand(value) {
   }
   exactKeys(
     command,
-    [
-      "executable",
-      "arguments",
-      "workingDirectory",
-      "timeoutMs",
-      "environment",
-      "secretReferences",
-    ],
+    ["executable", "arguments", "workingDirectory", "timeoutMs", "environment", "secretReferences"],
     "Claude command",
   );
   if (raw !== canonicalJson(command)) {
@@ -948,7 +830,9 @@ function assertClaudeCommand(command, input) {
     !Array.isArray(command.arguments) ||
     command.arguments.some(
       (argument) =>
-        typeof argument !== "string" || /[\u0000\r\n]/u.test(argument),
+        typeof argument !== "string" ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Claude arguments cross a process boundary, so NUL and line breaks are forbidden.
+        /[\u0000\r\n]/u.test(argument),
     ) ||
     typeof command.environment !== "object" ||
     command.environment === null ||
@@ -959,7 +843,7 @@ function assertClaudeCommand(command, input) {
   }
   const argument = (name) => {
     const index = command.arguments.indexOf(name);
-    return index < 0 ? null : command.arguments[index + 1] ?? null;
+    return index < 0 ? null : (command.arguments[index + 1] ?? null);
   };
   const requiredSingletonFlags = [
     "--output-format",
@@ -974,9 +858,7 @@ function assertClaudeCommand(command, input) {
   ];
   if (
     requiredSingletonFlags.some(
-      (flag) =>
-        command.arguments.filter((argument_) => argument_ === flag).length !==
-        1,
+      (flag) => command.arguments.filter((argument_) => argument_ === flag).length !== 1,
     )
   ) {
     reject("Claude command contains missing or duplicate policy flags.");
@@ -997,24 +879,16 @@ function assertClaudeCommand(command, input) {
     command.environment.DF_CLOUD_EXECUTION !== "1" ||
     command.environment.DF_CAMPAIGN_ID !== input.campaign ||
     command.environment.DF_OPTIMIZER_PHASE !== input.phase ||
-    command.environment.DF_RELEASED_EVIDENCE_ROOT !==
-      "/workspace/released-evidence" ||
-    command.environment.DF_OPTIMIZER_SUBMISSION_ROOT !==
-      "/workspace/optimizer-submissions" ||
-    command.environment.DF_OPTIMIZER_AUDIT_ROOT !==
-      "/workspace/optimizer-audit" ||
+    command.environment.DF_RELEASED_EVIDENCE_ROOT !== "/workspace/released-evidence" ||
+    command.environment.DF_OPTIMIZER_SUBMISSION_ROOT !== "/workspace/optimizer-submissions" ||
+    command.environment.DF_OPTIMIZER_AUDIT_ROOT !== "/workspace/optimizer-audit" ||
     command.environment.DF_PLUGIN_DATA_ROOT !== "/workspace/plugin-data" ||
-    command.environment.CLAUDE_CONFIG_DIR !==
-      "/workspace/plugin-data/claude-config" ||
+    command.environment.CLAUDE_CONFIG_DIR !== "/workspace/plugin-data/claude-config" ||
     command.environment.CLAUDE_CODE_USE_FOUNDRY !== "1" ||
     typeof command.environment.ANTHROPIC_FOUNDRY_RESOURCE !== "string" ||
-    !SAFE_FOUNDRY_RESOURCE.test(
-      command.environment.ANTHROPIC_FOUNDRY_RESOURCE,
-    ) ||
-    command.environment.ANTHROPIC_DEFAULT_OPUS_MODEL !==
-      model ||
-    command.environment.DF_OPTIMIZER_MODEL_ID !==
-      "claude-opus-5" ||
+    !SAFE_FOUNDRY_RESOURCE.test(command.environment.ANTHROPIC_FOUNDRY_RESOURCE) ||
+    command.environment.ANTHROPIC_DEFAULT_OPUS_MODEL !== model ||
+    command.environment.DF_OPTIMIZER_MODEL_ID !== "claude-opus-5" ||
     typeof model !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u.test(model) ||
     !new Set(["low", "medium", "high", "xhigh", "max"]).has(effort) ||
@@ -1041,11 +915,7 @@ function assertClaudeCommand(command, input) {
   }
   const targets = new Set();
   for (const binding of command.secretReferences) {
-    exactKeys(
-      binding,
-      ["sourceEnvironmentName", "targetEnvironmentName"],
-      "Claude secret binding",
-    );
+    exactKeys(binding, ["sourceEnvironmentName", "targetEnvironmentName"], "Claude secret binding");
     if (
       !SAFE_ENV.test(binding.sourceEnvironmentName) ||
       !ALLOWED_OPTIMIZER_SECRETS.has(binding.targetEnvironmentName) ||
@@ -1064,6 +934,7 @@ function assertClaudeCommand(command, input) {
     if (
       !SAFE_ENV.test(name) ||
       typeof value !== "string" ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Plain environment values reject NUL and newlines to prevent environment injection.
       /[\u0000\r\n]/u.test(value) ||
       targets.has(name)
     ) {
@@ -1082,9 +953,7 @@ function versionAtLeast(actual, minimum) {
 }
 
 function asRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value
-    : null;
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
 }
 
 async function executeClaude(command) {
@@ -1102,9 +971,7 @@ async function executeClaude(command) {
   });
   const match = /(\d+)\.(\d+)\.(\d+)/u.exec(version.stdout.toString("utf8"));
   const actualVersion =
-    match === null
-      ? null
-      : [Number(match[1]), Number(match[2]), Number(match[3])];
+    match === null ? null : [Number(match[1]), Number(match[2]), Number(match[3])];
   if (
     actualVersion === null ||
     actualVersion.some((part) => !Number.isSafeInteger(part)) ||
@@ -1117,8 +984,7 @@ async function executeClaude(command) {
     ...command.environment,
   };
   for (const binding of command.secretReferences) {
-    childEnvironment[binding.targetEnvironmentName] =
-      process.env[binding.targetEnvironmentName];
+    childEnvironment[binding.targetEnvironmentName] = process.env[binding.targetEnvironmentName];
   }
   const stderrHash = createHash("sha256");
   let stderrBytes = 0;
@@ -1159,15 +1025,11 @@ async function executeClaude(command) {
         const item = asRecord(plugin);
         return item?.name === "dark-factory";
       });
-      const errors = Array.isArray(record.plugin_errors)
-        ? record.plugin_errors
-        : [];
+      const errors = Array.isArray(record.plugin_errors) ? record.plugin_errors : [];
       summary.pluginErrors.push(
         ...errors.map((error) => {
           const item = asRecord(error);
-          return `dark-factory-plugin-${
-            typeof item?.type === "string" ? item.type : "unknown"
-          }`;
+          return `dark-factory-plugin-${typeof item?.type === "string" ? item.type : "unknown"}`;
         }),
       );
     }
@@ -1186,9 +1048,7 @@ async function executeClaude(command) {
       summary.result = record.is_error === true ? "failed" : "completed";
       if (Array.isArray(record.plugin_errors)) {
         summary.pluginErrors.push(
-          ...record.plugin_errors
-            .filter((item) => typeof item === "string")
-            .map(String),
+          ...record.plugin_errors.filter((item) => typeof item === "string").map(String),
         );
       }
     }
@@ -1227,9 +1087,7 @@ async function executeClaude(command) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     stderrBytes += bytes.byteLength;
     if (stderrBytes > MAX_STDERR_BYTES) {
-      parseFailure = new OptimizerWorkerError(
-        "Claude stderr exceeds its bound.",
-      );
+      parseFailure = new OptimizerWorkerError("Claude stderr exceeds its bound.");
       child.kill("SIGKILL");
       return;
     }
@@ -1332,10 +1190,7 @@ async function singleEnvelope(root, campaign, kind) {
     reject("Optimizer submission directory escaped its root.");
   }
   const files = await readdir(directory);
-  if (
-    files.length !== 1 ||
-    !/^[A-Za-z0-9._:-]+\.json$/u.test(files[0])
-  ) {
+  if (files.length !== 1 || !/^[A-Za-z0-9._:-]+\.json$/u.test(files[0])) {
     reject(`Optimizer requires exactly one ${kind} submission.`);
   }
   const { parsed } = await readJson(join(directory, files[0]));
@@ -1346,13 +1201,7 @@ async function singleEnvelope(root, campaign, kind) {
   );
   exactKeys(
     parsed.receipt,
-    [
-      "receiptId",
-      "kind",
-      "campaignId",
-      "payloadHash",
-      "createdAt",
-    ],
+    ["receiptId", "kind", "campaignId", "payloadHash", "createdAt"],
     `${kind} submission receipt`,
   );
   if (
@@ -1361,8 +1210,7 @@ async function singleEnvelope(root, campaign, kind) {
     parsed.receipt.campaignId !== campaign ||
     !SAFE_RECEIPT.test(parsed.receipt.receiptId) ||
     !SHA256.test(parsed.receipt.payloadHash) ||
-    parsed.receipt.payloadHash !==
-      sha256(JSON.stringify(parsed.payload)) ||
+    parsed.receipt.payloadHash !== sha256(JSON.stringify(parsed.payload)) ||
     !SHA256.test(parsed.projectDigest) ||
     !Number.isFinite(Date.parse(parsed.receipt.createdAt))
   ) {
@@ -1407,21 +1255,10 @@ function parseHypothesis(envelope) {
     "Hypothesis fresh prediction",
   );
   strings(payload.citedCardIds, 0, 8, "Hypothesis card citations");
-  strings(
-    payload.affectedComponents,
-    1,
-    4,
-    "Hypothesis affected components",
-  );
-  strings(
-    payload.falsificationCriteria,
-    1,
-    8,
-    "Hypothesis falsification criteria",
-  );
+  strings(payload.affectedComponents, 1, 4, "Hypothesis affected components");
+  strings(payload.falsificationCriteria, 1, 8, "Hypothesis falsification criteria");
   if (
-    (payload.sourceBriefHash !== null &&
-      !SHA256.test(payload.sourceBriefHash)) ||
+    (payload.sourceBriefHash !== null && !SHA256.test(payload.sourceBriefHash)) ||
     [
       payload.observedPattern,
       payload.causalClaim,
@@ -1453,20 +1290,10 @@ function parseCandidate(envelope, hypothesisReceiptId) {
   const payload = envelope.payload;
   exactKeys(
     payload,
-    [
-      "hypothesisReceiptId",
-      "mutationCategory",
-      "changedComponents",
-      "summary",
-    ],
+    ["hypothesisReceiptId", "mutationCategory", "changedComponents", "summary"],
     "Candidate payload",
   );
-  strings(
-    payload.changedComponents,
-    1,
-    4,
-    "Candidate changed components",
-  );
+  strings(payload.changedComponents, 1, 4, "Candidate changed components");
   if (
     payload.hypothesisReceiptId !== hypothesisReceiptId ||
     typeof payload.mutationCategory !== "string" ||
@@ -1481,11 +1308,7 @@ function parseCandidate(envelope, hypothesisReceiptId) {
 }
 
 async function readSessionState(pluginDataRoot, projectRoot, campaign) {
-  const path = join(
-    pluginDataRoot,
-    "sessions",
-    `${sha256(projectRoot)}.json`,
-  );
+  const path = join(pluginDataRoot, "sessions", `${sha256(projectRoot)}.json`);
   const { parsed } = await readJson(path);
   exactKeys(
     parsed,
@@ -1529,8 +1352,7 @@ function addedDiffLines(diff) {
       file = rawLine.slice(6);
       continue;
     }
-    const hunk =
-      /^@@ -\d+(?:,\d+)? \+(?<start>\d+)(?:,\d+)? @@/u.exec(rawLine);
+    const hunk = /^@@ -\d+(?:,\d+)? \+(?<start>\d+)(?:,\d+)? @@/u.exec(rawLine);
     if (hunk?.groups?.start) {
       targetLine = Number.parseInt(hunk.groups.start, 10);
       continue;
@@ -1553,11 +1375,10 @@ function scanDiff(changedFiles, diff, addedLines, deletedLines) {
       file === ".." ||
       file.startsWith("../") ||
       file.includes("/../") ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Candidate paths are untrusted and must reject every ASCII control byte.
       /[\u0000-\u001f\u007f]/u.test(file) ||
       !INTEGRITY_POLICY.allowedRoots.some((root) => file.startsWith(root)) ||
-      !INTEGRITY_POLICY.allowedFileExtensions.some((extension) =>
-        file.endsWith(extension)
-      ) ||
+      !INTEGRITY_POLICY.allowedFileExtensions.some((extension) => file.endsWith(extension)) ||
       PROTECTED_PATHS.some((pattern) => pattern.test(file))
     ) {
       violations.push("PROTECTED_PATH");
@@ -1586,19 +1407,14 @@ function scanDiff(changedFiles, diff, addedLines, deletedLines) {
       violations.push("ENVIRONMENT_FINGERPRINT_ROUTING");
     }
     for (const match of content.matchAll(QUOTED_LITERAL)) {
-      if (
-        (match.groups?.literal ?? "").length >
-        INTEGRITY_POLICY.maximumLiteralLength
-      ) {
+      if ((match.groups?.literal ?? "").length > INTEGRITY_POLICY.maximumLiteralLength) {
         violations.push("LARGE_CONSTANT");
       }
     }
   }
   if (violations.length > 0) {
     reject(
-      `Candidate failed generic integrity scan (${[
-        ...new Set(violations),
-      ].sort().join(",")}).`,
+      `Candidate failed generic integrity scan (${[...new Set(violations)].sort().join(",")}).`,
     );
   }
 }
@@ -1608,38 +1424,26 @@ function parseNumstat(buffer) {
   let addedLines = 0;
   let deletedLines = 0;
   for (const entry of entries) {
-    const match = /^(?<added>\d+|-)\t(?<deleted>\d+|-)\t(?<path>.+)$/u.exec(
-      entry,
-    );
-    if (
-      match?.groups === undefined ||
-      match.groups.added === "-" ||
-      match.groups.deleted === "-"
-    ) {
+    const match = /^(?<added>\d+|-)\t(?<deleted>\d+|-)\t(?<path>.+)$/u.exec(entry);
+    if (match?.groups === undefined || match.groups.added === "-" || match.groups.deleted === "-") {
       reject("Binary candidate changes are not allowed.");
     }
     addedLines += Number.parseInt(match.groups.added, 10);
     deletedLines += Number.parseInt(match.groups.deleted, 10);
   }
-  if (
-    !Number.isSafeInteger(addedLines) ||
-    !Number.isSafeInteger(deletedLines)
-  ) {
+  if (!Number.isSafeInteger(addedLines) || !Number.isSafeInteger(deletedLines)) {
     reject("Candidate line accounting overflowed.");
   }
   return { addedLines, deletedLines };
 }
 
 function assertIndexModes(context) {
-  const entries = git(context, ["ls-files", "--stage", "-z"]).stdout
-    .toString("utf8")
+  const entries = git(context, ["ls-files", "--stage", "-z"])
+    .stdout.toString("utf8")
     .split("\0")
     .filter(Boolean);
   for (const entry of entries) {
-    const match =
-      /^(?<mode>\d{6}) (?<object>[a-f0-9]{40,64}) (?<stage>[0-3])\t/u.exec(
-        entry,
-      );
+    const match = /^(?<mode>\d{6}) (?<object>[a-f0-9]{40,64}) (?<stage>[0-3])\t/u.exec(entry);
     if (
       match?.groups === undefined ||
       !REGULAR_TREE_MODES.has(match.groups.mode) ||
@@ -1739,25 +1543,18 @@ async function sealProposal(input) {
     state.hypothesisSubmitted !== true ||
     state.candidateStaged !== true ||
     state.analysisSubmitted !== false ||
-    state.hypothesisReceiptId !==
-      hypothesisEnvelope.receipt.receiptId ||
+    state.hypothesisReceiptId !== hypothesisEnvelope.receipt.receiptId ||
     state.candidateReceiptId !== candidateEnvelope.receipt.receiptId
   ) {
     reject("Proposal session did not produce exactly one staged candidate.");
   }
   const hypothesis = parseHypothesis(hypothesisEnvelope);
-  const candidatePayload = parseCandidate(
-    candidateEnvelope,
-    hypothesisEnvelope.receipt.receiptId,
-  );
+  const candidatePayload = parseCandidate(candidateEnvelope, hypothesisEnvelope.receipt.receiptId);
   const home = await mkdtemp(join(tmpdir(), "df-seal-home-"));
   const context = { repository: input["project-root"], home };
   try {
     const head = text(git(context, ["rev-parse", "HEAD^{commit}"]).stdout);
-    if (
-      head !== input["source-commit"] ||
-      text(git(context, ["remote"]).stdout) !== ""
-    ) {
+    if (head !== input["source-commit"] || text(git(context, ["remote"]).stdout) !== "") {
       reject("Candidate workspace source changed or retained a remote.");
     }
     git(context, ["add", "--all", "--"]);
@@ -1771,14 +1568,11 @@ async function sealProposal(input) {
       "-z",
       "--diff-filter=ACDMRTUXB",
       "--",
-    ]).stdout
-      .toString("utf8")
+    ])
+      .stdout.toString("utf8")
       .split("\0")
       .filter(Boolean);
-    if (
-      changedFiles.length < 1 ||
-      new Set(changedFiles).size !== changedFiles.length
-    ) {
+    if (changedFiles.length < 1 || new Set(changedFiles).size !== changedFiles.length) {
       reject("Candidate must contain one unique non-empty change set.");
     }
     const diffBuffer = git(context, [
@@ -1795,14 +1589,7 @@ async function sealProposal(input) {
     }
     const diff = diffBuffer.toString("utf8");
     const { addedLines, deletedLines } = parseNumstat(
-      git(context, [
-        "diff",
-        "--cached",
-        "--no-renames",
-        "--numstat",
-        "-z",
-        "--",
-      ]).stdout,
+      git(context, ["diff", "--cached", "--no-renames", "--numstat", "-z", "--"]).stdout,
     );
     scanDiff(changedFiles, diff, addedLines, deletedLines);
     const tree = text(git(context, ["write-tree"]).stdout);
@@ -1813,26 +1600,21 @@ async function sealProposal(input) {
       reject("Candidate changed the frozen package lock.");
     }
     const timestamp = new Date(
-      Date.UTC(2000, 0, 1) +
-        Number(input["experiment-number"]) * 1000,
+      Date.UTC(2000, 0, 1) + Number(input["experiment-number"]) * 1000,
     ).toISOString();
     const message = `Dark Factory candidate ${input.experiment}\n`;
     const commit = text(
-      git(
-        context,
-        ["commit-tree", tree, "-p", input["source-commit"]],
-        {
-          input: Buffer.from(message, "utf8"),
-          env: {
-            GIT_AUTHOR_NAME: "Dark Factory",
-            GIT_AUTHOR_EMAIL: "dark-factory@invalid",
-            GIT_AUTHOR_DATE: timestamp,
-            GIT_COMMITTER_NAME: "Dark Factory",
-            GIT_COMMITTER_EMAIL: "dark-factory@invalid",
-            GIT_COMMITTER_DATE: timestamp,
-          },
+      git(context, ["commit-tree", tree, "-p", input["source-commit"]], {
+        input: Buffer.from(message, "utf8"),
+        env: {
+          GIT_AUTHOR_NAME: "Dark Factory",
+          GIT_AUTHOR_EMAIL: "dark-factory@invalid",
+          GIT_AUTHOR_DATE: timestamp,
+          GIT_COMMITTER_NAME: "Dark Factory",
+          GIT_COMMITTER_EMAIL: "dark-factory@invalid",
+          GIT_COMMITTER_DATE: timestamp,
         },
-      ).stdout,
+      }).stdout,
     );
     if (!OBJECT_ID.test(commit) || commit === input["source-commit"]) {
       reject("Candidate commit is invalid.");
@@ -1914,9 +1696,7 @@ function parseAnalysis(envelope, state) {
     payload.hypothesisReceiptId !== state.hypothesisReceiptId ||
     payload.candidateReceiptId !== state.candidateReceiptId ||
     payload.resultHash !== state.currentResultHash ||
-    !new Set(["supported", "not-supported", "inconclusive"]).has(
-      payload.support,
-    ) ||
+    !new Set(["supported", "not-supported", "inconclusive"]).has(payload.support) ||
     typeof payload.expectedVersusObserved !== "string" ||
     payload.expectedVersusObserved.length < 20 ||
     typeof payload.nextDirection !== "string" ||
@@ -1973,16 +1753,9 @@ async function sealAnalysis(input) {
   const context = { repository: input["project-root"], home };
   try {
     if (
-      text(git(context, ["rev-parse", "HEAD^{commit}"]).stdout) !==
-        input["candidate-commit"] ||
+      text(git(context, ["rev-parse", "HEAD^{commit}"]).stdout) !== input["candidate-commit"] ||
       text(git(context, ["remote"]).stdout) !== "" ||
-      text(
-        git(context, [
-          "status",
-          "--porcelain=v1",
-          "--untracked-files=all",
-        ]).stdout,
-      ) !== ""
+      text(git(context, ["status", "--porcelain=v1", "--untracked-files=all"]).stdout) !== ""
     ) {
       reject("Analysis workspace changed the sealed candidate.");
     }

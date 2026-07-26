@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import type { TrustedArtifactBridge } from "../../src/cloud/artifact-bridge.js";
 import {
+  type DaytonaClient,
   DaytonaCloudProviderTransport,
+  type DaytonaSdkFactory,
   encodePosixCommand,
   quotePosixArgument,
-  type DaytonaClient,
-  type DaytonaSdkFactory,
 } from "../../src/cloud/adapters/daytona-transport.js";
+import type { TrustedArtifactBridge } from "../../src/cloud/artifact-bridge.js";
 import type {
   ProviderConfiguration,
   RemoteCommandSpec,
@@ -19,9 +19,7 @@ function digest(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function collect(
-  chunks: AsyncIterable<Uint8Array>,
-): Promise<Buffer> {
+async function collect(chunks: AsyncIterable<Uint8Array>): Promise<Buffer> {
   const result: Uint8Array[] = [];
   for await (const chunk of chunks) result.push(chunk);
   return Buffer.concat(result);
@@ -35,9 +33,7 @@ class ArtifactBridge implements TrustedArtifactBridge {
     this.guardCalls += 1;
   }
 
-  openVerified(
-    artifact: TrustedCloudArtifactRef,
-  ): Promise<AsyncIterable<Uint8Array>> {
+  openVerified(artifact: TrustedCloudArtifactRef): Promise<AsyncIterable<Uint8Array>> {
     const value = this.values.get(artifact.uri);
     if (
       value === undefined ||
@@ -178,10 +174,11 @@ class Sandbox {
     getSessionCommandLogs: (): Promise<{
       readonly stdout: string;
       readonly stderr: string;
-    }> => Promise.resolve({
-      stdout: "private raw stdout",
-      stderr: "private raw stderr",
-    }),
+    }> =>
+      Promise.resolve({
+        stdout: "private raw stdout",
+        stderr: "private raw stderr",
+      }),
   };
 
   refreshData(): Promise<void> {
@@ -223,9 +220,7 @@ class Client implements DaytonaClient {
   parameters?: Parameters<DaytonaClient["create"]>[0];
   sandbox?: Sandbox;
 
-  create(
-    parameters: Parameters<DaytonaClient["create"]>[0],
-  ): Promise<Sandbox> {
+  create(parameters: Parameters<DaytonaClient["create"]>[0]): Promise<Sandbox> {
     this.parameters = parameters;
     this.sandbox = new Sandbox(parameters);
     return Promise.resolve(this.sandbox);
@@ -318,9 +313,7 @@ describe("Daytona POSIX argv encoding", () => {
   it("single-quotes empty values, metacharacters, substitutions, and embedded quotes", () => {
     expect(quotePosixArgument("")).toBe("''");
     expect(quotePosixArgument("a'b")).toBe("'a'\"'\"'b'");
-    expect(
-      encodePosixCommand(command()),
-    ).toBe(
+    expect(encodePosixCommand(command())).toBe(
       "cd '/workspace' && exec '/usr/bin/env' 'SAFE_VALUE=literal $(touch /tmp/also-not-run); `id`' '/usr/bin/node' 'worker.js' 'a'\"'\"'; touch /tmp/pwn; #'",
     );
   });
@@ -349,9 +342,7 @@ describe("Daytona cloud provider transport", () => {
         ANTHROPIC_API_KEY: "DAYTONA_ANTHROPIC_SECRET",
       },
     });
-    expect(JSON.stringify(factory.client.parameters)).not.toContain(
-      "actual-secret-value",
-    );
+    expect(JSON.stringify(factory.client.parameters)).not.toContain("actual-secret-value");
     expect(factory.client.sandbox?.environmentUpdates).toContainEqual({
       DAYTONA_SANDBOX_ID: "sandbox-daytona-1",
       DF_CLOUD_EXECUTION: "1",
@@ -403,15 +394,9 @@ describe("Daytona cloud provider transport", () => {
     const { bridge, factory, transport } = transportFixture();
     const lease = await transport.create(configuration, createRequest());
 
-    const receipt = await transport.execute(
-      configuration,
-      lease,
-      command(),
-    );
+    const receipt = await transport.execute(configuration, lease, command());
 
-    expect(factory.client.sandbox?.encodedCommand).toContain(
-      "'a'\"'\"'; touch /tmp/pwn; #'",
-    );
+    expect(factory.client.sandbox?.encodedCommand).toContain("'a'\"'\"'; touch /tmp/pwn; #'");
     expect(factory.client.sandbox?.secretUpdates).toEqual([
       {
         ANTHROPIC_API_KEY: "DAYTONA_ANTHROPIC_SECRET",
@@ -435,9 +420,7 @@ describe("Daytona cloud provider transport", () => {
     });
     expect(JSON.stringify(receipt)).not.toContain("private raw stdout");
     expect(
-      [...bridge.values.values()].some(
-        (value) => value.toString("utf8") === "private raw stdout",
-      ),
+      [...bridge.values.values()].some((value) => value.toString("utf8") === "private raw stdout"),
     ).toBe(true);
   });
 
@@ -446,30 +429,20 @@ describe("Daytona cloud provider transport", () => {
     const lease = await transport.create(configuration, createRequest());
 
     await expect(
-      transport.download(
-        configuration,
-        lease,
-        "/workspace/result.json",
-        {
-          mediaType: "application/json",
-          maximumByteLength: 8,
-        },
-      ),
+      transport.download(configuration, lease, "/workspace/result.json", {
+        mediaType: "application/json",
+        maximumByteLength: 8,
+      }),
     ).resolves.toMatchObject({
       mediaType: "application/json",
       byteLength: 8,
     });
 
     await expect(
-      transport.download(
-        configuration,
-        lease,
-        "/workspace/oversized.json",
-        {
-          mediaType: "application/json",
-          maximumByteLength: 7,
-        },
-      ),
+      transport.download(configuration, lease, "/workspace/oversized.json", {
+        mediaType: "application/json",
+        maximumByteLength: 7,
+      }),
     ).rejects.toThrow(/integrity validation/u);
   });
 
@@ -486,11 +459,7 @@ describe("Daytona cloud provider transport", () => {
       command({ executionId: "execution-cancel-1" }),
     );
     while (!sandbox.launched) await Promise.resolve();
-    await transport.cancel(
-      configuration,
-      lease,
-      "execution-cancel-1",
-    );
+    await transport.cancel(configuration, lease, "execution-cancel-1");
 
     await expect(pendingReceipt).resolves.toMatchObject({
       executionId: "execution-cancel-1",

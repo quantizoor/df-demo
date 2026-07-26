@@ -1,59 +1,36 @@
 import { generateKeyPairSync } from "node:crypto";
 
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-
-import {
-  MountedVolumeAtomicExperimentJournalStateStore,
-} from "../../src/cloud/mounted-volume-experiment-journal.js";
-import {
-  MountedVolumeOptimizationCoordinationPorts,
-} from "../../src/cloud/mounted-volume-optimization-coordination.js";
-import {
-  ProductionTrustedCloudRuntimeFactory,
-  ProductionTrustedCloudRuntimeFactoryError,
-  type ProductionRuntimeFactoryDependencyAttestation,
-  type ProductionTrustedCloudRuntimeFactoryOptions,
-} from "../../src/cloud/production-optimize-runtime-factory.js";
-import {
-  MountedVolumeBehavioralPreparationStore,
-} from "../../src/cloud/mounted-volume-behavioral-preparation-store.js";
-import {
-  MountedVolumeBehavioralPrivacyArtifactStore,
-} from "../../src/cloud/mounted-volume-behavioral-privacy-store.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MountedVolumeBehavioralPreparationStore } from "../../src/cloud/mounted-volume-behavioral-preparation-store.js";
+import { MountedVolumeBehavioralPrivacyArtifactStore } from "../../src/cloud/mounted-volume-behavioral-privacy-store.js";
+import { MountedVolumeAtomicExperimentJournalStateStore } from "../../src/cloud/mounted-volume-experiment-journal.js";
+import { MountedVolumeOptimizationCoordinationPorts } from "../../src/cloud/mounted-volume-optimization-coordination.js";
 import type {
   ProductionOptimizeBootstrapOrReconstructReceipt,
   ProductionOptimizeLifecycleRegistrar,
   ProductionOptimizeRuntimeFactoryInput,
   TrustedProductionOptimizeCloseable,
 } from "../../src/cloud/production-optimize-composition-owner.js";
-import type {
-  CloudSandboxProvider,
-  TrustedCloudArtifactRef,
-} from "../../src/cloud/types.js";
-import type {
-  RepositoryRegistration,
-} from "../../src/harness/repository.js";
+import {
+  type ProductionRuntimeFactoryDependencyAttestation,
+  ProductionTrustedCloudRuntimeFactory,
+  ProductionTrustedCloudRuntimeFactoryError,
+  type ProductionTrustedCloudRuntimeFactoryOptions,
+} from "../../src/cloud/production-optimize-runtime-factory.js";
+import type { CloudSandboxProvider, TrustedCloudArtifactRef } from "../../src/cloud/types.js";
+import type { RepositoryRegistration } from "../../src/harness/repository.js";
 import {
   PRODUCTION_RUNTIME_PORT_IDS,
-  productionRuntimePortBindingsHash,
   type ProductionCompositionVerification,
   type ProductionOptimizationCompositionManifest,
   type ProductionRuntimeComponentManifest,
   type ProductionRuntimeRole,
+  productionRuntimePortBindingsHash,
 } from "../../src/orchestrator/production-runtime.js";
+import { canonicalHash, canonicalJson } from "../../src/schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-} from "../../src/schemas/canonical.js";
-import {
-  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
   createPiHarborAgentSpec,
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
 } from "../../src/terminal-bench/pi-agent.js";
 
 const NOW = new Date("2026-07-26T12:00:00.000Z");
@@ -62,8 +39,7 @@ const IMAGE_DIGEST = `sha256:${"c".repeat(64)}` as const;
 const keys = generateKeyPairSync("ed25519");
 const releaseInspectionPolicyBody = {
   schemaVersion: 1 as const,
-  domain:
-    "dark-factory.optimizer-release-artifact-inspection-policy.v1" as const,
+  domain: "dark-factory.optimizer-release-artifact-inspection-policy.v1" as const,
   evaluatorPolicyHash: "7".repeat(64),
   allowedReleasePaths: ["release.json"] as readonly string[],
   forbiddenContentFingerprints: [] as readonly string[],
@@ -74,9 +50,7 @@ const releaseInspectionPolicy = {
   policyHash: canonicalHash(releaseInspectionPolicyBody),
 };
 
-const unreachable = async (
-  ..._arguments: unknown[]
-): Promise<never> => {
+const unreachable = async (..._arguments: unknown[]): Promise<never> => {
   throw new Error("Fixture authority must not be invoked.");
 };
 
@@ -98,15 +72,12 @@ function artifact(
   };
 }
 
-function component(
-  role: ProductionRuntimeRole,
-): ProductionRuntimeComponentManifest {
+function component(role: ProductionRuntimeRole): ProductionRuntimeComponentManifest {
   return {
     role,
     boundary: "trusted-cloud",
     componentId: `df-${role}`,
-    imageReference:
-      `ghcr.io/parallaxai/df-${role}@${IMAGE_DIGEST}`,
+    imageReference: `ghcr.io/parallaxai/df-${role}@${IMAGE_DIGEST}`,
     imageDigest: IMAGE_DIGEST,
     sourceArtifactHash: "d".repeat(64),
     configurationHash: "e".repeat(64),
@@ -114,18 +85,16 @@ function component(
 }
 
 function manifest(): ProductionOptimizationCompositionManifest {
-  const runtimePortAttestations =
-    PRODUCTION_RUNTIME_PORT_IDS.map((portId) => ({
+  const runtimePortAttestations = PRODUCTION_RUNTIME_PORT_IDS.map((portId) => ({
+    portId,
+    attestationSha256: canonicalHash({
+      domain: "test.production-runtime-port.v1",
       portId,
-      attestationSha256: canonicalHash({
-        domain: "test.production-runtime-port.v1",
-        portId,
-      }),
-    }));
+    }),
+  }));
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimization-composition.v1" as const,
+    domain: "dark-factory.production-optimization-composition.v1" as const,
     manifestId: "production-001",
     campaignId: "campaign-001",
     lineageId: "lineage-001",
@@ -178,8 +147,7 @@ function replaceManifest(
   value: ProductionOptimizationCompositionManifest,
   replacements: {
     readonly components?: ProductionOptimizationCompositionManifest["components"];
-    readonly runtimePortAttestations?:
-      ProductionOptimizationCompositionManifest["runtimePortAttestations"];
+    readonly runtimePortAttestations?: ProductionOptimizationCompositionManifest["runtimePortAttestations"];
   },
 ): ProductionOptimizationCompositionManifest {
   const unsigned = {
@@ -190,15 +158,11 @@ function replaceManifest(
     lineageId: value.lineageId,
     protocolHash: value.protocolHash,
     deployment: value.deployment,
-    components:
-      replacements.components ?? value.components,
-    runtimePortAttestations:
-      replacements.runtimePortAttestations ??
-      value.runtimePortAttestations,
+    components: replacements.components ?? value.components,
+    runtimePortAttestations: replacements.runtimePortAttestations ?? value.runtimePortAttestations,
     bindings: value.bindings,
     informationBoundary: value.informationBoundary,
-    maximumExperimentsPerInvocation:
-      value.maximumExperimentsPerInvocation,
+    maximumExperimentsPerInvocation: value.maximumExperimentsPerInvocation,
     issuedAt: value.issuedAt,
     expiresAt: value.expiresAt,
   };
@@ -214,10 +178,8 @@ function dependencyAttestation(
 ): ProductionRuntimeFactoryDependencyAttestation {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-runtime-factory-dependencies.v1" as const,
-    boundary:
-      "trusted-cloud-production-runtime-dependency-attestation" as const,
+    domain: "dark-factory.production-runtime-factory-dependencies.v1" as const,
+    boundary: "trusted-cloud-production-runtime-dependency-attestation" as const,
     manifestHash: value.manifestHash,
     componentManifestHashes: {
       control: canonicalHash(value.components.control),
@@ -226,9 +188,7 @@ function dependencyAttestation(
       evaluator: canonicalHash(value.components.evaluator),
     },
     operationalBindingsHash: canonicalHash(value.bindings),
-    runtimePortBindingsHash: productionRuntimePortBindingsHash(
-      value.runtimePortAttestations,
-    ),
+    runtimePortBindingsHash: productionRuntimePortBindingsHash(value.runtimePortAttestations),
     runtimePortAttestations: value.runtimePortAttestations,
     containsTaskIdentifiers: false as const,
   };
@@ -298,10 +258,7 @@ function evaluatorDependencies() {
   const privateKeys = {
     boundary: "trusted-cloud" as const,
     resolve: async (input: {
-      readonly purpose:
-        | "hidden-catalog-outcome-update"
-        | "result-envelope"
-        | "behavioral-release";
+      readonly purpose: "hidden-catalog-outcome-update" | "result-envelope" | "behavioral-release";
       readonly keyId: string;
     }) => ({
       boundary: "trusted-cloud-key-material" as const,
@@ -315,10 +272,7 @@ function evaluatorDependencies() {
   const publicKeys = {
     boundary: "trusted-cloud" as const,
     resolve: async (input: {
-      readonly purpose:
-        | "hidden-catalog-outcome-update"
-        | "result-envelope"
-        | "behavioral-release";
+      readonly purpose: "hidden-catalog-outcome-update" | "result-envelope" | "behavioral-release";
       readonly keyId: string;
     }) => ({
       boundary: "trusted-cloud-key-material" as const,
@@ -359,8 +313,7 @@ function evaluatorDependencies() {
       pin,
       sandbox: {
         requestId: "evaluation-template",
-        imageReference:
-          `ghcr.io/parallaxai/df-evaluator@sha256:${"8".repeat(64)}`,
+        imageReference: `ghcr.io/parallaxai/df-evaluator@sha256:${"8".repeat(64)}`,
         imageDigest: `sha256:${"8".repeat(64)}`,
         regionClass: "eu-standard",
         resources: {
@@ -374,10 +327,7 @@ function evaluatorDependencies() {
           allowDomains: ["api.openai.com"],
         },
         lifetimeMs: 3_600_000,
-        secretReferences: [
-          ...harborSecretReferences,
-          ...modelSecretReferences,
-        ],
+        secretReferences: [...harborSecretReferences, ...modelSecretReferences],
       },
       harborExecutable: "/opt/harbor/bin/harbor",
       harborWorkingDirectory: "/workspace/evaluator",
@@ -432,8 +382,7 @@ function evaluatorDependencies() {
       custodian: { destroy: unreachable },
       hiddenOutcomeSink: { commit: unreachable },
       onlineErrorAuthority: {
-        boundary:
-          "trusted-cloud-online-error-authority" as const,
+        boundary: "trusted-cloud-online-error-authority" as const,
         reserve: unreachable,
         reconcile: unreachable,
       },
@@ -492,16 +441,13 @@ function options(
   return {
     attestation: dependencyAttestation(signedManifest),
     attestationAuthority: {
-      boundary:
-        "trusted-cloud-production-runtime-dependency-attestation-authority",
+      boundary: "trusted-cloud-production-runtime-dependency-attestation-authority",
       verify: async (input) => ({
         schemaVersion: 1,
-        domain:
-          "dark-factory.production-runtime-factory-dependency-verification.v1",
+        domain: "dark-factory.production-runtime-factory-dependency-verification.v1",
         attestationHash: input.attestation.attestationHash,
         manifestHash: input.manifestHash,
-        compositionVerifierAttestationHash:
-          input.compositionVerifierAttestationHash,
+        compositionVerifierAttestationHash: input.compositionVerifierAttestationHash,
         verified: true,
         authorityAttestationHash: "e".repeat(64),
       }),
@@ -603,10 +549,8 @@ function options(
       session: {
         provider: provider(),
         sandbox: {
-          imageReference:
-            signedManifest.components.optimizer.imageReference,
-          imageDigest:
-            signedManifest.components.optimizer.imageDigest,
+          imageReference: signedManifest.components.optimizer.imageReference,
+          imageDigest: signedManifest.components.optimizer.imageDigest,
           regionClass: "eu-standard",
           resources: {
             architecture: "x86_64",
@@ -614,22 +558,11 @@ function options(
             memoryMiB: 8_192,
             diskMiB: 32_000,
           },
-          networkAllowDomains: [
-            "github.com",
-            "df-eu-prod.services.ai.azure.com",
-          ],
+          networkAllowDomains: ["github.com", "df-eu-prod.services.ai.azure.com"],
           lifetimeMs: 3_600_000,
         },
-        workerArtifact: artifact(
-          "optimizer-worker",
-          "7".repeat(64),
-          "text/javascript",
-        ),
-        pluginArtifact: artifact(
-          "optimizer-plugin",
-          PLUGIN_HASH,
-          "application/x-tar",
-        ),
+        workerArtifact: artifact("optimizer-worker", "7".repeat(64), "text/javascript"),
+        pluginArtifact: artifact("optimizer-plugin", PLUGIN_HASH, "application/x-tar"),
         artifactReader: {
           readUtf8: unreachable,
         },
@@ -659,22 +592,19 @@ function options(
         ),
         evidenceSource: {
           boundary: "trusted-cloud",
-          locate: async () => undefined,
+          locate: async () => [],
         },
         artifactReader: {
           boundary: "trusted-cloud",
           readUtf8: unreachable,
         },
         releaseArtifactReader: {
-          boundary:
-            "trusted-cloud-optimizer-release-artifact-reader",
+          boundary: "trusted-cloud-optimizer-release-artifact-reader",
           readBytes: unreachable,
         },
-        releaseArtifactInspectionPolicy:
-          releaseInspectionPolicy,
+        releaseArtifactInspectionPolicy: releaseInspectionPolicy,
         keyAuthority: {
-          boundary:
-            "trusted-cloud-optimizer-resolver-public-key-authority",
+          boundary: "trusted-cloud-optimizer-resolver-public-key-authority",
           resolve: async () => undefined,
         },
         authoritySetHash: "9".repeat(64),
@@ -760,8 +690,7 @@ function options(
           readUtf8: unreachable,
         },
         signatureVerifier: {
-          boundary:
-            "trusted-cloud-evaluation-release-signature-verifier",
+          boundary: "trusted-cloud-evaluation-release-signature-verifier",
           verify: unreachable,
         },
       },
@@ -770,18 +699,12 @@ function options(
       },
     },
     operationalBindings: {
-      providerReadinessHash:
-        signedManifest.bindings.providerReadinessHash,
-      volumeSemanticsHash:
-        signedManifest.bindings.volumeSemanticsHash,
-      correctnessPolicyHash:
-        signedManifest.bindings.correctnessPolicyHash,
-      brokerPolicyHash:
-        signedManifest.bindings.brokerPolicyHash,
-      evaluatorPolicyHash:
-        signedManifest.bindings.evaluatorPolicyHash,
-      journalPolicyHash:
-        signedManifest.bindings.journalPolicyHash,
+      providerReadinessHash: signedManifest.bindings.providerReadinessHash,
+      volumeSemanticsHash: signedManifest.bindings.volumeSemanticsHash,
+      correctnessPolicyHash: signedManifest.bindings.correctnessPolicyHash,
+      brokerPolicyHash: signedManifest.bindings.brokerPolicyHash,
+      evaluatorPolicyHash: signedManifest.bindings.evaluatorPolicyHash,
+      journalPolicyHash: signedManifest.bindings.journalPolicyHash,
     },
     now: () => NOW,
   };
@@ -792,15 +715,12 @@ function verification(
 ): ProductionCompositionVerification {
   return {
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-composition-verification.v1",
+    domain: "dark-factory.production-composition-verification.v1",
     manifestHash: value.manifestHash,
     signingKeyId: value.signature.keyId,
     componentBindingsHash: canonicalHash(value.components),
     operationalBindingsHash: canonicalHash(value.bindings),
-    runtimePortBindingsHash: productionRuntimePortBindingsHash(
-      value.runtimePortAttestations,
-    ),
+    runtimePortBindingsHash: productionRuntimePortBindingsHash(value.runtimePortAttestations),
     verifierAttestationHash: "d".repeat(64),
     verified: true,
   };
@@ -811,36 +731,28 @@ function bootstrapReceipt(
 ): ProductionOptimizeBootstrapOrReconstructReceipt {
   const requestHash = canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1",
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1",
     manifestId: value.manifestId,
     manifestHash: value.manifestHash,
     campaignId: value.campaignId,
     lineageId: value.lineageId,
     protocolHash: value.protocolHash,
-    sourcePrerequisiteHash:
-      value.bindings.harnessRegistrationHash,
-    genesisPrerequisiteHash:
-      value.bindings.campaignGenesisHash,
-    catalogPrerequisiteHash:
-      value.bindings.hiddenCatalogGenesisHash,
+    sourcePrerequisiteHash: value.bindings.harnessRegistrationHash,
+    genesisPrerequisiteHash: value.bindings.campaignGenesisHash,
+    catalogPrerequisiteHash: value.bindings.hiddenCatalogGenesisHash,
   });
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" as const,
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" as const,
     requestHash,
     manifestHash: value.manifestHash,
     campaignId: value.campaignId,
     lineageId: value.lineageId,
     protocolHash: value.protocolHash,
     disposition: "reconstructed" as const,
-    sourcePrerequisiteHash:
-      value.bindings.harnessRegistrationHash,
-    genesisPrerequisiteHash:
-      value.bindings.campaignGenesisHash,
-    catalogPrerequisiteHash:
-      value.bindings.hiddenCatalogGenesisHash,
+    sourcePrerequisiteHash: value.bindings.harnessRegistrationHash,
+    genesisPrerequisiteHash: value.bindings.campaignGenesisHash,
+    catalogPrerequisiteHash: value.bindings.hiddenCatalogGenesisHash,
     campaignStateHash: "f".repeat(64),
     catalogStateHash: "0".repeat(64),
     prerequisitesVerified: true as const,
@@ -855,9 +767,7 @@ function bootstrapReceipt(
 
 function factoryInput(
   signedManifest: ProductionOptimizationCompositionManifest,
-  register: (
-    closeable: TrustedProductionOptimizeCloseable,
-  ) => void = () => {},
+  register: (closeable: TrustedProductionOptimizeCloseable) => void = () => {},
 ): ProductionOptimizeRuntimeFactoryInput {
   const lifecycle: ProductionOptimizeLifecycleRegistrar = {
     boundary: "production-optimize-composition-owner",
@@ -875,9 +785,7 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
   it("assembles frozen, reference-equal ports in the canonical order", async () => {
     const signedManifest = manifest();
     const registered: TrustedProductionOptimizeCloseable[] = [];
-    const factory = new ProductionTrustedCloudRuntimeFactory(
-      options(signedManifest),
-    );
+    const factory = new ProductionTrustedCloudRuntimeFactory(options(signedManifest));
     const result = await factory.create(
       factoryInput(signedManifest, (closeable) => {
         registered.push(closeable);
@@ -895,78 +803,55 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
       "gates",
       "broker",
     ]);
-    expect(
-      result.runtimePortBindings.campaignStore.implementation,
-    ).toBe(result.components.control.campaignStore);
-    expect(
-      result.runtimePortBindings.inputFactory.implementation,
-    ).toBe(result.components.control.inputFactory);
-    expect(
-      result.runtimePortBindings.resumeVerifier.implementation,
-    ).toBe(result.components.control.resumeVerifier);
-    expect(
-      result.runtimePortBindings.completionMaterial
-        .implementation,
-    ).toBe(result.components.control.completionMaterial);
-    expect(
-      result.runtimePortBindings.interruption.implementation,
-    ).toBe(result.components.control.interruption);
-    expect(
-      result.runtimePortBindings.journal.implementation,
-    ).toBe(result.components.control.journal);
-    expect(
-      result.runtimePortBindings.optimizer.implementation,
-    ).toBe(result.components.optimizer.adapter);
-    expect(
-      result.runtimePortBindings.gates.implementation,
-    ).toBe(result.components.build.gates);
-    expect(
-      result.runtimePortBindings.broker.implementation,
-    ).toBe(result.components.evaluator.broker);
+    expect(result.runtimePortBindings.campaignStore.implementation).toBe(
+      result.components.control.campaignStore,
+    );
+    expect(result.runtimePortBindings.inputFactory.implementation).toBe(
+      result.components.control.inputFactory,
+    );
+    expect(result.runtimePortBindings.resumeVerifier.implementation).toBe(
+      result.components.control.resumeVerifier,
+    );
+    expect(result.runtimePortBindings.completionMaterial.implementation).toBe(
+      result.components.control.completionMaterial,
+    );
+    expect(result.runtimePortBindings.interruption.implementation).toBe(
+      result.components.control.interruption,
+    );
+    expect(result.runtimePortBindings.journal.implementation).toBe(
+      result.components.control.journal,
+    );
+    expect(result.runtimePortBindings.optimizer.implementation).toBe(
+      result.components.optimizer.adapter,
+    );
+    expect(result.runtimePortBindings.gates.implementation).toBe(result.components.build.gates);
+    expect(result.runtimePortBindings.broker.implementation).toBe(
+      result.components.evaluator.broker,
+    );
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.components)).toBe(true);
     expect(Object.isFrozen(result.runtimePortBindings)).toBe(true);
-    expect(
-      Reflect.set(
-        result.runtimePortBindings.optimizer,
-        "implementation",
-        {},
-      ),
-    ).toBe(false);
-    expect(
-      result.runtimePortBindings.optimizer.implementation,
-    ).toBe(result.components.optimizer.adapter);
-    expect(new Set(registered.map((item) => item.lifecycleId)).size).toBe(
-      registered.length,
+    expect(Reflect.set(result.runtimePortBindings.optimizer, "implementation", {})).toBe(false);
+    expect(result.runtimePortBindings.optimizer.implementation).toBe(
+      result.components.optimizer.adapter,
     );
-    expect(
-      registered.some((item) =>
-        item.lifecycleId.startsWith(
-          "behavioral-preparation-",
-        ),
-      ),
-    ).toBe(true);
-    expect(
-      registered.some((item) =>
-        item.lifecycleId.startsWith("behavioral-privacy-"),
-      ),
-    ).toBe(true);
+    expect(new Set(registered.map((item) => item.lifecycleId)).size).toBe(registered.length);
+    expect(registered.some((item) => item.lifecycleId.startsWith("behavioral-preparation-"))).toBe(
+      true,
+    );
+    expect(registered.some((item) => item.lifecycleId.startsWith("behavioral-privacy-"))).toBe(
+      true,
+    );
   });
 
   it("closes both private evaluator stores if later release composition fails", async () => {
     const signedManifest = manifest();
     const configured = options(signedManifest);
     const preparationClose = vi
-      .spyOn(
-        MountedVolumeBehavioralPreparationStore.prototype,
-        "close",
-      )
+      .spyOn(MountedVolumeBehavioralPreparationStore.prototype, "close")
       .mockResolvedValue(undefined);
     const privacyClose = vi
-      .spyOn(
-        MountedVolumeBehavioralPrivacyArtifactStore.prototype,
-        "close",
-      )
+      .spyOn(MountedVolumeBehavioralPrivacyArtifactStore.prototype, "close")
       .mockResolvedValue(undefined);
     const malformed = {
       ...configured,
@@ -983,67 +868,50 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
     } as unknown as ProductionTrustedCloudRuntimeFactoryOptions;
 
     await expect(
-      new ProductionTrustedCloudRuntimeFactory(
-        malformed,
-      ).create(factoryInput(signedManifest)),
-    ).rejects.toBeInstanceOf(
-      ProductionTrustedCloudRuntimeFactoryError,
-    );
+      new ProductionTrustedCloudRuntimeFactory(malformed).create(factoryInput(signedManifest)),
+    ).rejects.toBeInstanceOf(ProductionTrustedCloudRuntimeFactoryError);
     expect(preparationClose).toHaveBeenCalledTimes(1);
     expect(privacyClose).toHaveBeenCalledTimes(1);
   });
 
   it("rejects independently detached component and port digests", async () => {
     const signedManifest = manifest();
-    const detachedDigest =
-      `sha256:${"f".repeat(64)}` as const;
-    const componentDetached = replaceManifest(
-      signedManifest,
-      {
-        components: {
-          ...signedManifest.components,
-          control: {
-            ...signedManifest.components.control,
-            imageReference:
-              `ghcr.io/parallaxai/df-control@${detachedDigest}`,
-            imageDigest: detachedDigest,
-          },
+    const detachedDigest = `sha256:${"f".repeat(64)}` as const;
+    const componentDetached = replaceManifest(signedManifest, {
+      components: {
+        ...signedManifest.components,
+        control: {
+          ...signedManifest.components.control,
+          imageReference: `ghcr.io/parallaxai/df-control@${detachedDigest}`,
+          imageDigest: detachedDigest,
         },
       },
-    );
-    await expect(
-      new ProductionTrustedCloudRuntimeFactory(
-        options(signedManifest),
-      ).create(factoryInput(componentDetached)),
-    ).rejects.toBeInstanceOf(
-      ProductionTrustedCloudRuntimeFactoryError,
-    );
-
-    const portDetached = replaceManifest(signedManifest, {
-      runtimePortAttestations:
-        signedManifest.runtimePortAttestations.map(
-          (entry, index) =>
-            index === 0
-              ? {
-                  portId:
-                    "control.campaign-state-store" as const,
-                  attestationSha256: "f".repeat(64),
-                }
-              : entry,
-        ),
     });
     await expect(
-      new ProductionTrustedCloudRuntimeFactory(
-        options(signedManifest),
-      ).create(factoryInput(portDetached)),
-    ).rejects.toBeInstanceOf(
-      ProductionTrustedCloudRuntimeFactoryError,
-    );
+      new ProductionTrustedCloudRuntimeFactory(options(signedManifest)).create(
+        factoryInput(componentDetached),
+      ),
+    ).rejects.toBeInstanceOf(ProductionTrustedCloudRuntimeFactoryError);
+
+    const portDetached = replaceManifest(signedManifest, {
+      runtimePortAttestations: signedManifest.runtimePortAttestations.map((entry, index) =>
+        index === 0
+          ? {
+              portId: "control.campaign-state-store" as const,
+              attestationSha256: "f".repeat(64),
+            }
+          : entry,
+      ),
+    });
+    await expect(
+      new ProductionTrustedCloudRuntimeFactory(options(signedManifest)).create(
+        factoryInput(portDetached),
+      ),
+    ).rejects.toBeInstanceOf(ProductionTrustedCloudRuntimeFactoryError);
 
     const configured = options(signedManifest);
     const detachedPolicyBody = {
-      ...configured.optimizer.resolver
-        .releaseArtifactInspectionPolicy,
+      ...configured.optimizer.resolver.releaseArtifactInspectionPolicy,
       evaluatorPolicyHash: "f".repeat(64),
     };
     const detachedPolicy = {
@@ -1051,14 +919,10 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
       policyHash: canonicalHash({
         schemaVersion: detachedPolicyBody.schemaVersion,
         domain: detachedPolicyBody.domain,
-        evaluatorPolicyHash:
-          detachedPolicyBody.evaluatorPolicyHash,
-        allowedReleasePaths:
-          detachedPolicyBody.allowedReleasePaths,
-        forbiddenContentFingerprints:
-          detachedPolicyBody.forbiddenContentFingerprints,
-        graderCanaryFingerprints:
-          detachedPolicyBody.graderCanaryFingerprints,
+        evaluatorPolicyHash: detachedPolicyBody.evaluatorPolicyHash,
+        allowedReleasePaths: detachedPolicyBody.allowedReleasePaths,
+        forbiddenContentFingerprints: detachedPolicyBody.forbiddenContentFingerprints,
+        graderCanaryFingerprints: detachedPolicyBody.graderCanaryFingerprints,
       }),
     };
     await expect(
@@ -1072,20 +936,14 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
           },
         },
       }).create(factoryInput(signedManifest)),
-    ).rejects.toBeInstanceOf(
-      ProductionTrustedCloudRuntimeFactoryError,
-    );
+    ).rejects.toBeInstanceOf(ProductionTrustedCloudRuntimeFactoryError);
   });
 
   it("captures dependencies and data before caller mutation", async () => {
     const signedManifest = manifest();
     const mutable = options(signedManifest);
-    const originalGuard =
-      mutable.durableState.runtimeGuard
-        .assertTrustedCloudRuntime;
-    const factory = new ProductionTrustedCloudRuntimeFactory(
-      mutable,
-    );
+    const originalGuard = mutable.durableState.runtimeGuard.assertTrustedCloudRuntime;
+    const factory = new ProductionTrustedCloudRuntimeFactory(mutable);
     (
       mutable.durableState.runtimeGuard as {
         assertTrustedCloudRuntime(): void;
@@ -1099,68 +957,50 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
       }
     ).sha256 = "f".repeat(64);
     (
-      mutable.evaluator.resultEnvelopeSigning
-        .privateKeys as unknown as {
+      mutable.evaluator.resultEnvelopeSigning.privateKeys as unknown as {
         resolve: typeof unreachable;
       }
     ).resolve = unreachable;
 
-    await expect(
-      factory.create(factoryInput(signedManifest)),
-    ).resolves.toBeDefined();
+    await expect(factory.create(factoryInput(signedManifest))).resolves.toBeDefined();
     expect(originalGuard).toHaveBeenCalledTimes(1);
   });
 
   it("fails the cloud guard before invoking an external authority", async () => {
     const signedManifest = manifest();
     const configured = options(signedManifest);
-    const verify = vi.fn(
-      configured.attestationAuthority.verify,
-    );
-    const guarded:
-      ProductionTrustedCloudRuntimeFactoryOptions = {
-        ...configured,
-        attestationAuthority: {
-          ...configured.attestationAuthority,
-          verify,
-        },
-        durableState: {
-          ...configured.durableState,
-          runtimeGuard: {
-            assertTrustedCloudRuntime: () => {
-              throw new Error("not a trusted cloud runtime");
-            },
+    const verify = vi.fn(configured.attestationAuthority.verify);
+    const guarded: ProductionTrustedCloudRuntimeFactoryOptions = {
+      ...configured,
+      attestationAuthority: {
+        ...configured.attestationAuthority,
+        verify,
+      },
+      durableState: {
+        ...configured.durableState,
+        runtimeGuard: {
+          assertTrustedCloudRuntime: () => {
+            throw new Error("not a trusted cloud runtime");
           },
         },
-      };
+      },
+    };
 
     await expect(
-      new ProductionTrustedCloudRuntimeFactory(
-        guarded,
-      ).create(factoryInput(signedManifest)),
-    ).rejects.toBeInstanceOf(
-      ProductionTrustedCloudRuntimeFactoryError,
-    );
+      new ProductionTrustedCloudRuntimeFactory(guarded).create(factoryInput(signedManifest)),
+    ).rejects.toBeInstanceOf(ProductionTrustedCloudRuntimeFactoryError);
     expect(verify).not.toHaveBeenCalled();
   });
 
   it("closes partial acquisitions and refuses duplicate lifecycle use", async () => {
     const signedManifest = manifest();
     const coordinationClose = vi
-      .spyOn(
-        MountedVolumeOptimizationCoordinationPorts.prototype,
-        "close",
-      )
+      .spyOn(MountedVolumeOptimizationCoordinationPorts.prototype, "close")
       .mockResolvedValue(undefined);
     const journalStateClose = vi
-      .spyOn(
-        MountedVolumeAtomicExperimentJournalStateStore.prototype,
-        "close",
-      )
+      .spyOn(MountedVolumeAtomicExperimentJournalStateStore.prototype, "close")
       .mockResolvedValue(undefined);
-    const factory = new ProductionTrustedCloudRuntimeFactory(
-      options(signedManifest),
-    );
+    const factory = new ProductionTrustedCloudRuntimeFactory(options(signedManifest));
     let registrations = 0;
     await expect(
       factory.create(
@@ -1171,14 +1011,10 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
           }
         }),
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionTrustedCloudRuntimeFactoryError,
-    );
+    ).rejects.toBeInstanceOf(ProductionTrustedCloudRuntimeFactoryError);
     expect(coordinationClose).toHaveBeenCalledTimes(1);
     expect(journalStateClose).toHaveBeenCalledTimes(1);
-    await expect(
-      factory.create(factoryInput(signedManifest)),
-    ).rejects.toBeInstanceOf(
+    await expect(factory.create(factoryInput(signedManifest))).rejects.toBeInstanceOf(
       ProductionTrustedCloudRuntimeFactoryError,
     );
     expect(registrations).toBe(3);
@@ -1189,12 +1025,8 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
     const configured = options(signedManifest);
     const serialized = canonicalJson(configured.attestation);
     expect(serialized).not.toContain("hidden-task-sentinel");
-    expect(Object.hasOwn(configured.attestation, "taskId")).toBe(
-      false,
-    );
-    expect(Object.hasOwn(configured.attestation, "tasks")).toBe(
-      false,
-    );
+    expect(Object.hasOwn(configured.attestation, "taskId")).toBe(false);
+    expect(Object.hasOwn(configured.attestation, "tasks")).toBe(false);
     expect(
       () =>
         new ProductionTrustedCloudRuntimeFactory({
@@ -1221,8 +1053,7 @@ describe("ProductionTrustedCloudRuntimeFactory", () => {
             release: {
               ...configured.broker.release,
               service: {
-                boundary:
-                  "trusted-cloud-evaluator-service",
+                boundary: "trusted-cloud-evaluator-service",
                 evaluate: unreachable,
               },
             },

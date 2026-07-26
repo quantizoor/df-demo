@@ -1,7 +1,5 @@
 import { spawn } from "node:child_process";
-import {
-  assertCloudExecutionEnvironment,
-} from "../cloud/runtime-marker.js";
+import { assertCloudExecutionEnvironment } from "../cloud/runtime-marker.js";
 import type { CloudProviderName } from "../cloud/types.js";
 
 export interface ProcessInvocation {
@@ -23,6 +21,7 @@ export interface ProcessRunner {
   run(invocation: ProcessInvocation): Promise<ProcessResult>;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Process arguments reject NUL and line breaks to prevent command-boundary injection.
 const FORBIDDEN_ARGUMENT_CHARACTER = /[\u0000\r\n]/u;
 const ALLOWED_GIT_SUBCOMMANDS = new Set([
   "config",
@@ -109,11 +108,7 @@ export class CloudGitProcessRunner implements ProcessRunner {
       return Promise.reject(new SafeProcessError("Runner accepts only closed-stdin Git calls."));
     }
     assertSafeGitArguments(invocation.arguments);
-    gitInvocation(
-      invocation.workingDirectory,
-      invocation.arguments,
-      invocation.timeoutMs,
-    );
+    gitInvocation(invocation.workingDirectory, invocation.arguments, invocation.timeoutMs);
     if (
       invocation.environment.GIT_TERMINAL_PROMPT !== "0" ||
       invocation.environment.GIT_OPTIONAL_LOCKS !== "0" ||

@@ -5,16 +5,9 @@ import type {
   DiagnosticBrief,
   FailureCards,
 } from "../schemas/artifacts.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, sha256 } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
-import type {
-  SignedBehavioralRelease,
-  SignedResultEnvelope,
-} from "../schemas/trusted.js";
+import type { SignedBehavioralRelease, SignedResultEnvelope } from "../schemas/trusted.js";
 import type { ReleasedEvaluationBundle } from "./canonical-client.js";
 import type { TrustedEvaluationService } from "./composition.js";
 import {
@@ -26,10 +19,8 @@ import { resultEnvelopeBehavioralSourceCommitmentHash } from "./release-lineage.
 import { assertSafeForLocalPersistence } from "./retention.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const SAFE_KEY_VERSION =
-  /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_KEY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 512 * 1024;
 const MAXIMUM_ARTIFACT_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAXIMUM_TOTAL_BYTES = 2 * 1024 * 1024;
@@ -58,8 +49,7 @@ export type EvaluationReleaseArtifactPurpose =
 
 export interface EvaluationReleaseArtifactQuery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.evaluation-release-artifact-query.v1";
+  readonly domain: "dark-factory.evaluation-release-artifact-query.v1";
   readonly purpose: EvaluationReleaseArtifactPurpose;
   readonly contentHash: string;
   readonly queryHash: string;
@@ -71,17 +61,12 @@ export interface EvaluationReleaseArtifactQuery {
  */
 export interface TrustedEvaluationReleaseArtifactSource {
   readonly boundary: "trusted-cloud";
-  locate(
-    query: EvaluationReleaseArtifactQuery,
-  ): Promise<TrustedCloudArtifactRef | undefined>;
+  locate(query: EvaluationReleaseArtifactQuery): Promise<TrustedCloudArtifactRef | undefined>;
 }
 
 export interface TrustedEvaluationReleaseArtifactReader {
   readonly boundary: "trusted-cloud";
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 export type EvaluationReleaseSignaturePurpose =
@@ -96,8 +81,7 @@ export type EvaluationReleaseSignedDocument =
 
 export interface EvaluationReleaseSignatureVerificationRequest {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.evaluation-release-signature-verification-request.v1";
+  readonly domain: "dark-factory.evaluation-release-signature-verification-request.v1";
   readonly purpose: EvaluationReleaseSignaturePurpose;
   readonly documentHash: string;
   readonly keyId: string;
@@ -107,8 +91,7 @@ export interface EvaluationReleaseSignatureVerificationRequest {
 
 export interface EvaluationReleaseSignatureVerification {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.evaluation-release-signature-verification.v1";
+  readonly domain: "dark-factory.evaluation-release-signature-verification.v1";
   readonly purpose: EvaluationReleaseSignaturePurpose;
   readonly documentHash: string;
   readonly keyId: string;
@@ -124,8 +107,7 @@ export interface EvaluationReleaseSignatureVerification {
  * policy before returning its deterministic receipt.
  */
 export interface TrustedEvaluationReleaseSignatureVerifier {
-  readonly boundary:
-    "trusted-cloud-evaluation-release-signature-verifier";
+  readonly boundary: "trusted-cloud-evaluation-release-signature-verifier";
   verify(
     request: EvaluationReleaseSignatureVerificationRequest,
   ): Promise<EvaluationReleaseSignatureVerification>;
@@ -135,8 +117,7 @@ export interface ArtifactBackedEvaluationReleaseBundleServiceOptions {
   readonly service: TrustedEvaluationService;
   readonly source: TrustedEvaluationReleaseArtifactSource;
   readonly reader: TrustedEvaluationReleaseArtifactReader;
-  readonly signatureVerifier:
-    TrustedEvaluationReleaseSignatureVerifier;
+  readonly signatureVerifier: TrustedEvaluationReleaseSignatureVerifier;
   readonly maximumArtifactBytes?: number;
   readonly maximumTotalBytes?: number;
   readonly maximumReplayRecords?: number;
@@ -168,9 +149,7 @@ function fail(): never {
   throw new EvaluationReleaseBundleServiceError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -191,10 +170,7 @@ function exactKeys(
       (key) =>
         typeof key !== "string" ||
         !keys.includes(key) ||
-        !Object.hasOwn(
-          Object.getOwnPropertyDescriptor(value, key) ?? {},
-          "value",
-        ),
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, "value"),
     )
   ) {
     fail();
@@ -204,10 +180,7 @@ function exactKeys(
 function canonicalTimestamp(value: unknown): number {
   if (typeof value !== "string") fail();
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail();
   }
   return parsed;
@@ -242,8 +215,7 @@ function artifactQuery(
   if (!SHA256.test(contentHash)) fail();
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.evaluation-release-artifact-query.v1" as const,
+    domain: "dark-factory.evaluation-release-artifact-query.v1" as const,
     purpose,
     contentHash,
   };
@@ -277,11 +249,7 @@ function assertArtifactReference(
 function experimentNumber(request: TrustedEvaluationRequest): number {
   const prefix = request.experimentId.split("-", 1)[0] ?? "";
   const value = Number.parseInt(prefix, 10);
-  if (
-    !/^\d+$/u.test(prefix) ||
-    !Number.isSafeInteger(value) ||
-    value < 1
-  ) {
+  if (!/^\d+$/u.test(prefix) || !Number.isSafeInteger(value) || value < 1) {
     fail();
   }
   return value;
@@ -290,11 +258,7 @@ function experimentNumber(request: TrustedEvaluationRequest): number {
 function expectedResultKind(
   stage: TrustedEvaluationRequest["stage"],
 ): "repair" | "validation" | "shadow" {
-  if (
-    stage === "repair" ||
-    stage === "validation" ||
-    stage === "shadow"
-  ) {
+  if (stage === "repair" || stage === "validation" || stage === "shadow") {
     return stage;
   }
   fail();
@@ -314,8 +278,7 @@ function assertResultLinks(
     result.protocolHash !== request.protocolHash ||
     result.payload.kind !== expectedResultKind(request.stage) ||
     result.derivation.rawArtifacts.exported !== false ||
-    result.derivation.rawArtifacts.retentionDisposition !==
-      "destroyed" ||
+    result.derivation.rawArtifacts.retentionDisposition !== "destroyed" ||
     result.releaseChecks.schemaPassed !== true ||
     result.releaseChecks.graderCanaryScanPassed !== true ||
     result.releaseChecks.contentFingerprintScanPassed !== true ||
@@ -327,10 +290,7 @@ function assertResultLinks(
   }
 }
 
-function assertCacheLinks(
-  cache: CacheAttestation,
-  result: SignedResultEnvelope,
-): void {
+function assertCacheLinks(cache: CacheAttestation, result: SignedResultEnvelope): void {
   const openedAt = canonicalTimestamp(cache.sealedWindow.openedAt);
   const closedAt = canonicalTimestamp(cache.sealedWindow.closedAt);
   if (
@@ -351,14 +311,9 @@ function assertDiagnosticLinks(input: {
   readonly brief: DiagnosticBrief;
 }): void {
   const { result, release, evidence, cards, brief } = input;
-  const sourceHash =
-    resultEnvelopeBehavioralSourceCommitmentHash(result);
-  const analysisOpenedAt = canonicalTimestamp(
-    evidence.analysisWindow.openedAt,
-  );
-  const analysisClosedAt = canonicalTimestamp(
-    evidence.analysisWindow.closedAt,
-  );
+  const sourceHash = resultEnvelopeBehavioralSourceCommitmentHash(result);
+  const analysisOpenedAt = canonicalTimestamp(evidence.analysisWindow.openedAt);
+  const analysisClosedAt = canonicalTimestamp(evidence.analysisWindow.closedAt);
   const evidenceCreatedAt = canonicalTimestamp(evidence.createdAt);
   const cardsCreatedAt = canonicalTimestamp(cards.createdAt);
   const briefCreatedAt = canonicalTimestamp(brief.createdAt);
@@ -366,8 +321,7 @@ function assertDiagnosticLinks(input: {
   const resultCreatedAt = canonicalTimestamp(result.createdAt);
   const expiresAt = canonicalTimestamp(brief.expiresAt);
   if (
-    result.derivation.behavioralAggregateHash !==
-      release.contentHash ||
+    result.derivation.behavioralAggregateHash !== release.contentHash ||
     release.sourceResultEnvelopeHash !== sourceHash ||
     release.protocolHash !== result.protocolHash ||
     release.experimentNumber !== result.experimentNumber ||
@@ -380,26 +334,18 @@ function assertDiagnosticLinks(input: {
     brief.experimentNumber !== result.experimentNumber ||
     brief.sourceExperimentNumber !== result.experimentNumber ||
     brief.releaseId !== release.releaseId ||
-    release.aggregateArtifactHashes.behavioralEvidence !==
-      evidence.contentHash ||
-    release.aggregateArtifactHashes.failureCards !==
-      cards.contentHash ||
-    release.aggregateArtifactHashes.diagnosticBrief !==
-      brief.contentHash ||
-    release.suppressedFindingCountBand !==
-      evidence.suppressedFindingCountBand ||
+    release.aggregateArtifactHashes.behavioralEvidence !== evidence.contentHash ||
+    release.aggregateArtifactHashes.failureCards !== cards.contentHash ||
+    release.aggregateArtifactHashes.diagnosticBrief !== brief.contentHash ||
+    release.suppressedFindingCountBand !== evidence.suppressedFindingCountBand ||
     cards.behavioralEvidenceHash !== evidence.contentHash ||
     cards.suppressionApplied !== true ||
     brief.aggregateEvidenceHash !== evidence.contentHash ||
     brief.failureCardsHash !== cards.contentHash ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(evidence.policyVersions) ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(cards.policyVersions) ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(brief.policyVersions) ||
-    canonicalJson(release.support) !==
-      canonicalJson(evidence.analysisWindow.support) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(evidence.policyVersions) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(cards.policyVersions) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(brief.policyVersions) ||
+    canonicalJson(release.support) !== canonicalJson(evidence.analysisWindow.support) ||
     analysisOpenedAt > analysisClosedAt ||
     analysisClosedAt > evidenceCreatedAt ||
     evidenceCreatedAt > cardsCreatedAt ||
@@ -413,16 +359,12 @@ function assertDiagnosticLinks(input: {
     fail();
   }
   const releasedCards = new Map<string, string>();
-  const evidenceMetricIds = new Set(
-    evidence.metrics.map((metric) => metric.metricId),
-  );
+  const evidenceMetricIds = new Set(evidence.metrics.map((metric) => metric.metricId));
   if (evidenceMetricIds.size !== evidence.metrics.length) fail();
   for (const card of cards.cards) {
     if (
       releasedCards.has(card.cardId) ||
-      card.metricIds.some(
-        (metricId) => !evidenceMetricIds.has(metricId),
-      )
+      card.metricIds.some((metricId) => !evidenceMetricIds.has(metricId))
     ) {
       fail();
     }
@@ -430,29 +372,23 @@ function assertDiagnosticLinks(input: {
   }
   const briefCardIds = new Set<string>();
   for (const card of brief.cards) {
-    if (
-      briefCardIds.has(card.cardId) ||
-      releasedCards.get(card.cardId) !== canonicalJson(card)
-    ) {
+    if (briefCardIds.has(card.cardId) || releasedCards.get(card.cardId) !== canonicalJson(card)) {
       fail();
     }
     briefCardIds.add(card.cardId);
   }
 }
 
-export function evaluationReleaseSignatureVerificationAttestationHash(
-  input: {
-    readonly purpose: EvaluationReleaseSignaturePurpose;
-    readonly documentHash: string;
-    readonly keyId: string;
-    readonly keyVersion: string;
-    readonly signedAt: string;
-  },
-): string {
+export function evaluationReleaseSignatureVerificationAttestationHash(input: {
+  readonly purpose: EvaluationReleaseSignaturePurpose;
+  readonly documentHash: string;
+  readonly keyId: string;
+  readonly keyVersion: string;
+  readonly signedAt: string;
+}): string {
   return canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.evaluation-release-signature-verified-evidence.v1",
+    domain: "dark-factory.evaluation-release-signature-verified-evidence.v1",
     ...input,
     verified: true,
   });
@@ -473,12 +409,10 @@ function assertVerification(
     "verifierAttestationHash",
     "verified",
   ]);
-  const verification =
-    value as unknown as EvaluationReleaseSignatureVerification;
+  const verification = value as unknown as EvaluationReleaseSignatureVerification;
   if (
     verification.schemaVersion !== 1 ||
-    verification.domain !==
-      "dark-factory.evaluation-release-signature-verification.v1" ||
+    verification.domain !== "dark-factory.evaluation-release-signature-verification.v1" ||
     verification.purpose !== request.purpose ||
     verification.documentHash !== request.documentHash ||
     verification.keyId !== request.keyId ||
@@ -507,9 +441,7 @@ function assertSignatureTime(input: {
   readonly maximumClockSkewMs: number;
 }): void {
   const createdAt = canonicalTimestamp(input.document.createdAt);
-  const signedAt = canonicalTimestamp(
-    input.document.signature.signedAt,
-  );
+  const signedAt = canonicalTimestamp(input.document.signature.signedAt);
   if (
     signedAt < createdAt ||
     signedAt < input.earliest ||
@@ -530,47 +462,31 @@ export class ArtifactBackedEvaluationReleaseBundleService {
   readonly #evaluateResult: TrustedEvaluationService["evaluate"];
   readonly #locate: TrustedEvaluationReleaseArtifactSource["locate"];
   readonly #readUtf8: TrustedEvaluationReleaseArtifactReader["readUtf8"];
-  readonly #verifySignature:
-    TrustedEvaluationReleaseSignatureVerifier["verify"];
+  readonly #verifySignature: TrustedEvaluationReleaseSignatureVerifier["verify"];
   readonly #maximumArtifactBytes: number;
   readonly #maximumTotalBytes: number;
   readonly #maximumReplayRecords: number;
   readonly #maximumClockSkewMs: number;
   readonly #now: () => Date;
   readonly #replays = new Map<string, ReplayRecord>();
-  readonly #inFlight = new Map<
-    string,
-    Promise<ReleasedEvaluationBundle>
-  >();
+  readonly #inFlight = new Map<string, Promise<ReleasedEvaluationBundle>>();
 
-  constructor(
-    options: ArtifactBackedEvaluationReleaseBundleServiceOptions,
-  ) {
+  constructor(options: ArtifactBackedEvaluationReleaseBundleServiceOptions) {
     if (!isPlainRecord(options)) fail();
     if (
       Reflect.ownKeys(options).some(
         (key) =>
           typeof key !== "string" ||
           !OPTION_KEYS.has(key) ||
-          !Object.hasOwn(
-            Object.getOwnPropertyDescriptor(options, key) ?? {},
-            "value",
-          ),
+          !Object.hasOwn(Object.getOwnPropertyDescriptor(options, key) ?? {}, "value"),
       )
     ) {
       fail();
     }
-    const maximumArtifactBytes =
-      options.maximumArtifactBytes ??
-      DEFAULT_MAXIMUM_ARTIFACT_BYTES;
-    const maximumTotalBytes =
-      options.maximumTotalBytes ?? DEFAULT_MAXIMUM_TOTAL_BYTES;
-    const maximumReplayRecords =
-      options.maximumReplayRecords ??
-      DEFAULT_MAXIMUM_REPLAY_RECORDS;
-    const maximumClockSkewMs =
-      options.maximumClockSkewMs ??
-      DEFAULT_MAXIMUM_CLOCK_SKEW_MS;
+    const maximumArtifactBytes = options.maximumArtifactBytes ?? DEFAULT_MAXIMUM_ARTIFACT_BYTES;
+    const maximumTotalBytes = options.maximumTotalBytes ?? DEFAULT_MAXIMUM_TOTAL_BYTES;
+    const maximumReplayRecords = options.maximumReplayRecords ?? DEFAULT_MAXIMUM_REPLAY_RECORDS;
+    const maximumClockSkewMs = options.maximumClockSkewMs ?? DEFAULT_MAXIMUM_CLOCK_SKEW_MS;
     const service = options.service;
     const source = options.source;
     const reader = options.reader;
@@ -581,12 +497,10 @@ export class ArtifactBackedEvaluationReleaseBundleService {
     const verifySignature = signatureVerifier?.verify;
     const sourceNow = options.now ?? (() => new Date());
     if (
-      service?.boundary !==
-        "trusted-cloud-evaluator-service" ||
+      service?.boundary !== "trusted-cloud-evaluator-service" ||
       source?.boundary !== "trusted-cloud" ||
       reader?.boundary !== "trusted-cloud" ||
-      signatureVerifier?.boundary !==
-        "trusted-cloud-evaluation-release-signature-verifier" ||
+      signatureVerifier?.boundary !== "trusted-cloud-evaluation-release-signature-verifier" ||
       typeof evaluateResult !== "function" ||
       typeof locate !== "function" ||
       typeof readUtf8 !== "function" ||
@@ -610,9 +524,7 @@ export class ArtifactBackedEvaluationReleaseBundleService {
     this.#evaluateResult = evaluateResult.bind(service);
     this.#locate = locate.bind(source);
     this.#readUtf8 = readUtf8.bind(reader);
-    this.#verifySignature = verifySignature.bind(
-      signatureVerifier,
-    );
+    this.#verifySignature = verifySignature.bind(signatureVerifier);
     this.#maximumArtifactBytes = maximumArtifactBytes;
     this.#maximumTotalBytes = maximumTotalBytes;
     this.#maximumReplayRecords = maximumReplayRecords;
@@ -631,30 +543,19 @@ export class ArtifactBackedEvaluationReleaseBundleService {
     const located = await this.#locate(queryInput);
     if (canonicalJson(queryInput) !== queryJson) fail();
     assertArtifactReference(located, this.#maximumArtifactBytes);
-    const artifact = deepFreezeJson(
-      cloneCanonical(located),
-    ) as TrustedCloudArtifactRef;
-    if (
-      budget.artifactUris.has(artifact.uri) ||
-      budget.contentHashes.has(contentHash)
-    ) {
+    const artifact = deepFreezeJson(cloneCanonical(located)) as TrustedCloudArtifactRef;
+    if (budget.artifactUris.has(artifact.uri) || budget.contentHashes.has(contentHash)) {
       fail();
     }
     budget.artifactUris.add(artifact.uri);
     budget.contentHashes.add(contentHash);
     budget.totalBytes += artifact.byteLength;
-    if (
-      !Number.isSafeInteger(budget.totalBytes) ||
-      budget.totalBytes > this.#maximumTotalBytes
-    ) {
+    if (!Number.isSafeInteger(budget.totalBytes) || budget.totalBytes > this.#maximumTotalBytes) {
       fail();
     }
     const artifactJson = canonicalJson(artifact);
     const artifactInput = cloneCanonical(artifact);
-    const raw = await this.#readUtf8(
-      artifactInput,
-      this.#maximumArtifactBytes,
-    );
+    const raw = await this.#readUtf8(artifactInput, this.#maximumArtifactBytes);
     if (
       canonicalJson(artifactInput) !== artifactJson ||
       typeof raw !== "string" ||
@@ -693,8 +594,7 @@ export class ArtifactBackedEvaluationReleaseBundleService {
     });
     const request: EvaluationReleaseSignatureVerificationRequest = {
       schemaVersion: 1,
-      domain:
-        "dark-factory.evaluation-release-signature-verification-request.v1",
+      domain: "dark-factory.evaluation-release-signature-verification-request.v1",
       purpose,
       documentHash: document.contentHash,
       keyId: document.signature.keyId,
@@ -713,30 +613,24 @@ export class ArtifactBackedEvaluationReleaseBundleService {
     requestId: string,
     requestHash: string,
     bundle: ReleasedEvaluationBundle,
-    verifications:
-      readonly EvaluationReleaseSignatureVerification[],
+    verifications: readonly EvaluationReleaseSignatureVerification[],
   ): void {
     const bundleJson = canonicalJson(bundle);
     const verificationEvidenceHash = canonicalHash(
-      verifications.map(
-        (verification) => verification.verifierAttestationHash,
-      ),
+      verifications.map((verification) => verification.verifierAttestationHash),
     );
     const previous = this.#replays.get(requestId);
     if (
       previous !== undefined &&
       (previous.requestHash !== requestHash ||
         previous.bundleJson !== bundleJson ||
-        previous.verificationEvidenceHash !==
-          verificationEvidenceHash)
+        previous.verificationEvidenceHash !== verificationEvidenceHash)
     ) {
       fail();
     }
     if (previous !== undefined) return;
     if (this.#replays.size >= this.#maximumReplayRecords) {
-      const oldest = this.#replays.keys().next().value as
-        | string
-        | undefined;
+      const oldest = this.#replays.keys().next().value as string | undefined;
       if (oldest !== undefined) this.#replays.delete(oldest);
     }
     this.#replays.set(requestId, {
@@ -753,17 +647,12 @@ export class ArtifactBackedEvaluationReleaseBundleService {
   ): Promise<ReleasedEvaluationBundle> {
     const requestInput = cloneCanonical(request);
     const resultCandidate = await this.#evaluateResult(requestInput);
-    if (
-      canonicalJson(requestInput) !== requestJson ||
-      canonicalJson(request) !== requestJson
-    ) {
+    if (canonicalJson(requestInput) !== requestJson || canonicalJson(request) !== requestJson) {
       fail();
     }
     assertValidDocument("signedResultEnvelope", resultCandidate);
     const resultJson = canonicalJson(resultCandidate);
-    const result = deepFreezeJson(
-      cloneCanonical(resultCandidate),
-    ) as SignedResultEnvelope;
+    const result = deepFreezeJson(cloneCanonical(resultCandidate)) as SignedResultEnvelope;
     assertResultLinks(result, request, requestHash);
     const now = this.#now().getTime();
     const submittedAt = canonicalTimestamp(request.submittedAt);
@@ -771,10 +660,7 @@ export class ArtifactBackedEvaluationReleaseBundleService {
       await this.#verify(
         "result-envelope",
         result,
-        Math.max(
-          submittedAt,
-          canonicalTimestamp(result.derivation.derivedAt),
-        ),
+        Math.max(submittedAt, canonicalTimestamp(result.derivation.derivedAt)),
         now,
       ),
     ];
@@ -796,10 +682,7 @@ export class ArtifactBackedEvaluationReleaseBundleService {
       await this.#verify(
         "cache-attestation",
         cache,
-        Math.max(
-          submittedAt,
-          canonicalTimestamp(cache.sealedWindow.closedAt),
-        ),
+        Math.max(submittedAt, canonicalTimestamp(cache.sealedWindow.closedAt)),
         now,
       ),
     );
@@ -815,25 +698,15 @@ export class ArtifactBackedEvaluationReleaseBundleService {
         result.derivation.behavioralAggregateHash,
         budget,
       );
-      assertValidDocument(
-        "signedBehavioralRelease",
-        releaseCandidate,
-      );
-      behavioralRelease =
-        releaseCandidate as SignedBehavioralRelease;
+      assertValidDocument("signedBehavioralRelease", releaseCandidate);
+      behavioralRelease = releaseCandidate as SignedBehavioralRelease;
       verifications.push(
-        await this.#verify(
-          "behavioral-release",
-          behavioralRelease,
-          submittedAt,
-          now,
-        ),
+        await this.#verify("behavioral-release", behavioralRelease, submittedAt, now),
       );
 
       const evidenceCandidate = await this.#readArtifact(
         "behavioral-evidence",
-        behavioralRelease.aggregateArtifactHashes
-          .behavioralEvidence,
+        behavioralRelease.aggregateArtifactHashes.behavioralEvidence,
         budget,
       );
       const cardsCandidate = await this.#readArtifact(
@@ -846,10 +719,7 @@ export class ArtifactBackedEvaluationReleaseBundleService {
         behavioralRelease.aggregateArtifactHashes.diagnosticBrief,
         budget,
       );
-      assertValidDocument(
-        "behavioralEvidence",
-        evidenceCandidate,
-      );
+      assertValidDocument("behavioralEvidence", evidenceCandidate);
       assertValidDocument("failureCards", cardsCandidate);
       assertValidDocument("diagnosticBrief", briefCandidate);
       behavioralEvidence = evidenceCandidate as BehavioralEvidence;
@@ -862,9 +732,7 @@ export class ArtifactBackedEvaluationReleaseBundleService {
         cards: failureCards,
         brief: diagnosticBrief,
       });
-      if (
-        canonicalTimestamp(diagnosticBrief.expiresAt) <= now
-      ) {
+      if (canonicalTimestamp(diagnosticBrief.expiresAt) <= now) {
         fail();
       }
     }
@@ -878,44 +746,25 @@ export class ArtifactBackedEvaluationReleaseBundleService {
       diagnosticBrief,
     };
     assertSafeForLocalPersistence(bundle);
-    if (
-      canonicalJson(resultCandidate) !== resultJson ||
-      canonicalJson(request) !== requestJson
-    ) {
+    if (canonicalJson(resultCandidate) !== resultJson || canonicalJson(request) !== requestJson) {
       fail();
     }
-    this.#recordReplay(
-      request.requestId,
-      requestHash,
-      bundle,
-      verifications,
-    );
-    return deepFreezeJson(
-      cloneCanonical(bundle),
-    ) as ReleasedEvaluationBundle;
+    this.#recordReplay(request.requestId, requestHash, bundle, verifications);
+    return deepFreezeJson(cloneCanonical(bundle)) as ReleasedEvaluationBundle;
   }
 
-  public async evaluate(
-    request: TrustedEvaluationRequest,
-  ): Promise<ReleasedEvaluationBundle> {
+  public async evaluate(request: TrustedEvaluationRequest): Promise<ReleasedEvaluationBundle> {
     try {
       assertEvaluationRequest(request);
       const requestJson = canonicalJson(request);
       const requestHash = hashEvaluationRequest(request);
       const replay = this.#replays.get(request.requestId);
-      if (
-        replay !== undefined &&
-        replay.requestHash !== requestHash
-      ) {
+      if (replay !== undefined && replay.requestHash !== requestHash) {
         fail();
       }
       let work = this.#inFlight.get(requestHash);
       if (work === undefined) {
-        work = this.#assemble(
-          cloneCanonical(request),
-          requestJson,
-          requestHash,
-        );
+        work = this.#assemble(cloneCanonical(request), requestJson, requestHash);
         this.#inFlight.set(requestHash, work);
       }
       try {

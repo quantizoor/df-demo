@@ -102,7 +102,10 @@ describe("disposable SQLite evidence index", () => {
       const rows = database
         .prepare("SELECT sql FROM sqlite_master WHERE type IN ('table', 'index')")
         .all() as Readonly<Record<string, unknown>>[];
-      const schemaSql = rows.map((row) => String(row.sql ?? "")).join("\n").toLowerCase();
+      const schemaSql = rows
+        .map((row) => String(row.sql ?? ""))
+        .join("\n")
+        .toLowerCase();
       expect(schemaSql).not.toMatch(
         /\b(task_id|task_name|trial_id|trial_handle|trajectory|command|stdout|stderr|grader)\b/u,
       );

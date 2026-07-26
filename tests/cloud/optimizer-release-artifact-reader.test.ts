@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type {
-  TrustedArtifactBridge,
-} from "../../src/cloud/artifact-bridge.js";
+import type { TrustedArtifactBridge } from "../../src/cloud/artifact-bridge.js";
 import {
   BridgeBackedTrustedOptimizerReleaseArtifactReader,
   TrustedOptimizerReleaseArtifactReaderError,
@@ -19,9 +17,7 @@ function artifact(bytes: Uint8Array): TrustedCloudArtifactRef {
   };
 }
 
-function bridge(
-  chunks: readonly Uint8Array[],
-): TrustedArtifactBridge {
+function bridge(chunks: readonly Uint8Array[]): TrustedArtifactBridge {
   return {
     assertTrustedRuntime() {},
     async openVerified() {
@@ -42,45 +38,31 @@ describe("optimizer release artifact byte reader", () => {
     const first = Uint8Array.from([1, 2]);
     const second = Uint8Array.from([3, 4, 5]);
     const bytes = Uint8Array.from([1, 2, 3, 4, 5]);
-    const reader =
-      new BridgeBackedTrustedOptimizerReleaseArtifactReader(
-        bridge([first, second]),
-      );
+    const reader = new BridgeBackedTrustedOptimizerReleaseArtifactReader(bridge([first, second]));
 
-    await expect(
-      reader.readBytes(artifact(bytes), bytes.byteLength),
-    ).resolves.toEqual(bytes);
+    await expect(reader.readBytes(artifact(bytes), bytes.byteLength)).resolves.toEqual(bytes);
   });
 
   it("rejects truncation, overflow, and non-byte chunks", async () => {
     const bytes = Uint8Array.from([1, 2, 3]);
-    const truncated =
-      new BridgeBackedTrustedOptimizerReleaseArtifactReader(
-        bridge([bytes.subarray(0, 2)]),
-      );
-    await expect(
-      truncated.readBytes(artifact(bytes), bytes.byteLength),
-    ).rejects.toBeInstanceOf(
+    const truncated = new BridgeBackedTrustedOptimizerReleaseArtifactReader(
+      bridge([bytes.subarray(0, 2)]),
+    );
+    await expect(truncated.readBytes(artifact(bytes), bytes.byteLength)).rejects.toBeInstanceOf(
       TrustedOptimizerReleaseArtifactReaderError,
     );
 
-    const overflowing =
-      new BridgeBackedTrustedOptimizerReleaseArtifactReader(
-        bridge([bytes, Uint8Array.from([4])]),
-      );
-    await expect(
-      overflowing.readBytes(artifact(bytes), bytes.byteLength),
-    ).rejects.toBeInstanceOf(
+    const overflowing = new BridgeBackedTrustedOptimizerReleaseArtifactReader(
+      bridge([bytes, Uint8Array.from([4])]),
+    );
+    await expect(overflowing.readBytes(artifact(bytes), bytes.byteLength)).rejects.toBeInstanceOf(
       TrustedOptimizerReleaseArtifactReaderError,
     );
 
-    const emptyChunk =
-      new BridgeBackedTrustedOptimizerReleaseArtifactReader(
-        bridge([new Uint8Array(), bytes]),
-      );
-    await expect(
-      emptyChunk.readBytes(artifact(bytes), bytes.byteLength),
-    ).rejects.toBeInstanceOf(
+    const emptyChunk = new BridgeBackedTrustedOptimizerReleaseArtifactReader(
+      bridge([new Uint8Array(), bytes]),
+    );
+    await expect(emptyChunk.readBytes(artifact(bytes), bytes.byteLength)).rejects.toBeInstanceOf(
       TrustedOptimizerReleaseArtifactReaderError,
     );
 
@@ -93,13 +75,8 @@ describe("optimizer release artifact byte reader", () => {
           yield "not-bytes" as unknown as Uint8Array;
         },
       }) as AsyncIterable<Uint8Array>;
-    const malformed =
-      new BridgeBackedTrustedOptimizerReleaseArtifactReader(
-        malformedBridge,
-      );
-    await expect(
-      malformed.readBytes(artifact(bytes), bytes.byteLength),
-    ).rejects.toBeInstanceOf(
+    const malformed = new BridgeBackedTrustedOptimizerReleaseArtifactReader(malformedBridge);
+    await expect(malformed.readBytes(artifact(bytes), bytes.byteLength)).rejects.toBeInstanceOf(
       TrustedOptimizerReleaseArtifactReaderError,
     );
   });

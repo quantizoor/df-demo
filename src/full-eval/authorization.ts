@@ -1,11 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import type {
-  ChampionPointers,
-  ComplianceManifest,
-  ProtocolInputs,
-} from "../domain/models.js";
 import { assertComplianceManifest, isSubmissionEligibilityAllowed } from "../core/compliance.js";
 import { DarkFactoryError } from "../core/errors.js";
+import type { ChampionPointers, ComplianceManifest, ProtocolInputs } from "../domain/models.js";
 
 export interface FullEvaluationReadiness {
   readonly manifest: ComplianceManifest;
@@ -58,9 +54,7 @@ function opaqueToken(bytes = 24): string {
 function equalSecret(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
-  return (
-    leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
-  );
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 export function assertFullEvaluationReady(readiness: FullEvaluationReadiness): void {
@@ -184,4 +178,3 @@ export async function consumeFullEvaluationAuthorization(
     throw new DarkFactoryError("FULL_EVAL_FORBIDDEN", "Authorization replay was rejected");
   }
 }
-

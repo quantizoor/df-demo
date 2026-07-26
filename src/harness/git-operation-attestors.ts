@@ -1,5 +1,5 @@
-import type { Signature } from "../schemas/primitives.js";
 import { canonicalJson } from "../schemas/canonical.js";
+import type { Signature } from "../schemas/primitives.js";
 import {
   parseTrustedGitPublicationWorkerResult,
   type TrustedGitPublicationAttestor,
@@ -20,12 +20,8 @@ const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 const MAXIMUM_RESULT_BYTES = 4 * 1024 * 1024;
 
-type SourceAttestationInput = Parameters<
-  TrustedGitSourceSnapshotAttestor["attest"]
->[0];
-type PublicationAttestationInput = Parameters<
-  TrustedGitPublicationAttestor["attest"]
->[0];
+type SourceAttestationInput = Parameters<TrustedGitSourceSnapshotAttestor["attest"]>[0];
+type PublicationAttestationInput = Parameters<TrustedGitPublicationAttestor["attest"]>[0];
 
 export interface TrustedGitOperationResultReader {
   /**
@@ -67,18 +63,13 @@ export class TrustedGitOperationAttestationError extends Error {
 
 function canonicalTimestamp(value: string): number {
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     throw new TrustedGitOperationAttestationError();
   }
   return parsed;
 }
 
-function assertSigner(
-  signer: TrustedGitOperationReceiptSigningAuthority,
-): void {
+function assertSigner(signer: TrustedGitOperationReceiptSigningAuthority): void {
   if (
     signer.boundary !== "trusted-cloud-key-material" ||
     !SAFE_KEY_ID.test(signer.keyId) ||
@@ -102,10 +93,8 @@ function assertSignature(
     Object.keys(signature).length !== 4 ||
     signature.algorithm !== "ed25519" ||
     signature.keyId !== signer.keyId ||
-    canonicalTimestamp(signature.signedAt) <
-      canonicalTimestamp(operationAt) ||
-    canonicalTimestamp(signature.signedAt) >
-      canonicalTimestamp(leaseExpiresAt) ||
+    canonicalTimestamp(signature.signedAt) < canonicalTimestamp(operationAt) ||
+    canonicalTimestamp(signature.signedAt) > canonicalTimestamp(leaseExpiresAt) ||
     !BASE64URL_SIGNATURE.test(signature.signature)
   ) {
     throw new TrustedGitOperationAttestationError();
@@ -140,20 +129,12 @@ export class ArtifactReadingTrustedGitSourceSnapshotAttestor
     this.#now = options.now ?? (() => new Date());
   }
 
-  public async attest(
-    input: SourceAttestationInput,
-  ): Promise<TrustedGitSourceSnapshotReceipt> {
+  public async attest(input: SourceAttestationInput): Promise<TrustedGitSourceSnapshotReceipt> {
     try {
-      if (
-        input.sensitivity !==
-        "trusted-git-source-attestation-request"
-      ) {
+      if (input.sensitivity !== "trusted-git-source-attestation-request") {
         throw new TrustedGitOperationAttestationError();
       }
-      assertSuccessfulCloudExecution(
-        input.execution,
-        "Git source snapshot",
-      );
+      assertSuccessfulCloudExecution(input.execution, "Git source snapshot");
       assertTrustedGitArtifact(
         input.sourceArtifact,
         "application/x-tar",
@@ -178,10 +159,7 @@ export class ArtifactReadingTrustedGitSourceSnapshotAttestor
       ) {
         throw new TrustedGitOperationAttestationError();
       }
-      const raw = await this.#reader.readUtf8(
-        input.manifestArtifact,
-        MAXIMUM_RESULT_BYTES,
-      );
+      const raw = await this.#reader.readUtf8(input.manifestArtifact, MAXIMUM_RESULT_BYTES);
       const manifest = parseTrustedGitSourceWorkerManifest(raw, {
         spec: input.spec,
         sourceArtifact: input.sourceArtifact,
@@ -189,10 +167,8 @@ export class ArtifactReadingTrustedGitSourceSnapshotAttestor
       });
       const createdAt = this.#now().toISOString();
       if (
-        canonicalTimestamp(createdAt) <
-          canonicalTimestamp(input.execution.finishedAt) ||
-        canonicalTimestamp(createdAt) >
-          canonicalTimestamp(input.lease.expiresAt)
+        canonicalTimestamp(createdAt) < canonicalTimestamp(input.execution.finishedAt) ||
+        canonicalTimestamp(createdAt) > canonicalTimestamp(input.lease.expiresAt)
       ) {
         throw new TrustedGitOperationAttestationError();
       }
@@ -220,14 +196,10 @@ export class ArtifactReadingTrustedGitSourceSnapshotAttestor
         bundleMethod: "git-bundle-v2",
         bundleRef: input.spec.bundleRef,
         workerSha256: input.spec.workerArtifact.sha256,
-        executionReceiptHash: cloudExecutionReceiptHash(
-          input.execution,
-        ),
+        executionReceiptHash: cloudExecutionReceiptHash(input.execution),
         manifestArtifactSha256: input.manifestArtifact.sha256,
         sourceArtifact: structuredClone(input.sourceArtifact),
-        sourceBundleArtifact: structuredClone(
-          input.sourceBundleArtifact,
-        ),
+        sourceBundleArtifact: structuredClone(input.sourceBundleArtifact),
         createdAt,
         passed: true,
       };
@@ -236,12 +208,7 @@ export class ArtifactReadingTrustedGitSourceSnapshotAttestor
       if (canonicalJson(body) !== canonical.serialized) {
         throw new TrustedGitOperationAttestationError();
       }
-      assertSignature(
-        signature,
-        this.#signer,
-        createdAt,
-        input.lease.expiresAt,
-      );
+      assertSignature(signature, this.#signer, createdAt, input.lease.expiresAt);
       return {
         ...body,
         signature: structuredClone(signature),
@@ -259,9 +226,7 @@ export class ArtifactReadingTrustedGitSourceSnapshotAttestor
  * Reads and validates the publication worker's canonical result before asking
  * a cloud key boundary to sign the release-safe non-force publication receipt.
  */
-export class ArtifactReadingTrustedGitPublicationAttestor
-  implements TrustedGitPublicationAttestor
-{
+export class ArtifactReadingTrustedGitPublicationAttestor implements TrustedGitPublicationAttestor {
   readonly #reader: TrustedGitOperationResultReader;
   readonly #signer: TrustedGitOperationReceiptSigningAuthority;
   readonly #now: () => Date;
@@ -273,20 +238,12 @@ export class ArtifactReadingTrustedGitPublicationAttestor
     this.#now = options.now ?? (() => new Date());
   }
 
-  public async attest(
-    input: PublicationAttestationInput,
-  ): Promise<TrustedGitPublicationReceipt> {
+  public async attest(input: PublicationAttestationInput): Promise<TrustedGitPublicationReceipt> {
     try {
-      if (
-        input.sensitivity !==
-        "trusted-git-publication-attestation-request"
-      ) {
+      if (input.sensitivity !== "trusted-git-publication-attestation-request") {
         throw new TrustedGitOperationAttestationError();
       }
-      assertSuccessfulCloudExecution(
-        input.execution,
-        "Git publication",
-      );
+      assertSuccessfulCloudExecution(input.execution, "Git publication");
       assertTrustedGitArtifact(
         input.resultArtifact,
         "application/json",
@@ -299,22 +256,16 @@ export class ArtifactReadingTrustedGitPublicationAttestor
       ) {
         throw new TrustedGitOperationAttestationError();
       }
-      const raw = await this.#reader.readUtf8(
-        input.resultArtifact,
-        MAXIMUM_RESULT_BYTES,
-      );
+      const raw = await this.#reader.readUtf8(input.resultArtifact, MAXIMUM_RESULT_BYTES);
       const result = parseTrustedGitPublicationWorkerResult(raw, {
         authorization: input.authorization,
         spec: input.spec,
       });
       const publishedAt = this.#now().toISOString();
       if (
-        canonicalTimestamp(publishedAt) <
-          canonicalTimestamp(input.execution.finishedAt) ||
-        canonicalTimestamp(publishedAt) >=
-          canonicalTimestamp(input.authorization.expiresAt) ||
-        canonicalTimestamp(publishedAt) >
-          canonicalTimestamp(input.lease.expiresAt)
+        canonicalTimestamp(publishedAt) < canonicalTimestamp(input.execution.finishedAt) ||
+        canonicalTimestamp(publishedAt) >= canonicalTimestamp(input.authorization.expiresAt) ||
+        canonicalTimestamp(publishedAt) > canonicalTimestamp(input.lease.expiresAt)
       ) {
         throw new TrustedGitOperationAttestationError();
       }
@@ -348,12 +299,9 @@ export class ArtifactReadingTrustedGitPublicationAttestor
         tagPeeledCommit: result.tagPeeledCommit,
         publicationMode: "atomic-non-force",
         disposition: result.disposition,
-        candidateBundleSha256:
-          input.authorization.candidateBundle.sha256,
+        candidateBundleSha256: input.authorization.candidateBundle.sha256,
         workerSha256: input.authorization.workerSha256,
-        executionReceiptHash: cloudExecutionReceiptHash(
-          input.execution,
-        ),
+        executionReceiptHash: cloudExecutionReceiptHash(input.execution),
         resultArtifactSha256: input.resultArtifact.sha256,
         publishedAt,
         passed: true,
@@ -363,12 +311,7 @@ export class ArtifactReadingTrustedGitPublicationAttestor
       if (canonicalJson(body) !== canonical.serialized) {
         throw new TrustedGitOperationAttestationError();
       }
-      assertSignature(
-        signature,
-        this.#signer,
-        publishedAt,
-        input.lease.expiresAt,
-      );
+      assertSignature(signature, this.#signer, publishedAt, input.lease.expiresAt);
       return {
         ...body,
         signature: structuredClone(signature),

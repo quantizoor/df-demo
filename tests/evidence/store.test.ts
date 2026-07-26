@@ -1,5 +1,5 @@
 import { generateKeyPairSync, type KeyLike } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,21 +8,13 @@ import {
   createEd25519Signature,
   EvidenceStoreError,
   ExperimentStore,
-  SealedExperimentError,
   type LeakScanReceipt,
+  SealedExperimentError,
   type TrustedLeakScanner,
 } from "../../src/evidence/index.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 import { isArtifactFileName } from "../../src/schemas/registry.js";
-import {
-  artifactFixtureByFile,
-  pinnedVersions,
-  schemaFixture,
-} from "../schemas/fixtures.js";
+import { artifactFixtureByFile, pinnedVersions, schemaFixture } from "../schemas/fixtures.js";
 
 const temporaryDirectories: string[] = [];
 const EXPERIMENT = "001-test-change";
@@ -203,9 +195,9 @@ describe("ExperimentStore", () => {
       ...(schemaFixture("analysis") as Readonly<Record<string, unknown>>),
       experimentNumber: 2,
     });
-    await expect(
-      store.writeArtifact(EXPERIMENT, "analysis.json", wrongNumber),
-    ).rejects.toThrow(/does not match directory/u);
+    await expect(store.writeArtifact(EXPERIMENT, "analysis.json", wrongNumber)).rejects.toThrow(
+      /does not match directory/u,
+    );
   });
 
   it("allocates an experiment number at most once under concurrency", async () => {
@@ -219,9 +211,7 @@ describe("ExperimentStore", () => {
     ]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
-    const allocated = (await first.listExperimentNames()).filter((name) =>
-      name.startsWith("007-"),
-    );
+    const allocated = (await first.listExperimentNames()).filter((name) => name.startsWith("007-"));
     expect(allocated).toHaveLength(1);
   });
 
@@ -314,9 +304,9 @@ describe("ExperimentStore", () => {
         byteHash: entry.byteHash,
       })),
     );
-    await expect(
-      store.verifyExperiment(EXPERIMENT, { requireSeal: true }),
-    ).resolves.toMatchObject({ valid: true });
+    await expect(store.verifyExperiment(EXPERIMENT, { requireSeal: true })).resolves.toMatchObject({
+      valid: true,
+    });
   });
 
   it("fails closed without the configured scanner key or with an untrusted key id", async () => {
@@ -419,9 +409,7 @@ describe("ExperimentStore", () => {
       await addInitialEvent(store);
       const receipt = await createLeakScanReceipt(store, EXPERIMENT, {
         mutate: (draft) => {
-          const manifest = structuredClone(
-            draft.artifactManifest,
-          ) as Record<string, unknown>[];
+          const manifest = structuredClone(draft.artifactManifest) as Record<string, unknown>[];
           if (mutation === "missing") {
             manifest.pop();
           } else if (mutation === "extra") {
@@ -466,13 +454,9 @@ describe("ExperimentStore", () => {
     const artifactReceipt = await createLeakScanReceipt(artifactStore);
     const updatedExperiment = withContentHash({
       ...(schemaFixture("experiment") as Readonly<Record<string, unknown>>),
-      lifecycleState: "analyzed",
+      lifecycleState: "promoted",
     });
-    await artifactStore.writeArtifact(
-      EXPERIMENT,
-      "experiment.json",
-      updatedExperiment,
-    );
+    await artifactStore.writeArtifact(EXPERIMENT, "experiment.json", updatedExperiment);
     await expect(
       artifactStore.sealExperiment(EXPERIMENT, {
         pinnedVersions: pinnedVersions(),
@@ -568,11 +552,7 @@ describe("ExperimentStore", () => {
         pinnedVersions: pinnedVersions(),
         leakScanReceipt: receipt,
       }),
-      store.writeArtifact(
-        EXPERIMENT,
-        "experiment.json",
-        updatedExperiment,
-      ),
+      store.writeArtifact(EXPERIMENT, "experiment.json", updatedExperiment),
     ]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     if (results[0]?.status === "rejected") {
@@ -613,9 +593,7 @@ describe("ExperimentStore", () => {
       leakScanReceipt: await createLeakScanReceipt(store, secondName),
     });
 
-    expect(secondAttestation.previousExperimentSealHash).toBe(
-      firstAttestation.sealChainEntryHash,
-    );
+    expect(secondAttestation.previousExperimentSealHash).toBe(firstAttestation.sealChainEntryHash);
     const lineage = await store.verifySealLineage();
     expect(lineage.valid).toBe(true);
     expect(lineage.sealedExperimentCount).toBe(2);
@@ -685,9 +663,7 @@ describe("ExperimentStore", () => {
 
     const truncationStore = await sealCompleteStore();
     const truncationEvents = join(truncationStore.root, EXPERIMENT, "events.jsonl");
-    const truncationLines = (await readFile(truncationEvents, "utf8"))
-      .trimEnd()
-      .split("\n");
+    const truncationLines = (await readFile(truncationEvents, "utf8")).trimEnd().split("\n");
     truncationLines.pop();
     await writeFile(truncationEvents, `${truncationLines.join("\n")}\n`);
 
@@ -778,10 +754,7 @@ describe("ExperimentStore", () => {
       ],
     });
     const amendmentPath = join(store.root, EXPERIMENT, "amendments", "0001.json");
-    const amendment = JSON.parse(await readFile(amendmentPath, "utf8")) as Record<
-      string,
-      unknown
-    >;
+    const amendment = JSON.parse(await readFile(amendmentPath, "utf8")) as Record<string, unknown>;
     amendment.summary = "Tampered amendment.";
     await writeFile(amendmentPath, `${canonicalJson(amendment)}\n`);
 

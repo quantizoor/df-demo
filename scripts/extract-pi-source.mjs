@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
-  createHash,
   existsSync,
   fchmodSync,
   fstatSync,
@@ -43,12 +43,7 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
-    if (
-      key === undefined ||
-      value === undefined ||
-      !key.startsWith("--") ||
-      values.has(key)
-    ) {
+    if (key === undefined || value === undefined || !key.startsWith("--") || values.has(key)) {
       fail("Source extractor arguments are malformed.");
     }
     values.set(key, value);
@@ -168,11 +163,7 @@ function ensureParents(root, target) {
 }
 
 function writeRegularFile(fd, archiveOffset, size, target, executable) {
-  const flags =
-    constants.O_WRONLY |
-    constants.O_CREAT |
-    constants.O_EXCL |
-    constants.O_NOFOLLOW;
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
   const output = openSync(target, flags, executable ? 0o755 : 0o644);
   try {
     const chunk = Buffer.alloc(Math.min(1024 * 1024, Math.max(size, 1)));

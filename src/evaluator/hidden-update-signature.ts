@@ -1,9 +1,6 @@
 import type { KeyLike } from "node:crypto";
 
-import {
-  createEd25519Signature,
-  verifyEd25519Signature,
-} from "../evidence/signatures.js";
+import { createEd25519Signature, verifyEd25519Signature } from "../evidence/signatures.js";
 import type { Signature } from "../schemas/primitives.js";
 import {
   assertTrustedHiddenCatalogOutcomeUpdateIntegrity,
@@ -92,12 +89,8 @@ function canonicalTimestamp(value: string): number {
   return parsed;
 }
 
-function requiredBoundary(
-  deployment: "trusted-cloud" | "test-only",
-): TrustedEvaluatorPortBoundary {
-  return deployment === "trusted-cloud"
-    ? "trusted-cloud"
-    : "test-only-in-memory";
+function requiredBoundary(deployment: "trusted-cloud" | "test-only"): TrustedEvaluatorPortBoundary {
+  return deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
 }
 
 function assertPrivateKey(
@@ -146,10 +139,7 @@ export class CloudBackedHiddenCatalogOutcomeUpdateSigner
 
   constructor(options: CloudBackedHiddenOutcomeSignerOptions) {
     const boundary = requiredBoundary(options.deployment);
-    if (
-      options.keys.boundary !== boundary ||
-      !SAFE_KEY_ID.test(options.keyId)
-    ) {
+    if (options.keys.boundary !== boundary || !SAFE_KEY_ID.test(options.keyId)) {
       throw new TrustedHiddenUpdateSignatureError();
     }
     this.boundary = boundary;
@@ -158,26 +148,17 @@ export class CloudBackedHiddenCatalogOutcomeUpdateSigner
     this.#now = options.now ?? (() => new Date());
   }
 
-  async sign(
-    update: UnsignedTrustedHiddenCatalogOutcomeUpdate,
-  ): Promise<Signature> {
+  async sign(update: UnsignedTrustedHiddenCatalogOutcomeUpdate): Promise<Signature> {
     try {
       const signedAt = this.#now().toISOString();
-      if (
-        canonicalTimestamp(signedAt) <
-        canonicalTimestamp(update.observedAt)
-      ) {
+      if (canonicalTimestamp(signedAt) < canonicalTimestamp(update.observedAt)) {
         throw new Error("Hidden outcome update cannot be backdated.");
       }
       const key = await this.#keys.resolve({
         purpose: "hidden-catalog-outcome-update",
         keyId: this.#keyId,
       });
-      assertPrivateKey(
-        key,
-        "hidden-catalog-outcome-update",
-        this.#keyId,
-      );
+      assertPrivateKey(key, "hidden-catalog-outcome-update", this.#keyId);
       return createEd25519Signature(
         update as unknown as Readonly<Record<string, unknown>>,
         key.privateKey,
@@ -202,8 +183,7 @@ export class CloudBackedHiddenCatalogOutcomeUpdateVerifier
   constructor(options: CloudBackedHiddenOutcomeVerifierOptions) {
     const boundary = requiredBoundary(options.deployment);
     const trustedKeyIds = new Set(options.trustedKeyIds);
-    const maximumClockSkewMs =
-      options.maximumClockSkewMs ?? 5 * 60_000;
+    const maximumClockSkewMs = options.maximumClockSkewMs ?? 5 * 60_000;
     if (
       options.keys.boundary !== boundary ||
       trustedKeyIds.size < 1 ||
@@ -222,9 +202,7 @@ export class CloudBackedHiddenCatalogOutcomeUpdateVerifier
     this.#maximumClockSkewMs = maximumClockSkewMs;
   }
 
-  async verify(
-    update: TrustedSignedHiddenCatalogOutcomeUpdate,
-  ): Promise<boolean> {
+  async verify(update: TrustedSignedHiddenCatalogOutcomeUpdate): Promise<boolean> {
     try {
       assertTrustedHiddenCatalogOutcomeUpdateIntegrity(update);
       if (!this.#trustedKeyIds.has(update.signature.keyId)) {
@@ -232,10 +210,7 @@ export class CloudBackedHiddenCatalogOutcomeUpdateVerifier
       }
       const signedAt = canonicalTimestamp(update.signature.signedAt);
       const now = this.#now().getTime();
-      if (
-        !Number.isFinite(now) ||
-        signedAt > now + this.#maximumClockSkewMs
-      ) {
+      if (!Number.isFinite(now) || signedAt > now + this.#maximumClockSkewMs) {
         return false;
       }
       const key = await this.#keys.resolve({
@@ -243,11 +218,7 @@ export class CloudBackedHiddenCatalogOutcomeUpdateVerifier
         keyId: update.signature.keyId,
       });
       if (key === undefined) return false;
-      assertPublicKey(
-        key,
-        "hidden-catalog-outcome-update",
-        update.signature.keyId,
-      );
+      assertPublicKey(key, "hidden-catalog-outcome-update", update.signature.keyId);
       return verifyEd25519Signature(
         update as unknown as Readonly<Record<string, unknown>>,
         key.publicKey,

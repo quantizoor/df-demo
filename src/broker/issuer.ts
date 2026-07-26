@@ -1,20 +1,10 @@
 import type { KeyLike } from "node:crypto";
-
-import {
-  createEd25519Signature,
-  verifyEd25519Signature,
-} from "../evidence/signatures.js";
-import {
-  hashEvaluationRequest,
-  type TrustedEvaluationRequest,
-} from "../evaluator/contracts.js";
+import { hashEvaluationRequest, type TrustedEvaluationRequest } from "../evaluator/contracts.js";
+import { createEd25519Signature, verifyEd25519Signature } from "../evidence/signatures.js";
 import { withContentHash } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type { SignedResultEnvelope } from "../schemas/trusted.js";
-import type {
-  TrustedResultEnvelopeIssuer,
-  TrustedResultEnvelopeVerifier,
-} from "./service.js";
+import type { TrustedResultEnvelopeIssuer, TrustedResultEnvelopeVerifier } from "./service.js";
 
 export interface Ed25519ResultEnvelopeIssuerOptions {
   readonly privateKey: KeyLike;
@@ -42,9 +32,7 @@ function parseExperimentNumber(experimentId: string): number {
   return value;
 }
 
-export class Ed25519ResultEnvelopeIssuer
-  implements TrustedResultEnvelopeIssuer
-{
+export class Ed25519ResultEnvelopeIssuer implements TrustedResultEnvelopeIssuer {
   readonly #privateKey: KeyLike;
   readonly #keyId: string;
   readonly #now: () => Date;
@@ -131,21 +119,14 @@ export class Ed25519ResultEnvelopeIssuer
         ...aggregate.releaseChecks,
       },
     };
-    const signature = createEd25519Signature(
-      unsigned,
-      this.#privateKey,
-      this.#keyId,
-      signedAt,
-    );
+    const signature = createEd25519Signature(unsigned, this.#privateKey, this.#keyId, signedAt);
     const envelope = withContentHash({ ...unsigned, signature });
     assertValidDocument("signedResultEnvelope", envelope);
     return envelope;
   }
 }
 
-export class Ed25519ResultEnvelopeVerifier
-  implements TrustedResultEnvelopeVerifier
-{
+export class Ed25519ResultEnvelopeVerifier implements TrustedResultEnvelopeVerifier {
   readonly #keyring: TrustedResultEnvelopeKeyring;
 
   constructor(keyring: TrustedResultEnvelopeKeyring) {
@@ -158,10 +139,7 @@ export class Ed25519ResultEnvelopeVerifier
       const key = await this.#keyring.getVerificationKey(envelope.signature.keyId);
       return (
         key !== undefined &&
-        verifyEd25519Signature(
-          envelope as unknown as Readonly<Record<string, unknown>>,
-          key,
-        )
+        verifyEd25519Signature(envelope as unknown as Readonly<Record<string, unknown>>, key)
       );
     } catch {
       return false;

@@ -1,22 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  OptimizationCampaignStateStore,
-} from "../../src/orchestrator/campaign-state-coordinator.js";
+import type { OptimizationCampaignStateStore } from "../../src/orchestrator/campaign-state-coordinator.js";
 import {
+  type ComposeProductionOptimizationRuntimeOptions,
   composeProductionOptimizationRuntime,
   PRODUCTION_RUNTIME_PORT_IDS,
-  productionRuntimePortBindingsHash,
-  type ComposeProductionOptimizationRuntimeOptions,
   type ProductionOptimizationCompositionManifest,
-  type ProductionRuntimePortAttestationCommitment,
   type ProductionRuntimeComponentManifest,
+  type ProductionRuntimePortAttestationCommitment,
   type ProductionRuntimeRole,
+  productionRuntimePortBindingsHash,
 } from "../../src/orchestrator/production-runtime.js";
-import {
-  canonicalHash,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, withContentHash } from "../../src/schemas/canonical.js";
 import type { CampaignState } from "../../src/schemas/control.js";
 import { initialCampaignStateFixture } from "../campaign/fixtures.js";
 
@@ -35,9 +30,7 @@ function runtimePortAttestations(): readonly ProductionRuntimePortAttestationCom
   }));
 }
 
-function component(
-  role: ProductionRuntimeRole,
-): ProductionRuntimeComponentManifest {
+function component(role: ProductionRuntimeRole): ProductionRuntimeComponentManifest {
   return {
     role,
     boundary: "trusted-cloud",
@@ -52,8 +45,7 @@ function component(
 function manifest(): ProductionOptimizationCompositionManifest {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimization-composition.v1" as const,
+    domain: "dark-factory.production-optimization-composition.v1" as const,
     manifestId: "production-001",
     campaignId: "campaign-001",
     lineageId: "lineage-001",
@@ -132,20 +124,14 @@ function options(
   const verify = vi.fn(
     async (
       _manifest: ProductionOptimizationCompositionManifest,
-      runtimePorts:
-        readonly ProductionRuntimePortAttestationCommitment[],
+      runtimePorts: readonly ProductionRuntimePortAttestationCommitment[],
     ) => ({
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.production-composition-verification.v1" as const,
+      domain: "dark-factory.production-composition-verification.v1" as const,
       manifestHash: signedManifest.manifestHash,
       signingKeyId: signedManifest.signature.keyId,
-      componentBindingsHash: canonicalHash(
-        signedManifest.components,
-      ),
-      operationalBindingsHash: canonicalHash(
-        signedManifest.bindings,
-      ),
+      componentBindingsHash: canonicalHash(signedManifest.components),
+      operationalBindingsHash: canonicalHash(signedManifest.bindings),
       runtimePortBindingsHash:
         overrides.verifierRuntimePortBindingsHash ??
         productionRuntimePortBindingsHash(runtimePorts),
@@ -169,8 +155,7 @@ function options(
     requestStop: vi.fn(),
     acknowledgeStopped: vi.fn(),
   } as unknown as OptimizationCampaignStateStore;
-  const binding = (role: ProductionRuntimeRole) =>
-    canonicalHash(signedManifest.components[role]);
+  const binding = (role: ProductionRuntimeRole) => canonicalHash(signedManifest.components[role]);
   const inputFactory = {
     boundary: "trusted-cloud",
     prepareOrResume: vi.fn(),
@@ -231,12 +216,9 @@ function options(
       journal,
     },
     optimizer: {
-      boundary:
-        overrides.optimizerBoundary ?? "trusted-cloud",
+      boundary: overrides.optimizerBoundary ?? "trusted-cloud",
       role: "optimizer",
-      manifestBindingHash:
-        overrides.optimizerManifestBindingHash ??
-        binding("optimizer"),
+      manifestBindingHash: overrides.optimizerManifestBindingHash ?? binding("optimizer"),
       imageDigest: signedManifest.components.optimizer.imageDigest,
       adapter: optimizer,
     },
@@ -255,13 +237,10 @@ function options(
       broker,
     },
   };
-  const attestation = (
-    portId: (typeof PRODUCTION_RUNTIME_PORT_IDS)[number],
-  ): string => {
-    const commitment =
-      signedManifest.runtimePortAttestations.find(
-        (item) => item.portId === portId,
-      );
+  const attestation = (portId: (typeof PRODUCTION_RUNTIME_PORT_IDS)[number]): string => {
+    const commitment = signedManifest.runtimePortAttestations.find(
+      (item) => item.portId === portId,
+    );
     if (commitment === undefined) {
       throw new Error("Invalid test runtime-port commitment.");
     }
@@ -279,49 +258,23 @@ function options(
   const value = {
     manifest: signedManifest,
     verifier: {
-      boundary:
-        overrides.verifierBoundary ??
-        "trusted-cloud-attestation-verifier",
+      boundary: overrides.verifierBoundary ?? "trusted-cloud-attestation-verifier",
       verify,
     },
     components,
     runtimePortBindings: {
-      campaignStore: runtimePortBinding(
-        "control.campaign-state-store",
-        campaignStore,
-      ),
-      inputFactory: runtimePortBinding(
-        "control.optimization-input-factory",
-        inputFactory,
-      ),
-      resumeVerifier: runtimePortBinding(
-        "control.optimization-resume-verifier",
-        resumeVerifier,
-      ),
+      campaignStore: runtimePortBinding("control.campaign-state-store", campaignStore),
+      inputFactory: runtimePortBinding("control.optimization-input-factory", inputFactory),
+      resumeVerifier: runtimePortBinding("control.optimization-resume-verifier", resumeVerifier),
       completionMaterial: runtimePortBinding(
         "control.optimization-completion-material",
         completionMaterial,
       ),
-      interruption: runtimePortBinding(
-        "control.optimization-interruption-port",
-        interruption,
-      ),
-      journal: runtimePortBinding(
-        "control.experiment-journal",
-        journal,
-      ),
-      optimizer: runtimePortBinding(
-        "optimizer.adapter",
-        optimizer,
-      ),
-      gates: runtimePortBinding(
-        "build.correctness-gate",
-        gates,
-      ),
-      broker: runtimePortBinding(
-        "evaluator.blind-broker",
-        broker,
-      ),
+      interruption: runtimePortBinding("control.optimization-interruption-port", interruption),
+      journal: runtimePortBinding("control.experiment-journal", journal),
+      optimizer: runtimePortBinding("optimizer.adapter", optimizer),
+      gates: runtimePortBinding("build.correctness-gate", gates),
+      broker: runtimePortBinding("evaluator.blind-broker", broker),
     },
     now: () => new Date(NOW),
   } as unknown as ComposeProductionOptimizationRuntimeOptions;
@@ -331,9 +284,7 @@ function options(
 describe("production optimization runtime composition", () => {
   it("verifies the sealed task-free composition and exposes only status/run", async () => {
     const fixture = options();
-    const runtime = await composeProductionOptimizationRuntime(
-      fixture.value,
-    );
+    const runtime = await composeProductionOptimizationRuntime(fixture.value);
     const referenceEqualRuntimePorts = [
       [
         fixture.value.runtimePortBindings.campaignStore.implementation,
@@ -375,38 +326,28 @@ describe("production optimization runtime composition", () => {
     for (const [attested, wired] of referenceEqualRuntimePorts) {
       expect(attested).toBe(wired);
     }
-    const initialVerificationCall =
-      fixture.verify.mock.calls[0];
+    const initialVerificationCall = fixture.verify.mock.calls[0];
+    if (initialVerificationCall === undefined) {
+      throw new Error("Expected composition to verify the runtime manifest.");
+    }
     expect(initialVerificationCall).toHaveLength(2);
-    expect(initialVerificationCall?.[1]).toEqual(
-      fixture.value.manifest.runtimePortAttestations,
-    );
+    expect(initialVerificationCall[1]).toEqual(fixture.value.manifest.runtimePortAttestations);
     expect(
-      (initialVerificationCall?.[1] as readonly object[]).map(
-        (commitment) => Object.keys(commitment).sort(),
+      (initialVerificationCall[1] as readonly object[]).map((commitment) =>
+        Object.keys(commitment).sort(),
       ),
-    ).toEqual(
-      PRODUCTION_RUNTIME_PORT_IDS.map(() => [
-        "attestationSha256",
-        "portId",
-      ]),
-    );
-    expect(JSON.stringify(initialVerificationCall)).not.toContain(
-      "implementation",
-    );
+    ).toEqual(PRODUCTION_RUNTIME_PORT_IDS.map(() => ["attestationSha256", "portId"]));
+    expect(JSON.stringify(initialVerificationCall)).not.toContain("implementation");
     Object.assign(fixture.value.verifier, {
       verify: vi.fn(async () => {
         throw new Error("mutated verifier");
       }),
     });
-    Object.assign(
-      fixture.value.components.control.campaignStore,
-      {
-        reconstruct: vi.fn(async () => {
-          throw new Error("mutated store");
-        }),
-      },
-    );
+    Object.assign(fixture.value.components.control.campaignStore, {
+      reconstruct: vi.fn(async () => {
+        throw new Error("mutated store");
+      }),
+    });
 
     expect(Object.keys(runtime).sort()).toEqual([]);
     await expect(runtime.status()).resolves.toMatchObject({
@@ -441,24 +382,18 @@ describe("production optimization runtime composition", () => {
     const fixture = options({
       manifest: taskBearing,
     });
-    await expect(
-      composeProductionOptimizationRuntime(fixture.value),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(fixture.value)).rejects.toThrow(
+      /failed closed/u,
+    );
     expect(fixture.verify).not.toHaveBeenCalled();
   });
 
   it("requires the exact fixed runtime-port order inside the signed manifest", async () => {
     const signedManifest = manifest();
-    const {
-      manifestHash: _manifestHash,
-      signature,
-      ...unsigned
-    } = signedManifest;
+    const { manifestHash: _manifestHash, signature, ...unsigned } = signedManifest;
     const reorderedUnsigned = {
       ...unsigned,
-      runtimePortAttestations: [
-        ...signedManifest.runtimePortAttestations,
-      ].reverse(),
+      runtimePortAttestations: [...signedManifest.runtimePortAttestations].reverse(),
     };
     const reordered = {
       ...reorderedUnsigned,
@@ -467,9 +402,9 @@ describe("production optimization runtime composition", () => {
     } as ProductionOptimizationCompositionManifest;
     const fixture = options({ manifest: reordered });
 
-    await expect(
-      composeProductionOptimizationRuntime(fixture.value),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(fixture.value)).rejects.toThrow(
+      /failed closed/u,
+    );
     expect(fixture.verify).not.toHaveBeenCalled();
   });
 
@@ -479,9 +414,9 @@ describe("production optimization runtime composition", () => {
       ...absent.value,
       runtimePortBindings: undefined,
     } as unknown as ComposeProductionOptimizationRuntimeOptions;
-    await expect(
-      composeProductionOptimizationRuntime(withoutBindings),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(withoutBindings)).rejects.toThrow(
+      /failed closed/u,
+    );
     expect(absent.verify).not.toHaveBeenCalled();
 
     const plain = options();
@@ -492,8 +427,7 @@ describe("production optimization runtime composition", () => {
         campaignStore: components.control.campaignStore,
         inputFactory: components.control.inputFactory,
         resumeVerifier: components.control.resumeVerifier,
-        completionMaterial:
-          components.control.completionMaterial,
+        completionMaterial: components.control.completionMaterial,
         interruption: components.control.interruption,
         journal: components.control.journal,
         optimizer: components.optimizer.adapter,
@@ -501,38 +435,32 @@ describe("production optimization runtime composition", () => {
         broker: components.evaluator.broker,
       },
     } as unknown as ComposeProductionOptimizationRuntimeOptions;
-    await expect(
-      composeProductionOptimizationRuntime(withPlainPorts),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(withPlainPorts)).rejects.toThrow(
+      /failed closed/u,
+    );
     expect(plain.verify).not.toHaveBeenCalled();
   });
 
   it("rejects detached implementations and mutated port attestations", async () => {
     const detached = options();
-    Object.assign(
-      detached.value.runtimePortBindings.optimizer,
-      {
-        implementation: {
-          propose: vi.fn(),
-          analyze: vi.fn(),
-        },
+    Object.assign(detached.value.runtimePortBindings.optimizer, {
+      implementation: {
+        propose: vi.fn(),
+        analyze: vi.fn(),
       },
+    });
+    await expect(composeProductionOptimizationRuntime(detached.value)).rejects.toThrow(
+      /failed closed/u,
     );
-    await expect(
-      composeProductionOptimizationRuntime(detached.value),
-    ).rejects.toThrow(/failed closed/u);
     expect(detached.verify).not.toHaveBeenCalled();
 
     const mutated = options();
-    Object.assign(
-      mutated.value.runtimePortBindings.optimizer,
-      {
-        attestationSha256: "f".repeat(64),
-      },
+    Object.assign(mutated.value.runtimePortBindings.optimizer, {
+      attestationSha256: "f".repeat(64),
+    });
+    await expect(composeProductionOptimizationRuntime(mutated.value)).rejects.toThrow(
+      /failed closed/u,
     );
-    await expect(
-      composeProductionOptimizationRuntime(mutated.value),
-    ).rejects.toThrow(/failed closed/u);
     expect(mutated.verify).not.toHaveBeenCalled();
   });
 
@@ -541,9 +469,9 @@ describe("production optimization runtime composition", () => {
       verifierRuntimePortBindingsHash: "f".repeat(64),
     });
 
-    await expect(
-      composeProductionOptimizationRuntime(fixture.value),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(fixture.value)).rejects.toThrow(
+      /failed closed/u,
+    );
     expect(fixture.verify).toHaveBeenCalledOnce();
   });
 
@@ -552,20 +480,20 @@ describe("production optimization runtime composition", () => {
     const staleFixture = options({
       manifest: { ...stale, maximumExperimentsPerInvocation: 4 },
     });
-    await expect(
-      composeProductionOptimizationRuntime(staleFixture.value),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(staleFixture.value)).rejects.toThrow(
+      /failed closed/u,
+    );
 
     const untrusted = options({ optimizerBoundary: "local" });
-    await expect(
-      composeProductionOptimizationRuntime(untrusted.value),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(untrusted.value)).rejects.toThrow(
+      /failed closed/u,
+    );
 
     const detached = options({
       optimizerManifestBindingHash: "f".repeat(64),
     });
-    await expect(
-      composeProductionOptimizationRuntime(detached.value),
-    ).rejects.toThrow(/failed closed/u);
+    await expect(composeProductionOptimizationRuntime(detached.value)).rejects.toThrow(
+      /failed closed/u,
+    );
   });
 });

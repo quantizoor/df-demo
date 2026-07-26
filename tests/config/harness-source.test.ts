@@ -86,10 +86,7 @@ describe("Pi harness source environment", () => {
       piMonorepo: true as const,
     };
     expect(() =>
-      assertPiHarnessDoctorMatchesConfiguration(
-        report,
-        readiness.configuration!,
-      ),
+      assertPiHarnessDoctorMatchesConfiguration(report, readiness.configuration!),
     ).not.toThrow();
     expect(() =>
       assertPiHarnessDoctorMatchesConfiguration(

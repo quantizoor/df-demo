@@ -13,9 +13,7 @@ export class TrustedJsonArtifactReaderError extends Error {
  * deliberately JSON-specific: callers cannot reinterpret a tar, bundle, diff,
  * or encrypted raw artifact as trusted control data.
  */
-export class VerifyingTrustedJsonArtifactReader
-  implements TrustedOptimizerArtifactReader
-{
+export class VerifyingTrustedJsonArtifactReader implements TrustedOptimizerArtifactReader {
   readonly boundary = "trusted-cloud" as const;
   readonly #bridge: TrustedArtifactBridge;
 
@@ -23,10 +21,7 @@ export class VerifyingTrustedJsonArtifactReader
     this.#bridge = bridge;
   }
 
-  async readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string> {
+  async readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string> {
     if (
       artifact.mediaType !== "application/json" ||
       !Number.isSafeInteger(maximumBytes) ||

@@ -4,8 +4,8 @@ import {
   assertObjectId,
   fingerprintRemoteUrl,
   type RemoteFingerprint,
-  type SensitiveRemoteReference,
   SafeGit,
+  type SensitiveRemoteReference,
 } from "./git.js";
 
 export interface RemoteVerification {
@@ -75,8 +75,7 @@ export interface RepositoryRegistration {
   readonly upstreamVerification: UpstreamLineageVerification;
 }
 
-export const OFFICIAL_PI_UPSTREAM_URL =
-  "https://github.com/earendil-works/pi.git" as const;
+export const OFFICIAL_PI_UPSTREAM_URL = "https://github.com/earendil-works/pi.git" as const;
 
 export class RepositoryPolicyError extends Error {
   override readonly name = "RepositoryPolicyError";
@@ -157,9 +156,7 @@ export async function doctorRepository(
   }
 
   const headCommit = assertObjectId(await git.text(canonicalPath, ["rev-parse", "HEAD"]));
-  const treeSha = assertObjectId(
-    await git.text(canonicalPath, ["rev-parse", "HEAD^{tree}"]),
-  );
+  const treeSha = assertObjectId(await git.text(canonicalPath, ["rev-parse", "HEAD^{tree}"]));
   const remotes = splitLines(await git.text(canonicalPath, ["remote"]));
   if (!remotes.includes("origin")) {
     throw new RepositoryPolicyError("Canonical Pi repository has no origin remote.");
@@ -193,11 +190,7 @@ export async function registerRepository(
   expectation: RepositoryDoctorExpectation,
 ): Promise<RepositoryRegistration> {
   const report = await doctorRepository(git, expectation);
-  const originUrl = await git.text(report.canonicalPath, [
-    "config",
-    "--get",
-    "remote.origin.url",
-  ]);
+  const originUrl = await git.text(report.canonicalPath, ["config", "--get", "remote.origin.url"]);
   const originVerification = await remoteVerifier.verifyOrigin(report.canonicalPath, {
     remoteName: "origin",
     url: originUrl,
@@ -253,10 +246,7 @@ export async function registerRepository(
     );
   }
   const upstreamFingerprint = fingerprintRemoteUrl(OFFICIAL_PI_UPSTREAM_URL);
-  if (
-    upstreamFingerprint.repositoryHash ===
-    report.originFingerprint.repositoryHash
-  ) {
+  if (upstreamFingerprint.repositoryHash === report.originFingerprint.repositoryHash) {
     throw new RepositoryPolicyError(
       "Private origin and canonical upstream must be distinct repositories.",
     );

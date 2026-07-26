@@ -3,9 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const workerPath = fileURLToPath(
-  new URL("../../scripts/trusted-git-worker.mjs", import.meta.url),
-);
+const workerPath = fileURLToPath(new URL("../../scripts/trusted-git-worker.mjs", import.meta.url));
 const secretSentinel = "github_pat_TEST_ONLY_DO_NOT_LOG_1234567890";
 const cloudEnvironment = {
   DF_CLOUD_EXECUTION: "1",
@@ -156,9 +154,7 @@ describe("trusted Git cloud worker adversarial boundary", () => {
 
   it("rejects registration identity mismatch without disclosing its credential", async () => {
     const result = await invokeWorker(
-      malformedRegistration(
-        "https://github.com/parallaxai/df-pi-tbench.git",
-      ),
+      malformedRegistration("https://github.com/parallaxai/df-pi-tbench.git"),
     );
     expect(result.code).toBe(78);
     expect(result.stdout).toBe("");
@@ -234,12 +230,8 @@ describe("trusted Git cloud worker adversarial boundary", () => {
     expect(source).toContain('spawnSync("/usr/bin/git", arguments_');
     expect(source).toContain('hostname: "api.github.com"');
     expect(source).toContain("permissions.push !== true");
-    expect(source).toContain(
-      'const HARNESS_REGISTRATION_SCHEMA_VERSION = "1.2.0"',
-    );
-    expect(source).toContain(
-      'const PI_ADAPTER_ID = "harbor-pi-print-json"',
-    );
+    expect(source).toContain('const HARNESS_REGISTRATION_SCHEMA_VERSION = "1.2.0"');
+    expect(source).toContain('const PI_ADAPTER_ID = "harbor-pi-print-json"');
     expect(source).toContain("shell: false");
     expect(source).not.toContain("shell: true");
     expect(source).not.toContain("execSync(");

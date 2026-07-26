@@ -1,7 +1,4 @@
-import {
-  canonicalHash,
-  withContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, withContentHash } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type { NormalizedGraderOutcome } from "../schemas/trusted.js";
 
@@ -17,13 +14,7 @@ export type GenericToolCategory =
 export type CountBucket = "none" | "one" | "two-three" | "four-plus";
 export type RatioBucket = "none" | "low" | "medium" | "high" | "all";
 export type ExitStatusClass = "zero" | "nonzero" | "signal" | "unknown";
-export type StopReason =
-  | "completed"
-  | "agent-stop"
-  | "timeout"
-  | "budget"
-  | "error"
-  | "unknown";
+export type StopReason = "completed" | "agent-stop" | "timeout" | "budget" | "error" | "unknown";
 export type DurationBucket = "under-1m" | "1-5m" | "5-15m" | "15m-plus";
 
 export type RawTrajectoryEvent =
@@ -120,14 +111,7 @@ const TOOL_CATEGORIES = [
   "network",
   "other",
 ] as const;
-const STOP_REASONS = [
-  "completed",
-  "agent-stop",
-  "timeout",
-  "budget",
-  "error",
-  "unknown",
-] as const;
+const STOP_REASONS = ["completed", "agent-stop", "timeout", "budget", "error", "unknown"] as const;
 const INFRASTRUCTURE_CLASSES = [
   "provider-capacity",
   "provider-timeout",
@@ -308,9 +292,7 @@ export function normalizeGraderOutcome(
   if (
     invalidClass !== null &&
     (typeof invalidClass !== "string" ||
-      !INFRASTRUCTURE_CLASSES.includes(
-        invalidClass as (typeof INFRASTRUCTURE_CLASSES)[number],
-      ))
+      !INFRASTRUCTURE_CLASSES.includes(invalidClass as (typeof INFRASTRUCTURE_CLASSES)[number]))
   ) {
     throw new Error("Invalid broad infrastructure class");
   }
@@ -351,22 +333,11 @@ export function normalizeGraderOutcome(
     input["environmentFingerprintHash"],
     "environmentFingerprintHash",
   );
-  const oneUseAttemptDigest = requireDigest(
-    input["oneUseAttemptDigest"],
-    "oneUseAttemptDigest",
-  );
+  const oneUseAttemptDigest = requireDigest(input["oneUseAttemptDigest"], "oneUseAttemptDigest");
   const createdAt = requireCanonicalTimestamp(context.createdAt, "createdAt");
-  const rawManifestHash = requireDigest(
-    context.rawManifestHash,
-    "rawManifestHash",
-  );
+  const rawManifestHash = requireDigest(context.rawManifestHash, "rawManifestHash");
   const safeCore = {
-    outcome:
-      infrastructureInvalidClass === null
-        ? passed
-          ? "pass"
-          : "fail"
-        : "invalid",
+    outcome: infrastructureInvalidClass === null ? (passed ? "pass" : "fail") : "invalid",
     boundedReward,
     infrastructureInvalidClass,
     integrityStatus,
@@ -445,9 +416,7 @@ function durationBucket(elapsedMs: number): DurationBucket {
         : "15m-plus";
 }
 
-function graderDurationBucket(
-  elapsedMs: number,
-): NormalizedGraderOutcome["elapsedTimeBucket"] {
+function graderDurationBucket(elapsedMs: number): NormalizedGraderOutcome["elapsedTimeBucket"] {
   return elapsedMs < 60_000
     ? "under-1m"
     : elapsedMs < 300_000
@@ -465,25 +434,17 @@ function cpuResourceBucket(
   if (utilizationPercent === null) {
     return "unknown";
   }
-  return utilizationPercent < 35
-    ? "low"
-    : utilizationPercent < 70
-      ? "medium"
-      : "high";
+  return utilizationPercent < 35 ? "low" : utilizationPercent < 70 ? "medium" : "high";
 }
 
-function memoryResourceBucket(
-  maxRssMb: number | null,
-): NormalizedGraderOutcome["memoryBucket"] {
+function memoryResourceBucket(maxRssMb: number | null): NormalizedGraderOutcome["memoryBucket"] {
   if (maxRssMb === null) {
     return "unknown";
   }
   return maxRssMb < 512 ? "low" : maxRssMb < 2_048 ? "medium" : "high";
 }
 
-function summarizeOrdering(
-  ordering: readonly GenericToolCategory[],
-): BehaviorSummary["ordering"] {
+function summarizeOrdering(ordering: readonly GenericToolCategory[]): BehaviorSummary["ordering"] {
   const firstRead = ordering.indexOf("read");
   const firstWrite = ordering.indexOf("write");
   const firstExecute = ordering.indexOf("execute");

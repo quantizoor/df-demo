@@ -1,12 +1,8 @@
 import { createHash } from "node:crypto";
 import { assertCloudExecutionEnvironment } from "./runtime-marker.js";
-import type {
-  CloudProviderName,
-  TrustedCloudArtifactRef,
-} from "./types.js";
+import type { CloudProviderName, TrustedCloudArtifactRef } from "./types.js";
 
-const SAFE_TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const SAFE_MEDIA_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 
@@ -33,9 +29,7 @@ export interface CloudMarkerTrustedArtifactRuntimeGuardOptions {
  * production deployment policy must prevent callers from self-assigning these
  * markers or replace this guard with a provider-backed attestor.
  */
-export class CloudMarkerTrustedArtifactRuntimeGuard
-  implements TrustedArtifactRuntimeGuard
-{
+export class CloudMarkerTrustedArtifactRuntimeGuard implements TrustedArtifactRuntimeGuard {
   readonly #provider: CloudProviderName;
   readonly #environment: () => NodeJS.ProcessEnv;
 
@@ -72,10 +66,7 @@ export interface TrustedArtifactWriteSession {
  * or workstation-local filesystem.
  */
 export interface TrustedArtifactBackend {
-  open(
-    uri: `trusted://${string}`,
-    signal?: AbortSignal,
-  ): Promise<AsyncIterable<Uint8Array>>;
+  open(uri: `trusted://${string}`, signal?: AbortSignal): Promise<AsyncIterable<Uint8Array>>;
   createWrite(input: {
     readonly uri: `trusted://${string}`;
     readonly mediaType: string;
@@ -106,34 +97,50 @@ function assertArtifactReference(artifact: TrustedCloudArtifactRef): void {
     artifact.byteLength < 0 ||
     !SAFE_MEDIA_TYPE.test(artifact.mediaType)
   ) {
-    throw new TrustedArtifactBridgeError(
-      "Trusted artifact metadata is malformed.",
-    );
+    throw new TrustedArtifactBridgeError("Trusted artifact metadata is malformed.");
   }
 }
 
-function assertDestination(
-  uri: `trusted://${string}`,
-  mediaType: string,
-): void {
-  if (
-    !SAFE_TRUSTED_URI.test(uri) ||
-    uri.includes("..") ||
-    !SAFE_MEDIA_TYPE.test(mediaType)
-  ) {
-    throw new TrustedArtifactBridgeError(
-      "Trusted artifact destination is malformed.",
-    );
+function assertDestination(uri: `trusted://${string}`, mediaType: string): void {
+  if (!SAFE_TRUSTED_URI.test(uri) || uri.includes("..") || !SAFE_MEDIA_TYPE.test(mediaType)) {
+    throw new TrustedArtifactBridgeError("Trusted artifact destination is malformed.");
   }
 }
 
 function asBytes(chunk: Uint8Array): Uint8Array {
   if (!(chunk instanceof Uint8Array)) {
-    throw new TrustedArtifactBridgeError(
-      "Trusted artifact streams may contain only byte chunks.",
-    );
+    throw new TrustedArtifactBridgeError("Trusted artifact streams may contain only byte chunks.");
   }
   return chunk;
+}
+
+function assertVerifiedReadCompletion(input: {
+  readonly artifact: TrustedCloudArtifactRef;
+  readonly reachedEof: boolean;
+  readonly byteLength: number;
+  readonly sha256: string;
+  readonly streamFailure: { readonly error: unknown } | undefined;
+}): void {
+  if (
+    input.reachedEof &&
+    input.byteLength === input.artifact.byteLength &&
+    input.sha256 === input.artifact.sha256
+  ) {
+    return;
+  }
+  const integrityFailure = new TrustedArtifactBridgeError(
+    "Trusted artifact content does not match its sealed metadata.",
+  );
+  if (input.streamFailure === undefined) throw integrityFailure;
+  throw new TrustedArtifactBridgeError(
+    "Trusted artifact read failed and its content does not match its sealed metadata.",
+    {
+      cause: new AggregateError(
+        [input.streamFailure.error, integrityFailure],
+        "Trusted artifact stream and integrity verification both failed.",
+      ),
+    },
+  );
 }
 
 /**
@@ -145,10 +152,7 @@ export class VerifyingTrustedArtifactBridge implements TrustedArtifactBridge {
   readonly #backend: TrustedArtifactBackend;
   readonly #runtimeGuard: TrustedArtifactRuntimeGuard;
 
-  constructor(
-    backend: TrustedArtifactBackend,
-    runtimeGuard: TrustedArtifactRuntimeGuard,
-  ) {
+  constructor(backend: TrustedArtifactBackend, runtimeGuard: TrustedArtifactRuntimeGuard) {
     this.#backend = backend;
     this.#runtimeGuard = runtimeGuard;
   }
@@ -169,19 +173,15 @@ export class VerifyingTrustedArtifactBridge implements TrustedArtifactBridge {
         const hash = createHash("sha256");
         let byteLength = 0;
         let reachedEof = false;
+        let streamFailure: { readonly error: unknown } | undefined;
         try {
           for await (const rawChunk of source) {
             if (signal?.aborted === true) {
-              throw new TrustedArtifactBridgeError(
-                "Trusted artifact read was cancelled.",
-              );
+              throw new TrustedArtifactBridgeError("Trusted artifact read was cancelled.");
             }
             const chunk = asBytes(rawChunk);
             byteLength += chunk.byteLength;
-            if (
-              !Number.isSafeInteger(byteLength) ||
-              byteLength > artifact.byteLength
-            ) {
+            if (!Number.isSafeInteger(byteLength) || byteLength > artifact.byteLength) {
               throw new TrustedArtifactBridgeError(
                 "Trusted artifact length exceeds its sealed metadata.",
               );
@@ -190,16 +190,17 @@ export class VerifyingTrustedArtifactBridge implements TrustedArtifactBridge {
             yield chunk;
           }
           reachedEof = true;
+        } catch (error) {
+          streamFailure = { error };
+          throw error;
         } finally {
-          if (
-            !reachedEof ||
-            byteLength !== artifact.byteLength ||
-            hash.digest("hex") !== artifact.sha256
-          ) {
-            throw new TrustedArtifactBridgeError(
-              "Trusted artifact content does not match its sealed metadata.",
-            );
-          }
+          assertVerifiedReadCompletion({
+            artifact,
+            reachedEof,
+            byteLength,
+            sha256: hash.digest("hex"),
+            streamFailure,
+          });
         }
       },
     };
@@ -230,9 +231,7 @@ export class VerifyingTrustedArtifactBridge implements TrustedArtifactBridge {
     try {
       for await (const rawChunk of input.chunks) {
         if (input.signal?.aborted === true) {
-          throw new TrustedArtifactBridgeError(
-            "Trusted artifact write was cancelled.",
-          );
+          throw new TrustedArtifactBridgeError("Trusted artifact write was cancelled.");
         }
         const chunk = asBytes(rawChunk);
         byteLength += chunk.byteLength;

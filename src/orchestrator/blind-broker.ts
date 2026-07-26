@@ -2,20 +2,20 @@ import { randomBytes } from "node:crypto";
 
 import type { MatchedExecutionProfile } from "../cloud/types.js";
 import type { ExperimentIdentity } from "../domain/models.js";
+import { VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION } from "../evaluation/validation-attempt-ledger.js";
 import type {
   CanonicalEvaluatorKeyring,
   ReleasedEvaluationBundle,
 } from "../evaluator/canonical-client.js";
 import {
   assertEvaluationRequest,
-  hashEvaluationRequest,
   type EvaluatedModelReference,
   type HarnessArtifactReference,
+  hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "../evaluator/contracts.js";
 import { resultEnvelopeBehavioralSourceCommitmentHash } from "../evaluator/release-lineage.js";
 import { assertSafeForLocalPersistence } from "../evaluator/retention.js";
-import { VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION } from "../evaluation/validation-attempt-ledger.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
 import type {
   BehavioralEvidence,
@@ -23,16 +23,9 @@ import type {
   DiagnosticBrief,
   FailureCards,
 } from "../schemas/artifacts.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  hasValidContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, hasValidContentHash } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
-import type {
-  SignedBehavioralRelease,
-  SignedResultEnvelope,
-} from "../schemas/trusted.js";
+import type { SignedBehavioralRelease, SignedResultEnvelope } from "../schemas/trusted.js";
 import type {
   BlindBroker,
   DiagnosticBriefReference,
@@ -52,12 +45,7 @@ const VALIDATION_MAXIMUM_ATTEMPTS = 28 as const;
 
 type AdaptiveStage = "repair" | "validation";
 type LeaseOutcome = "decided" | "started-abandoned" | "sealed-unstarted";
-type LeaseStatus =
-  | "prepared"
-  | "running"
-  | "evaluated"
-  | "evaluation-failed"
-  | "disposed";
+type LeaseStatus = "prepared" | "running" | "evaluated" | "evaluation-failed" | "disposed";
 type DiagnosticStatus =
   | "not-authorized"
   | "unavailable"
@@ -66,15 +54,8 @@ type DiagnosticStatus =
   | "released"
   | "burned";
 
-const ADAPTIVE_STAGES = new Set<AdaptiveStage>([
-  "repair",
-  "validation",
-]);
-const LEASE_OUTCOMES = new Set<LeaseOutcome>([
-  "decided",
-  "started-abandoned",
-  "sealed-unstarted",
-]);
+const ADAPTIVE_STAGES = new Set<AdaptiveStage>(["repair", "validation"]);
+const LEASE_OUTCOMES = new Set<LeaseOutcome>(["decided", "started-abandoned", "sealed-unstarted"]);
 const LEASE_STATUSES = new Set<LeaseStatus>([
   "prepared",
   "running",
@@ -101,9 +82,7 @@ export interface BlindBrokerEvaluationConfiguration {
 }
 
 export interface BlindBrokerEvaluationConfigurationResolver {
-  resolve(
-    experiment: ExperimentIdentity,
-  ): Promise<BlindBrokerEvaluationConfiguration>;
+  resolve(experiment: ExperimentIdentity): Promise<BlindBrokerEvaluationConfiguration>;
 }
 
 export interface TrustedHarnessArtifactResolver {
@@ -149,16 +128,11 @@ export class Ed25519AdaptiveReleaseSignatureVerifier
     this.#keyring = keyring;
   }
 
-  public async verify(
-    document: SignedAdaptiveReleaseDocument,
-  ): Promise<boolean> {
+  public async verify(document: SignedAdaptiveReleaseDocument): Promise<boolean> {
     const key = await this.#keyring.getVerificationKey(document.signature.keyId);
     return (
       key !== undefined &&
-      verifyEd25519Signature(
-        document as unknown as Readonly<Record<string, unknown>>,
-        key,
-      )
+      verifyEd25519Signature(document as unknown as Readonly<Record<string, unknown>>, key)
     );
   }
 }
@@ -184,6 +158,17 @@ export interface StoredDiagnosticMaterial {
   readonly behavioralEvidence: BehavioralEvidence;
   readonly failureCards: FailureCards;
   readonly diagnosticBrief: DiagnosticBrief;
+}
+
+type DiagnosticReleaseClaim =
+  | { readonly reference: DiagnosticBriefReference }
+  | { readonly key: string; readonly record: DurableBlindBrokerLeaseRecord }
+  | null;
+
+interface EvaluationLeaseClaim {
+  readonly key: string;
+  readonly record: DurableBlindBrokerLeaseRecord;
+  readonly replayed: boolean;
 }
 
 export interface DurableBlindBrokerLeaseRecord {
@@ -223,9 +208,7 @@ export interface DurableBlindBrokerLeaseRecord {
 export interface DurableBlindBrokerLeaseState {
   readonly schemaVersion: 1;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, DurableBlindBrokerLeaseRecord>
-  >;
+  readonly records: Readonly<Record<string, DurableBlindBrokerLeaseRecord>>;
 }
 
 export interface AtomicBlindBrokerLeaseStore {
@@ -266,10 +249,7 @@ export class ProductionBlindBrokerError extends Error {
   override readonly name = "ProductionBlindBrokerError";
   readonly code: ProductionBlindBrokerErrorCode;
 
-  public constructor(
-    code: ProductionBlindBrokerErrorCode,
-    message: string,
-  ) {
+  public constructor(code: ProductionBlindBrokerErrorCode, message: string) {
     super(message);
     this.code = code;
   }
@@ -346,8 +326,7 @@ function assertConfiguration(
     !Number.isSafeInteger(configuration.requestTtlMs) ||
     configuration.requestTtlMs < 60_000 ||
     configuration.requestTtlMs > 24 * 60 * 60_000 ||
-    configuration.executionProfile.protocolHash !==
-      experiment.protocolHash
+    configuration.executionProfile.protocolHash !== experiment.protocolHash
   ) {
     throw new ProductionBlindBrokerError(
       "configuration-invalid",
@@ -400,21 +379,13 @@ function assertConfiguration(
   }
 }
 
-function assertExperimentMatches(
-  expected: ExperimentIdentity,
-  actual: ExperimentIdentity,
-): void {
+function assertExperimentMatches(expected: ExperimentIdentity, actual: ExperimentIdentity): void {
   if (canonicalJson(expected) !== canonicalJson(actual)) {
-    throw new ProductionBlindBrokerError(
-      "lease-conflict",
-      "Lease belongs to another experiment.",
-    );
+    throw new ProductionBlindBrokerError("lease-conflict", "Lease belongs to another experiment.");
   }
 }
 
-function preparationHashFor(
-  record: DurableBlindBrokerLeaseRecord,
-): string {
+function preparationHashFor(record: DurableBlindBrokerLeaseRecord): string {
   return canonicalHash({
     domain: "dark-factory.blind-broker.preparation.v1",
     experiment: record.experiment,
@@ -423,8 +394,7 @@ function preparationHashFor(
     candidateCommit: record.candidateCommit,
     repairAttemptOrdinal: record.repairAttemptOrdinal,
     repairSourceExperimentId: record.repairSourceExperimentId,
-    previousDiscoveryAttestationHash:
-      record.previousDiscoveryAttestationHash,
+    previousDiscoveryAttestationHash: record.previousDiscoveryAttestationHash,
     excludedEvidenceHashes: record.excludedEvidenceHashes,
     diagnosticReleaseAuthorized: record.diagnosticReleaseAuthorized,
     configuration: record.configuration,
@@ -455,16 +425,10 @@ function assertExactPlainObjectKeys(
     Array.isArray(value) ||
     Object.getPrototypeOf(value) !== Object.prototype
   ) {
-    throw new ProductionBlindBrokerError(
-      "lease-state-invalid",
-      `${label} must be a plain object.`,
-    );
+    throw new ProductionBlindBrokerError("lease-state-invalid", `${label} must be a plain object.`);
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     throw new ProductionBlindBrokerError(
       "lease-state-invalid",
       `${label} contains non-canonical fields.`,
@@ -521,27 +485,22 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     !SAFE_ID.test(record.requestId) ||
     !SHA256.test(record.hypothesisHash) ||
     !GIT_OBJECT.test(record.candidateCommit) ||
-    (record.championCommit !== null &&
-      !GIT_OBJECT.test(record.championCommit)) ||
+    (record.championCommit !== null && !GIT_OBJECT.test(record.championCommit)) ||
     !Number.isSafeInteger(record.expectedValidArms) ||
     !Number.isSafeInteger(record.maximumAttempts) ||
     record.maximumAttempts < record.expectedValidArms ||
     !Array.isArray(record.excludedEvidenceHashes) ||
     record.excludedEvidenceHashes.some((hash) => !SHA256.test(hash)) ||
-    new Set(record.excludedEvidenceHashes).size !==
-      record.excludedEvidenceHashes.length ||
+    new Set(record.excludedEvidenceHashes).size !== record.excludedEvidenceHashes.length ||
     canonicalJson(record.excludedEvidenceHashes) !==
       canonicalJson([...record.excludedEvidenceHashes].sort()) ||
     typeof record.diagnosticReleaseAuthorized !== "boolean" ||
     (record.requestHash !== null && !SHA256.test(record.requestHash)) ||
     (record.resultDispositionAttestationHash !== null &&
       !SHA256.test(record.resultDispositionAttestationHash)) ||
-    (record.disposedOutcome !== null &&
-      !LEASE_OUTCOMES.has(record.disposedOutcome)) ||
-    (record.disposedAt !== null &&
-      typeof record.disposedAt !== "string") ||
-    (record.dispositionAttestationHash !== null &&
-      !SHA256.test(record.dispositionAttestationHash))
+    (record.disposedOutcome !== null && !LEASE_OUTCOMES.has(record.disposedOutcome)) ||
+    (record.disposedAt !== null && typeof record.disposedAt !== "string") ||
+    (record.dispositionAttestationHash !== null && !SHA256.test(record.dispositionAttestationHash))
   ) {
     throw new ProductionBlindBrokerError(
       "lease-state-invalid",
@@ -549,18 +508,9 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     );
   }
   experimentId(record.experiment);
-  const submittedAt = assertCanonicalTimestamp(
-    record.submittedAt,
-    "Lease submission time",
-  );
-  const deadlineAt = assertCanonicalTimestamp(
-    record.deadlineAt,
-    "Lease deadline",
-  );
-  const updatedAt = assertCanonicalTimestamp(
-    record.updatedAt,
-    "Lease update time",
-  );
+  const submittedAt = assertCanonicalTimestamp(record.submittedAt, "Lease submission time");
+  const deadlineAt = assertCanonicalTimestamp(record.deadlineAt, "Lease deadline");
+  const updatedAt = assertCanonicalTimestamp(record.updatedAt, "Lease update time");
   const disposedAt =
     record.disposedAt === null
       ? null
@@ -581,8 +531,7 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     record.stage === "repair" &&
     (record.expectedValidArms !== REPAIR_VALID_ARMS ||
       record.maximumAttempts !== REPAIR_MAXIMUM_ATTEMPTS ||
-      (record.repairAttemptOrdinal !== 1 &&
-        record.repairAttemptOrdinal !== 2) ||
+      (record.repairAttemptOrdinal !== 1 && record.repairAttemptOrdinal !== 2) ||
       record.repairSourceExperimentId === null ||
       !SAFE_ID.test(record.repairSourceExperimentId) ||
       record.previousDiscoveryAttestationHash === null ||
@@ -611,25 +560,21 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
   }
   const resultBearing =
     record.status === "evaluated" ||
-    (record.status === "disposed" &&
-      record.disposedOutcome === "decided");
+    (record.status === "disposed" && record.disposedOutcome === "decided");
   const resultFieldsComplete =
     record.aggregate !== null &&
     record.requestHash !== null &&
     record.resultDispositionAttestationHash !== null;
   const sealedUnstarted =
-    record.status === "disposed" &&
-    record.disposedOutcome === "sealed-unstarted";
+    record.status === "disposed" && record.disposedOutcome === "sealed-unstarted";
   const championRequired =
     record.status === "running" ||
     record.status === "evaluated" ||
     record.status === "evaluation-failed" ||
-    (record.status === "disposed" &&
-      record.disposedOutcome === "decided");
+    (record.status === "disposed" && record.disposedOutcome === "decided");
   if (
     (championRequired && record.championCommit === null) ||
-    ((record.status === "prepared" || sealedUnstarted) &&
-      record.championCommit !== null)
+    ((record.status === "prepared" || sealedUnstarted) && record.championCommit !== null)
   ) {
     throw new ProductionBlindBrokerError(
       "lease-state-invalid",
@@ -639,8 +584,7 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
   if (
     (resultBearing && !resultFieldsComplete) ||
     (!resultBearing &&
-      (record.aggregate !== null ||
-        record.resultDispositionAttestationHash !== null)) ||
+      (record.aggregate !== null || record.resultDispositionAttestationHash !== null)) ||
     (record.status !== "disposed") !==
       (record.disposedOutcome === null &&
         record.disposedAt === null &&
@@ -653,12 +597,13 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
   }
   if (
     record.status === "disposed" &&
-    (disposedAt === null ||
+    (record.disposedAt === null ||
+      disposedAt === null ||
       record.disposedOutcome === null ||
       record.dispositionAttestationHash === null ||
       disposedAt < submittedAt ||
       updatedAt < disposedAt ||
-      dispositionHash(record, record.disposedOutcome, disposedAt) !==
+      dispositionHash(record, record.disposedOutcome, record.disposedAt) !==
         record.dispositionAttestationHash)
   ) {
     throw new ProductionBlindBrokerError(
@@ -671,10 +616,8 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     (typeof record.aggregate !== "object" ||
       Array.isArray(record.aggregate) ||
       Object.getPrototypeOf(record.aggregate) !== Object.prototype ||
-      (record.stage === "repair" &&
-        !Object.hasOwn(record.aggregate, "attemptOrdinal")) ||
-      (record.stage === "validation" &&
-        !Object.hasOwn(record.aggregate, "validPairs")))
+      (record.stage === "repair" && !Object.hasOwn(record.aggregate, "attemptOrdinal")) ||
+      (record.stage === "validation" && !Object.hasOwn(record.aggregate, "validPairs")))
   ) {
     throw new ProductionBlindBrokerError(
       "lease-state-invalid",
@@ -692,15 +635,11 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
       (record.diagnosticStatus !== "not-authorized" ||
         hasDiagnosticMaterial ||
         hasDiagnosticReference)) ||
-    (hasDiagnosticReference !==
-      (record.diagnosticStatus === "released")) ||
+    hasDiagnosticReference !== (record.diagnosticStatus === "released") ||
     (hasDiagnosticMaterial &&
-      !new Set<DiagnosticStatus>([
-        "eligible",
-        "releasing",
-        "released",
-        "burned",
-      ]).has(record.diagnosticStatus)) ||
+      !new Set<DiagnosticStatus>(["eligible", "releasing", "released", "burned"]).has(
+        record.diagnosticStatus,
+      )) ||
     ((record.diagnosticStatus === "eligible" ||
       record.diagnosticStatus === "releasing" ||
       record.diagnosticStatus === "released" ||
@@ -709,10 +648,7 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     ((record.diagnosticStatus === "releasing" ||
       record.diagnosticStatus === "released" ||
       record.diagnosticStatus === "burned") &&
-      !(
-        record.status === "disposed" &&
-        record.disposedOutcome === "decided"
-      ))
+      !(record.status === "disposed" && record.disposedOutcome === "decided"))
   ) {
     throw new ProductionBlindBrokerError(
       "lease-state-invalid",
@@ -727,11 +663,7 @@ function assertLeaseState(state: DurableBlindBrokerLeaseState): void {
     ["schemaVersion", "revision", "records"],
     "Durable blind-broker lease state",
   );
-  if (
-    state.schemaVersion !== 1 ||
-    !Number.isSafeInteger(state.revision) ||
-    state.revision < 0
-  ) {
+  if (state.schemaVersion !== 1 || !Number.isSafeInteger(state.revision) || state.revision < 0) {
     throw new ProductionBlindBrokerError(
       "lease-state-invalid",
       "Durable blind-broker lease state header is malformed.",
@@ -778,9 +710,7 @@ export function assertDurableBlindBrokerLeaseState(
   assertLeaseState(value as DurableBlindBrokerLeaseState);
 }
 
-class ValidatingAtomicBlindBrokerLeaseStore
-  implements AtomicBlindBrokerLeaseStore
-{
+class ValidatingAtomicBlindBrokerLeaseStore implements AtomicBlindBrokerLeaseStore {
   readonly #delegate: AtomicBlindBrokerLeaseStore;
 
   public constructor(delegate: AtomicBlindBrokerLeaseStore) {
@@ -797,19 +727,13 @@ class ValidatingAtomicBlindBrokerLeaseStore
       assertLeaseState(state);
       const transaction = operation(state);
       assertLeaseState(transaction.next);
-      if (
-        transaction.next !== state &&
-        transaction.next.revision !== state.revision + 1
-      ) {
+      if (transaction.next !== state && transaction.next.revision !== state.revision + 1) {
         throw new ProductionBlindBrokerError(
           "lease-state-invalid",
           "Durable blind-broker state revision did not advance exactly once.",
         );
       }
-      if (
-        transaction.next === state &&
-        transaction.next.revision !== state.revision
-      ) {
+      if (transaction.next === state && transaction.next.revision !== state.revision) {
         throw new ProductionBlindBrokerError(
           "lease-state-invalid",
           "A no-op blind-broker transaction changed its revision.",
@@ -825,19 +749,13 @@ function leaseByToken(
   leaseToken: string,
 ): readonly [string, DurableBlindBrokerLeaseRecord] {
   if (!LEASE_TOKEN.test(leaseToken)) {
-    throw new ProductionBlindBrokerError(
-      "lease-invalid",
-      "Opaque lease token is malformed.",
-    );
+    throw new ProductionBlindBrokerError("lease-invalid", "Opaque lease token is malformed.");
   }
   const found = Object.entries(state.records).find(
     ([, record]) => record.leaseToken === leaseToken,
   );
   if (found === undefined) {
-    throw new ProductionBlindBrokerError(
-      "lease-invalid",
-      "Opaque lease token is unknown.",
-    );
+    throw new ProductionBlindBrokerError("lease-invalid", "Opaque lease token is unknown.");
   }
   assertLeaseRecord(found[1]);
   return found;
@@ -856,10 +774,7 @@ function assertArtifactForCommit(
   }
 }
 
-function tokenCount(cost: {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-}): number {
+function tokenCount(cost: { readonly inputTokens: number; readonly outputTokens: number }): number {
   const total = cost.inputTokens + cost.outputTokens;
   if (!Number.isSafeInteger(total) || total < 0) {
     throw new ProductionBlindBrokerError(
@@ -900,14 +815,9 @@ function assertAggregateCost(cost: {
   }
 }
 
-function repairCacheStatus(
-  cache: CacheAttestation,
-): RepairAggregate["cacheStatus"] {
+function repairCacheStatus(cache: CacheAttestation): RepairAggregate["cacheStatus"] {
   if (cache.driftStatus === "failed") return "drift-failed";
-  if (
-    cache.aggregateUseStatus === "used" ||
-    cache.aggregateUseStatus === "partially-used"
-  ) {
+  if (cache.aggregateUseStatus === "used" || cache.aggregateUseStatus === "partially-used") {
     if (cache.driftStatus !== "passed") {
       throw new ProductionBlindBrokerError(
         "release-invalid",
@@ -962,8 +872,7 @@ function diagnosticMaterial(
   const evidence = bundle.behavioralEvidence;
   const cards = bundle.failureCards;
   const brief = bundle.diagnosticBrief;
-  const sourceResultCommitmentHash =
-    resultEnvelopeBehavioralSourceCommitmentHash(bundle.result);
+  const sourceResultCommitmentHash = resultEnvelopeBehavioralSourceCommitmentHash(bundle.result);
   if (
     evidence === null ||
     cards === null ||
@@ -989,16 +898,11 @@ function diagnosticMaterial(
     brief.experimentNumber !== bundle.result.experimentNumber ||
     brief.sourceExperimentNumber !== bundle.result.experimentNumber ||
     brief.releaseId !== release.releaseId ||
-    release.suppressedFindingCountBand !==
-      evidence.suppressedFindingCountBand ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(evidence.policyVersions) ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(cards.policyVersions) ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(brief.policyVersions) ||
-    canonicalJson(release.support) !==
-      canonicalJson(evidence.analysisWindow.support) ||
+    release.suppressedFindingCountBand !== evidence.suppressedFindingCountBand ||
+    canonicalJson(release.policyVersions) !== canonicalJson(evidence.policyVersions) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(cards.policyVersions) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(brief.policyVersions) ||
+    canonicalJson(release.support) !== canonicalJson(evidence.analysisWindow.support) ||
     !release.support.complementaryCountSuppressionPassed ||
     !release.support.differencingBudgetPassed ||
     !hasValidContentHash(evidence) ||
@@ -1033,8 +937,7 @@ function assertDiagnosticReference(
     !Object.hasOwn(reference, "actionable") ||
     reference.hash !== material.diagnosticBrief.contentHash ||
     reference.releaseId !== material.diagnosticBrief.releaseId ||
-    reference.actionable !==
-      (material.diagnosticBrief.status === "actionable-evidence")
+    reference.actionable !== (material.diagnosticBrief.status === "actionable-evidence")
   ) {
     throw new ProductionBlindBrokerError(
       "release-invalid",
@@ -1078,10 +981,7 @@ async function assertReleasedBundle(
   }
   const result = bundle.result;
   const requestHash = hashEvaluationRequest(request);
-  const expectedExperimentNumber = Number.parseInt(
-    request.experimentId.split("-", 1)[0] ?? "",
-    10,
-  );
+  const expectedExperimentNumber = Number.parseInt(request.experimentId.split("-", 1)[0] ?? "", 10);
   if (
     result.oneUseRequest.requestId !== request.requestId ||
     result.oneUseRequest.requestHash !== requestHash ||
@@ -1097,8 +997,7 @@ async function assertReleasedBundle(
     result.releaseChecks.graderCanaryScanPassed !== true ||
     result.releaseChecks.contentFingerprintScanPassed !== true ||
     result.releaseChecks.taskIdentityScanPassed !== true ||
-    result.derivation.cacheAttestationHash !==
-      bundle.cacheAttestation.contentHash ||
+    result.derivation.cacheAttestationHash !== bundle.cacheAttestation.contentHash ||
     bundle.cacheAttestation.experimentNumber !== result.experimentNumber ||
     bundle.cacheAttestation.protocolHash !== request.protocolHash ||
     !bundle.cacheAttestation.repairBudgetCompliant
@@ -1108,10 +1007,7 @@ async function assertReleasedBundle(
       "Signed evaluator release is detached from its one-use request.",
     );
   }
-  if (
-    request.stage !== "validation" &&
-    bundle.behavioralRelease !== null
-  ) {
+  if (request.stage !== "validation" && bundle.behavioralRelease !== null) {
     throw new ProductionBlindBrokerError(
       "release-invalid",
       "Only validation may release behavioral diagnostics.",
@@ -1170,12 +1066,8 @@ function mapValidationAggregate(
     payload.matchedTaskCount !== 12 ||
     payload.validFreshArmCount !== VALIDATION_VALID_ARMS ||
     payload.invalidArmTotal < 0 ||
-    payload.validFreshArmCount + payload.invalidArmTotal >
-      record.maximumAttempts ||
-    Object.values(payload.pairOutcomeTotals).reduce(
-      (total, count) => total + count,
-      0,
-    ) !== 12 ||
+    payload.validFreshArmCount + payload.invalidArmTotal > record.maximumAttempts ||
+    Object.values(payload.pairOutcomeTotals).reduce((total, count) => total + count, 0) !== 12 ||
     bundle.cacheAttestation.aggregateUseStatus === "used" ||
     bundle.cacheAttestation.aggregateUseStatus === "partially-used"
   ) {
@@ -1214,9 +1106,7 @@ function mapValidationAggregate(
     attestationHash: bundle.result.contentHash,
     releasedEvidenceHash: diagnostics?.diagnosticBrief.contentHash ?? null,
     behavioralSourceCommitmentHash:
-      diagnostics === null
-        ? null
-        : resultEnvelopeBehavioralSourceCommitmentHash(bundle.result),
+      diagnostics === null ? null : resultEnvelopeBehavioralSourceCommitmentHash(bundle.result),
     attemptAccounting: {
       policyVersion: VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION,
       terminalStatus: "complete",
@@ -1249,36 +1139,25 @@ export class ProductionBlindBroker implements BlindBroker {
     this.#store = new ValidatingAtomicBlindBrokerLeaseStore(options.store);
     this.#now = options.now ?? (() => new Date());
     this.#leaseTokenFactory =
-      options.leaseTokenFactory ??
-      (() => `lease-${randomBytes(32).toString("base64url")}`);
+      options.leaseTokenFactory ?? (() => `lease-${randomBytes(32).toString("base64url")}`);
   }
 
   public async prepareRepair(
     input: Parameters<BlindBroker["prepareRepair"]>[0],
   ): Promise<EphemeralPanelLease> {
     assertHash(input.hypothesisHash, "Hypothesis");
-    assertHash(
-      input.previousDiscoveryAttestationHash,
-      "Previous discovery attestation",
-    );
+    assertHash(input.previousDiscoveryAttestationHash, "Previous discovery attestation");
     if (!GIT_OBJECT.test(input.candidateCommit)) {
-      throw new ProductionBlindBrokerError(
-        "lease-invalid",
-        "Candidate commit is malformed.",
-      );
+      throw new ProductionBlindBrokerError("lease-invalid", "Candidate commit is malformed.");
     }
-    const configuration = await this.#options.configurations.resolve(
-      input.experiment,
-    );
+    const configuration = await this.#options.configurations.resolve(input.experiment);
     assertConfiguration(configuration, input.experiment);
     const source = await this.#options.repairDiscovery.resolve({
       experiment: input.experiment,
-      discoveryAttestationHash:
-        input.previousDiscoveryAttestationHash,
+      discoveryAttestationHash: input.previousDiscoveryAttestationHash,
     });
     if (
-      source.discoveryAttestationHash !==
-        input.previousDiscoveryAttestationHash ||
+      source.discoveryAttestationHash !== input.previousDiscoveryAttestationHash ||
       !SAFE_ID.test(source.sourceExperimentId) ||
       source.sourceExperimentId === experimentId(input.experiment)
     ) {
@@ -1294,8 +1173,7 @@ export class ProductionBlindBroker implements BlindBroker {
       candidateCommit: input.candidateCommit,
       repairAttemptOrdinal: input.attemptOrdinal,
       repairSourceExperimentId: source.sourceExperimentId,
-      previousDiscoveryAttestationHash:
-        input.previousDiscoveryAttestationHash,
+      previousDiscoveryAttestationHash: input.previousDiscoveryAttestationHash,
       excludedEvidenceHashes: [],
       diagnosticReleaseAuthorized: false,
       configuration,
@@ -1319,18 +1197,13 @@ export class ProductionBlindBroker implements BlindBroker {
       );
     }
     const excluded = [...input.excludedEvidenceHashes].sort();
-    if (
-      excluded.some((hash) => !SHA256.test(hash)) ||
-      new Set(excluded).size !== excluded.length
-    ) {
+    if (excluded.some((hash) => !SHA256.test(hash)) || new Set(excluded).size !== excluded.length) {
       throw new ProductionBlindBrokerError(
         "lease-invalid",
         "Fresh validation exclusions are malformed or duplicated.",
       );
     }
-    const configuration = await this.#options.configurations.resolve(
-      input.experiment,
-    );
+    const configuration = await this.#options.configurations.resolve(input.experiment);
     assertConfiguration(configuration, input.experiment);
     return this.#prepare({
       experiment: input.experiment,
@@ -1344,10 +1217,7 @@ export class ProductionBlindBroker implements BlindBroker {
       diagnosticReleaseAuthorized: input.diagnosticReleaseAuthorized,
       configuration,
       expectedValidArms: VALIDATION_VALID_ARMS,
-      maximumAttempts: Math.min(
-        VALIDATION_MAXIMUM_ATTEMPTS,
-        input.remainingExperimentAttempts,
-      ),
+      maximumAttempts: Math.min(VALIDATION_MAXIMUM_ATTEMPTS, input.remainingExperimentAttempts),
     });
   }
 
@@ -1367,15 +1237,10 @@ export class ProductionBlindBroker implements BlindBroker {
   }): Promise<EphemeralPanelLease> {
     const now = this.#now();
     if (!Number.isFinite(now.getTime())) {
-      throw new ProductionBlindBrokerError(
-        "configuration-invalid",
-        "Trusted clock is invalid.",
-      );
+      throw new ProductionBlindBrokerError("configuration-invalid", "Trusted clock is invalid.");
     }
     const submittedAt = now.toISOString();
-    const deadlineAt = new Date(
-      now.getTime() + input.configuration.requestTtlMs,
-    ).toISOString();
+    const deadlineAt = new Date(now.getTime() + input.configuration.requestTtlMs).toISOString();
     const preparationHash = canonicalHash({
       domain: "dark-factory.blind-broker.preparation.v1",
       experiment: input.experiment,
@@ -1384,8 +1249,7 @@ export class ProductionBlindBroker implements BlindBroker {
       candidateCommit: input.candidateCommit,
       repairAttemptOrdinal: input.repairAttemptOrdinal,
       repairSourceExperimentId: input.repairSourceExperimentId,
-      previousDiscoveryAttestationHash:
-        input.previousDiscoveryAttestationHash,
+      previousDiscoveryAttestationHash: input.previousDiscoveryAttestationHash,
       excludedEvidenceHashes: input.excludedEvidenceHashes,
       diagnosticReleaseAuthorized: input.diagnosticReleaseAuthorized,
       configuration: input.configuration,
@@ -1415,9 +1279,7 @@ export class ProductionBlindBroker implements BlindBroker {
       const leaseToken = this.#leaseTokenFactory();
       if (
         !LEASE_TOKEN.test(leaseToken) ||
-        Object.values(state.records).some(
-          (record) => record.leaseToken === leaseToken,
-        )
+        Object.values(state.records).some((record) => record.leaseToken === leaseToken)
       ) {
         throw new ProductionBlindBrokerError(
           "configuration-invalid",
@@ -1447,19 +1309,15 @@ export class ProductionBlindBroker implements BlindBroker {
         experiment: input.experiment,
         stage: input.stage,
         status: "prepared",
-        diagnosticStatus: input.diagnosticReleaseAuthorized
-          ? "unavailable"
-          : "not-authorized",
+        diagnosticStatus: input.diagnosticReleaseAuthorized ? "unavailable" : "not-authorized",
         hypothesisHash: input.hypothesisHash,
         candidateCommit: input.candidateCommit,
         championCommit: null,
         repairAttemptOrdinal: input.repairAttemptOrdinal,
         repairSourceExperimentId: input.repairSourceExperimentId,
-        previousDiscoveryAttestationHash:
-          input.previousDiscoveryAttestationHash,
+        previousDiscoveryAttestationHash: input.previousDiscoveryAttestationHash,
         excludedEvidenceHashes: input.excludedEvidenceHashes,
-        diagnosticReleaseAuthorized:
-          input.diagnosticReleaseAuthorized,
+        diagnosticReleaseAuthorized: input.diagnosticReleaseAuthorized,
         configuration: input.configuration,
         submittedAt,
         deadlineAt,
@@ -1491,9 +1349,7 @@ export class ProductionBlindBroker implements BlindBroker {
     });
   }
 
-  public async runRepair(
-    input: Parameters<BlindBroker["runRepair"]>[0],
-  ): Promise<RepairAggregate> {
+  public async runRepair(input: Parameters<BlindBroker["runRepair"]>[0]): Promise<RepairAggregate> {
     const result = await this.#run(
       "repair",
       input.experiment,
@@ -1549,22 +1405,16 @@ export class ProductionBlindBroker implements BlindBroker {
         "Matched evaluation commits are malformed or identical.",
       );
     }
-    const claimed = await this.#store.transact((state) => {
+    const claimed = await this.#store.transact<EvaluationLeaseClaim>((state) => {
       const [key, record] = leaseByToken(state, leaseToken);
       assertExperimentMatches(record.experiment, experiment);
-      if (
-        record.stage !== stage ||
-        record.candidateCommit !== candidateCommit
-      ) {
+      if (record.stage !== stage || record.candidateCommit !== candidateCommit) {
         throw new ProductionBlindBrokerError(
           "lease-conflict",
           "Evaluation invocation does not match its immutable lease.",
         );
       }
-      if (
-        record.championCommit !== null &&
-        record.championCommit !== championCommit
-      ) {
+      if (record.championCommit !== null && record.championCommit !== championCommit) {
         throw new ProductionBlindBrokerError(
           "lease-conflict",
           "Evaluation replay does not match its frozen champion.",
@@ -1572,8 +1422,7 @@ export class ProductionBlindBroker implements BlindBroker {
       }
       if (
         (record.status === "evaluated" ||
-          (record.status === "disposed" &&
-            record.disposedOutcome === "decided")) &&
+          (record.status === "disposed" && record.disposedOutcome === "decided")) &&
         record.aggregate !== null
       ) {
         return { next: state, result: { key, record, replayed: true } };
@@ -1630,11 +1479,7 @@ export class ProductionBlindBroker implements BlindBroker {
       const requestHash = hashEvaluationRequest(request);
       await this.#store.transact((state) => {
         const record = state.records[claimed.key];
-        if (
-          record === undefined ||
-          record.status !== "running" ||
-          record.requestHash !== null
-        ) {
+        if (record === undefined || record.status !== "running" || record.requestHash !== null) {
           throw new ProductionBlindBrokerError(
             "lease-state-invalid",
             "Evaluation request lost its exclusive lease claim.",
@@ -1678,8 +1523,7 @@ export class ProductionBlindBroker implements BlindBroker {
         const evaluated: DurableBlindBrokerLeaseRecord = {
           ...record,
           status: "evaluated",
-          resultDispositionAttestationHash:
-            bundle.result.oneUseRequest.dispositionAttestationHash,
+          resultDispositionAttestationHash: bundle.result.oneUseRequest.dispositionAttestationHash,
           aggregate,
           diagnosticMaterial: diagnostics,
           diagnosticStatus:
@@ -1749,12 +1593,10 @@ export class ProductionBlindBroker implements BlindBroker {
             taskCount: 12 as const,
             attemptsPerArm: 1 as const,
             pairOrder: "balanced-6-ab-6-ba" as const,
-            weightingPolicyHash:
-              record.configuration.weightingPolicyHash,
+            weightingPolicyHash: record.configuration.weightingPolicyHash,
             frozenHypothesisHash: record.hypothesisHash,
             hypothesisExclusionAttestationHash: canonicalHash({
-              domain:
-                "dark-factory.validation-hypothesis-exclusion.v1",
+              domain: "dark-factory.validation-hypothesis-exclusion.v1",
               hypothesisHash: record.hypothesisHash,
               candidateArchiveSha256: candidate.archiveSha256,
               excludedEvidenceHashes: record.excludedEvidenceHashes,
@@ -1769,8 +1611,7 @@ export class ProductionBlindBroker implements BlindBroker {
       submittedAt: record.submittedAt,
       deadlineAt: record.deadlineAt,
       protocolHash: record.experiment.protocolHash,
-      complianceManifestHash:
-        record.configuration.complianceManifestHash,
+      complianceManifestHash: record.configuration.complianceManifestHash,
       candidate,
       champion,
       selection,
@@ -1781,17 +1622,10 @@ export class ProductionBlindBroker implements BlindBroker {
     return request;
   }
 
-  async #failEvaluation(
-    key: string,
-    stage: AdaptiveStage,
-  ): Promise<void> {
+  async #failEvaluation(key: string, stage: AdaptiveStage): Promise<void> {
     await this.#store.transact((state) => {
       const record = state.records[key];
-      if (
-        record === undefined ||
-        record.status === "disposed" ||
-        record.status === "evaluated"
-      ) {
+      if (record === undefined || record.status === "disposed" || record.status === "evaluated") {
         return { next: state, result: undefined };
       }
       const failed: DurableBlindBrokerLeaseRecord = {
@@ -1836,18 +1670,13 @@ export class ProductionBlindBroker implements BlindBroker {
         return {
           next: state,
           result: {
-            dispositionAttestationHash:
-              record.dispositionAttestationHash,
+            dispositionAttestationHash: record.dispositionAttestationHash,
           },
         };
       }
       assertDispositionTransition(record, input.outcome);
       const disposedAt = this.#now().toISOString();
-      const dispositionAttestationHash = dispositionHash(
-        record,
-        input.outcome,
-        disposedAt,
-      );
+      const dispositionAttestationHash = dispositionHash(record, input.outcome, disposedAt);
       const disposed: DurableBlindBrokerLeaseRecord = {
         ...record,
         status: "disposed",
@@ -1866,10 +1695,7 @@ export class ProductionBlindBroker implements BlindBroker {
     });
   }
 
-  async #disposeByKey(
-    key: string,
-    outcome: LeaseOutcome,
-  ): Promise<string> {
+  async #disposeByKey(key: string, outcome: LeaseOutcome): Promise<string> {
     return this.#store.transact((state) => {
       const record = state.records[key];
       if (record === undefined) {
@@ -1879,10 +1705,7 @@ export class ProductionBlindBroker implements BlindBroker {
         );
       }
       if (record.status === "disposed") {
-        if (
-          record.disposedOutcome !== outcome ||
-          record.dispositionAttestationHash === null
-        ) {
+        if (record.disposedOutcome !== outcome || record.dispositionAttestationHash === null) {
           throw new ProductionBlindBrokerError(
             "lease-state-invalid",
             "Disposed lease cannot change its terminal outcome.",
@@ -1922,14 +1745,13 @@ export class ProductionBlindBroker implements BlindBroker {
         "Diagnostic release requires an explicit one-use authorization.",
       );
     }
-    const claimed = await this.#store.transact((state) => {
+    const claimed = await this.#store.transact<DiagnosticReleaseClaim>((state) => {
       const found = Object.entries(state.records).find(
         ([, record]) =>
           record.stage === "validation" &&
           record.aggregate !== null &&
           "validPairs" in record.aggregate &&
-          record.aggregate.attestationHash ===
-            input.validationAttestationHash,
+          record.aggregate.attestationHash === input.validationAttestationHash,
       );
       if (found === undefined) {
         throw new ProductionBlindBrokerError(
@@ -1949,10 +1771,7 @@ export class ProductionBlindBroker implements BlindBroker {
           "Diagnostic release is not authorized for this disposed validation.",
         );
       }
-      if (
-        record.diagnosticStatus === "unavailable" &&
-        record.diagnosticMaterial === null
-      ) {
+      if (record.diagnosticStatus === "unavailable" && record.diagnosticMaterial === null) {
         return { next: state, result: null };
       }
       if (
@@ -1960,10 +1779,7 @@ export class ProductionBlindBroker implements BlindBroker {
         record.diagnosticMaterial !== null &&
         record.diagnosticReference !== null
       ) {
-        assertDiagnosticReference(
-          record.diagnosticReference,
-          record.diagnosticMaterial,
-        );
+        assertDiagnosticReference(record.diagnosticReference, record.diagnosticMaterial);
         return {
           next: state,
           result: {
@@ -1971,10 +1787,7 @@ export class ProductionBlindBroker implements BlindBroker {
           },
         };
       }
-      if (
-        record.diagnosticStatus === "releasing" &&
-        record.diagnosticMaterial !== null
-      ) {
+      if (record.diagnosticStatus === "releasing" && record.diagnosticMaterial !== null) {
         return {
           next: state,
           result: { key, record },
@@ -1983,8 +1796,7 @@ export class ProductionBlindBroker implements BlindBroker {
       if (
         record.diagnosticStatus !== "eligible" ||
         record.diagnosticMaterial === null ||
-        Date.parse(record.diagnosticMaterial.diagnosticBrief.expiresAt) <=
-          this.#now().getTime()
+        Date.parse(record.diagnosticMaterial.diagnosticBrief.expiresAt) <= this.#now().getTime()
       ) {
         throw new ProductionBlindBrokerError(
           "diagnostic-unavailable",
@@ -2015,13 +1827,11 @@ export class ProductionBlindBroker implements BlindBroker {
       );
     }
     try {
-      const reference =
-        await this.#options.diagnosticPublisher.publishOnce({
-          publicationId: `brief-${input.validationAttestationHash.slice(0, 48)}`,
-          sourceResultEnvelopeHash:
-            material.behavioralRelease.sourceResultEnvelopeHash,
-          ...material,
-        });
+      const reference = await this.#options.diagnosticPublisher.publishOnce({
+        publicationId: `brief-${input.validationAttestationHash.slice(0, 48)}`,
+        sourceResultEnvelopeHash: material.behavioralRelease.sourceResultEnvelopeHash,
+        ...material,
+      });
       assertDiagnosticReference(reference, material);
       return await this.#store.transact((state) => {
         const record = state.records[claimed.key];
@@ -2030,10 +1840,7 @@ export class ProductionBlindBroker implements BlindBroker {
           record.diagnosticMaterial !== null &&
           record.diagnosticReference !== null
         ) {
-          assertDiagnosticReference(
-            record.diagnosticReference,
-            record.diagnosticMaterial,
-          );
+          assertDiagnosticReference(record.diagnosticReference, record.diagnosticMaterial);
           assertDiagnosticReference(reference, record.diagnosticMaterial);
           if (canonicalJson(record.diagnosticReference) !== canonicalJson(reference)) {
             throw new ProductionBlindBrokerError(
@@ -2046,10 +1853,7 @@ export class ProductionBlindBroker implements BlindBroker {
             result: record.diagnosticReference,
           };
         }
-        if (
-          record === undefined ||
-          record.diagnosticStatus !== "releasing"
-        ) {
+        if (record === undefined || record.diagnosticStatus !== "releasing") {
           throw new ProductionBlindBrokerError(
             "lease-state-invalid",
             "Diagnostic one-use claim was lost before publication.",
@@ -2069,16 +1873,10 @@ export class ProductionBlindBroker implements BlindBroker {
         };
       });
     } catch (error) {
-      if (
-        error instanceof ProductionBlindBrokerError &&
-        error.code === "release-invalid"
-      ) {
+      if (error instanceof ProductionBlindBrokerError && error.code === "release-invalid") {
         await this.#store.transact((state) => {
           const record = state.records[claimed.key];
-          if (
-            record === undefined ||
-            record.diagnosticStatus !== "releasing"
-          ) {
+          if (record === undefined || record.diagnosticStatus !== "releasing") {
             return { next: state, result: undefined };
           }
           return {
@@ -2131,8 +1929,7 @@ function dispositionHash(
     domain: "dark-factory.blind-broker.disposition.v1",
     leaseSealHash: record.leaseSealHash,
     requestHash: record.requestHash,
-    resultDispositionAttestationHash:
-      record.resultDispositionAttestationHash,
+    resultDispositionAttestationHash: record.resultDispositionAttestationHash,
     outcome,
     disposedAt,
   });

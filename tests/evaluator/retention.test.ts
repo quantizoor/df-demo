@@ -99,18 +99,9 @@ describe("trusted raw retention", () => {
       ),
     ).not.toThrow();
 
-    const late = signedReceipt(
-      rawManifest,
-      "2026-07-01T00:31:00.000Z",
-      "2026-07-01T00:31:00.000Z",
-    );
+    const late = signedReceipt(rawManifest, "2026-07-01T00:31:00.000Z", "2026-07-01T00:31:00.000Z");
     expect(() =>
-      assertRawDestructionReceipt(
-        policy,
-        rawManifest,
-        late,
-        destructionVerifier,
-      ),
+      assertRawDestructionReceipt(policy, rawManifest, late, destructionVerifier),
     ).toThrow(/late/u);
 
     const stale = signedReceipt(
@@ -119,12 +110,7 @@ describe("trusted raw retention", () => {
       "2026-07-01T00:16:00.000Z",
     );
     expect(() =>
-      assertRawDestructionReceipt(
-        policy,
-        rawManifest,
-        stale,
-        destructionVerifier,
-      ),
+      assertRawDestructionReceipt(policy, rawManifest, stale, destructionVerifier),
     ).toThrow(/stale/u);
   });
 
@@ -141,12 +127,7 @@ describe("trusted raw retention", () => {
       },
     };
     expect(() =>
-      assertRawDestructionReceipt(
-        policy,
-        rawManifest,
-        badSignature,
-        destructionVerifier,
-      ),
+      assertRawDestructionReceipt(policy, rawManifest, badSignature, destructionVerifier),
     ).toThrow(/unsigned|inconsistent/u);
     expect(() =>
       assertRawDestructionReceipt(

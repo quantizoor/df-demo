@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 
-import {
-  inspectBootstrapEnvironment,
-  type BootstrapConfiguration,
-} from "../config/environment.js";
+import { type BootstrapConfiguration, inspectBootstrapEnvironment } from "../config/environment.js";
 import { inspectPiHarnessSourceEnvironment } from "../config/harness-source.js";
 import { canonicalJson } from "../schemas/canonical.js";
 import {
@@ -11,15 +8,14 @@ import {
   type StagedControlConfiguration,
 } from "./control-stage-configuration.js";
 import {
-  parseProductionOptimizeBootstrapDescriptorEnvironment,
   PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME,
   type ProductionOptimizeBootstrapDescriptor,
+  parseProductionOptimizeBootstrapDescriptorEnvironment,
 } from "./production-optimize-bootstrap.js";
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_CAMPAIGN_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const SAFE_VOLUME_SUBPATH =
-  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$/u;
+const SAFE_VOLUME_SUBPATH = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$/u;
 const SAFE_DOMAIN =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
@@ -119,13 +115,7 @@ const CONTROL_RUNTIME_ENVIRONMENT_NAMES = new Set<string>([
 const CONTROL_RUNTIME_ENVIRONMENT_PREFIX =
   /^(?:DAYTONA|GITHUB|RUNNER|NODE|NPM|PNPM|COREPACK|LD|DYLD|LC)_/u;
 
-export type CloudControlCommand =
-  | "probe"
-  | "synthetic"
-  | "optimize"
-  | "status"
-  | "stop"
-  | "resume";
+export type CloudControlCommand = "probe" | "synthetic" | "optimize" | "status" | "stop" | "resume";
 
 export class CloudControlBootstrapError extends Error {
   override readonly name = "CloudControlBootstrapError";
@@ -211,9 +201,7 @@ export interface DaytonaControlClientFactory {
 export interface CloudControlBootstrapRequest {
   readonly command: CloudControlCommand;
   readonly campaignId: string;
-  readonly configuration:
-    | BootstrapConfiguration
-    | StagedControlConfiguration;
+  readonly configuration: BootstrapConfiguration | StagedControlConfiguration;
   readonly volumeId: string;
   readonly volumeSubpath: string;
   readonly ttlMinutes: number;
@@ -223,8 +211,7 @@ export interface CloudControlBootstrapRequest {
     readonly sourceEnvironmentName: string;
     readonly targetEnvironmentName: string;
   }[];
-  readonly optimizeBootstrapDescriptor:
-    ProductionOptimizeBootstrapDescriptor | null;
+  readonly optimizeBootstrapDescriptor: ProductionOptimizeBootstrapDescriptor | null;
   readonly resources: {
     readonly cpu: number;
     readonly memoryGiB: number;
@@ -262,28 +249,15 @@ function quotePosix(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-function positiveInteger(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-  maximum: number,
-): number {
+function positiveInteger(environment: NodeJS.ProcessEnv, name: string, maximum: number): number {
   const value = Number(environment[name]);
-  if (
-    !Number.isSafeInteger(value) ||
-    value <= 0 ||
-    value > maximum
-  ) {
-    throw new CloudControlBootstrapError(
-      `${name} must be a bounded positive integer.`,
-    );
+  if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
+    throw new CloudControlBootstrapError(`${name} must be a bounded positive integer.`);
   }
   return value;
 }
 
-function required(
-  environment: NodeJS.ProcessEnv,
-  name: string,
-): string {
+function required(environment: NodeJS.ProcessEnv, name: string): string {
   const value = environment[name]?.trim();
   if (value === undefined || value.length === 0) {
     throw new CloudControlBootstrapError(`${name} is required.`);
@@ -299,14 +273,10 @@ function parseControllerSecrets(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new CloudControlBootstrapError(
-      "DF_CONTROL_SECRET_BINDINGS_JSON must be canonical JSON.",
-    );
+    throw new CloudControlBootstrapError("DF_CONTROL_SECRET_BINDINGS_JSON must be canonical JSON.");
   }
   if (!Array.isArray(parsed) || parsed.length > 8) {
-    throw new CloudControlBootstrapError(
-      "Controller secret bindings must be a bounded array.",
-    );
+    throw new CloudControlBootstrapError("Controller secret bindings must be a bounded array.");
   }
   const targets = new Set<string>();
   return parsed.map((value) => {
@@ -319,14 +289,10 @@ function parseControllerSecrets(
       !Object.hasOwn(value, "sourceEnvironmentName") ||
       !Object.hasOwn(value, "targetEnvironmentName")
     ) {
-      throw new CloudControlBootstrapError(
-        "Controller secret binding is malformed.",
-      );
+      throw new CloudControlBootstrapError("Controller secret binding is malformed.");
     }
-    const source = (value as { sourceEnvironmentName?: unknown })
-      .sourceEnvironmentName;
-    const target = (value as { targetEnvironmentName?: unknown })
-      .targetEnvironmentName;
+    const source = (value as { sourceEnvironmentName?: unknown }).sourceEnvironmentName;
+    const target = (value as { targetEnvironmentName?: unknown }).targetEnvironmentName;
     if (
       typeof source !== "string" ||
       typeof target !== "string" ||
@@ -349,24 +315,22 @@ function parseControllerSecrets(
 }
 
 function normalizeDomains(raw: string): readonly string[] {
-  const domains = [...new Set(
-    raw
-      .split(",")
-      .map((domain) => domain.trim().toLowerCase())
-      .filter((domain) => domain.length > 0),
-  )].sort();
+  const domains = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((domain) => domain.trim().toLowerCase())
+        .filter((domain) => domain.length > 0),
+    ),
+  ].sort();
   if (
     domains.length > 32 ||
     domains.some(
       (domain) =>
-        !SAFE_DOMAIN.test(domain) ||
-        domain === "localhost" ||
-        /^\d+(?:\.\d+){3}$/u.test(domain),
+        !SAFE_DOMAIN.test(domain) || domain === "localhost" || /^\d+(?:\.\d+){3}$/u.test(domain),
     )
   ) {
-    throw new CloudControlBootstrapError(
-      "Controller network allowlist contains an unsafe domain.",
-    );
+    throw new CloudControlBootstrapError("Controller network allowlist contains an unsafe domain.");
   }
   return domains;
 }
@@ -384,20 +348,14 @@ export function parseCloudControlBootstrapEnvironment(
       "Control bootstrap may run only on a GitHub-hosted cloud runner.",
     );
   }
-  if (
-    !["probe", "synthetic", "optimize", "status", "stop", "resume"].includes(
-      command,
-    )
-  ) {
+  if (!["probe", "synthetic", "optimize", "status", "stop", "resume"].includes(command)) {
     throw new CloudControlBootstrapError("Unknown control-plane command.");
   }
   if (!SAFE_CAMPAIGN_ID.test(campaignId)) {
     throw new CloudControlBootstrapError("Campaign identifier is malformed.");
   }
   const typedCommand = command as CloudControlCommand;
-  let configuration:
-    | BootstrapConfiguration
-    | StagedControlConfiguration;
+  let configuration: BootstrapConfiguration | StagedControlConfiguration;
   if (typedCommand === "optimize") {
     const readiness = inspectBootstrapEnvironment(environment);
     if (!readiness.ready || readiness.configuration === null) {
@@ -425,14 +383,9 @@ export function parseCloudControlBootstrapEnvironment(
     configuration = readiness.configuration;
   }
   if (configuration.cloudProvider !== "daytona") {
-    throw new CloudControlBootstrapError(
-      "The MVP control bootstrap supports Daytona only.",
-    );
+    throw new CloudControlBootstrapError("The MVP control bootstrap supports Daytona only.");
   }
-  if (
-    environment["DAYTONA_TARGET"]?.trim() !==
-    configuration.cloudRegionClass
-  ) {
+  if (environment["DAYTONA_TARGET"]?.trim() !== configuration.cloudRegionClass) {
     throw new CloudControlBootstrapError(
       "DAYTONA_TARGET must exactly equal DF_CLOUD_REGION_CLASS.",
     );
@@ -473,43 +426,36 @@ export function parseCloudControlBootstrapEnvironment(
       );
     }
   }
-  let optimizeBootstrapDescriptor:
-    ProductionOptimizeBootstrapDescriptor | null = null;
+  let optimizeBootstrapDescriptor: ProductionOptimizeBootstrapDescriptor | null = null;
   if (typedCommand === "optimize") {
     try {
-      optimizeBootstrapDescriptor =
-        parseProductionOptimizeBootstrapDescriptorEnvironment(
-          environment,
-          campaignId,
-        );
+      optimizeBootstrapDescriptor = parseProductionOptimizeBootstrapDescriptorEnvironment(
+        environment,
+        campaignId,
+      );
     } catch {
       throw new CloudControlBootstrapError(
         "Production optimize bootstrap descriptor is missing or invalid.",
       );
     }
   }
+  // Validate configured organization-secret bindings for every command, even
+  // when the current stage will not forward them. This prevents a dormant
+  // unsafe override from becoming active only when a later paid command runs.
+  const controllerSecrets = parseControllerSecrets(environment);
   return {
     command: typedCommand,
     campaignId,
     configuration,
     volumeId,
     volumeSubpath,
-    ttlMinutes: positiveInteger(
-      environment,
-      "DF_CONTROL_TTL_MINUTES",
-      MAXIMUM_CONTROL_TTL_MINUTES,
-    ),
+    ttlMinutes: positiveInteger(environment, "DF_CONTROL_TTL_MINUTES", MAXIMUM_CONTROL_TTL_MINUTES),
     networkAllowDomains:
       typedCommand === "probe" || typedCommand === "optimize"
-        ? normalizeDomains(
-            required(environment, "DF_CONTROL_NETWORK_ALLOW_DOMAINS"),
-          )
+        ? normalizeDomains(required(environment, "DF_CONTROL_NETWORK_ALLOW_DOMAINS"))
         : [],
     controllerDaytonaSecretSource,
-    additionalControllerSecrets:
-      typedCommand === "optimize"
-        ? parseControllerSecrets(environment)
-        : [],
+    additionalControllerSecrets: typedCommand === "optimize" ? controllerSecrets : [],
     optimizeBootstrapDescriptor,
     resources: {
       cpu: positiveInteger(environment, "DF_CONTROL_CPU", 32),
@@ -525,10 +471,7 @@ function controlEnvironment(
 ): Readonly<Record<string, string>> {
   const names: readonly string[] =
     request.command === "optimize"
-      ? [
-          ...OPTIMIZE_CONTROL_ENVIRONMENT_NAMES,
-          ...OPTIMIZE_SOURCE_ENVIRONMENT_NAMES,
-        ]
+      ? [...OPTIMIZE_CONTROL_ENVIRONMENT_NAMES, ...OPTIMIZE_SOURCE_ENVIRONMENT_NAMES]
       : request.command === "probe"
         ? PROBE_CONTROL_ENVIRONMENT_NAMES
         : OFFLINE_CONTROL_ENVIRONMENT_NAMES;
@@ -556,8 +499,9 @@ function controlEnvironment(
         "Validated optimize bootstrap descriptor disappeared before launch.",
       );
     }
-    result[PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME] =
-      canonicalJson(request.optimizeBootstrapDescriptor);
+    result[PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME] = canonicalJson(
+      request.optimizeBootstrapDescriptor,
+    );
   }
   return result;
 }
@@ -577,12 +521,9 @@ function controllerSecrets(
   if (request.command === "optimize") {
     for (const binding of request.additionalControllerSecrets) {
       if (Object.hasOwn(result, binding.targetEnvironmentName)) {
-        throw new CloudControlBootstrapError(
-          "Controller secret target is duplicated.",
-        );
+        throw new CloudControlBootstrapError("Controller secret target is duplicated.");
       }
-      result[binding.targetEnvironmentName] =
-        binding.sourceEnvironmentName;
+      result[binding.targetEnvironmentName] = binding.sourceEnvironmentName;
     }
   }
   return result;
@@ -657,8 +598,9 @@ export async function launchDaytonaControlPlane(
     labels: {
       "dark-factory-control": "1",
       "df-campaign-sha256": hash(request.campaignId),
-      "df-control-image-sha256":
-        request.configuration.images.control.digest.slice("sha256:".length),
+      "df-control-image-sha256": request.configuration.images.control.digest.slice(
+        "sha256:".length,
+      ),
     },
     volumes: [volume],
     ...(domains.length === 0
@@ -667,7 +609,9 @@ export async function launchDaytonaControlPlane(
   };
 
   let sandbox: DaytonaControlSandbox | undefined;
-  let primaryFailure: unknown;
+  let receipt: CloudControlBootstrapReceipt | undefined;
+  let primaryFailure: { readonly error: unknown } | undefined;
+  let teardownFailure: { readonly error: unknown } | undefined;
   try {
     const client = await factory.create(environment);
     sandbox = await client.create(parameters, { timeout: 10 * 60 });
@@ -696,8 +640,7 @@ export async function launchDaytonaControlPlane(
       !sameVolume(sandbox.volumes, volume) ||
       !Number.isFinite(actualDestroyAt) ||
       actualDestroyAt <= startedAt.getTime() ||
-      actualDestroyAt >
-        startedAt.getTime() + request.ttlMinutes * 60_000 + 60_000 ||
+      actualDestroyAt > startedAt.getTime() + request.ttlMinutes * 60_000 + 60_000 ||
       (domains.length === 0
         ? sandbox.networkBlockAll !== true
         : sandbox.networkBlockAll === true ||
@@ -715,12 +658,10 @@ export async function launchDaytonaControlPlane(
     );
     const output = outputOf(execution);
     if (execution.exitCode !== 0) {
-      throw new CloudControlBootstrapError(
-        "Trusted control-plane command failed closed.",
-      );
+      throw new CloudControlBootstrapError("Trusted control-plane command failed closed.");
     }
     const finishedAt = now();
-    return {
+    receipt = {
       schemaVersion: 1,
       domain: "dark-factory.cloud-control-bootstrap.v1",
       provider: "daytona",
@@ -741,29 +682,43 @@ export async function launchDaytonaControlPlane(
       teardownConfirmed: true,
     };
   } catch (error) {
-    primaryFailure = error;
-    throw error;
+    primaryFailure = { error };
   } finally {
     if (sandbox !== undefined) {
       try {
         await sandbox.delete(60, true);
-      } catch {
-        throw new CloudControlBootstrapError(
-          primaryFailure === undefined
-            ? "Control-plane teardown could not be confirmed."
-            : "Control-plane command failed and teardown could not be confirmed.",
-        );
+      } catch (error) {
+        teardownFailure = { error };
       }
     }
   }
+  if (teardownFailure !== undefined) {
+    throw new CloudControlBootstrapError(
+      primaryFailure === undefined
+        ? "Control-plane teardown could not be confirmed."
+        : "Control-plane command failed and teardown could not be confirmed.",
+      {
+        cause:
+          primaryFailure === undefined
+            ? teardownFailure.error
+            : new AggregateError(
+                [primaryFailure.error, teardownFailure.error],
+                "Control-plane command and teardown both failed.",
+              ),
+      },
+    );
+  }
+  if (primaryFailure !== undefined) throw primaryFailure.error;
+  if (receipt === undefined) {
+    throw new CloudControlBootstrapError(
+      "Control-plane command completed without an attested receipt.",
+    );
+  }
+  return receipt;
 }
 
-export class OfficialDaytonaControlClientFactory
-  implements DaytonaControlClientFactory
-{
-  async create(
-    environment: NodeJS.ProcessEnv,
-  ): Promise<DaytonaControlClient> {
+export class OfficialDaytonaControlClientFactory implements DaytonaControlClientFactory {
+  async create(environment: NodeJS.ProcessEnv): Promise<DaytonaControlClient> {
     const apiKey = environment["DAYTONA_API_KEY"];
     if (apiKey === undefined || apiKey.length === 0) {
       throw new CloudControlBootstrapError(

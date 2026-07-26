@@ -23,10 +23,7 @@ const GIT_EXECUTABLE = "/usr/bin/git";
 const NODE_EXECUTABLE = "/usr/bin/node";
 const CLAUDE_EXECUTABLE = "/usr/local/bin/claude";
 const CLAUDE_CODE_VERSION = "2.1.217";
-const BUNDLE_ROOT = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const BUNDLE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN_SOURCE_ROOT = join(BUNDLE_ROOT, "claude-plugin");
 const EXPECTED_STATE_ROOT = "/workspace/df-state";
 const MAXIMUM_INPUT_BYTES = 256 * 1024;
@@ -38,42 +35,17 @@ const MAXIMUM_CHANGED_FILES = 12;
 const MAXIMUM_LITERAL_LENGTH = 400;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-const SAFE_CAMPAIGN =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SAFE_CAMPAIGN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 // Mirrors src/mvp/model-deployment.ts for this standalone bundled worker.
-const SAFE_DEPLOYMENT =
-  /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
+const SAFE_DEPLOYMENT = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const MAXIMUM_DEPLOYMENT_ALIAS_LENGTH = 128;
-const SAFE_REPOSITORY =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/u;
-const SAFE_OWNER =
-  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
-const SAFE_BRANCH =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,238}[A-Za-z0-9])?$/u;
-const DAYTONA_SECRET_PLACEHOLDER =
-  /^dtn_secret_[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
-const ALLOWED_TOOLS = [
-  "Read",
-  "Edit",
-  "Write",
-  "Grep",
-  "Glob",
-  "Skill",
-];
-const DENIED_TOOLS = [
-  "Bash",
-  "Shell",
-  "WebSearch",
-  "WebFetch",
-  "Agent",
-  "Task",
-  "NotebookEdit",
-];
-const ALLOWED_ROOTS = [
-  "packages/agent/src/",
-  "packages/ai/src/",
-  "packages/coding-agent/src/",
-];
+const SAFE_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/u;
+const SAFE_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
+const SAFE_BRANCH = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,238}[A-Za-z0-9])?$/u;
+const DAYTONA_SECRET_PLACEHOLDER = /^dtn_secret_[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
+const ALLOWED_TOOLS = ["Read", "Edit", "Write", "Grep", "Glob", "Skill"];
+const DENIED_TOOLS = ["Bash", "Shell", "WebSearch", "WebFetch", "Agent", "Task", "NotebookEdit"];
+const ALLOWED_ROOTS = ["packages/agent/src/", "packages/ai/src/", "packages/coding-agent/src/"];
 const ALLOWED_EXTENSIONS = new Set([
   ".cjs",
   ".css",
@@ -103,12 +75,9 @@ const NETWORK_ADDITION =
   /\b(?:curl|wget|axios|undici|node:https|node:http|WebSocket)\b|https?:\/\/|\bfetch\s*\(/u;
 const FINGERPRINT_ROUTING =
   /(?:process\.env|os\.hostname|hostname\s*\(|uname|machine-id|\/etc\/hostname).{0,180}(?:if|switch|case|includes|match|test)/iu;
-const BASE64_PAYLOAD =
-  /(?:["'`])[A-Za-z0-9+/]{160,}={0,2}(?:["'`])/u;
-const HEX_PAYLOAD =
-  /(?:["'`])(?:[a-f0-9]{2}){100,}(?:["'`])/iu;
-const QUOTED_LITERAL =
-  /(["'`])(?<literal>(?:\\.|(?!\1).)*)\1/gu;
+const BASE64_PAYLOAD = /(?:["'`])[A-Za-z0-9+/]{160,}={0,2}(?:["'`])/u;
+const HEX_PAYLOAD = /(?:["'`])(?:[a-f0-9]{2}){100,}(?:["'`])/iu;
+const QUOTED_LITERAL = /(["'`])(?<literal>(?:\\.|(?!\1).)*)\1/gu;
 const SENSITIVE_ENVIRONMENT_NAMES = [
   "DF_GITHUB_BASIC_AUTH",
   "DF_GITHUB_TOKEN",
@@ -207,10 +176,7 @@ function isPlainObject(value) {
 function exactKeys(value, expected, code = "input-unavailable") {
   if (!isPlainObject(value)) reject(code, 64);
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.length ||
-    keys.some((key) => !expected.includes(key))
-  ) {
+  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
     reject(code, 64);
   }
 }
@@ -227,6 +193,7 @@ function parseFlags(arguments_, specification) {
       typeof flag !== "string" ||
       !flag.startsWith("--") ||
       typeof value !== "string" ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Worker CLI values must reject NUL and line breaks to prevent argument-boundary injection.
       /[\u0000\r\n]/u.test(value)
     ) {
       reject("invalid-configuration", 64);
@@ -322,19 +289,10 @@ function assertDiagnosticBrief(value) {
       !TOOL_CLASSES.has(card.toolClass) ||
       !CAUSE_CODES.has(card.cause) ||
       !INTERVENTION_CODES.has(card.intervention) ||
-      !new Set(["candidate", "champion", "comparison"]).has(
-        card.affectedArm,
-      ) ||
-      !new Set([
-        "candidate-better",
-        "candidate-worse",
-        "mixed",
-        "unknown",
-      ]).has(card.direction) ||
+      !new Set(["candidate", "champion", "comparison"]).has(card.affectedArm) ||
+      !new Set(["candidate-better", "candidate-worse", "mixed", "unknown"]).has(card.direction) ||
       !new Set(["low", "medium", "high"]).has(card.supportBand) ||
-      !new Set(["low", "medium", "high"]).has(
-        card.confidenceBand,
-      ) ||
+      !new Set(["low", "medium", "high"]).has(card.confidenceBand) ||
       uniqueCards.has(canonicalCard)
     ) {
       reject("input-unavailable", 64);
@@ -365,12 +323,7 @@ function assertOptimizerInput(value) {
     !Number.isSafeInteger(value.experimentNumber) ||
     value.experimentNumber < 1 ||
     !GIT_OBJECT_ID.test(value.championRevision) ||
-    !new Set([
-      null,
-      "promote",
-      "reject",
-      "inconclusive",
-    ]).has(value.previousOutcome) ||
+    !new Set([null, "promote", "reject", "inconclusive"]).has(value.previousOutcome) ||
     Object.values(value.boundary).some((visible) => visible !== false)
   ) {
     reject("input-unavailable", 64);
@@ -414,9 +367,7 @@ function captureConfiguration(input) {
     process.env.CI !== "true" ||
     !["linux"].includes(process.platform) ||
     ![process.env.DAYTONA_SANDBOX_ID, process.env.DAYTONA_WORKSPACE_ID].some(
-      (value) =>
-        typeof value === "string" &&
-        /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
+      (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
     )
   ) {
     reject("invalid-cloud-role", 77);
@@ -427,10 +378,7 @@ function captureConfiguration(input) {
   } catch {
     reject("invalid-configuration", 64);
   }
-  const resourceName = baseUrl.hostname.slice(
-    0,
-    -".services.ai.azure.com".length,
-  );
+  const resourceName = baseUrl.hostname.slice(0, -".services.ai.azure.com".length);
   if (
     configuration.campaignId !== input.campaign ||
     configuration.configurationHash !== input["configuration-hash"] ||
@@ -438,8 +386,7 @@ function captureConfiguration(input) {
     !SHA256.test(input["configuration-hash"]) ||
     configuration.optimizerModelFamily !== "claude-opus-5" ||
     !SAFE_DEPLOYMENT.test(configuration.optimizerDeployment ?? "") ||
-    (configuration.optimizerDeployment?.length ?? 0) >
-      MAXIMUM_DEPLOYMENT_ALIAS_LENGTH ||
+    (configuration.optimizerDeployment?.length ?? 0) > MAXIMUM_DEPLOYMENT_ALIAS_LENGTH ||
     baseUrl.protocol !== "https:" ||
     !baseUrl.hostname.endsWith(".services.ai.azure.com") ||
     !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(resourceName) ||
@@ -457,21 +404,16 @@ function captureConfiguration(input) {
   }
   if (
     typeof configuration.githubBasicAuth !== "string" ||
-    !DAYTONA_SECRET_PLACEHOLDER.test(
-      configuration.githubBasicAuth,
-    ) ||
+    !DAYTONA_SECRET_PLACEHOLDER.test(configuration.githubBasicAuth) ||
     typeof configuration.foundryApiKey !== "string" ||
-    !DAYTONA_SECRET_PLACEHOLDER.test(
-      configuration.foundryApiKey,
-    )
+    !DAYTONA_SECRET_PLACEHOLDER.test(configuration.foundryApiKey)
   ) {
     reject("credential-unavailable", 69);
   }
   return {
     ...configuration,
     foundryResourceName: resourceName,
-    remoteUrl:
-      `https://github.com/${configuration.repositoryOwner}/${configuration.repositoryName}.git`,
+    remoteUrl: `https://github.com/${configuration.repositoryOwner}/${configuration.repositoryName}.git`,
   };
 }
 
@@ -490,10 +432,7 @@ async function runProcess(command, arguments_, options) {
     let failure = null;
     const stop = (code) => {
       if (failure === null) {
-        failure = new MvpOptimizerWorkerError(
-          code,
-          code === "runtime-unavailable" ? 69 : 78,
-        );
+        failure = new MvpOptimizerWorkerError(code, code === "runtime-unavailable" ? 69 : 78);
       }
       child.kill("SIGKILL");
     };
@@ -515,15 +454,10 @@ async function runProcess(command, arguments_, options) {
       }
       stderr.push(bytes);
     });
-    const timeout = setTimeout(
-      () => stop(options.failureCode),
-      options.timeoutMs,
-    );
+    const timeout = setTimeout(() => stop(options.failureCode), options.timeoutMs);
     child.once("error", () => {
       clearTimeout(timeout);
-      rejectProcess(
-        new MvpOptimizerWorkerError(options.failureCode, 69),
-      );
+      rejectProcess(new MvpOptimizerWorkerError(options.failureCode, 69));
     });
     child.once("close", (status, signal) => {
       clearTimeout(timeout);
@@ -536,9 +470,7 @@ async function runProcess(command, arguments_, options) {
         status === null ||
         !(options.allowedStatuses ?? [0]).includes(status)
       ) {
-        rejectProcess(
-          new MvpOptimizerWorkerError(options.failureCode, 78),
-        );
+        rejectProcess(new MvpOptimizerWorkerError(options.failureCode, 78));
         return;
       }
       resolveProcess({
@@ -571,8 +503,7 @@ function authenticatedGitEnvironment(home, githubBasicAuth) {
   return {
     ...baseGitEnvironment(home),
     GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0:
-      "http.https://github.com/.extraHeader",
+    GIT_CONFIG_KEY_0: "http.https://github.com/.extraHeader",
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${githubBasicAuth}`,
   };
 }
@@ -580,13 +511,7 @@ function authenticatedGitEnvironment(home, githubBasicAuth) {
 async function git(repository, home, arguments_, options = {}) {
   return runProcess(
     GIT_EXECUTABLE,
-    [
-      "-c",
-      "core.hooksPath=/dev/null",
-      "-c",
-      "diff.external=",
-      ...arguments_,
-    ],
+    ["-c", "core.hooksPath=/dev/null", "-c", "diff.external=", ...arguments_],
     {
       cwd: repository,
       environment:
@@ -595,15 +520,10 @@ async function git(repository, home, arguments_, options = {}) {
               ...baseGitEnvironment(home),
               ...(options.environment ?? {}),
             }
-          : authenticatedGitEnvironment(
-              home,
-              options.githubBasicAuth,
-            ),
+          : authenticatedGitEnvironment(home, options.githubBasicAuth),
       timeoutMs: options.timeoutMs ?? 15 * 60_000,
-      maximumStdoutBytes:
-        options.maximumStdoutBytes ?? MAXIMUM_PROCESS_STDOUT_BYTES,
-      maximumStderrBytes:
-        options.maximumStderrBytes ?? MAXIMUM_PROCESS_STDERR_BYTES,
+      maximumStdoutBytes: options.maximumStdoutBytes ?? MAXIMUM_PROCESS_STDOUT_BYTES,
+      maximumStderrBytes: options.maximumStderrBytes ?? MAXIMUM_PROCESS_STDERR_BYTES,
       allowedStatuses: options.allowedStatuses,
       failureCode: options.failureCode ?? "candidate-rejected",
     },
@@ -618,11 +538,7 @@ async function assertRuntimeReady() {
   ) {
     reject("runtime-unavailable", 69);
   }
-  for (const path of [
-    GIT_EXECUTABLE,
-    NODE_EXECUTABLE,
-    CLAUDE_EXECUTABLE,
-  ]) {
+  for (const path of [GIT_EXECUTABLE, NODE_EXECUTABLE, CLAUDE_EXECUTABLE]) {
     let metadata;
     try {
       metadata = await stat(path);
@@ -657,33 +573,24 @@ async function assertRuntimeReady() {
     maximumStderrBytes: 1_024 * 1_024,
     failureCode: "runtime-unavailable",
   });
-  if (
-    nodeVersion.stdout.toString("utf8").trim() !==
-    `v${process.versions.node}`
-  ) {
+  if (nodeVersion.stdout.toString("utf8").trim() !== `v${process.versions.node}`) {
     reject("runtime-unavailable", 69);
   }
-  const claudeVersion = await runProcess(
-    CLAUDE_EXECUTABLE,
-    ["--version"],
-    {
-      cwd: "/workspace",
-      environment: {
-        PATH: "/usr/local/bin:/usr/bin:/bin",
-        HOME: "/workspace",
-        LC_ALL: "C",
-        LANG: "C",
-      },
-      timeoutMs: 30_000,
-      maximumStdoutBytes: 1_024 * 1_024,
-      maximumStderrBytes: 1_024 * 1_024,
-      failureCode: "runtime-unavailable",
+  const claudeVersion = await runProcess(CLAUDE_EXECUTABLE, ["--version"], {
+    cwd: "/workspace",
+    environment: {
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+      HOME: "/workspace",
+      LC_ALL: "C",
+      LANG: "C",
     },
-  );
+    timeoutMs: 30_000,
+    maximumStdoutBytes: 1_024 * 1_024,
+    maximumStderrBytes: 1_024 * 1_024,
+    failureCode: "runtime-unavailable",
+  });
   const version =
-    /(?:^|\s)(\d+\.\d+\.\d+)(?:\s|$)/u.exec(
-      claudeVersion.stdout.toString("utf8"),
-    )?.[1] ?? null;
+    /(?:^|\s)(\d+\.\d+\.\d+)(?:\s|$)/u.exec(claudeVersion.stdout.toString("utf8"))?.[1] ?? null;
   if (version !== CLAUDE_CODE_VERSION) {
     reject("claude-version-mismatch", 69);
   }
@@ -705,8 +612,7 @@ async function materializeSkillPlugin(destination) {
     `${JSON.stringify({
       name: "dark-factory",
       version: "0.1.0",
-      description:
-        "Task-blind Pi harness optimization skills for the Dark Factory MVP.",
+      description: "Task-blind Pi harness optimization skills for the Dark Factory MVP.",
       license: "UNLICENSED",
     })}\n`,
     { encoding: "utf8", mode: 0o600, flag: "wx" },
@@ -740,11 +646,7 @@ async function materializeSkillPlugin(destination) {
     })}\n`,
     { encoding: "utf8", mode: 0o600, flag: "wx" },
   );
-  const hookGuardSource = join(
-    PLUGIN_SOURCE_ROOT,
-    "server",
-    "hook-guard.js",
-  );
+  const hookGuardSource = join(PLUGIN_SOURCE_ROOT, "server", "hook-guard.js");
   const hookGuardMetadata = await lstat(hookGuardSource);
   if (
     !hookGuardMetadata.isFile() ||
@@ -760,12 +662,7 @@ async function materializeSkillPlugin(destination) {
     force: false,
   });
   for (const skill of SAFE_SKILLS) {
-    const source = join(
-      PLUGIN_SOURCE_ROOT,
-      "skills",
-      skill,
-      "SKILL.md",
-    );
+    const source = join(PLUGIN_SOURCE_ROOT, "skills", skill, "SKILL.md");
     const metadata = await lstat(source);
     if (
       !metadata.isFile() ||
@@ -788,10 +685,7 @@ async function materializeSkillPlugin(destination) {
 async function materializeChampion(input) {
   const repository = join(input.temporaryRoot, "pi");
   const gitHome = join(input.temporaryRoot, "git-home");
-  await Promise.all([
-    mkdir(repository, { mode: 0o700 }),
-    mkdir(gitHome, { mode: 0o700 }),
-  ]);
+  await Promise.all([mkdir(repository, { mode: 0o700 }), mkdir(gitHome, { mode: 0o700 })]);
   await git(repository, gitHome, ["init", "--quiet"], {
     failureCode: "runtime-unavailable",
   });
@@ -814,24 +708,18 @@ async function materializeChampion(input) {
     },
   );
   const fetched = (
-    await git(
-      repository,
-      gitHome,
-      ["rev-parse", "FETCH_HEAD^{commit}"],
-      { failureCode: "candidate-rejected" },
-    )
+    await git(repository, gitHome, ["rev-parse", "FETCH_HEAD^{commit}"], {
+      failureCode: "candidate-rejected",
+    })
   ).stdout
     .toString("utf8")
     .trim();
   if (fetched !== input.optimizerInput.championRevision) {
     reject("candidate-rejected", 78);
   }
-  await git(
-    repository,
-    gitHome,
-    ["checkout", "--quiet", "--detach", fetched],
-    { failureCode: "candidate-rejected" },
-  );
+  await git(repository, gitHome, ["checkout", "--quiet", "--detach", fetched], {
+    failureCode: "candidate-rejected",
+  });
   await git(
     repository,
     gitHome,
@@ -854,16 +742,10 @@ async function materializeChampion(input) {
   ).stdout
     .toString("utf8")
     .trim();
-  const lock = await git(
-    repository,
-    gitHome,
-    ["show", `${fetched}:package-lock.json`],
-    { failureCode: "candidate-rejected" },
-  );
-  if (
-    remotes !== "" ||
-    sha256(lock.stdout) !== input.configuration.packageLockSha256
-  ) {
+  const lock = await git(repository, gitHome, ["show", `${fetched}:package-lock.json`], {
+    failureCode: "candidate-rejected",
+  });
+  if (remotes !== "" || sha256(lock.stdout) !== input.configuration.packageLockSha256) {
     reject("candidate-rejected", 78);
   }
   return { repository, gitHome };
@@ -906,12 +788,9 @@ function claudeEnvironment(input) {
     DF_OPTIMIZER_MODEL_ID: "claude-opus-5",
     DF_PLUGIN_DATA_ROOT: input.claudeHome,
     CLAUDE_CODE_USE_FOUNDRY: "1",
-    ANTHROPIC_FOUNDRY_RESOURCE:
-      input.configuration.foundryResourceName,
-    ANTHROPIC_DEFAULT_OPUS_MODEL:
-      input.configuration.optimizerDeployment,
-    ANTHROPIC_FOUNDRY_API_KEY:
-      input.configuration.foundryApiKey,
+    ANTHROPIC_FOUNDRY_RESOURCE: input.configuration.foundryResourceName,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: input.configuration.optimizerDeployment,
+    ANTHROPIC_FOUNDRY_API_KEY: input.configuration.foundryApiKey,
     CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1",
     DISABLE_TELEMETRY: "1",
   };
@@ -940,15 +819,10 @@ function parseClaudeProposal(stdout, expectedModel) {
       initialized = true;
       pluginLoaded =
         Array.isArray(event.plugins) &&
-        event.plugins.some(
-          (plugin) =>
-            isPlainObject(plugin) &&
-            plugin.name === "dark-factory",
-        );
+        event.plugins.some((plugin) => isPlainObject(plugin) && plugin.name === "dark-factory");
       if (
         event.model !== expectedModel ||
-        (Array.isArray(event.plugin_errors) &&
-          event.plugin_errors.length > 0)
+        (Array.isArray(event.plugin_errors) && event.plugin_errors.length > 0)
       ) {
         reject("candidate-rejected", 78);
       }
@@ -957,8 +831,7 @@ function parseClaudeProposal(stdout, expectedModel) {
     if (event.type === "result") {
       resultCount += 1;
       completed = event.is_error !== true;
-      resultPayload =
-        typeof event.result === "string" ? event.result : null;
+      resultPayload = typeof event.result === "string" ? event.result : null;
     }
   }
   if (
@@ -979,11 +852,7 @@ function parseClaudeProposal(stdout, expectedModel) {
   }
   exactKeys(
     metadata,
-    [
-      "hypothesisId",
-      "hypothesisSummary",
-      "interventionSummary",
-    ],
+    ["hypothesisId", "hypothesisSummary", "interventionSummary"],
     "candidate-rejected",
   );
   if (
@@ -1045,10 +914,7 @@ async function invokeClaude(input) {
       failureCode: "candidate-rejected",
     },
   );
-  return parseClaudeProposal(
-    result.stdout,
-    input.configuration.optimizerDeployment,
-  );
+  return parseClaudeProposal(result.stdout, input.configuration.optimizerDeployment);
 }
 
 function fileExtension(path) {
@@ -1067,6 +933,7 @@ function assertChangedFiles(changedFiles) {
         path === ".." ||
         path.startsWith("../") ||
         path.includes("/../") ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Candidate paths are untrusted and must reject every ASCII control byte.
         /[\u0000-\u001f\u007f]/u.test(path) ||
         !ALLOWED_ROOTS.some((root) => path.startsWith(root)) ||
         !ALLOWED_EXTENSIONS.has(fileExtension(path)) ||
@@ -1109,10 +976,7 @@ function assertGenericDiff(diff, addedLines, deletedLines) {
       reject("candidate-rejected", 78);
     }
     for (const match of line.matchAll(QUOTED_LITERAL)) {
-      if (
-        (match.groups?.literal ?? "").length >
-        MAXIMUM_LITERAL_LENGTH
-      ) {
+      if ((match.groups?.literal ?? "").length > MAXIMUM_LITERAL_LENGTH) {
         reject("candidate-rejected", 78);
       }
     }
@@ -1124,15 +988,8 @@ function parseNumstat(output) {
   let deletedLines = 0;
   for (const record of output.toString("utf8").split("\0")) {
     if (record.length === 0) continue;
-    const match =
-      /^(?<added>\d+|-)\t(?<deleted>\d+|-)\t(?<path>.+)$/u.exec(
-        record,
-      );
-    if (
-      match?.groups === undefined ||
-      match.groups.added === "-" ||
-      match.groups.deleted === "-"
-    ) {
+    const match = /^(?<added>\d+|-)\t(?<deleted>\d+|-)\t(?<path>.+)$/u.exec(record);
+    if (match?.groups === undefined || match.groups.added === "-" || match.groups.deleted === "-") {
       reject("candidate-rejected", 78);
     }
     addedLines += Number.parseInt(match.groups.added, 10);
@@ -1143,54 +1000,29 @@ function parseNumstat(output) {
 
 async function assertChangedModes(repository, gitHome, changedFiles) {
   for (const path of changedFiles) {
-    const result = await git(
-      repository,
-      gitHome,
-      ["ls-files", "--stage", "-z", "--", path],
-      { failureCode: "candidate-rejected" },
-    );
-    const records = result.stdout
-      .toString("utf8")
-      .split("\0")
-      .filter(Boolean);
+    const result = await git(repository, gitHome, ["ls-files", "--stage", "-z", "--", path], {
+      failureCode: "candidate-rejected",
+    });
+    const records = result.stdout.toString("utf8").split("\0").filter(Boolean);
     if (records.length === 0) continue;
-    if (
-      records.length !== 1 ||
-      !/^(?:100644|100755) [a-f0-9]{40,64} 0\t/u.test(
-        records[0],
-      )
-    ) {
+    if (records.length !== 1 || !/^(?:100644|100755) [a-f0-9]{40,64} 0\t/u.test(records[0])) {
       reject("candidate-rejected", 78);
     }
   }
 }
 
 async function sealCandidate(input) {
-  await git(
-    input.repository,
-    input.gitHome,
-    ["add", "--all", "--"],
-    { failureCode: "candidate-rejected" },
-  );
-  await git(
-    input.repository,
-    input.gitHome,
-    ["diff", "--cached", "--check", "--"],
-    { failureCode: "candidate-rejected" },
-  );
+  await git(input.repository, input.gitHome, ["add", "--all", "--"], {
+    failureCode: "candidate-rejected",
+  });
+  await git(input.repository, input.gitHome, ["diff", "--cached", "--check", "--"], {
+    failureCode: "candidate-rejected",
+  });
   const changedFiles = (
     await git(
       input.repository,
       input.gitHome,
-      [
-        "diff",
-        "--cached",
-        "--no-renames",
-        "--name-only",
-        "-z",
-        "--diff-filter=ACDMRTUXB",
-        "--",
-      ],
+      ["diff", "--cached", "--no-renames", "--name-only", "-z", "--diff-filter=ACDMRTUXB", "--"],
       { failureCode: "candidate-rejected" },
     )
   ).stdout
@@ -1199,23 +1031,11 @@ async function sealCandidate(input) {
     .filter(Boolean)
     .sort();
   assertChangedFiles(changedFiles);
-  await assertChangedModes(
-    input.repository,
-    input.gitHome,
-    changedFiles,
-  );
+  await assertChangedModes(input.repository, input.gitHome, changedFiles);
   const diff = await git(
     input.repository,
     input.gitHome,
-    [
-      "diff",
-      "--cached",
-      "--no-renames",
-      "--no-ext-diff",
-      "--full-index",
-      "--binary",
-      "--",
-    ],
+    ["diff", "--cached", "--no-renames", "--no-ext-diff", "--full-index", "--binary", "--"],
     {
       maximumStdoutBytes: MAXIMUM_DIFF_BYTES,
       failureCode: "candidate-rejected",
@@ -1226,51 +1046,30 @@ async function sealCandidate(input) {
       await git(
         input.repository,
         input.gitHome,
-        [
-          "diff",
-          "--cached",
-          "--no-renames",
-          "--numstat",
-          "-z",
-          "--",
-        ],
+        ["diff", "--cached", "--no-renames", "--numstat", "-z", "--"],
         { failureCode: "candidate-rejected" },
       )
     ).stdout,
   );
-  assertGenericDiff(
-    diff.stdout.toString("utf8"),
-    numstat.addedLines,
-    numstat.deletedLines,
-  );
+  assertGenericDiff(diff.stdout.toString("utf8"), numstat.addedLines, numstat.deletedLines);
   const tree = (
-    await git(
-      input.repository,
-      input.gitHome,
-      ["write-tree"],
-      { failureCode: "candidate-rejected" },
-    )
+    await git(input.repository, input.gitHome, ["write-tree"], {
+      failureCode: "candidate-rejected",
+    })
   ).stdout
     .toString("utf8")
     .trim();
   if (!GIT_OBJECT_ID.test(tree)) {
     reject("candidate-rejected", 78);
   }
-  const lock = await git(
-    input.repository,
-    input.gitHome,
-    ["show", `${tree}:package-lock.json`],
-    { failureCode: "candidate-rejected" },
-  );
-  if (
-    sha256(lock.stdout) !==
-    input.configuration.packageLockSha256
-  ) {
+  const lock = await git(input.repository, input.gitHome, ["show", `${tree}:package-lock.json`], {
+    failureCode: "candidate-rejected",
+  });
+  if (sha256(lock.stdout) !== input.configuration.packageLockSha256) {
     reject("candidate-rejected", 78);
   }
   const timestamp = new Date(
-    Date.UTC(2026, 0, 1) +
-      input.optimizerInput.experimentNumber * 1_000,
+    Date.UTC(2026, 0, 1) + input.optimizerInput.experimentNumber * 1_000,
   ).toISOString();
   const commit = (
     await git(
@@ -1301,21 +1100,15 @@ async function sealCandidate(input) {
   ).stdout
     .toString("utf8")
     .trim();
-  if (
-    !GIT_OBJECT_ID.test(commit) ||
-    commit === input.optimizerInput.championRevision
-  ) {
+  if (!GIT_OBJECT_ID.test(commit) || commit === input.optimizerInput.championRevision) {
     reject("candidate-rejected", 78);
   }
   return { changedFiles, commit };
 }
 
 async function publishCandidate(input) {
-  const padded = input.optimizerInput.experimentNumber
-    .toString()
-    .padStart(3, "0");
-  const branch =
-    `refs/heads/df/candidates/${input.configuration.campaignId}/${padded}-${input.commit.slice(0, 12)}`;
+  const padded = input.optimizerInput.experimentNumber.toString().padStart(3, "0");
+  const branch = `refs/heads/df/candidates/${input.configuration.campaignId}/${padded}-${input.commit.slice(0, 12)}`;
   if (
     branch.includes("..") ||
     branch.includes("@{") ||
@@ -1327,12 +1120,7 @@ async function publishCandidate(input) {
   await git(
     input.repository,
     input.gitHome,
-    [
-      "push",
-      "--porcelain",
-      input.configuration.remoteUrl,
-      `${input.commit}:${branch}`,
-    ],
+    ["push", "--porcelain", input.configuration.remoteUrl, `${input.commit}:${branch}`],
     {
       githubBasicAuth: input.configuration.githubBasicAuth,
       timeoutMs: 20 * 60_000,
@@ -1342,13 +1130,7 @@ async function publishCandidate(input) {
   const verification = await git(
     input.repository,
     input.gitHome,
-    [
-      "ls-remote",
-      "--exit-code",
-      "--heads",
-      input.configuration.remoteUrl,
-      branch,
-    ],
+    ["ls-remote", "--exit-code", "--heads", input.configuration.remoteUrl, branch],
     {
       githubBasicAuth: input.configuration.githubBasicAuth,
       timeoutMs: 5 * 60_000,
@@ -1356,9 +1138,8 @@ async function publishCandidate(input) {
     },
   );
   const remoteCommit =
-    /^(?<commit>[a-f0-9]{40,64})\trefs\/heads\//u.exec(
-      verification.stdout.toString("utf8").trim(),
-    )?.groups?.commit ?? null;
+    /^(?<commit>[a-f0-9]{40,64})\trefs\/heads\//u.exec(verification.stdout.toString("utf8").trim())
+      ?.groups?.commit ?? null;
   if (remoteCommit !== input.commit) {
     reject("publication-failed", 78);
   }
@@ -1383,10 +1164,7 @@ function candidateProposal(metadata, sealed) {
     ],
     "candidate-rejected",
   );
-  if (
-    !GIT_OBJECT_ID.test(proposal.candidateRevision) ||
-    !Array.isArray(proposal.changedFiles)
-  ) {
+  if (!GIT_OBJECT_ID.test(proposal.candidateRevision) || !Array.isArray(proposal.changedFiles)) {
     reject("candidate-rejected", 78);
   }
   assertChangedFiles(proposal.changedFiles);
@@ -1422,47 +1200,24 @@ async function run(input) {
   ) {
     reject("invalid-configuration", 64);
   }
-  const defaultInput = join(
-    input["state-root"],
-    "inbox",
-    "optimizer-input.json",
-  );
-  const defaultOutput = join(
-    input["state-root"],
-    "outbox",
-    "candidate-proposal.json",
-  );
+  const defaultInput = join(input["state-root"], "inbox", "optimizer-input.json");
+  const defaultOutput = join(input["state-root"], "outbox", "candidate-proposal.json");
   const inputPath = input.input ?? defaultInput;
   const outputPath = input.output ?? defaultOutput;
-  assertAbsoluteContainedPath(
-    inputPath,
-    input["state-root"],
-    "input-unavailable",
-  );
-  assertAbsoluteContainedPath(
-    outputPath,
-    input["state-root"],
-    "invalid-configuration",
-  );
+  assertAbsoluteContainedPath(inputPath, input["state-root"], "input-unavailable");
+  assertAbsoluteContainedPath(outputPath, input["state-root"], "invalid-configuration");
   if (resolve(inputPath) === resolve(outputPath)) {
     reject("invalid-configuration", 64);
   }
   const configuration = captureConfiguration(input);
   await assertRuntimeReady();
-  const optimizerInput = assertOptimizerInput(
-    await readBoundedJson(inputPath),
-  );
-  const temporaryRoot = await mkdtemp(
-    "/workspace/df-mvp-optimizer-",
-  );
+  const optimizerInput = assertOptimizerInput(await readBoundedJson(inputPath));
+  const temporaryRoot = await mkdtemp("/workspace/df-mvp-optimizer-");
   let releasePayload = null;
   try {
     const pluginRoot = join(temporaryRoot, "claude-plugin");
     const claudeHome = join(temporaryRoot, "claude-home");
-    await Promise.all([
-      materializeSkillPlugin(pluginRoot),
-      mkdir(claudeHome, { mode: 0o700 }),
-    ]);
+    await Promise.all([materializeSkillPlugin(pluginRoot), mkdir(claudeHome, { mode: 0o700 })]);
     const champion = await materializeChampion({
       temporaryRoot,
       configuration,
@@ -1486,10 +1241,7 @@ async function run(input) {
       configuration,
       commit: sealed.commit,
     });
-    releasePayload = await writeOutputAtomic(
-      outputPath,
-      candidateProposal(metadata, sealed),
-    );
+    releasePayload = await writeOutputAtomic(outputPath, candidateProposal(metadata, sealed));
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -1521,8 +1273,6 @@ void main().catch((error) => {
     error instanceof MvpOptimizerWorkerError
       ? error
       : new MvpOptimizerWorkerError("runtime-unavailable", 70);
-  process.stderr.write(
-    `DF_MVP_OPTIMIZER_READINESS=${failure.readinessCode}\n`,
-  );
+  process.stderr.write(`DF_MVP_OPTIMIZER_READINESS=${failure.readinessCode}\n`);
   process.exitCode = failure.exitCode;
 });

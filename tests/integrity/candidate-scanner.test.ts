@@ -11,7 +11,7 @@ describe("candidate integrity scanner", () => {
     const result = scanCandidate({
       changedFiles: ["packages/coding-agent/src/core/system-prompt.ts"],
       unifiedDiff:
-        "+++ b/packages/coding-agent/src/core/system-prompt.ts\n@@ -1,1 +1,2 @@\n+const recovery = \"Inspect a failed tool result before retrying\";",
+        '+++ b/packages/coding-agent/src/core/system-prompt.ts\n@@ -1,1 +1,2 @@\n+const recovery = "Inspect a failed tool result before retrying";',
       addedLines: 1,
       deletedLines: 0,
       taskFragmentHashes: new Set(),
@@ -30,13 +30,13 @@ describe("candidate integrity scanner", () => {
     [
       "network",
       ["packages/coding-agent/src/core/policy.ts"],
-      "+await fetch(\"https://example.invalid/answers\");",
+      '+await fetch("https://example.invalid/answers");',
       "NETWORK_TOOL_ADDITION",
     ],
     [
       "environment routing",
       ["packages/coding-agent/src/core/policy.ts"],
-      "+if (process.env.TASK_KIND?.includes(\"special\")) route();",
+      '+if (process.env.TASK_KIND?.includes("special")) route();',
       "ENVIRONMENT_FINGERPRINT_ROUTING",
     ],
     [
@@ -79,10 +79,7 @@ describe("candidate integrity scanner", () => {
 
   it("rejects changed opaque files and Git binary patches", () => {
     const result = scanCandidate({
-      changedFiles: [
-        "packages/coding-agent/src/opaque",
-        "packages/coding-agent/src/payload.bin",
-      ],
+      changedFiles: ["packages/coding-agent/src/opaque", "packages/coding-agent/src/payload.bin"],
       unifiedDiff:
         "diff --git a/packages/coding-agent/src/payload.bin b/packages/coding-agent/src/payload.bin\nGIT binary patch\nliteral 4\nLcmeZt\n",
       addedLines: 0,
@@ -92,10 +89,7 @@ describe("candidate integrity scanner", () => {
 
     expect(result.passed).toBe(false);
     expect(
-      result.violations.filter(
-        (violation) =>
-          violation.code === "OPAQUE_BINARY_CHANGE",
-      ),
+      result.violations.filter((violation) => violation.code === "OPAQUE_BINARY_CHANGE"),
     ).toHaveLength(3);
   });
 
@@ -121,9 +115,7 @@ describe("candidate integrity scanner", () => {
 
       expect(result.passed).toBe(false);
       expect(result.violations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: "OPAQUE_BINARY_CHANGE" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ code: "OPAQUE_BINARY_CHANGE" })]),
       );
     },
   );
@@ -150,19 +142,14 @@ describe("candidate integrity scanner", () => {
 
       expect(result.passed).toBe(false);
       expect(result.violations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: "OPAQUE_BINARY_CHANGE" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ code: "OPAQUE_BINARY_CHANGE" })]),
       );
     },
   );
 
   it("rejects an encoded payload split across several literals", () => {
     const changedPath = "packages/coding-agent/src/core/policy.ts";
-    const chunks = [
-      "A".repeat(90),
-      "B".repeat(90),
-    ];
+    const chunks = ["A".repeat(90), "B".repeat(90)];
     const result = scanCandidate({
       changedFiles: [changedPath],
       unifiedDiff: [
@@ -177,9 +164,7 @@ describe("candidate integrity scanner", () => {
     });
 
     expect(result.violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "ENCODED_PAYLOAD" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ code: "ENCODED_PAYLOAD" })]),
     );
   });
 
@@ -188,22 +173,16 @@ describe("candidate integrity scanner", () => {
     const encoded = Buffer.from("protected phrase").toString("hex");
     const result = scanCandidate({
       changedFiles: [changedPath],
-      unifiedDiff: [
-        `+++ b/${changedPath}`,
-        "@@ -1,1 +1,2 @@",
-        `+const clue = "${encoded}";`,
-      ].join("\n"),
+      unifiedDiff: [`+++ b/${changedPath}`, "@@ -1,1 +1,2 @@", `+const clue = "${encoded}";`].join(
+        "\n",
+      ),
       addedLines: 1,
       deletedLines: 0,
-      taskFragmentHashes: new Set([
-        fragmentHash("protected phrase"),
-      ]),
+      taskFragmentHashes: new Set([fragmentHash("protected phrase")]),
     });
 
     expect(result.violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" })]),
     );
   });
 
@@ -219,15 +198,11 @@ describe("candidate integrity scanner", () => {
       ].join("\n"),
       addedLines: 2,
       deletedLines: 0,
-      taskFragmentHashes: new Set([
-        fragmentHash("protected phrase"),
-      ]),
+      taskFragmentHashes: new Set([fragmentHash("protected phrase")]),
     });
 
     expect(result.violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" })]),
     );
   });
 
@@ -235,11 +210,9 @@ describe("candidate integrity scanner", () => {
     const changedPath = "packages/coding-agent/src/core/policy.ts";
     const result = scanCandidate({
       changedFiles: [changedPath],
-      unifiedDiff: [
-        `+++ b/${changedPath}`,
-        "@@ -1,1 +1,2 @@",
-        "+const recovery = true;",
-      ].join("\n"),
+      unifiedDiff: [`+++ b/${changedPath}`, "@@ -1,1 +1,2 @@", "+const recovery = true;"].join(
+        "\n",
+      ),
       addedLines: -1,
       deletedLines: 0,
       taskFragmentHashes: new Set(),
@@ -255,17 +228,13 @@ describe("candidate integrity scanner", () => {
   });
 
   it("rejects a protected diff path hidden behind an allowed changed-file list", () => {
-    const allowedPath =
-      "packages/coding-agent/src/core/policy.ts";
-    const protectedPath =
-      "packages/coding-agent/tests/grader/answer.ts";
+    const allowedPath = "packages/coding-agent/src/core/policy.ts";
+    const protectedPath = "packages/coding-agent/tests/grader/answer.ts";
     const result = scanCandidate({
       changedFiles: [allowedPath],
-      unifiedDiff: [
-        `+++ b/${protectedPath}`,
-        "@@ -1,1 +1,2 @@",
-        "+const answer = true;",
-      ].join("\n"),
+      unifiedDiff: [`+++ b/${protectedPath}`, "@@ -1,1 +1,2 @@", "+const answer = true;"].join(
+        "\n",
+      ),
       addedLines: 1,
       deletedLines: 0,
       taskFragmentHashes: new Set(),

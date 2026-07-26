@@ -1,42 +1,32 @@
-import {
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  assertCampaignStateTransition,
   CampaignConflictError,
   CampaignIntegrityError,
   CampaignStateStore,
   CampaignTransitionError,
+  campaignReconstructionInputs,
   HarnessRegistrationError,
   HarnessRegistrationStore,
-  assertCampaignStateTransition,
-  campaignReconstructionInputs,
 } from "../../src/campaign/index.js";
-import {
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 import type { CampaignState } from "../../src/schemas/control.js";
 import { assertValidDocument } from "../../src/schemas/registry.js";
 import {
   COMMIT_B,
+  campaignSeed,
   HASH_A,
   HASH_B,
   HASH_C,
   HASH_D,
   HASH_E,
-  LATER,
-  campaignSeed,
   harnessRegistrationFixture,
   initialCampaignStateFixture,
+  LATER,
 } from "./fixtures.js";
 
 const temporaryDirectories: string[] = [];
@@ -54,6 +44,9 @@ async function initializedStore(): Promise<{
   const root = await temporaryRoot();
   const store = new CampaignStateStore(root, "campaign-001", {
     now: () => new Date(LATER),
+    // The full suite runs many fsync-heavy filesystem tests in parallel.
+    // Keep this fixture's cooperative lock wait above transient CI I/O stalls.
+    lockWaitMs: 30_000,
     ledgerTransitionVerifier: {
       verify: async () => undefined,
     },
@@ -68,9 +61,7 @@ async function initializedStore(): Promise<{
   return { root, store };
 }
 
-function ledgersFor(
-  state: Awaited<ReturnType<CampaignStateStore["read"]>>,
-) {
+function ledgersFor(state: Awaited<ReturnType<CampaignStateStore["read"]>>) {
   const reconstruction = state.reconstruction;
   if (
     reconstruction.brokerExposureStateAttestationHash === null ||
@@ -80,8 +71,7 @@ function ledgersFor(
     throw new Error("Campaign fixture is missing required reconstruction ledgers");
   }
   return {
-    brokerExposureStateAttestationHash:
-      reconstruction.brokerExposureStateAttestationHash,
+    brokerExposureStateAttestationHash: reconstruction.brokerExposureStateAttestationHash,
     repeatedTestingLedgerHash: reconstruction.repeatedTestingLedgerHash,
     privacyLedgerHash: reconstruction.privacyLedgerHash,
     cacheStateAttestationHash: reconstruction.cacheStateAttestationHash,
@@ -100,9 +90,9 @@ describe("HarnessRegistrationStore", () => {
     const root = await temporaryRoot();
     const store = new HarnessRegistrationStore(root);
 
-    await expect(
-      store.register(harnessRegistrationFixture()),
-    ).rejects.toBeInstanceOf(HarnessRegistrationError);
+    await expect(store.register(harnessRegistrationFixture())).rejects.toBeInstanceOf(
+      HarnessRegistrationError,
+    );
   });
 
   it("writes one canonical registration with an idempotent exact retry", async () => {
@@ -129,9 +119,7 @@ describe("HarnessRegistrationStore", () => {
     await store.register(registration);
 
     const conflict = harnessRegistrationFixture("repository-policy-v2");
-    await expect(store.register(conflict)).rejects.toBeInstanceOf(
-      HarnessRegistrationError,
-    );
+    await expect(store.register(conflict)).rejects.toBeInstanceOf(HarnessRegistrationError);
     await expect(store.read(registration.registrationId)).resolves.toEqual(registration);
   });
 
@@ -147,9 +135,7 @@ describe("HarnessRegistrationStore", () => {
       `${JSON.stringify(registration, null, 2)}\n`,
     );
 
-    await expect(store.read("pi-private-fork")).rejects.toBeInstanceOf(
-      HarnessRegistrationError,
-    );
+    await expect(store.read("pi-private-fork")).rejects.toBeInstanceOf(HarnessRegistrationError);
   });
 });
 
@@ -158,23 +144,17 @@ describe("CampaignStateStore", () => {
     const root = await temporaryRoot();
     const store = new CampaignStateStore(root, "campaign-001");
 
-    await expect(store.initialize(campaignSeed())).rejects.toBeInstanceOf(
-      CampaignTransitionError,
-    );
+    await expect(store.initialize(campaignSeed())).rejects.toBeInstanceOf(CampaignTransitionError);
   });
 
   it("rejects campaign path traversal and a symlinked campaign directory", async () => {
     const root = await temporaryRoot();
     const outside = await temporaryRoot();
-    expect(() => new CampaignStateStore(root, "../escape")).toThrow(
-      CampaignIntegrityError,
-    );
+    expect(() => new CampaignStateStore(root, "../escape")).toThrow(CampaignIntegrityError);
 
     await symlink(outside, join(root, "campaign-001"));
     const store = new CampaignStateStore(root, "campaign-001");
-    await expect(store.initialize(campaignSeed())).rejects.toBeInstanceOf(
-      CampaignIntegrityError,
-    );
+    await expect(store.initialize(campaignSeed())).rejects.toBeInstanceOf(CampaignIntegrityError);
     expect(await readdir(outside)).toEqual([]);
   });
 
@@ -194,9 +174,7 @@ describe("CampaignStateStore", () => {
     });
 
     const stateFiles = await readdir(join(root, "campaign-001", "states"));
-    expect(stateFiles).toEqual([
-      `0000000000000000-${history.current.contentHash}.json`,
-    ]);
+    expect(stateFiles).toEqual([`0000000000000000-${history.current.contentHash}.json`]);
   });
 
   it("performs content-hash compare-and-swap and rejects a stale writer", async () => {
@@ -252,10 +230,7 @@ describe("CampaignStateStore", () => {
       ...ledgersFor(initial),
       cacheStateAttestationHash: HASH_B,
     };
-    const pending = store.recordLedgerCheckpoint(
-      initial.contentHash,
-      mutableLedgers,
-    );
+    const pending = store.recordLedgerCheckpoint(initial.contentHash, mutableLedgers);
     await verifierEntered;
     mutableLedgers.cacheStateAttestationHash = HASH_A;
     releaseVerifier?.();
@@ -379,9 +354,9 @@ describe("CampaignStateStore", () => {
     });
     assertValidDocument("campaignState", terminalValue);
 
-    expect(() =>
-      assertCampaignStateTransition(allocated, terminalValue),
-    ).toThrow(/both fully sealed and interrupted/u);
+    expect(() => assertCampaignStateTransition(allocated, terminalValue)).toThrow(
+      /both fully sealed and interrupted/u,
+    );
   });
 
   it("makes repeated stop, acknowledgement, and resume requests idempotent", async () => {
@@ -392,9 +367,7 @@ describe("CampaignStateStore", () => {
     expect(repeatedRequest.contentHash).toBe(requested.contentHash);
 
     const stopped = await store.acknowledgeStopped(requested.contentHash);
-    const repeatedAcknowledgement = await store.acknowledgeStopped(
-      requested.contentHash,
-    );
+    const repeatedAcknowledgement = await store.acknowledgeStopped(requested.contentHash);
     expect(repeatedAcknowledgement.contentHash).toBe(stopped.contentHash);
 
     const resumed = await store.resume(stopped.contentHash, HASH_B);
@@ -410,15 +383,12 @@ describe("CampaignStateStore", () => {
     const firstRequest = await store.requestStop(initial.contentHash, "operator");
     const firstStop = await store.acknowledgeStopped(firstRequest.contentHash);
     const firstResume = await store.resume(firstStop.contentHash, HASH_B);
-    const secondRequest = await store.requestStop(
-      firstResume.contentHash,
-      "operator",
-    );
+    const secondRequest = await store.requestStop(firstResume.contentHash, "operator");
     const secondStop = await store.acknowledgeStopped(secondRequest.contentHash);
 
-    await expect(
-      store.resume(secondStop.contentHash, HASH_B),
-    ).rejects.toBeInstanceOf(CampaignTransitionError);
+    await expect(store.resume(secondStop.contentHash, HASH_B)).rejects.toBeInstanceOf(
+      CampaignTransitionError,
+    );
   });
 
   it("replays trusted authorization verification while reconstructing history", async () => {
@@ -446,9 +416,7 @@ describe("CampaignStateStore", () => {
     await store.resume(stopped.contentHash, HASH_B);
 
     rejectPersistedResume = true;
-    await expect(store.reconstruct()).rejects.toThrow(
-      "revoked trusted authorization",
-    );
+    await expect(store.reconstruct()).rejects.toThrow("revoked trusted authorization");
   });
 
   it("coalesces concurrent repeated stop signals under the campaign lock", async () => {
@@ -466,43 +434,27 @@ describe("CampaignStateStore", () => {
   it("archives interrupted work before stop and never reuses its experiment number", async () => {
     const { store } = await initializedStore();
     const initial = await store.read();
-    const allocation = await store.allocateExperiment(
-      initial.contentHash,
-      "optimization",
-    );
+    const allocation = await store.allocateExperiment(initial.contentHash, "optimization");
     expect(allocation.experimentNumber).toBe(1);
 
-    const requested = await store.requestStop(
-      allocation.state.contentHash,
-      "sigterm",
+    const requested = await store.requestStop(allocation.state.contentHash, "sigterm");
+    await expect(store.acknowledgeStopped(requested.contentHash)).rejects.toBeInstanceOf(
+      CampaignTransitionError,
     );
-    await expect(
-      store.acknowledgeStopped(requested.contentHash),
-    ).rejects.toBeInstanceOf(CampaignTransitionError);
 
-    const archived = await store.archiveInterruptedExperiment(
-      requested.contentHash,
-      1,
-      HASH_D,
-    );
+    const archived = await store.archiveInterruptedExperiment(requested.contentHash, 1, HASH_D);
     const repeatedArchive = await store.archiveInterruptedExperiment(
       requested.contentHash,
       1,
       HASH_D,
     );
     expect(repeatedArchive.contentHash).toBe(archived.contentHash);
-    const repeatedStop = await store.requestStop(
-      allocation.state.contentHash,
-      "sigterm",
-    );
+    const repeatedStop = await store.requestStop(allocation.state.contentHash, "sigterm");
     expect(repeatedStop.contentHash).toBe(archived.contentHash);
 
     const stopped = await store.acknowledgeStopped(archived.contentHash);
     const resumed = await store.resume(stopped.contentHash, HASH_B);
-    const nextAllocation = await store.allocateExperiment(
-      resumed.contentHash,
-      "optimization",
-    );
+    const nextAllocation = await store.allocateExperiment(resumed.contentHash, "optimization");
     expect(nextAllocation.experimentNumber).toBe(2);
     expect(nextAllocation.state.numbering.lastInterruptedExperimentNumber).toBe(1);
   });
@@ -533,11 +485,7 @@ describe("CampaignStateStore", () => {
     await expect(
       store.allocateExperiment(exhausted.contentHash, "optimization"),
     ).rejects.toBeInstanceOf(CampaignTransitionError);
-    const paused = await store.pause(
-      exhausted.contentHash,
-      "budget-exhausted",
-      HASH_B,
-    );
+    const paused = await store.pause(exhausted.contentHash, "budget-exhausted", HASH_B);
     await expect(store.resume(paused.contentHash, HASH_C)).rejects.toBeInstanceOf(
       CampaignTransitionError,
     );
@@ -574,11 +522,7 @@ describe("CampaignStateStore", () => {
       HASH_A,
     );
     await expect(
-      store.recordBudgetUsage(
-        spent.contentHash,
-        { ...spent.budget.usage, attempts: 0 },
-        HASH_B,
-      ),
+      store.recordBudgetUsage(spent.contentHash, { ...spent.budget.usage, attempts: 0 }, HASH_B),
     ).rejects.toBeInstanceOf(CampaignTransitionError);
   });
 
@@ -614,10 +558,7 @@ describe("CampaignStateStore", () => {
   it("consumes holdout capacity monotonically and gates replenishment", async () => {
     const { store } = await initializedStore();
     const initial = await store.read();
-    const allocation = await store.allocateExperiment(
-      initial.contentHash,
-      "optimization",
-    );
+    const allocation = await store.allocateExperiment(initial.contentHash, "optimization");
     const consumed = await store.sealExperiment(allocation.state.contentHash, {
       experimentNumber: 1,
       stage: "validation",
@@ -630,43 +571,24 @@ describe("CampaignStateStore", () => {
       ledgers: ledgersFor(allocation.state),
     });
     expect(consumed.holdout.freshValidationSetsRemaining).toBe(5);
-    const paused = await store.pause(
-      consumed.contentHash,
-      "infrastructure",
-      HASH_E,
-    );
+    const paused = await store.pause(consumed.contentHash, "infrastructure", HASH_E);
 
     await expect(
-      store.replenishHoldout(
-        paused.contentHash,
-        7,
-        2,
-        HASH_B,
-        HASH_C,
-      ),
+      store.replenishHoldout(paused.contentHash, 7, 2, HASH_B, HASH_C),
     ).resolves.toMatchObject({
       holdout: { freshValidationSetsRemaining: 7, generation: 1 },
     });
 
     const replenished = await store.read();
     await expect(
-      store.replenishHoldout(
-        replenished.contentHash,
-        8,
-        2,
-        HASH_D,
-        HASH_C,
-      ),
+      store.replenishHoldout(replenished.contentHash, 8, 2, HASH_D, HASH_C),
     ).rejects.toBeInstanceOf(CampaignTransitionError);
   });
 
   it("moves the active champion only with the matching sealed pointer", async () => {
     const { store } = await initializedStore();
     const initial = await store.read();
-    const allocated = await store.allocateExperiment(
-      initial.contentHash,
-      "optimization",
-    );
+    const allocated = await store.allocateExperiment(initial.contentHash, "optimization");
 
     await expect(
       store.sealExperiment(allocated.state.contentHash, {
@@ -699,10 +621,7 @@ describe("CampaignStateStore", () => {
   it("certifies only the active commit through a later feedback-dark sealed audit", async () => {
     const { store } = await initializedStore();
     const initial = await store.read();
-    const candidate = await store.allocateExperiment(
-      initial.contentHash,
-      "optimization",
-    );
+    const candidate = await store.allocateExperiment(initial.contentHash, "optimization");
     const promoted = await store.sealExperiment(candidate.state.contentHash, {
       experimentNumber: 1,
       stage: "validation",
@@ -767,10 +686,7 @@ describe("CampaignStateStore", () => {
       },
     });
     const initial = await store.initialize(campaignSeed());
-    const allocation = await store.allocateExperiment(
-      initial.contentHash,
-      "optimization",
-    );
+    const allocation = await store.allocateExperiment(initial.contentHash, "optimization");
 
     await expect(
       store.sealExperiment(allocation.state.contentHash, {
@@ -816,10 +732,7 @@ describe("CampaignStateStore", () => {
     const campaignPath = join(root, "campaign-001");
     const statesPath = join(campaignPath, "states");
     await writeFile(
-      join(
-        statesPath,
-        `.0000000000000001-${HASH_D}.json.${"a".repeat(32)}.tmp`,
-      ),
+      join(statesPath, `.0000000000000001-${HASH_D}.json.${"a".repeat(32)}.tmp`),
       "partial",
     );
     await writeFile(

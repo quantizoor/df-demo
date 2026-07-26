@@ -8,7 +8,7 @@ export const MAX_MCP_RESPONSE_CHARACTERS = 12_000;
 export const MAX_MCP_INPUT_CHARACTERS = 20_000;
 
 const FORBIDDEN_KEY =
-  /(?:^|_)(?:tasks?|task(?:id|key|name|instruction|identity|mapping|membership|digest|revision|handle|assignment|outcome)|trial|grader|verifier|solution|instruction|command|argument|stdout|stderr|path|filename|url|package|service|environment|panelid|pool|handle|raw|atif)(?:$|_)/iu;
+  /(?:^|_)(?:tasks?|task(?:id|key|name|instruction|identity|mapping|membership|digest|revision|handle|assignment|outcome)|trial|grader|verifier|solution|instruction|command|argument|stdout|stderr|path|filename|url|package|service|environment|panel(?:_?id)|pool|handle|raw|atif)(?:$|_)/iu;
 
 function forbiddenKey(key: string): boolean {
   const normalized = key.replaceAll(/([a-z])([A-Z])/gu, "$1_$2").toLowerCase();
@@ -50,11 +50,7 @@ export async function assertExistingDirectory(value: string): Promise<string> {
   return resolved;
 }
 
-export function assertSafeReleasedObject(
-  value: unknown,
-  location = "$",
-  depth = 0,
-): void {
+export function assertSafeReleasedObject(value: unknown, location = "$", depth = 0): void {
   if (depth > 20) {
     throw new Error("Released object nesting exceeds the safety limit");
   }
@@ -62,9 +58,7 @@ export function assertSafeReleasedObject(
     try {
       assertReleaseSafeText(value, location);
     } catch {
-      throw new Error(
-        `Released object contains a protected literal category at ${location}`,
-      );
+      throw new Error(`Released object contains a protected literal category at ${location}`);
     }
     return;
   }
@@ -146,21 +140,17 @@ function scanNarrative(value: unknown, path: string): void {
     try {
       assertReleaseSafeText(value, path);
     } catch {
-      throw new Error(
-        `Submission narrative contains a protected literal category at ${path}`,
-      );
+      throw new Error(`Submission narrative contains a protected literal category at ${path}`);
     }
-    if (
-      FORBIDDEN_NARRATIVE_PATTERN.some((pattern) =>
-        pattern.test(value),
-      )
-    ) {
+    if (FORBIDDEN_NARRATIVE_PATTERN.some((pattern) => pattern.test(value))) {
       throw new Error(`Submission narrative contains a protected literal category at ${path}`);
     }
     return;
   }
   if (Array.isArray(value)) {
-    value.forEach((item, index) => scanNarrative(item, `${path}[${index}]`));
+    value.forEach((item, index) => {
+      scanNarrative(item, `${path}[${index}]`);
+    });
     return;
   }
   if (value === null || typeof value !== "object") {

@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { loadProviderConfiguration, providerCredentialValues } from "../../src/cloud/config.js";
 import {
   assertCloudExecutionEnvironment,
   assertLeaseMatchesRuntime,
   isCloudExecutionEnvironment,
 } from "../../src/cloud/runtime-marker.js";
-import {
-  loadProviderConfiguration,
-  providerCredentialValues,
-} from "../../src/cloud/config.js";
 
 describe("cloud execution marker", () => {
   it.each([
@@ -28,16 +25,16 @@ describe("cloud execution marker", () => {
   });
 
   it("fails closed when only the opt-in flag is present", () => {
-    expect(() =>
-      assertCloudExecutionEnvironment("daytona", { DF_CLOUD_EXECUTION: "1" }),
-    ).toThrow(/runtime marker/u);
+    expect(() => assertCloudExecutionEnvironment("daytona", { DF_CLOUD_EXECUTION: "1" })).toThrow(
+      /runtime marker/u,
+    );
     expect(isCloudExecutionEnvironment("daytona", { DF_CLOUD_EXECUTION: "1" })).toBe(false);
   });
 
   it("fails closed when only a provider marker is present", () => {
-    expect(() =>
-      assertCloudExecutionEnvironment("e2b", { E2B_SANDBOX_ID: "sandbox-123" }),
-    ).toThrow(/DF_CLOUD_EXECUTION/u);
+    expect(() => assertCloudExecutionEnvironment("e2b", { E2B_SANDBOX_ID: "sandbox-123" })).toThrow(
+      /DF_CLOUD_EXECUTION/u,
+    );
   });
 
   it("rejects a lease copied into a different sandbox", () => {
@@ -88,9 +85,9 @@ describe("provider configuration", () => {
   });
 
   it("requires every Modal credential by environment name", () => {
-    expect(() =>
-      loadProviderConfiguration("modal", { MODAL_TOKEN_ID: "id-only" }),
-    ).toThrow(/MODAL_TOKEN_SECRET/u);
+    expect(() => loadProviderConfiguration("modal", { MODAL_TOKEN_ID: "id-only" })).toThrow(
+      /MODAL_TOKEN_SECRET/u,
+    );
   });
 
   it("rejects endpoints that embed credentials or query data", () => {

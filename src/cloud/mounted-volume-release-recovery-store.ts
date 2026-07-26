@@ -6,26 +6,19 @@ import {
   type TrustedReleaseRecoveryResolution,
   type TrustedReleaseRecoveryWriteReceipt,
 } from "../evaluator/release-recovery-store.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-} from "../schemas/canonical.js";
+  type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
+} from "./mounted-volume-state.js";
 import type {
   ProductionOptimizeLifecycleRegistrar,
   TrustedProductionOptimizeCloseable,
 } from "./production-optimize-composition-owner.js";
-import {
-  MountedVolumeTransactionalJsonStore,
-  type MountedVolumeDurableStateOptions,
-} from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MAXIMUM_RECORDS = 4_096;
-const DANGEROUS_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export interface MountedVolumeReleaseRecoveryStoreOptions {
   readonly durableState: MountedVolumeDurableStateOptions;
@@ -34,18 +27,14 @@ export interface MountedVolumeReleaseRecoveryStoreOptions {
 
 interface DurableReleaseRecoveryState {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "trusted-private-post-destruction-release-recovery-state";
+  readonly sensitivity: "trusted-private-post-destruction-release-recovery-state";
   readonly scopeHash: string;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, TrustedPostDestructionReleaseRecoveryRecord>
-  >;
+  readonly records: Readonly<Record<string, TrustedPostDestructionReleaseRecoveryRecord>>;
 }
 
 export class MountedVolumeReleaseRecoveryStoreError extends Error {
-  override readonly name =
-    "MountedVolumeReleaseRecoveryStoreError";
+  override readonly name = "MountedVolumeReleaseRecoveryStoreError";
 }
 
 function fail(): never {
@@ -54,9 +43,7 @@ function fail(): never {
   );
 }
 
-function isRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -65,15 +52,9 @@ function isRecord(
   );
 }
 
-function exactKeys(
-  value: Readonly<Record<string, unknown>>,
-  expected: readonly string[],
-): void {
+function exactKeys(value: Readonly<Record<string, unknown>>, expected: readonly string[]): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -87,17 +68,10 @@ function assertState(
   scopeHash: string,
 ): asserts value is DurableReleaseRecoveryState {
   if (!isRecord(value)) fail();
-  exactKeys(value, [
-    "schemaVersion",
-    "sensitivity",
-    "scopeHash",
-    "revision",
-    "records",
-  ]);
+  exactKeys(value, ["schemaVersion", "sensitivity", "scopeHash", "revision", "records"]);
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "trusted-private-post-destruction-release-recovery-state" ||
+    value.sensitivity !== "trusted-private-post-destruction-release-recovery-state" ||
     value.scopeHash !== scopeHash ||
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
@@ -106,13 +80,8 @@ function assertState(
   ) {
     fail();
   }
-  for (const [requestHash, record] of Object.entries(
-    value.records,
-  )) {
-    if (
-      DANGEROUS_KEYS.has(requestHash) ||
-      !SHA256.test(requestHash)
-    ) {
+  for (const [requestHash, record] of Object.entries(value.records)) {
+    if (DANGEROUS_KEYS.has(requestHash) || !SHA256.test(requestHash)) {
       fail();
     }
     try {
@@ -124,14 +93,8 @@ function assertState(
   }
 }
 
-function assertQuery(input: {
-  readonly requestHash: string;
-  readonly protocolHash: string;
-}): void {
-  if (
-    !SHA256.test(input.requestHash) ||
-    !SHA256.test(input.protocolHash)
-  ) {
+function assertQuery(input: { readonly requestHash: string; readonly protocolHash: string }): void {
+  if (!SHA256.test(input.requestHash) || !SHA256.test(input.protocolHash)) {
     fail();
   }
 }
@@ -162,51 +125,40 @@ export class MountedVolumeReleaseRecoveryStore
   readonly lifecycleResource: TrustedProductionOptimizeCloseable;
   readonly #store: MountedVolumeTransactionalJsonStore<DurableReleaseRecoveryState>;
 
-  constructor(
-    options: MountedVolumeReleaseRecoveryStoreOptions,
-  ) {
+  constructor(options: MountedVolumeReleaseRecoveryStoreOptions) {
     if (
       !isRecord(options) ||
       (options.lifecycle !== undefined &&
-        (options.lifecycle.boundary !==
-          "production-optimize-composition-owner" ||
+        (options.lifecycle.boundary !== "production-optimize-composition-owner" ||
           typeof options.lifecycle.register !== "function"))
     ) {
       fail();
     }
     const scopeHash = canonicalHash({
-      domain:
-        "dark-factory.post-destruction-release-recovery-store-scope.v1",
+      domain: "dark-factory.post-destruction-release-recovery-store-scope.v1",
       storeId: options.durableState.storeId,
     });
-    this.lifecycleId =
-      `release-recovery-${scopeHash.slice(0, 24)}`;
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableReleaseRecoveryState>(
-        options.durableState,
-        `release-recovery-${options.durableState.storeId}`,
-        {
-          domain:
-            "dark-factory.post-destruction-release-recovery-state.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity:
-              "trusted-private-post-destruction-release-recovery-state",
-            scopeHash,
-            revision: 0,
-            records: {},
-          }),
-          assertState(
-            value,
-          ): asserts value is DurableReleaseRecoveryState {
-            assertState(value, scopeHash);
-          },
-          revision: (state) => state.revision,
+    this.lifecycleId = `release-recovery-${scopeHash.slice(0, 24)}`;
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableReleaseRecoveryState>(
+      options.durableState,
+      `release-recovery-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.post-destruction-release-recovery-state.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "trusted-private-post-destruction-release-recovery-state",
+          scopeHash,
+          revision: 0,
+          records: {},
+        }),
+        assertState(value): asserts value is DurableReleaseRecoveryState {
+          assertState(value, scopeHash);
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
     this.lifecycleResource = Object.freeze({
-      boundary:
-        "trusted-cloud-production-optimize-lifecycle" as const,
+      boundary: "trusted-cloud-production-optimize-lifecycle" as const,
       lifecycleId: this.lifecycleId,
       close: (): Promise<void> => this.close(),
     });
@@ -225,44 +177,40 @@ export class MountedVolumeReleaseRecoveryStore
     if (
       record.revision !== 1 ||
       record.status !== "open" ||
-      (record.behavioral.status !== "none" &&
-        record.behavioral.status !== "prepared")
+      (record.behavioral.status !== "none" && record.behavioral.status !== "prepared")
     ) {
       fail();
     }
-    const transact =
-      (): Promise<TrustedReleaseRecoveryWriteReceipt> =>
-        this.#store.transact((state) => {
-          const existing = state.records[record.requestHash];
-          if (existing !== undefined) {
-            if (
-              existing.protocolHash !== record.protocolHash ||
-              canonicalJson(existing) !== canonicalJson(record)
-            ) {
-              fail();
-            }
-            return {
-              next: state,
-              result: receipt("already-created", existing),
-            };
-          }
+    const transact = (): Promise<TrustedReleaseRecoveryWriteReceipt> =>
+      this.#store.transact((state) => {
+        const existing = state.records[record.requestHash];
+        if (existing !== undefined) {
           if (
-            Object.keys(state.records).length >= MAXIMUM_RECORDS
+            existing.protocolHash !== record.protocolHash ||
+            canonicalJson(existing) !== canonicalJson(record)
           ) {
             fail();
           }
           return {
-            next: {
-              ...state,
-              revision: state.revision + 1,
-              records: {
-                ...state.records,
-                [record.requestHash]: record,
-              },
-            },
-            result: receipt("created", record),
+            next: state,
+            result: receipt("already-created", existing),
           };
-        });
+        }
+        if (Object.keys(state.records).length >= MAXIMUM_RECORDS) {
+          fail();
+        }
+        return {
+          next: {
+            ...state,
+            revision: state.revision + 1,
+            records: {
+              ...state.records,
+              [record.requestHash]: record,
+            },
+          },
+          result: receipt("created", record),
+        };
+      });
     try {
       return await transact();
     } catch {
@@ -276,7 +224,7 @@ export class MountedVolumeReleaseRecoveryStore
   }): Promise<TrustedReleaseRecoveryResolution> {
     const input = clone(originalInput);
     assertQuery(input);
-    const result = await this.#store.transact((state) => {
+    const result = await this.#store.transact<TrustedReleaseRecoveryResolution>((state) => {
       const record = state.records[input.requestHash];
       if (record === undefined) {
         return {
@@ -322,52 +270,41 @@ export class MountedVolumeReleaseRecoveryStore
     } catch {
       fail();
     }
-    const transact =
-      (): Promise<TrustedReleaseRecoveryWriteReceipt> =>
-        this.#store.transact((state) => {
-          const existing = state.records[input.requestHash];
-          if (
-            existing === undefined ||
-            existing.protocolHash !== input.protocolHash
-          ) {
-            fail();
-          }
-          if (
-            existing.recordHash === input.next.recordHash &&
-            canonicalJson(existing) ===
-              canonicalJson(input.next)
-          ) {
-            return {
-              next: state,
-              result: receipt(
-                "already-advanced",
-                existing,
-              ),
-            };
-          }
-          if (existing.recordHash !== input.priorRecordHash) {
-            fail();
-          }
-          try {
-            assertPostDestructionReleaseRecoveryTransition(
-              existing,
-              input.next,
-            );
-          } catch {
-            fail();
-          }
+    const transact = (): Promise<TrustedReleaseRecoveryWriteReceipt> =>
+      this.#store.transact((state) => {
+        const existing = state.records[input.requestHash];
+        if (existing === undefined || existing.protocolHash !== input.protocolHash) {
+          fail();
+        }
+        if (
+          existing.recordHash === input.next.recordHash &&
+          canonicalJson(existing) === canonicalJson(input.next)
+        ) {
           return {
-            next: {
-              ...state,
-              revision: state.revision + 1,
-              records: {
-                ...state.records,
-                [input.requestHash]: input.next,
-              },
-            },
-            result: receipt("advanced", input.next),
+            next: state,
+            result: receipt("already-advanced", existing),
           };
-        });
+        }
+        if (existing.recordHash !== input.priorRecordHash) {
+          fail();
+        }
+        try {
+          assertPostDestructionReleaseRecoveryTransition(existing, input.next);
+        } catch {
+          fail();
+        }
+        return {
+          next: {
+            ...state,
+            revision: state.revision + 1,
+            records: {
+              ...state.records,
+              [input.requestHash]: input.next,
+            },
+          },
+          result: receipt("advanced", input.next),
+        };
+      });
     try {
       return await transact();
     } catch {

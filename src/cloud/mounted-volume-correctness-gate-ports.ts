@@ -20,7 +20,6 @@ import {
   type IntegrityViolationCode,
 } from "../integrity/candidate-scanner.js";
 import {
-  trustedCloudIntegrityScanAttestationHash,
   type AccountedCorrectnessGateReceipt,
   type CorrectnessGateOperation,
   type CorrectnessGateOperationAccounting,
@@ -31,15 +30,12 @@ import {
   type TrustedCandidateSourceIndexReceipt,
   type TrustedCloudIntegrityScanReceipt,
   type TrustedCloudIntegrityScanReceiptVerifier,
+  trustedCloudIntegrityScanAttestationHash,
 } from "../orchestrator/correctness-gate.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
-import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
 
@@ -48,13 +44,10 @@ const GIT_OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_STORE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
-const SAFE_HEAD_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
-const SAFE_IMAGE_REFERENCE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const SAFE_HEAD_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_IMAGE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const SAFE_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
-const SAFE_ARTIFACT_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_ARTIFACT_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const SAFE_MEDIA_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/u;
 const MAXIMUM_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024;
 const MAXIMUM_COST_USD = 1_000_000;
@@ -69,9 +62,7 @@ function fail(message: string): never {
   throw new MountedVolumeCorrectnessGatePortError(message);
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -89,10 +80,7 @@ function assertExactKeys(
     fail(`${label} is not a plain object.`);
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail(`${label} contains non-canonical fields.`);
   }
 }
@@ -111,10 +99,7 @@ function cloneJson<Value>(value: Value, label: string): Value {
   }
 }
 
-function assertGitObject(
-  value: unknown,
-  label: string,
-): asserts value is string {
+function assertGitObject(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !GIT_OBJECT_ID.test(value)) {
     fail(`${label} is not a Git object identifier.`);
   }
@@ -123,14 +108,7 @@ function assertGitObject(
 function experimentId(experiment: ExperimentIdentity): string {
   assertExactKeys(
     experiment,
-    [
-      "number",
-      "slug",
-      "kind",
-      "parentExperiment",
-      "lineageId",
-      "protocolHash",
-    ],
+    ["number", "slug", "kind", "parentExperiment", "lineageId", "protocolHash"],
     "Correctness-gate experiment identity",
   );
   if (
@@ -170,8 +148,7 @@ function assertArtifact(
     artifact.uri.includes("..") ||
     !SHA256.test(artifact.sha256) ||
     !SAFE_MEDIA_TYPE.test(artifact.mediaType) ||
-    (expectedMediaType !== undefined &&
-      artifact.mediaType !== expectedMediaType) ||
+    (expectedMediaType !== undefined && artifact.mediaType !== expectedMediaType) ||
     !Number.isSafeInteger(artifact.byteLength) ||
     artifact.byteLength <= 0 ||
     artifact.byteLength > maximumByteLength
@@ -180,10 +157,7 @@ function assertArtifact(
   }
 }
 
-function assertSignatureShape(
-  value: unknown,
-  trustedKeyId: string,
-): void {
+function assertSignatureShape(value: unknown, trustedKeyId: string): void {
   assertExactKeys(
     value,
     ["algorithm", "keyId", "signedAt", "signature"],
@@ -239,18 +213,14 @@ function assertHeadRef(value: unknown, label: string): asserts value is string {
       .split("/")
       .some(
         (component) =>
-          component.startsWith(".") ||
-          component.endsWith(".") ||
-          component.endsWith(".lock"),
+          component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
       )
   ) {
     fail(`${label} is malformed.`);
   }
 }
 
-function assertProviderSnapshotMetadata(
-  value: Readonly<Record<string, unknown>>,
-): void {
+function assertProviderSnapshotMetadata(value: Readonly<Record<string, unknown>>): void {
   if (
     (value["provider"] !== "daytona" &&
       value["provider"] !== "e2b" &&
@@ -323,9 +293,7 @@ function assertSnapshotReceipt(
   assertGitObject(receipt.upstreamHeadCommit, "Snapshot upstream HEAD");
   assertGitObject(receipt.upstreamBaseCommit, "Snapshot upstream base");
   assertGitObject(receipt.baselineCommit, "Snapshot baseline");
-  assertProviderSnapshotMetadata(
-    receipt as unknown as Readonly<Record<string, unknown>>,
-  );
+  assertProviderSnapshotMetadata(receipt as unknown as Readonly<Record<string, unknown>>);
   assertHeadRef(receipt.remoteRef, "Snapshot remote ref");
   assertGitObject(receipt.commitSha, "Snapshot commit");
   assertGitObject(receipt.treeSha, "Snapshot tree");
@@ -343,11 +311,7 @@ function assertSnapshotReceipt(
   ) {
     fail("Stored Git source snapshot payload is malformed.");
   }
-  assertArtifact(
-    receipt.sourceArtifact,
-    "application/x-tar",
-    512 * 1024 * 1024,
-  );
+  assertArtifact(receipt.sourceArtifact, "application/x-tar", 512 * 1024 * 1024);
   assertArtifact(
     receipt.sourceBundleArtifact,
     "application/vnd.git.bundle",
@@ -420,9 +384,7 @@ function assertPublicationReceipt(
   }
   assertGitObject(receipt.upstreamHeadCommit, "Publication upstream HEAD");
   assertGitObject(receipt.upstreamBaseCommit, "Publication upstream base");
-  assertProviderSnapshotMetadata(
-    receipt as unknown as Readonly<Record<string, unknown>>,
-  );
+  assertProviderSnapshotMetadata(receipt as unknown as Readonly<Record<string, unknown>>);
   if (!SAFE_ID.test(receipt.experimentId)) {
     fail("Stored Git publication experiment is malformed.");
   }
@@ -437,18 +399,14 @@ function assertPublicationReceipt(
   assertGitObject(receipt.tagObjectId, "Publication tag object");
   assertGitObject(receipt.tagPeeledCommit, "Publication peeled tag");
   if (
-    receipt.tagRef !==
-      `refs/tags/df/experiment/${receipt.experimentId}/candidate` ||
-    receipt.branchRef !==
-      `refs/heads/df/experiment/${receipt.experimentId}` ||
-    receipt.bundleRef !==
-      `refs/heads/df/bundle/${receipt.experimentId}` ||
+    receipt.tagRef !== `refs/tags/df/experiment/${receipt.experimentId}/candidate` ||
+    receipt.branchRef !== `refs/heads/df/experiment/${receipt.experimentId}` ||
+    receipt.bundleRef !== `refs/heads/df/bundle/${receipt.experimentId}` ||
     receipt.branchCommit !== receipt.candidateCommit ||
     receipt.tagPeeledCommit !== receipt.candidateCommit ||
     !SHA256.test(receipt.lockSha256) ||
     receipt.publicationMode !== "atomic-non-force" ||
-    (receipt.disposition !== "published" &&
-      receipt.disposition !== "already-published") ||
+    (receipt.disposition !== "published" && receipt.disposition !== "already-published") ||
     !SHA256.test(receipt.candidateBundleSha256) ||
     !SHA256.test(receipt.workerSha256) ||
     !SHA256.test(receipt.executionReceiptHash) ||
@@ -520,11 +478,8 @@ function assertRuntimeBuildReceipt(
     !Array.isArray(receipt.commandReceiptHashes) ||
     receipt.commandReceiptHashes.length < 1 ||
     receipt.commandReceiptHashes.length > 256 ||
-    new Set(receipt.commandReceiptHashes).size !==
-      receipt.commandReceiptHashes.length ||
-    receipt.commandReceiptHashes.some(
-      (hash) => typeof hash !== "string" || !SHA256.test(hash),
-    ) ||
+    new Set(receipt.commandReceiptHashes).size !== receipt.commandReceiptHashes.length ||
+    receipt.commandReceiptHashes.some((hash) => typeof hash !== "string" || !SHA256.test(hash)) ||
     !SHA256.test(receipt.runtimeManifestSha256) ||
     !isCanonicalTimestamp(receipt.builtAt) ||
     receipt.passed !== true
@@ -559,12 +514,10 @@ function assertAccounting<Receipt>(
     ],
     "Correctness-gate operation accounting",
   );
-  const accounting =
-    value as unknown as CorrectnessGateOperationAccounting;
+  const accounting = value as unknown as CorrectnessGateOperationAccounting;
   if (
     accounting.schemaVersion !== 1 ||
-    accounting.sensitivity !==
-      "release-safe-correctness-gate-accounting" ||
+    accounting.sensitivity !== "release-safe-correctness-gate-accounting" ||
     accounting.operation !== operation ||
     accounting.receiptHash !== canonicalHash(receipt) ||
     !Number.isFinite(accounting.aggregateCostUsd) ||
@@ -588,11 +541,7 @@ function assertAccounted<Receipt>(
   operation: CorrectnessGateOperation,
   assertReceipt: (receipt: unknown) => asserts receipt is Receipt,
 ): asserts value is AccountedCorrectnessGateReceipt<Receipt> {
-  assertExactKeys(
-    value,
-    ["receipt", "accounting"],
-    "Accounted correctness-gate receipt",
-  );
+  assertExactKeys(value, ["receipt", "accounting"], "Accounted correctness-gate receipt");
   const accounted = value as unknown as {
     readonly receipt: unknown;
     readonly accounting: unknown;
@@ -601,9 +550,7 @@ function assertAccounted<Receipt>(
   assertAccounting(accounted.accounting, operation, accounted.receipt);
 }
 
-function expectedScanId(
-  receipt: TrustedCloudIntegrityScanReceipt,
-): string {
+function expectedScanId(receipt: TrustedCloudIntegrityScanReceipt): string {
   return `scan-${canonicalHash({
     experimentId: receipt.experimentId,
     protocolHash: receipt.protocolHash,
@@ -666,13 +613,10 @@ function assertScanReceipt(
     "Stored integrity scan receipt",
   );
   const receipt = value as unknown as TrustedCloudIntegrityScanReceipt;
-  const allowedViolations = new Set<IntegrityViolationCode>(
-    INTEGRITY_VIOLATION_CODES,
-  );
+  const allowedViolations = new Set<IntegrityViolationCode>(INTEGRITY_VIOLATION_CODES);
   if (
     receipt.schemaVersion !== 2 ||
-    receipt.sensitivity !==
-      "release-safe-candidate-integrity-scan" ||
+    receipt.sensitivity !== "release-safe-candidate-integrity-scan" ||
     receipt.scanId !== expectedScanId(receipt) ||
     receipt.experimentId !== experimentId(experiment) ||
     receipt.protocolHash !== experiment.protocolHash
@@ -711,12 +655,10 @@ function assertScanReceipt(
     receipt.passed !== (receipt.violationCodes.length === 0) ||
     (receipt.passed &&
       (receipt.evidenceDiffSha256 !== receipt.diffSha256 ||
-        receipt.observedChangedFilesHash !==
-          receipt.changedFilesHash)) ||
+        receipt.observedChangedFilesHash !== receipt.changedFilesHash)) ||
     receipt.containsTaskIdentifiers !== false ||
     !isCanonicalTimestamp(receipt.scannedAt) ||
-    receipt.scanAttestationHash !==
-      trustedCloudIntegrityScanAttestationHash(receipt)
+    receipt.scanAttestationHash !== trustedCloudIntegrityScanAttestationHash(receipt)
   ) {
     fail("Stored integrity scan payload is malformed.");
   }
@@ -751,8 +693,7 @@ function assertBuildRejection(
     ],
     "Stored candidate build rejection",
   );
-  const receipt =
-    value as unknown as TrustedCandidateBuildRejectionReceipt;
+  const receipt = value as unknown as TrustedCandidateBuildRejectionReceipt;
   const expectedId = `build-rejection-${canonicalHash({
     experimentId: experimentId(experiment),
     protocolHash: experiment.protocolHash,
@@ -763,8 +704,7 @@ function assertBuildRejection(
   }).slice(0, 48)}`;
   if (
     receipt.schemaVersion !== 1 ||
-    receipt.sensitivity !==
-      "release-safe-candidate-build-rejection" ||
+    receipt.sensitivity !== "release-safe-candidate-build-rejection" ||
     receipt.rejectionId !== expectedId ||
     receipt.experimentId !== experimentId(experiment) ||
     receipt.protocolHash !== experiment.protocolHash ||
@@ -787,14 +727,8 @@ function assertBuildReceipt(
   experiment: ExperimentIdentity,
   scan: TrustedCloudIntegrityScanReceipt,
   verifier: TrustedCandidateBuildReceiptVerifier,
-): asserts value is
-  | TrustedCandidateRuntimeBuildReceipt
-  | TrustedCandidateBuildRejectionReceipt {
-  if (
-    isPlainRecord(value) &&
-    value["sensitivity"] ===
-      "release-safe-candidate-build-rejection"
-  ) {
+): asserts value is TrustedCandidateRuntimeBuildReceipt | TrustedCandidateBuildRejectionReceipt {
+  if (isPlainRecord(value) && value["sensitivity"] === "release-safe-candidate-build-rejection") {
     assertBuildRejection(value, experiment, scan);
     return;
   }
@@ -811,14 +745,9 @@ function assertBuildReceipt(
 }
 
 function isBuildRejection(
-  receipt:
-    | TrustedCandidateRuntimeBuildReceipt
-    | TrustedCandidateBuildRejectionReceipt,
+  receipt: TrustedCandidateRuntimeBuildReceipt | TrustedCandidateBuildRejectionReceipt,
 ): receipt is TrustedCandidateBuildRejectionReceipt {
-  return (
-    receipt.sensitivity ===
-    "release-safe-candidate-build-rejection"
-  );
+  return receipt.sensitivity === "release-safe-candidate-build-rejection";
 }
 
 function assertSnapshotMatchesPublication(
@@ -858,8 +787,7 @@ function expectedSourceIndexId(input: {
     candidateTree: input.snapshot.treeSha,
     lockSha256: input.snapshot.lockSha256,
     sourceArtifactSha256: input.snapshot.sourceArtifact.sha256,
-    sourceBundleArtifactSha256:
-      input.snapshot.sourceBundleArtifact.sha256,
+    sourceBundleArtifactSha256: input.snapshot.sourceBundleArtifact.sha256,
     snapshotReceiptHash: input.snapshotReceiptHash,
   }).slice(0, 48)}`;
 }
@@ -897,21 +825,17 @@ function assertSourceIndexReceipt(
   const receipt = value as unknown as TrustedCandidateSourceIndexReceipt;
   if (
     receipt.schemaVersion !== 2 ||
-    receipt.sensitivity !==
-      "release-safe-candidate-source-index" ||
+    receipt.sensitivity !== "release-safe-candidate-source-index" ||
     receipt.indexId !== expectedSourceIndexId(input) ||
     receipt.experimentId !== experimentId(input.experiment) ||
     receipt.protocolHash !== input.experiment.protocolHash ||
     receipt.registrationId !== input.snapshot.registrationId ||
-    receipt.originRepositoryHash !==
-      input.snapshot.originRepositoryHash ||
+    receipt.originRepositoryHash !== input.snapshot.originRepositoryHash ||
     receipt.candidateCommit !== input.snapshot.commitSha ||
     receipt.candidateTree !== input.snapshot.treeSha ||
     receipt.lockSha256 !== input.snapshot.lockSha256 ||
-    receipt.sourceArtifactSha256 !==
-      input.snapshot.sourceArtifact.sha256 ||
-    receipt.sourceBundleArtifactSha256 !==
-      input.snapshot.sourceBundleArtifact.sha256 ||
+    receipt.sourceArtifactSha256 !== input.snapshot.sourceArtifact.sha256 ||
+    receipt.sourceBundleArtifactSha256 !== input.snapshot.sourceBundleArtifact.sha256 ||
     receipt.snapshotReceiptHash !== input.snapshotReceiptHash ||
     input.snapshotReceiptHash !== canonicalHash(input.snapshot) ||
     !isCanonicalTimestamp(receipt.indexedAt) ||
@@ -1001,19 +925,14 @@ function assertCorrectnessGateRecord(
     record.integrityScan,
     "integrity-scan",
     (receipt): asserts receipt is TrustedCloudIntegrityScanReceipt =>
-      assertScanReceipt(
-        receipt,
-        record.experiment,
-        verifiers.integrityScan,
-      ),
+      assertScanReceipt(receipt, record.experiment, verifiers.integrityScan),
   );
   const scan = record.integrityScan.receipt;
   const operationAccounting: CorrectnessGateOperationAccounting[] = [
     record.integrityScan.accounting,
   ];
   let expectedPassed = false;
-  let expectedFailureCode: string | null =
-    scan.passed ? null : "INTEGRITY_POLICY_REJECTED";
+  let expectedFailureCode: string | null = scan.passed ? null : "INTEGRITY_POLICY_REJECTED";
 
   if (!scan.passed) {
     if (
@@ -1036,12 +955,7 @@ function assertCorrectnessGateRecord(
       ): asserts receipt is
         | TrustedCandidateRuntimeBuildReceipt
         | TrustedCandidateBuildRejectionReceipt =>
-        assertBuildReceipt(
-          receipt,
-          record.experiment,
-          scan,
-          verifiers.candidateBuild,
-        ),
+        assertBuildReceipt(receipt, record.experiment, scan, verifiers.candidateBuild),
     );
     operationAccounting.push(record.candidateBuild.accounting);
     const build = record.candidateBuild.receipt;
@@ -1107,13 +1021,9 @@ function assertCorrectnessGateRecord(
 
   assertGateResultShape(record.result);
   const accountingAttestations = new Set(
-    operationAccounting.map(
-      (accounting) => accounting.accountingAttestationHash,
-    ),
+    operationAccounting.map((accounting) => accounting.accountingAttestationHash),
   );
-  const receiptHashes = new Set(
-    operationAccounting.map((accounting) => accounting.receiptHash),
-  );
+  const receiptHashes = new Set(operationAccounting.map((accounting) => accounting.receiptHash));
   if (
     accountingAttestations.size !== operationAccounting.length ||
     receiptHashes.size !== operationAccounting.length
@@ -1122,8 +1032,7 @@ function assertCorrectnessGateRecord(
   }
   const totals = operationAccounting.reduce(
     (sum, accounting) => ({
-      aggregateCostUsd:
-        sum.aggregateCostUsd + accounting.aggregateCostUsd,
+      aggregateCostUsd: sum.aggregateCostUsd + accounting.aggregateCostUsd,
       tokens: sum.tokens + accounting.tokens,
       wallTimeMs: sum.wallTimeMs + accounting.wallTimeMs,
     }),
@@ -1154,9 +1063,7 @@ interface DurableCorrectnessGateRecordState {
   readonly sensitivity: "trusted-correctness-gate-records";
   readonly storeScopeHash: string;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, DurableCorrectnessGateRecordEntry>
-  >;
+  readonly records: Readonly<Record<string, DurableCorrectnessGateRecordEntry>>;
 }
 
 function storeScopeHash(storeId: string, domain: string): string {
@@ -1187,13 +1094,7 @@ function assertCorrectnessGateRecordState(
 ): asserts value is DurableCorrectnessGateRecordState {
   assertExactKeys(
     value,
-    [
-      "schemaVersion",
-      "sensitivity",
-      "storeScopeHash",
-      "revision",
-      "records",
-    ],
+    ["schemaVersion", "sensitivity", "storeScopeHash", "revision", "records"],
     "Durable correctness-gate record state",
   );
   const state = value as unknown as DurableCorrectnessGateRecordState;
@@ -1218,8 +1119,7 @@ function assertCorrectnessGateRecordState(
       ["experimentKey", "recordHash", "record"],
       "Durable correctness-gate record entry",
     );
-    const entry =
-      rawEntry as unknown as DurableCorrectnessGateRecordEntry;
+    const entry = rawEntry as unknown as DurableCorrectnessGateRecordEntry;
     assertCorrectnessGateRecord(entry.record, input.verifiers);
     if (
       !SHA256.test(key) ||
@@ -1233,8 +1133,7 @@ function assertCorrectnessGateRecordState(
     }
     requestHashes.add(entry.record.requestHash);
     proposalHashes.add(entry.record.proposalResultHash);
-    const indexedCommit =
-      entry.record.sourceSnapshot?.receipt.commitSha ?? null;
+    const indexedCommit = entry.record.sourceSnapshot?.receipt.commitSha ?? null;
     if (indexedCommit !== null) {
       if (passingCommits.has(indexedCommit)) {
         fail("Candidate commit belongs to more than one correctness record.");
@@ -1257,61 +1156,47 @@ export interface MountedVolumeCorrectnessGateRecordStoreOptions {
  * every embedded receipt, every signature, and all available hash lineage are
  * revalidated whenever the mounted-volume envelope is opened.
  */
-export class MountedVolumeCorrectnessGateRecordStore
-  implements CorrectnessGateRecordStore
-{
+export class MountedVolumeCorrectnessGateRecordStore implements CorrectnessGateRecordStore {
   readonly boundary = "trusted-cloud-durable" as const;
   readonly #store: MountedVolumeTransactionalJsonStore<DurableCorrectnessGateRecordState>;
   readonly #verifiers: CorrectnessGateReceiptVerifiers;
 
-  public constructor(
-    options: MountedVolumeCorrectnessGateRecordStoreOptions,
-  ) {
+  public constructor(options: MountedVolumeCorrectnessGateRecordStoreOptions) {
     const scopeHash = storeScopeHash(
       options.durableState.storeId,
       "dark-factory.correctness-gate-record-store-scope.v1",
     );
     const verifiers: CorrectnessGateReceiptVerifiers = {
-      integrityScan: captureVerifier(
-        options.integrityScanVerifier,
-      ),
-      candidateBuild: captureVerifier(
-        options.candidateBuildVerifier,
-      ),
-      gitPublication: captureVerifier(
-        options.gitPublicationVerifier,
-      ),
+      integrityScan: captureVerifier(options.integrityScanVerifier),
+      candidateBuild: captureVerifier(options.candidateBuildVerifier),
+      gitPublication: captureVerifier(options.gitPublicationVerifier),
       gitSource: captureVerifier(options.gitSourceVerifier),
     };
     this.#verifiers = Object.freeze(verifiers);
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableCorrectnessGateRecordState>(
-        options.durableState,
-        `correctness-gate-records-${options.durableState.storeId}`,
-        {
-          domain:
-            "dark-factory.correctness-gate-record-state.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity: "trusted-correctness-gate-records",
-            storeScopeHash: scopeHash,
-            revision: 0,
-            records: {},
-          }),
-          assertState(
-            value,
-          ): asserts value is DurableCorrectnessGateRecordState {
-            assertCorrectnessGateRecordState(value, {
-              scopeHash,
-              verifiers,
-            });
-          },
-          revision: (state) => state.revision,
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableCorrectnessGateRecordState>(
+      options.durableState,
+      `correctness-gate-records-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.correctness-gate-record-state.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "trusted-correctness-gate-records",
+          storeScopeHash: scopeHash,
+          revision: 0,
+          records: {},
+        }),
+        assertState(value): asserts value is DurableCorrectnessGateRecordState {
+          assertCorrectnessGateRecordState(value, {
+            scopeHash,
+            verifiers,
+          });
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
   }
 
-  public put(record: CorrectnessGateRecord): Promise<void> {
+  public async put(record: CorrectnessGateRecord): Promise<void> {
     const frozen = cloneJson(record, "Correctness-gate record");
     assertCorrectnessGateRecord(frozen, this.#verifiers);
     const key = experimentKey(frozen.experiment);
@@ -1319,9 +1204,7 @@ export class MountedVolumeCorrectnessGateRecordStore
       const existing = state.records[key];
       if (existing !== undefined) {
         if (canonicalJson(existing.record) !== canonicalJson(frozen)) {
-          fail(
-            "Correctness-gate experiment identity already binds different content.",
-          );
+          fail("Correctness-gate experiment identity already binds different content.");
         }
         return { next: state, result: undefined };
       }
@@ -1329,16 +1212,13 @@ export class MountedVolumeCorrectnessGateRecordStore
         Object.values(state.records).some(
           (entry) =>
             entry.record.requestHash === frozen.requestHash ||
-            entry.record.proposalResultHash ===
-              frozen.proposalResultHash ||
+            entry.record.proposalResultHash === frozen.proposalResultHash ||
             (frozen.sourceSnapshot !== null &&
               entry.record.sourceSnapshot?.receipt.commitSha ===
                 frozen.sourceSnapshot.receipt.commitSha),
         )
       ) {
-        fail(
-          "Correctness-gate commitment already belongs to another experiment.",
-        );
+        fail("Correctness-gate commitment already belongs to another experiment.");
       }
       const entry: DurableCorrectnessGateRecordEntry = {
         experimentKey: key,
@@ -1359,22 +1239,15 @@ export class MountedVolumeCorrectnessGateRecordStore
     });
   }
 
-  public get(
-    experiment: ExperimentIdentity,
-  ): Promise<CorrectnessGateRecord | null> {
-    const frozen = cloneJson(
-      experiment,
-      "Correctness-gate experiment lookup",
-    );
+  public get(experiment: ExperimentIdentity): Promise<CorrectnessGateRecord | null> {
+    const frozen = cloneJson(experiment, "Correctness-gate experiment lookup");
     const key = experimentKey(frozen);
     return this.#store.transact((state) => {
       const entry = state.records[key];
       if (entry === undefined) {
         return { next: state, result: null };
       }
-      if (
-        canonicalJson(entry.record.experiment) !== canonicalJson(frozen)
-      ) {
+      if (canonicalJson(entry.record.experiment) !== canonicalJson(frozen)) {
         fail("Correctness-gate experiment key collision detected.");
       }
       return {
@@ -1432,9 +1305,7 @@ interface DurableCandidateSourceIndexState {
   readonly sensitivity: "trusted-candidate-source-index";
   readonly storeScopeHash: string;
   readonly revision: number;
-  readonly byCommit: Readonly<
-    Record<string, DurableCandidateSourceIndexEntry>
-  >;
+  readonly byCommit: Readonly<Record<string, DurableCandidateSourceIndexEntry>>;
 }
 
 function sourceIndexStorageBindingHash(input: {
@@ -1445,8 +1316,7 @@ function sourceIndexStorageBindingHash(input: {
 }): string {
   return canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.candidate-source-index-storage-binding.v1",
+    domain: "dark-factory.candidate-source-index-storage-binding.v1",
     storeScopeHash: input.storeScopeHash,
     experiment: input.experiment,
     candidateCommit: input.snapshot.commitSha,
@@ -1467,13 +1337,7 @@ function assertCandidateSourceIndexState(
 ): asserts value is DurableCandidateSourceIndexState {
   assertExactKeys(
     value,
-    [
-      "schemaVersion",
-      "sensitivity",
-      "storeScopeHash",
-      "revision",
-      "byCommit",
-    ],
+    ["schemaVersion", "sensitivity", "storeScopeHash", "revision", "byCommit"],
     "Durable candidate source index state",
   );
   const state = value as unknown as DurableCandidateSourceIndexState;
@@ -1497,8 +1361,7 @@ function assertCandidateSourceIndexState(
       ["experiment", "snapshotReceiptHash", "snapshot", "indexed"],
       "Durable candidate source index entry",
     );
-    const entry =
-      rawEntry as unknown as DurableCandidateSourceIndexEntry;
+    const entry = rawEntry as unknown as DurableCandidateSourceIndexEntry;
     experimentId(entry.experiment);
     assertSnapshotReceipt(entry.snapshot, input.sourceVerifier);
     if (
@@ -1521,17 +1384,13 @@ function assertCandidateSourceIndexState(
     );
     if (
       indexAttestations.has(entry.indexed.receipt.indexAttestationHash) ||
-      accountingAttestations.has(
-        entry.indexed.accounting.accountingAttestationHash,
-      )
+      accountingAttestations.has(entry.indexed.accounting.accountingAttestationHash)
     ) {
       fail("Candidate source index attestations are not unique.");
     }
     snapshotHashes.add(entry.snapshotReceiptHash);
     indexAttestations.add(entry.indexed.receipt.indexAttestationHash);
-    accountingAttestations.add(
-      entry.indexed.accounting.accountingAttestationHash,
-    );
+    accountingAttestations.add(entry.indexed.accounting.accountingAttestationHash);
   }
 }
 
@@ -1554,12 +1413,10 @@ function assertIndexAttestation(
     ],
     "Trusted candidate source index attestation",
   );
-  const attestation =
-    value as unknown as TrustedCandidateSourceIndexAttestation;
+  const attestation = value as unknown as TrustedCandidateSourceIndexAttestation;
   if (
     attestation.schemaVersion !== 1 ||
-    attestation.sensitivity !==
-      "trusted-candidate-source-index-attestation" ||
+    attestation.sensitivity !== "trusted-candidate-source-index-attestation" ||
     attestation.storageBindingHash !== expectedStorageBindingHash ||
     !SHA256.test(attestation.indexAttestationHash) ||
     !Number.isFinite(attestation.aggregateCostUsd) ||
@@ -1572,8 +1429,7 @@ function assertIndexAttestation(
     attestation.wallTimeMs < 0 ||
     attestation.wallTimeMs > MAXIMUM_WALL_TIME_MS ||
     !SHA256.test(attestation.accountingAttestationHash) ||
-    attestation.accountingAttestationHash ===
-      attestation.indexAttestationHash ||
+    attestation.accountingAttestationHash === attestation.indexAttestationHash ||
     attestation.containsTaskIdentifiers !== false
   ) {
     fail("Trusted candidate source index attestation is malformed.");
@@ -1601,9 +1457,7 @@ type CandidateSourceIndexResult =
  * accounted receipt after a trusted authority has attested the storage
  * binding. Identical retries return the originally committed receipt.
  */
-export class MountedVolumeTrustedCandidateSourceIndex
-  implements TrustedCandidateSourceIndexPort
-{
+export class MountedVolumeTrustedCandidateSourceIndex implements TrustedCandidateSourceIndexPort {
   readonly boundary = "trusted-cloud" as const;
   readonly durability = "linearizable" as const;
   readonly #store: MountedVolumeTransactionalJsonStore<DurableCandidateSourceIndexState>;
@@ -1620,9 +1474,7 @@ export class MountedVolumeTrustedCandidateSourceIndex
   >();
   #closePromise: Promise<void> | null = null;
 
-  public constructor(
-    options: MountedVolumeTrustedCandidateSourceIndexOptions,
-  ) {
+  public constructor(options: MountedVolumeTrustedCandidateSourceIndexOptions) {
     if (options.attestationAuthority.boundary !== "trusted-cloud") {
       fail("Candidate source index attestation authority is untrusted.");
     }
@@ -1630,83 +1482,64 @@ export class MountedVolumeTrustedCandidateSourceIndex
       options.durableState.storeId,
       "dark-factory.candidate-source-index-store-scope.v1",
     );
-    const sourceVerifier = captureVerifier(
-      options.sourceReceiptVerifier,
-    );
+    const sourceVerifier = captureVerifier(options.sourceReceiptVerifier);
     this.#sourceVerifier = sourceVerifier;
     this.#authority = Object.freeze({
       boundary: "trusted-cloud" as const,
-      attest:
-        options.attestationAuthority.attest.bind(
-          options.attestationAuthority,
-        ),
+      attest: options.attestationAuthority.attest.bind(options.attestationAuthority),
     });
     this.#now = options.durableState.now ?? (() => new Date());
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableCandidateSourceIndexState>(
-        options.durableState,
-        `candidate-source-index-${options.durableState.storeId}`,
-        {
-          domain:
-            "dark-factory.candidate-source-index-state.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity: "trusted-candidate-source-index",
-            storeScopeHash: this.#scopeHash,
-            revision: 0,
-            byCommit: {},
-          }),
-          assertState(
-            value,
-          ): asserts value is DurableCandidateSourceIndexState {
-            assertCandidateSourceIndexState(value, {
-              scopeHash:
-                storeScopeHash(
-                  options.durableState.storeId,
-                  "dark-factory.candidate-source-index-store-scope.v1",
-                ),
-              sourceVerifier,
-            });
-          },
-          revision: (state) => state.revision,
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableCandidateSourceIndexState>(
+      options.durableState,
+      `candidate-source-index-${options.durableState.storeId}`,
+      {
+        domain: "dark-factory.candidate-source-index-state.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "trusted-candidate-source-index",
+          storeScopeHash: this.#scopeHash,
+          revision: 0,
+          byCommit: {},
+        }),
+        assertState(value): asserts value is DurableCandidateSourceIndexState {
+          assertCandidateSourceIndexState(value, {
+            scopeHash: storeScopeHash(
+              options.durableState.storeId,
+              "dark-factory.candidate-source-index-store-scope.v1",
+            ),
+            sourceVerifier,
+          });
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   async #existingOrConflict(input: {
     readonly experiment: ExperimentIdentity;
     readonly snapshot: TrustedGitSourceSnapshotReceipt;
     readonly snapshotReceiptHash: string;
-  }): Promise<
-    AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt> | null
-  > {
+  }): Promise<AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt> | null> {
     return this.#store.transact((state) => {
       const existing = state.byCommit[input.snapshot.commitSha];
       if (existing === undefined) {
         return { next: state, result: null };
       }
       if (
-        canonicalJson(existing.experiment) !==
-          canonicalJson(input.experiment) ||
+        canonicalJson(existing.experiment) !== canonicalJson(input.experiment) ||
         existing.snapshotReceiptHash !== input.snapshotReceiptHash ||
-        canonicalJson(existing.snapshot) !==
-          canonicalJson(input.snapshot)
+        canonicalJson(existing.snapshot) !== canonicalJson(input.snapshot)
       ) {
         fail("Candidate commit already binds a different source snapshot.");
       }
       return {
         next: state,
-        result: cloneJson(
-          existing.indexed,
-          "Existing candidate source index receipt",
-        ),
+        result: cloneJson(existing.indexed, "Existing candidate source index receipt"),
       };
     });
   }
 
-  public async index(
-    input: CandidateSourceIndexInput,
-  ): Promise<CandidateSourceIndexResult> {
+  public async index(input: CandidateSourceIndexInput): Promise<CandidateSourceIndexResult> {
     if (this.#closePromise !== null) {
       fail("Candidate source index is closing.");
     }
@@ -1724,14 +1557,9 @@ export class MountedVolumeTrustedCandidateSourceIndex
     const pending = this.#inFlight.get(commit);
     if (pending !== undefined) {
       if (pending.inputHash !== inputHash) {
-        fail(
-          "Candidate commit already has a different in-flight source binding.",
-        );
+        fail("Candidate commit already has a different in-flight source binding.");
       }
-      return cloneJson(
-        await pending.promise,
-        "Concurrent candidate source index result",
-      );
+      return cloneJson(await pending.promise, "Concurrent candidate source index result");
     }
     const operation = this.#indexValidated(frozen);
     const tracked = operation.finally(() => {
@@ -1740,15 +1568,10 @@ export class MountedVolumeTrustedCandidateSourceIndex
       }
     });
     this.#inFlight.set(commit, { inputHash, promise: tracked });
-    return cloneJson(
-      await tracked,
-      "Candidate source index result",
-    );
+    return cloneJson(await tracked, "Candidate source index result");
   }
 
-  async #indexValidated(
-    frozen: CandidateSourceIndexInput,
-  ): Promise<CandidateSourceIndexResult> {
+  async #indexValidated(frozen: CandidateSourceIndexInput): Promise<CandidateSourceIndexResult> {
     const existing = await this.#existingOrConflict(frozen);
     if (existing !== null) return existing;
 
@@ -1771,8 +1594,7 @@ export class MountedVolumeTrustedCandidateSourceIndex
     });
     const request: TrustedCandidateSourceIndexAttestationRequest = {
       schemaVersion: 1,
-      sensitivity:
-        "trusted-candidate-source-index-attestation-request",
+      sensitivity: "trusted-candidate-source-index-attestation-request",
       storeScopeHash: this.#scopeHash,
       storageBindingHash,
       experiment: frozen.experiment,
@@ -1781,10 +1603,7 @@ export class MountedVolumeTrustedCandidateSourceIndex
       indexedAt,
       containsTaskIdentifiers: false,
     };
-    const authorityRequest = cloneJson(
-      request,
-      "Candidate source index attestation request",
-    );
+    const authorityRequest = cloneJson(request, "Candidate source index attestation request");
     const requestBefore = canonicalJson(authorityRequest);
     let attestation: TrustedCandidateSourceIndexAttestation;
     try {
@@ -1812,30 +1631,26 @@ export class MountedVolumeTrustedCandidateSourceIndex
       candidateTree: frozen.snapshot.treeSha,
       lockSha256: frozen.snapshot.lockSha256,
       sourceArtifactSha256: frozen.snapshot.sourceArtifact.sha256,
-      sourceBundleArtifactSha256:
-        frozen.snapshot.sourceBundleArtifact.sha256,
+      sourceBundleArtifactSha256: frozen.snapshot.sourceBundleArtifact.sha256,
       snapshotReceiptHash: frozen.snapshotReceiptHash,
       indexedAt,
       containsTaskIdentifiers: false,
       indexAttestationHash: attestation.indexAttestationHash,
     };
-    const indexed: AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt> =
-      {
-        receipt,
-        accounting: {
-          schemaVersion: 1,
-          sensitivity:
-            "release-safe-correctness-gate-accounting",
-          operation: "source-index",
-          receiptHash: canonicalHash(receipt),
-          aggregateCostUsd: attestation.aggregateCostUsd,
-          tokens: attestation.tokens,
-          wallTimeMs: attestation.wallTimeMs,
-          containsTaskIdentifiers: false,
-          accountingAttestationHash:
-            attestation.accountingAttestationHash,
-        },
-      };
+    const indexed: AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt> = {
+      receipt,
+      accounting: {
+        schemaVersion: 1,
+        sensitivity: "release-safe-correctness-gate-accounting",
+        operation: "source-index",
+        receiptHash: canonicalHash(receipt),
+        aggregateCostUsd: attestation.aggregateCostUsd,
+        tokens: attestation.tokens,
+        wallTimeMs: attestation.wallTimeMs,
+        containsTaskIdentifiers: false,
+        accountingAttestationHash: attestation.accountingAttestationHash,
+      },
+    };
     assertAccounted(
       indexed,
       "source-index",
@@ -1847,23 +1662,15 @@ export class MountedVolumeTrustedCandidateSourceIndex
       const conflict = state.byCommit[frozen.snapshot.commitSha];
       if (conflict !== undefined) {
         if (
-          canonicalJson(conflict.experiment) !==
-            canonicalJson(frozen.experiment) ||
-          conflict.snapshotReceiptHash !==
-            frozen.snapshotReceiptHash ||
-          canonicalJson(conflict.snapshot) !==
-            canonicalJson(frozen.snapshot)
+          canonicalJson(conflict.experiment) !== canonicalJson(frozen.experiment) ||
+          conflict.snapshotReceiptHash !== frozen.snapshotReceiptHash ||
+          canonicalJson(conflict.snapshot) !== canonicalJson(frozen.snapshot)
         ) {
-          fail(
-            "Candidate commit was concurrently bound to different source bytes.",
-          );
+          fail("Candidate commit was concurrently bound to different source bytes.");
         }
         return {
           next: state,
-          result: cloneJson(
-            conflict.indexed,
-            "Concurrent candidate source index receipt",
-          ),
+          result: cloneJson(conflict.indexed, "Concurrent candidate source index receipt"),
         };
       }
       const entry: DurableCandidateSourceIndexEntry = {
@@ -1900,10 +1707,7 @@ export class MountedVolumeTrustedCandidateSourceIndex
         result:
           entry === undefined
             ? undefined
-            : cloneJson(
-                entry.snapshot,
-                "Indexed Git source snapshot",
-              ),
+            : cloneJson(entry.snapshot, "Indexed Git source snapshot"),
       };
     });
   }
@@ -1911,9 +1715,7 @@ export class MountedVolumeTrustedCandidateSourceIndex
   public close(): Promise<void> {
     if (this.#closePromise === null) {
       this.#closePromise = (async () => {
-        await Promise.allSettled(
-          [...this.#inFlight.values()].map((entry) => entry.promise),
-        );
+        await Promise.allSettled([...this.#inFlight.values()].map((entry) => entry.promise));
         await this.#store.close();
       })();
     }

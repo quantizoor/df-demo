@@ -1,8 +1,23 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+  allocateValidationQuotas,
+  countFreshValidationPanels,
+  type HiddenPanelSelection,
+  type HiddenSelectedTask,
+  type HiddenTaskEstimates,
+  type HiddenTaskId,
+  type HiddenTaskLedgerEntry,
+  initialValidationQuotaCarry,
+  markShadowReservations,
+  reserveShadowSlices,
+  SELECTION_POLICY_VERSION,
+  type SelectionBucket,
+  selectRepairPanel,
+  selectRepairPanelFromSource,
+  selectValidationPanel,
+  type ValidationQuotaCarry,
+} from "../evaluation/index.js";
+import { hiddenTaskId } from "../evaluation/types.js";
 import {
   assertEvaluationRequest,
   hashEvaluationRequest,
@@ -14,31 +29,9 @@ import type {
   TrustedHiddenCatalogOutcomeUpdateVerifier,
   TrustedSignedHiddenCatalogOutcomeUpdate,
 } from "../evaluator/deriver.js";
-import {
-  allocateValidationQuotas,
-  countFreshValidationPanels,
-  initialValidationQuotaCarry,
-  markShadowReservations,
-  reserveShadowSlices,
-  SELECTION_POLICY_VERSION,
-  selectRepairPanel,
-  selectRepairPanelFromSource,
-  selectValidationPanel,
-  type HiddenPanelSelection,
-  type HiddenSelectedTask,
-  type HiddenTaskEstimates,
-  type HiddenTaskId,
-  type HiddenTaskLedgerEntry,
-  type SelectionBucket,
-  type ValidationQuotaCarry,
-} from "../evaluation/index.js";
-import { hiddenTaskId } from "../evaluation/types.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import type { TerminalBench21Pin } from "../terminal-bench/pin.js";
-import type {
-  TrustedHiddenTaskCell,
-  TrustedMatchedPanel,
-} from "../terminal-bench/trusted.js";
+import type { TrustedHiddenTaskCell, TrustedMatchedPanel } from "../terminal-bench/trusted.js";
 
 const TERMINAL_BENCH_21_DATASET = "terminal-bench/terminal-bench-2-1";
 const TERMINAL_BENCH_21_TASK_COUNT = 89;
@@ -181,12 +174,7 @@ const ARM_OUTCOME_KEYS = [
   "sandboxUsd",
   "finalAttemptDigest",
 ] as const;
-const SIGNATURE_KEYS = [
-  "algorithm",
-  "keyId",
-  "signedAt",
-  "signature",
-] as const;
+const SIGNATURE_KEYS = ["algorithm", "keyId", "signedAt", "signature"] as const;
 const OUTCOME_STATS_KEYS = [
   "candidateObservationCount",
   "candidateFailureCount",
@@ -336,16 +324,9 @@ export interface TrustedHiddenCatalogState {
   readonly tasks: Readonly<Record<string, TrustedStoredHiddenTask>>;
   readonly validationCarry: ValidationQuotaCarry;
   readonly repairEpoch: number;
-  readonly shadowSlices: readonly [
-    TrustedShadowSliceState,
-    TrustedShadowSliceState,
-  ];
-  readonly allocations: Readonly<
-    Record<string, TrustedPanelAllocationRecord>
-  >;
-  readonly outcomeUpdates: Readonly<
-    Record<string, TrustedHiddenCatalogOutcomeCommitment>
-  >;
+  readonly shadowSlices: readonly [TrustedShadowSliceState, TrustedShadowSliceState];
+  readonly allocations: Readonly<Record<string, TrustedPanelAllocationRecord>>;
+  readonly outcomeUpdates: Readonly<Record<string, TrustedHiddenCatalogOutcomeCommitment>>;
   readonly stateCommitment: string;
 }
 
@@ -357,9 +338,7 @@ export interface TrustedHiddenCatalogState {
  */
 export interface LinearizableHiddenCatalogCasStore {
   transact<Result>(
-    operation: (
-      state: TrustedHiddenCatalogState | null,
-    ) => {
+    operation: (state: TrustedHiddenCatalogState | null) => {
       readonly next: TrustedHiddenCatalogState;
       readonly result: Result;
     },
@@ -374,11 +353,7 @@ export interface ReleaseSafeHiddenCatalogAttestation {
   readonly selectionPolicyVersion: typeof SELECTION_POLICY_VERSION;
   readonly catalogIntegrity: "passed";
   readonly repairPanelCapacity: "available" | "unavailable";
-  readonly freshValidationPanelCapacityBand:
-    | "0"
-    | "1-2"
-    | "3-5"
-    | "6+";
+  readonly freshValidationPanelCapacityBand: "0" | "1-2" | "3-5" | "6+";
   readonly shadowReservedSliceCount: 2;
   readonly shadowRemainingSliceCount: 0 | 1 | 2;
   readonly containsTaskNames: false;
@@ -398,10 +373,7 @@ export interface TrustedResolvedHiddenTask {
 }
 
 export interface TrustedHiddenTaskResolver {
-  resolve(
-    taskId: HiddenTaskId,
-    taskRevisionDigest: string,
-  ): Promise<TrustedResolvedHiddenTask>;
+  resolve(taskId: HiddenTaskId, taskRevisionDigest: string): Promise<TrustedResolvedHiddenTask>;
 }
 
 export interface DurableTrustedHiddenCatalogOptions {
@@ -451,10 +423,7 @@ interface CatalogSecrets {
 interface PreparedCatalog {
   readonly seedSetCommitment: string;
   readonly tasks: readonly TrustedStoredHiddenTask[];
-  readonly shadowSlices: readonly [
-    TrustedShadowSliceState,
-    TrustedShadowSliceState,
-  ];
+  readonly shadowSlices: readonly [TrustedShadowSliceState, TrustedShadowSliceState];
   readonly validationCarry: ValidationQuotaCarry;
 }
 
@@ -465,15 +434,9 @@ interface SelectedPanel {
   readonly repairSourceRequestHash: string | null;
 }
 
-function assertExactKeys(
-  value: object,
-  expected: readonly string[],
-): void {
+function assertExactKeys(value: object, expected: readonly string[]): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     throw new TrustedHiddenCatalogError(
       "catalog-invalid",
       "A trusted catalog record has an unsupported shape.",
@@ -502,10 +465,7 @@ function assertTerminalBenchPin(pin: TerminalBench21Pin): void {
   }
 }
 
-function copyAndValidateKey(
-  key: TrustedCatalogHmacKey,
-  expectedKeyId: string,
-): Uint8Array {
+function copyAndValidateKey(key: TrustedCatalogHmacKey, expectedKeyId: string): Uint8Array {
   if (
     !SAFE_ID.test(key.keyId) ||
     key.keyId !== expectedKeyId ||
@@ -521,13 +481,8 @@ function copyAndValidateKey(
   return Uint8Array.from(key.secret);
 }
 
-function hmacHex(
-  secret: Uint8Array,
-  payload: Readonly<Record<string, unknown>>,
-): string {
-  return createHmac("sha256", secret)
-    .update(canonicalJson(payload))
-    .digest("hex");
+function hmacHex(secret: Uint8Array, payload: Readonly<Record<string, unknown>>): string {
+  return createHmac("sha256", secret).update(canonicalJson(payload)).digest("hex");
 }
 
 function equalHex(left: string, right: string): boolean {
@@ -539,10 +494,7 @@ function deriveHiddenTaskId(
   secret: Uint8Array,
   keyId: string,
   datasetPin: TerminalBench21Pin,
-  seed: Pick<
-    TrustedHiddenTaskSeed,
-    "packageTaskName" | "taskRevisionDigest"
-  >,
+  seed: Pick<TrustedHiddenTaskSeed, "packageTaskName" | "taskRevisionDigest">,
 ): HiddenTaskId {
   return hiddenTaskId(
     hmacHex(secret, {
@@ -581,9 +533,7 @@ function validateSeed(seed: TrustedHiddenTaskSeed): void {
     !Array.isArray(seed.buckets) ||
     seed.buckets.length === 0 ||
     new Set(seed.buckets).size !== seed.buckets.length ||
-    seed.buckets.some(
-      (bucket) => !BUCKETS.includes(bucket as SelectionBucket),
-    ) ||
+    seed.buckets.some((bucket) => !BUCKETS.includes(bucket as SelectionBucket)) ||
     typeof seed.initialFeedbackReleased !== "boolean" ||
     typeof seed.regressionCanary !== "boolean" ||
     typeof seed.infrastructureValid !== "boolean" ||
@@ -677,12 +627,7 @@ function prepareCatalog(
   const datasetPinHash = canonicalHash(datasetPin);
   const taskIds = new Set<string>();
   const tasks = sorted.map((seed) => {
-    const taskId = deriveHiddenTaskId(
-      taskIdSecret,
-      taskIdKeyId,
-      datasetPin,
-      seed,
-    );
+    const taskId = deriveHiddenTaskId(taskIdSecret, taskIdKeyId, datasetPin, seed);
     if (taskIds.has(taskId)) {
       throw new TrustedHiddenCatalogError(
         "catalog-invalid",
@@ -694,10 +639,7 @@ function prepareCatalog(
   });
 
   try {
-    const reservation = reserveShadowSlices(
-      tasks,
-      initialValidationQuotaCarry(),
-    );
+    const reservation = reserveShadowSlices(tasks, initialValidationQuotaCarry());
     const marked = markShadowReservations(tasks, reservation).map((task) => {
       const original = tasks.find((candidate) => candidate.taskId === task.taskId);
       if (original === undefined) {
@@ -735,18 +677,14 @@ function prepareCatalog(
         {
           slice: 1,
           taskIds: firstIds,
-          selectedBuckets: reservation.slices[0].tasks.map(
-            (task) => task.bucket,
-          ),
+          selectedBuckets: reservation.slices[0].tasks.map((task) => task.bucket),
           consumed: false,
           consumedByRequestHash: null,
         },
         {
           slice: 2,
           taskIds: secondIds,
-          selectedBuckets: reservation.slices[1].tasks.map(
-            (task) => task.bucket,
-          ),
+          selectedBuckets: reservation.slices[1].tasks.map((task) => task.bucket),
           consumed: false,
           consumedByRequestHash: null,
         },
@@ -853,11 +791,7 @@ function nextSignedState(
 function parseExperimentOrdinal(experimentId: string): number {
   const prefix = experimentId.split("-", 1)[0] ?? "";
   const ordinal = Number.parseInt(prefix, 10);
-  if (
-    !/^\d+$/u.test(prefix) ||
-    !Number.isSafeInteger(ordinal) ||
-    ordinal < 0
-  ) {
+  if (!/^\d+$/u.test(prefix) || !Number.isSafeInteger(ordinal) || ordinal < 0) {
     throw new TrustedHiddenCatalogError(
       "request-invalid",
       "The trusted allocation request has an invalid experiment identity.",
@@ -866,11 +800,7 @@ function parseExperimentOrdinal(experimentId: string): number {
   return ordinal;
 }
 
-function claimTokenCommitment(
-  secret: Uint8Array,
-  keyId: string,
-  claimToken: string,
-): string {
+function claimTokenCommitment(secret: Uint8Array, keyId: string, claimToken: string): string {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(claimToken)) {
     throw new TrustedHiddenCatalogError(
       "request-invalid",
@@ -929,11 +859,7 @@ function stableEstimate(value: number): number {
   return Math.round(unitInterval(value) * 1_000_000_000_000) / 1_000_000_000_000;
 }
 
-function posteriorFailure(
-  prior: number,
-  failureCount: number,
-  observationCount: number,
-): number {
+function posteriorFailure(prior: number, failureCount: number, observationCount: number): number {
   return stableEstimate(
     (prior * PRIOR_EFFECTIVE_OBSERVATIONS + failureCount) /
       (PRIOR_EFFECTIVE_OBSERVATIONS + observationCount),
@@ -944,10 +870,8 @@ function deriveAdaptiveEstimates(
   seed: HiddenTaskEstimates,
   stats: TrustedHiddenTaskOutcomeStats,
 ): HiddenTaskEstimates {
-  const totalObservations =
-    stats.candidateObservationCount + stats.championObservationCount;
-  const totalFailures =
-    stats.candidateFailureCount + stats.championFailureCount;
+  const totalObservations = stats.candidateObservationCount + stats.championObservationCount;
+  const totalFailures = stats.candidateFailureCount + stats.championFailureCount;
   const recentFailureProbability = posteriorFailure(
     seed.recentFailureProbability,
     totalFailures,
@@ -958,34 +882,27 @@ function deriveAdaptiveEstimates(
     stats.championFailureCount,
     stats.championObservationCount,
   );
-  const empiricalUncertainty =
-    1 - Math.abs(2 * recentFailureProbability - 1);
+  const empiricalUncertainty = 1 - Math.abs(2 * recentFailureProbability - 1);
   const outcomeUncertainty = stableEstimate(
     (seed.outcomeUncertainty * PRIOR_EFFECTIVE_OBSERVATIONS +
       empiricalUncertainty * totalObservations) /
       (PRIOR_EFFECTIVE_OBSERVATIONS + totalObservations),
   );
   const discrimination = stableEstimate(
-    (seed.discrimination * PRIOR_EFFECTIVE_OBSERVATIONS +
-      stats.discriminationSignalSum) /
+    (seed.discrimination * PRIOR_EFFECTIVE_OBSERVATIONS + stats.discriminationSignalSum) /
       (PRIOR_EFFECTIVE_OBSERVATIONS + stats.matchedObservationCount),
   );
   const normalizedCost = stableEstimate(
-    (seed.normalizedCost * PRIOR_EFFECTIVE_OBSERVATIONS +
-      stats.normalizedCostSignalSum) /
+    (seed.normalizedCost * PRIOR_EFFECTIVE_OBSERVATIONS + stats.normalizedCostSignalSum) /
       (PRIOR_EFFECTIVE_OBSERVATIONS + stats.costObservationCount),
   );
   const underexposure = stableEstimate(
     (seed.underexposure * PRIOR_EFFECTIVE_OBSERVATIONS) /
       (PRIOR_EFFECTIVE_OBSERVATIONS + totalObservations),
   );
-  const impossibleEvidenceWeight = unitInterval(
-    (totalObservations - 6) / 18,
-  );
+  const impossibleEvidenceWeight = unitInterval((totalObservations - 6) / 18);
   const persistentFailureSignal =
-    recentFailureProbability *
-    (1 - discrimination) *
-    seed.leaderboardFailureProbability;
+    recentFailureProbability * (1 - discrimination) * seed.leaderboardFailureProbability;
   const impossibleProbability = stableEstimate(
     seed.impossibleProbability * (1 - impossibleEvidenceWeight) +
       persistentFailureSignal * impossibleEvidenceWeight,
@@ -1019,9 +936,7 @@ function validateOutcomeStats(stats: TrustedHiddenTaskOutcomeStats): void {
     stats.normalizedCostSignalSum,
   ];
   if (
-    integerCounts.some(
-      (value) => !Number.isSafeInteger(value) || value < 0,
-    ) ||
+    integerCounts.some((value) => !Number.isSafeInteger(value) || value < 0) ||
     stats.candidateFailureCount > stats.candidateObservationCount ||
     stats.championFailureCount > stats.championObservationCount ||
     stats.matchedObservationCount > stats.candidateObservationCount ||
@@ -1076,16 +991,14 @@ function validateTaskRecord(
     Number.isSafeInteger(exposure.consecutiveExperiments) &&
     exposure.consecutiveExperiments >= 0 &&
     (exposure.lastExperiment === null ||
-      (Number.isSafeInteger(exposure.lastExperiment) &&
-        exposure.lastExperiment >= 0)) &&
+      (Number.isSafeInteger(exposure.lastExperiment) && exposure.lastExperiment >= 0)) &&
     typeof exposure.feedbackReleased === "boolean" &&
     typeof exposure.positiveValidationConsumed === "boolean" &&
     (exposure.repairCooldownThroughExperiment === null ||
       (Number.isSafeInteger(exposure.repairCooldownThroughExperiment) &&
         exposure.repairCooldownThroughExperiment >= 0)) &&
     exposure.informedHypothesisDigests.every((digest) => SHA256.test(digest)) &&
-    new Set(exposure.informedHypothesisDigests).size ===
-      exposure.informedHypothesisDigests.length;
+    new Set(exposure.informedHypothesisDigests).size === exposure.informedHypothesisDigests.length;
   if (!taskShapeValid) {
     throw new TrustedHiddenCatalogError(
       "catalog-invalid",
@@ -1094,21 +1007,14 @@ function validateTaskRecord(
   }
   if (
     canonicalJson(task.estimates) !==
-    canonicalJson(
-      deriveAdaptiveEstimates(task.seedEstimates, task.outcomeStats),
-    )
+    canonicalJson(deriveAdaptiveEstimates(task.seedEstimates, task.outcomeStats))
   ) {
     throw new TrustedHiddenCatalogError(
       "catalog-invalid",
       "Adaptive task estimates do not reproduce from trusted outcome evidence.",
     );
   }
-  const derived = deriveHiddenTaskId(
-    taskIdSecret,
-    taskIdKeyId,
-    datasetPin,
-    task,
-  );
+  const derived = deriveHiddenTaskId(taskIdSecret, taskIdKeyId, datasetPin, task);
   if (derived !== task.taskId) {
     throw new TrustedHiddenCatalogError(
       "catalog-invalid",
@@ -1125,9 +1031,7 @@ function validatePanelRecord(record: TrustedPanelAllocationRecord): void {
   const repairBucketCounts = Object.fromEntries(
     BUCKETS.map((bucket) => [
       bucket,
-      record.selectedBuckets.filter(
-        (selected) => selected === bucket,
-      ).length,
+      record.selectedBuckets.filter((selected) => selected === bucket).length,
     ]),
   ) as unknown as Readonly<Record<SelectionBucket, number>>;
   let candidateFirst = 0;
@@ -1145,10 +1049,8 @@ function validatePanelRecord(record: TrustedPanelAllocationRecord): void {
     !SHA256.test(record.frozenHypothesisDigest) ||
     !SHA256.test(record.candidateArchiveSha256) ||
     !SHA256.test(record.championArchiveSha256) ||
-    (record.repairSourceExperimentId !== null &&
-      !SAFE_ID.test(record.repairSourceExperimentId)) ||
-    (record.repairSourceRequestHash !== null &&
-      !SHA256.test(record.repairSourceRequestHash)) ||
+    (record.repairSourceExperimentId !== null && !SAFE_ID.test(record.repairSourceExperimentId)) ||
+    (record.repairSourceRequestHash !== null && !SHA256.test(record.repairSourceRequestHash)) ||
     (record.repairAttemptOrdinal !== null &&
       record.repairAttemptOrdinal !== 1 &&
       record.repairAttemptOrdinal !== 2) ||
@@ -1164,13 +1066,9 @@ function validatePanelRecord(record: TrustedPanelAllocationRecord): void {
     (panel.stage === "repair" &&
       (repairBucketCounts.hard !== 3 ||
         repairBucketCounts.uncertain !== 1 ||
-        repairBucketCounts.easy +
-          repairBucketCounts.coverage !==
-          1)) ||
+        repairBucketCounts.easy + repairBucketCounts.coverage !== 1)) ||
     panel.sensitivity !== "hidden-benchmark-panel" ||
-    (panel.stage !== "repair" &&
-      panel.stage !== "validation" &&
-      panel.stage !== "shadow") ||
+    (panel.stage !== "repair" && panel.stage !== "validation" && panel.stage !== "shadow") ||
     panel.requestId !== record.requestId ||
     !SAFE_ID.test(panel.leaseId) ||
     !SHA256.test(panel.dispositionAttestationHash) ||
@@ -1202,10 +1100,7 @@ function validatePanelRecord(record: TrustedPanelAllocationRecord): void {
     if (cell.order === "AB") candidateFirst += 1;
     else championFirst += 1;
   }
-  if (
-    panel.stage !== "repair" &&
-    (candidateFirst !== 6 || championFirst !== 6)
-  ) {
+  if (panel.stage !== "repair" && (candidateFirst !== 6 || championFirst !== 6)) {
     throw new TrustedHiddenCatalogError(
       "catalog-invalid",
       "A durable matched panel is not deterministically order-balanced.",
@@ -1219,8 +1114,7 @@ function validateOutcomeCommitment(
 ): void {
   assertExactKeys(commitment, OUTCOME_COMMITMENT_KEYS);
   if (
-    commitment.sensitivity !==
-      "trusted-hidden-catalog-outcome-commitment" ||
+    commitment.sensitivity !== "trusted-hidden-catalog-outcome-commitment" ||
     commitment.updateId !== expectedUpdateId ||
     !/^catalog-[a-f0-9]{48}$/u.test(commitment.updateId) ||
     !SHA256.test(commitment.requestHash) ||
@@ -1269,9 +1163,7 @@ function assertCatalogState(
     state.weightingPolicyHash !== input.weightingPolicyHash ||
     !equalHex(state.stateCommitment, expectedCommitment) ||
     state.revision !==
-      Object.keys(state.allocations).length +
-        Object.keys(state.outcomeUpdates).length +
-        1 ||
+      Object.keys(state.allocations).length + Object.keys(state.outcomeUpdates).length + 1 ||
     state.taskOrder.length !== TERMINAL_BENCH_21_TASK_COUNT ||
     new Set(state.taskOrder).size !== TERMINAL_BENCH_21_TASK_COUNT ||
     Object.keys(state.tasks).length !== TERMINAL_BENCH_21_TASK_COUNT ||
@@ -1302,13 +1194,7 @@ function assertCatalogState(
         "The durable trusted catalog task index is incomplete.",
       );
     }
-    validateTaskRecord(
-      task,
-      taskId,
-      input.datasetPin,
-      input.secrets.taskId,
-      input.taskIdKeyId,
-    );
+    validateTaskRecord(task, taskId, input.datasetPin, input.secrets.taskId, input.taskIdKeyId);
   }
 
   const shadowIds = state.shadowSlices.flatMap((slice) => {
@@ -1395,8 +1281,7 @@ function assertCatalogState(
         task.taskRevisionDigest !== cell.taskRevisionDigest ||
         task.capabilityStratum !== cell.capabilityStratum ||
         selectedBucket === undefined ||
-        (record.panel.stage !== "shadow" &&
-          !task.buckets.includes(selectedBucket))
+        (record.panel.stage !== "shadow" && !task.buckets.includes(selectedBucket))
       ) {
         throw new TrustedHiddenCatalogError(
           "catalog-invalid",
@@ -1418,16 +1303,13 @@ function assertCatalogState(
   for (const slice of state.shadowSlices) {
     const matching = records.filter(
       (record) =>
-        record.panel.stage === "shadow" &&
-        record.requestHash === slice.consumedByRequestHash,
+        record.panel.stage === "shadow" && record.requestHash === slice.consumedByRequestHash,
     );
     if (
       (slice.consumed && matching.length !== 1) ||
       (!slice.consumed && matching.length !== 0) ||
       (matching[0] !== undefined &&
-        (matching[0].panel.cells.some(
-          (cell, index) => cell.taskId !== slice.taskIds[index],
-        ) ||
+        (matching[0].panel.cells.some((cell, index) => cell.taskId !== slice.taskIds[index]) ||
           matching[0].selectedBuckets.some(
             (bucket, index) => bucket !== slice.selectedBuckets[index],
           )))
@@ -1439,9 +1321,7 @@ function assertCatalogState(
     }
   }
   const committedRequestHashes = new Set<string>();
-  for (const [updateId, commitment] of Object.entries(
-    state.outcomeUpdates,
-  )) {
+  for (const [updateId, commitment] of Object.entries(state.outcomeUpdates)) {
     validateOutcomeCommitment(commitment, updateId);
     const allocation = state.allocations[commitment.requestHash];
     if (
@@ -1456,10 +1336,7 @@ function assertCatalogState(
     }
     committedRequestHashes.add(commitment.requestHash);
   }
-  const repairsBySource = new Map<
-    string,
-    TrustedPanelAllocationRecord[]
-  >();
+  const repairsBySource = new Map<string, TrustedPanelAllocationRecord[]>();
   for (const record of records) {
     if (record.panel.stage !== "repair") continue;
     const sourceHash = record.repairSourceRequestHash;
@@ -1473,12 +1350,9 @@ function assertCatalogState(
     const source = state.allocations[sourceHash];
     const namedSources = records.filter(
       (candidate) =>
-        candidate.experimentId === sourceExperimentId &&
-        candidate.panel.stage === "validation",
+        candidate.experimentId === sourceExperimentId && candidate.panel.stage === "validation",
     );
-    const sourceIds = new Set(
-      source?.panel.cells.map((cell) => cell.taskId) ?? [],
-    );
+    const sourceIds = new Set(source?.panel.cells.map((cell) => cell.taskId) ?? []);
     if (
       source === undefined ||
       namedSources.length !== 1 ||
@@ -1487,11 +1361,9 @@ function assertCatalogState(
       source.experimentId !== sourceExperimentId ||
       source.protocolHash !== record.protocolHash ||
       source.datasetPinHash !== record.datasetPinHash ||
-      parseExperimentOrdinal(source.experimentId) >=
-        parseExperimentOrdinal(record.experimentId) ||
+      parseExperimentOrdinal(source.experimentId) >= parseExperimentOrdinal(record.experimentId) ||
       !committedRequestHashes.has(source.requestHash) ||
-      record.championArchiveSha256 !==
-        source.championArchiveSha256 ||
+      record.championArchiveSha256 !== source.championArchiveSha256 ||
       record.panel.cells.some((cell) => !sourceIds.has(cell.taskId))
     ) {
       throw new TrustedHiddenCatalogError(
@@ -1499,16 +1371,11 @@ function assertCatalogState(
         "A repair allocation is detached from committed prior validation evidence.",
       );
     }
-    repairsBySource.set(sourceHash, [
-      ...(repairsBySource.get(sourceHash) ?? []),
-      record,
-    ]);
+    repairsBySource.set(sourceHash, [...(repairsBySource.get(sourceHash) ?? []), record]);
   }
   for (const attempts of repairsBySource.values()) {
     attempts.sort(
-      (left, right) =>
-        (left.repairAttemptOrdinal ?? 0) -
-        (right.repairAttemptOrdinal ?? 0),
+      (left, right) => (left.repairAttemptOrdinal ?? 0) - (right.repairAttemptOrdinal ?? 0),
     );
     const first = attempts[0];
     const second = attempts[1];
@@ -1518,17 +1385,13 @@ function assertCatalogState(
       (second !== undefined &&
         (second.repairAttemptOrdinal !== 2 ||
           !committedRequestHashes.has(first.requestHash) ||
-          second.candidateArchiveSha256 ===
-            first.candidateArchiveSha256 ||
-          canonicalJson(second.selectedBuckets) !==
-            canonicalJson(first.selectedBuckets) ||
+          second.candidateArchiveSha256 === first.candidateArchiveSha256 ||
+          canonicalJson(second.selectedBuckets) !== canonicalJson(first.selectedBuckets) ||
           second.panel.cells.some(
             (cell, index) =>
               cell.taskId !== first.panel.cells[index]?.taskId ||
-              cell.taskRevisionDigest !==
-                first.panel.cells[index]?.taskRevisionDigest ||
-              cell.capabilityStratum !==
-                first.panel.cells[index]?.capabilityStratum ||
+              cell.taskRevisionDigest !== first.panel.cells[index]?.taskRevisionDigest ||
+              cell.capabilityStratum !== first.panel.cells[index]?.capabilityStratum ||
               cell.order !== first.panel.cells[index]?.order,
           )))
     ) {
@@ -1550,9 +1413,7 @@ function createInitialState(
     readonly dispositionSecret: Uint8Array;
   },
 ): TrustedHiddenCatalogState {
-  const tasks = Object.fromEntries(
-    prepared.tasks.map((task) => [task.taskId, task]),
-  );
+  const tasks = Object.fromEntries(prepared.tasks.map((task) => [task.taskId, task]));
   return signState(
     {
       schemaVersion: 1,
@@ -1577,9 +1438,7 @@ function createInitialState(
   );
 }
 
-function taskList(
-  state: TrustedHiddenCatalogState,
-): readonly TrustedStoredHiddenTask[] {
+function taskList(state: TrustedHiddenCatalogState): readonly TrustedStoredHiddenTask[] {
   return state.taskOrder.map((taskId) => {
     const task = state.tasks[taskId];
     if (task === undefined) {
@@ -1592,10 +1451,7 @@ function taskList(
   });
 }
 
-function hasCommittedOutcome(
-  state: TrustedHiddenCatalogState,
-  requestHash: string,
-): boolean {
+function hasCommittedOutcome(state: TrustedHiddenCatalogState, requestHash: string): boolean {
   return Object.values(state.outcomeUpdates).some(
     (commitment) => commitment.requestHash === requestHash,
   );
@@ -1622,8 +1478,7 @@ function repairSourceForRequest(
   );
   if (
     sources.length !== 1 ||
-    parseExperimentOrdinal(request.selection.sourceExperimentId) >=
-      experimentOrdinal
+    parseExperimentOrdinal(request.selection.sourceExperimentId) >= experimentOrdinal
   ) {
     throw new TrustedHiddenCatalogError(
       "request-invalid",
@@ -1635,8 +1490,7 @@ function repairSourceForRequest(
     source === undefined ||
     source.protocolHash !== request.protocolHash ||
     source.datasetPinHash !== state.datasetPinHash ||
-    source.registryRevision !==
-      TERMINAL_BENCH_21_REGISTRY_REVISION ||
+    source.registryRevision !== TERMINAL_BENCH_21_REGISTRY_REVISION ||
     !hasCommittedOutcome(state, source.requestHash) ||
     request.champion === undefined ||
     request.champion.archiveSha256 !== source.championArchiveSha256
@@ -1649,19 +1503,11 @@ function repairSourceForRequest(
   const attempts = Object.values(state.allocations)
     .filter(
       (record) =>
-        record.panel.stage === "repair" &&
-        record.repairSourceRequestHash === source.requestHash,
+        record.panel.stage === "repair" && record.repairSourceRequestHash === source.requestHash,
     )
-    .sort(
-      (left, right) =>
-        (left.repairAttemptOrdinal ?? 0) -
-        (right.repairAttemptOrdinal ?? 0),
-    );
+    .sort((left, right) => (left.repairAttemptOrdinal ?? 0) - (right.repairAttemptOrdinal ?? 0));
   const expectedAttempt = attempts.length + 1;
-  if (
-    expectedAttempt > 2 ||
-    request.selection.candidateAttempt !== expectedAttempt
-  ) {
+  if (expectedAttempt > 2 || request.selection.candidateAttempt !== expectedAttempt) {
     throw new TrustedHiddenCatalogError(
       "allocation-exhausted",
       "A discovery panel permits exactly two sequential repair candidates.",
@@ -1673,8 +1519,7 @@ function repairSourceForRequest(
     (priorAttempt === null ||
       priorAttempt.repairAttemptOrdinal !== 1 ||
       !hasCommittedOutcome(state, priorAttempt.requestHash) ||
-      request.candidate.archiveSha256 ===
-        priorAttempt.candidateArchiveSha256)
+      request.candidate.archiveSha256 === priorAttempt.candidateArchiveSha256)
   ) {
     throw new TrustedHiddenCatalogError(
       "request-invalid",
@@ -1684,24 +1529,17 @@ function repairSourceForRequest(
   return { source, priorAttempt };
 }
 
-function reuseRepairSelection(
-  attempt: TrustedPanelAllocationRecord,
-): HiddenPanelSelection {
-  const tasks: HiddenSelectedTask[] = attempt.panel.cells.map(
-    (cell, index) => ({
-      taskId: cell.taskId,
-      bucket: attempt.selectedBuckets[index] ?? "coverage",
-      score: 0,
-    }),
-  );
+function reuseRepairSelection(attempt: TrustedPanelAllocationRecord): HiddenPanelSelection {
+  const tasks: HiddenSelectedTask[] = attempt.panel.cells.map((cell, index) => ({
+    taskId: cell.taskId,
+    bucket: attempt.selectedBuckets[index] ?? "coverage",
+    score: 0,
+  }));
   return {
     stage: "repair",
     tasks,
     quota: Object.fromEntries(
-      BUCKETS.map((bucket) => [
-        bucket,
-        tasks.filter((task) => task.bucket === bucket).length,
-      ]),
+      BUCKETS.map((bucket) => [bucket, tasks.filter((task) => task.bucket === bucket).length]),
     ) as unknown as Readonly<Record<SelectionBucket, number>>,
     policyVersion: SELECTION_POLICY_VERSION,
   };
@@ -1750,9 +1588,7 @@ function selectForRequest(
                 // easy/coverage alternation for the next newly selected
                 // discovery subset.
                 epoch: Object.values(state.allocations).filter(
-                  (record) =>
-                    record.panel.stage === "repair" &&
-                    record.repairAttemptOrdinal === 1,
+                  (record) => record.panel.stage === "repair" && record.repairAttemptOrdinal === 1,
                 ).length,
                 currentExperiment: experimentOrdinal,
                 changedComponentRelevance: {},
@@ -1776,11 +1612,12 @@ function selectForRequest(
           "The validation allocation request violates its frozen selection policy.",
         );
       }
+      const validationSelection = request.selection;
       const repairTaskIds = new Set(
         taskList(state)
           .filter((task) =>
             task.exposure.informedHypothesisDigests.includes(
-              request.selection.frozenHypothesisHash,
+              validationSelection.frozenHypothesisHash,
             ),
           )
           .map((task) => task.taskId),
@@ -1789,40 +1626,27 @@ function selectForRequest(
         .filter(
           (record) =>
             record.panel.stage === "repair" &&
-            record.frozenHypothesisDigest ===
-              request.selection.frozenHypothesisHash,
+            record.frozenHypothesisDigest === validationSelection.frozenHypothesisHash,
         )
         .sort(
           (left, right) =>
-            parseExperimentOrdinal(left.experimentId) -
-            parseExperimentOrdinal(right.experimentId),
+            parseExperimentOrdinal(left.experimentId) - parseExperimentOrdinal(right.experimentId),
         );
-      const latestRepair =
-        hypothesisRepairs[hypothesisRepairs.length - 1];
-      const currentExperimentRepairs = Object.values(
-        state.allocations,
-      ).filter(
-        (record) =>
-          record.panel.stage === "repair" &&
-          record.experimentId === request.experimentId,
+      const latestRepair = hypothesisRepairs[hypothesisRepairs.length - 1];
+      const currentExperimentRepairs = Object.values(state.allocations).filter(
+        (record) => record.panel.stage === "repair" && record.experimentId === request.experimentId,
       );
       if (
-        hypothesisRepairs.some(
-          (record) =>
-            !hasCommittedOutcome(state, record.requestHash),
-        ) ||
+        hypothesisRepairs.some((record) => !hasCommittedOutcome(state, record.requestHash)) ||
         currentExperimentRepairs.length > 1 ||
         currentExperimentRepairs.some(
           (record) =>
             !hasCommittedOutcome(state, record.requestHash) ||
-            record.candidateArchiveSha256 !==
-              request.candidate.archiveSha256 ||
-            record.frozenHypothesisDigest !==
-              request.selection.frozenHypothesisHash,
+            record.candidateArchiveSha256 !== request.candidate.archiveSha256 ||
+            record.frozenHypothesisDigest !== validationSelection.frozenHypothesisHash,
         ) ||
         (latestRepair !== undefined &&
-          latestRepair.candidateArchiveSha256 !==
-            request.candidate.archiveSha256)
+          latestRepair.candidateArchiveSha256 !== request.candidate.archiveSha256)
       ) {
         throw new TrustedHiddenCatalogError(
           "request-invalid",
@@ -1830,8 +1654,7 @@ function selectForRequest(
         );
       }
       const selection = selectValidationPanel(taskList(state), {
-        frozenHypothesisDigest:
-          request.selection.frozenHypothesisHash,
+        frozenHypothesisDigest: validationSelection.frozenHypothesisHash,
         repairTaskIds,
         carry: state.validationCarry,
         currentExperiment: experimentOrdinal,
@@ -1845,21 +1668,14 @@ function selectForRequest(
       };
     }
     if (request.stage === "shadow") {
-      if (
-        request.selection.kind !== "fresh-shadow" ||
-        request.selection.feedback !== "disabled"
-      ) {
+      if (request.selection.kind !== "fresh-shadow" || request.selection.feedback !== "disabled") {
         throw new TrustedHiddenCatalogError(
           "request-invalid",
           "The shadow allocation request violates feedback-dark policy.",
         );
       }
       const slice = state.shadowSlices[request.selection.shadowSlice - 1];
-      if (
-        slice === undefined ||
-        slice.slice !== request.selection.shadowSlice ||
-        slice.consumed
-      ) {
+      if (slice === undefined || slice.slice !== request.selection.shadowSlice || slice.consumed) {
         throw new TrustedHiddenCatalogError(
           "allocation-exhausted",
           "The requested feedback-dark shadow capacity is unavailable.",
@@ -1941,30 +1757,21 @@ function consumeTasks(
         );
       }
       if (!selected.has(taskId)) return [taskId, task];
-      const wasConsecutive =
-        task.exposure.lastExperiment === experimentOrdinal - 1;
+      const wasConsecutive = task.exposure.lastExperiment === experimentOrdinal - 1;
       const informed =
         stage === "repair"
-          ? [
-              ...new Set([
-                ...task.exposure.informedHypothesisDigests,
-                frozenHypothesisDigest,
-              ]),
-            ]
+          ? [...new Set([...task.exposure.informedHypothesisDigests, frozenHypothesisDigest])]
           : task.exposure.informedHypothesisDigests;
       const next: TrustedStoredHiddenTask = {
         ...task,
         exposure: {
           ...task.exposure,
           total: task.exposure.total + 1,
-          consecutiveExperiments: wasConsecutive
-            ? task.exposure.consecutiveExperiments + 1
-            : 1,
+          consecutiveExperiments: wasConsecutive ? task.exposure.consecutiveExperiments + 1 : 1,
           lastExperiment: experimentOrdinal,
           // Allocation itself consumes freshness. This intentionally errs on
           // the side of assuming feedback may escape after a crash.
-          feedbackReleased:
-            stage === "shadow" ? task.exposure.feedbackReleased : true,
+          feedbackReleased: stage === "shadow" ? task.exposure.feedbackReleased : true,
           positiveValidationConsumed:
             task.exposure.positiveValidationConsumed ||
             stage === "validation" ||
@@ -1994,8 +1801,7 @@ function markShadowConsumed(
   ) as unknown as TrustedHiddenCatalogState["shadowSlices"];
 }
 
-type HiddenArmOutcome =
-  TrustedSignedHiddenCatalogOutcomeUpdate["outcomes"][number]["candidate"];
+type HiddenArmOutcome = TrustedSignedHiddenCatalogOutcomeUpdate["outcomes"][number]["candidate"];
 
 function assertHiddenArmOutcome(outcome: HiddenArmOutcome): void {
   assertExactKeys(outcome, ARM_OUTCOME_KEYS);
@@ -2040,8 +1846,7 @@ function assertSignedOutcomeUpdate(
     update.requestHash !== allocation.requestHash ||
     update.protocolHash !== allocation.protocolHash ||
     update.stage !== allocation.panel.stage ||
-    update.dispositionAttestationHash !==
-      allocation.panel.dispositionAttestationHash ||
+    update.dispositionAttestationHash !== allocation.panel.dispositionAttestationHash ||
     !SHA256.test(update.rawManifestHash) ||
     !SHA256.test(update.jobSha256) ||
     !SHA256.test(update.runtimeAttestationHash) ||
@@ -2052,9 +1857,7 @@ function assertSignedOutcomeUpdate(
     Date.parse(update.observedAt) > Date.parse(allocation.panel.expiresAt) ||
     update.outcomes.length !== expectedTaskCount ||
     update.signature.algorithm !== "ed25519" ||
-    !/^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u.test(
-      update.signature.keyId,
-    ) ||
+    !/^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u.test(update.signature.keyId) ||
     !Number.isFinite(Date.parse(update.signature.signedAt)) ||
     Date.parse(update.signature.signedAt) < Date.parse(update.observedAt) ||
     !/^[A-Za-z0-9_-]{86,128}={0,2}$/u.test(update.signature.signature)
@@ -2076,9 +1879,7 @@ function assertSignedOutcomeUpdate(
       outcome.capabilityStratum !== cell.capabilityStratum ||
       outcome.order !== cell.order ||
       (outcome.order !== "AB" && outcome.order !== "BA") ||
-      (allocation.panel.stage === "repair"
-        ? outcome.champion !== null
-        : outcome.champion === null)
+      (allocation.panel.stage === "repair" ? outcome.champion !== null : outcome.champion === null)
     ) {
       throw new TrustedHiddenCatalogError(
         "outcome-invalid",
@@ -2125,8 +1926,7 @@ function assertSignedOutcomeUpdate(
   if (
     update.updateSetHash !== expectedUpdateSetHash ||
     update.sourceBindingHash !== expectedSourceBindingHash ||
-    update.updateId !==
-      `catalog-${expectedSourceBindingHash.slice(0, 48)}`
+    update.updateId !== `catalog-${expectedSourceBindingHash.slice(0, 48)}`
   ) {
     throw new TrustedHiddenCatalogError(
       "outcome-invalid",
@@ -2165,45 +1965,31 @@ function applyOutcomeUpdate(
       );
     }
     const candidateFailure = outcome.candidate.pass ? 0 : 1;
-    const championFailure =
-      outcome.champion === null || outcome.champion.pass ? 0 : 1;
+    const championFailure = outcome.champion === null || outcome.champion.pass ? 0 : 1;
     const matchedIncrement = outcome.champion === null ? 0 : 1;
     const costIncrement =
       normalizedArmCostSignal(outcome.candidate) +
-      (outcome.champion === null
-        ? 0
-        : normalizedArmCostSignal(outcome.champion));
+      (outcome.champion === null ? 0 : normalizedArmCostSignal(outcome.champion));
     const stats: TrustedHiddenTaskOutcomeStats = {
-      candidateObservationCount:
-        task.outcomeStats.candidateObservationCount + 1,
-      candidateFailureCount:
-        task.outcomeStats.candidateFailureCount + candidateFailure,
+      candidateObservationCount: task.outcomeStats.candidateObservationCount + 1,
+      candidateFailureCount: task.outcomeStats.candidateFailureCount + candidateFailure,
       candidateRewardSum: accumulator(
-        task.outcomeStats.candidateRewardSum +
-          outcome.candidate.boundedReward,
+        task.outcomeStats.candidateRewardSum + outcome.candidate.boundedReward,
       ),
-      championObservationCount:
-        task.outcomeStats.championObservationCount + matchedIncrement,
+      championObservationCount: task.outcomeStats.championObservationCount + matchedIncrement,
       championFailureCount:
-        task.outcomeStats.championFailureCount +
-        (matchedIncrement === 0 ? 0 : championFailure),
+        task.outcomeStats.championFailureCount + (matchedIncrement === 0 ? 0 : championFailure),
       championRewardSum: accumulator(
-        task.outcomeStats.championRewardSum +
-          (outcome.champion?.boundedReward ?? 0),
+        task.outcomeStats.championRewardSum + (outcome.champion?.boundedReward ?? 0),
       ),
-      matchedObservationCount:
-        task.outcomeStats.matchedObservationCount + matchedIncrement,
+      matchedObservationCount: task.outcomeStats.matchedObservationCount + matchedIncrement,
       discriminationSignalSum: accumulator(
         task.outcomeStats.discriminationSignalSum +
           (outcome.champion === null
             ? 0
-            : Math.abs(
-                outcome.candidate.boundedReward -
-                  outcome.champion.boundedReward,
-              )),
+            : Math.abs(outcome.candidate.boundedReward - outcome.champion.boundedReward)),
       ),
-      costObservationCount:
-        task.outcomeStats.costObservationCount + 1 + matchedIncrement,
+      costObservationCount: task.outcomeStats.costObservationCount + 1 + matchedIncrement,
       normalizedCostSignalSum: accumulator(
         task.outcomeStats.normalizedCostSignalSum + costIncrement,
       ),
@@ -2217,22 +2003,15 @@ function applyOutcomeUpdate(
       exposure: {
         ...task.exposure,
         repairCooldownThroughExperiment:
-          allocation.panel.stage === "shadow" ||
-          !candidateDemonstratedSuccess
+          allocation.panel.stage === "shadow" || !candidateDemonstratedSuccess
             ? task.exposure.repairCooldownThroughExperiment
-            : Math.max(
-                task.exposure.repairCooldownThroughExperiment ?? 0,
-                experimentOrdinal + 2,
-              ),
+            : Math.max(task.exposure.repairCooldownThroughExperiment ?? 0, experimentOrdinal + 2),
       },
     };
     updated.set(task.taskId, nextTask);
   }
   return Object.fromEntries(
-    state.taskOrder.map((taskId) => [
-      taskId,
-      updated.get(taskId) ?? state.tasks[taskId],
-    ]),
+    state.taskOrder.map((taskId) => [taskId, updated.get(taskId) ?? state.tasks[taskId]]),
   ) as Readonly<Record<string, TrustedStoredHiddenTask>>;
 }
 
@@ -2244,9 +2023,7 @@ function applyOutcomeUpdate(
  * `releaseSafeHealthAttestation`.
  */
 export class DurableTrustedHiddenCatalog
-  implements
-    TrustedHiddenTaskResolver,
-    TrustedHiddenCatalogOutcomeUpdateSink
+  implements TrustedHiddenTaskResolver, TrustedHiddenCatalogOutcomeUpdateSink
 {
   readonly #store: LinearizableHiddenCatalogCasStore;
   readonly #datasetPin: TerminalBench21Pin;
@@ -2279,10 +2056,7 @@ export class DurableTrustedHiddenCatalog
         "The trusted catalog requires a hidden-outcome signature verifier.",
       );
     }
-    const taskIdSecret = copyAndValidateKey(
-      options.taskIdKey,
-      options.expectedTaskIdKeyId,
-    );
+    const taskIdSecret = copyAndValidateKey(options.taskIdKey, options.expectedTaskIdKeyId);
     const dispositionSecret = copyAndValidateKey(
       options.dispositionKey,
       options.expectedDispositionKeyId,
@@ -2290,10 +2064,7 @@ export class DurableTrustedHiddenCatalog
     if (
       options.taskIdKey.keyId === options.dispositionKey.keyId ||
       (taskIdSecret.byteLength === dispositionSecret.byteLength &&
-        timingSafeEqual(
-          Buffer.from(taskIdSecret),
-          Buffer.from(dispositionSecret),
-        ))
+        timingSafeEqual(Buffer.from(taskIdSecret), Buffer.from(dispositionSecret)))
     ) {
       throw new TrustedHiddenCatalogError(
         "configuration-invalid",
@@ -2356,12 +2127,11 @@ export class DurableTrustedHiddenCatalog
         "The trusted allocation request failed immutable validation.",
       );
     }
+    const stage = request.stage;
     if (
       !SHA256.test(requestHash) ||
       hashEvaluationRequest(request) !== requestHash ||
-      (request.stage !== "repair" &&
-        request.stage !== "validation" &&
-        request.stage !== "shadow")
+      (stage !== "repair" && stage !== "validation" && stage !== "shadow")
     ) {
       throw new TrustedHiddenCatalogError(
         "request-invalid",
@@ -2410,10 +2180,7 @@ export class DurableTrustedHiddenCatalog
           );
         }
         const now = this.#now();
-        if (
-          !Number.isFinite(now.getTime()) ||
-          Date.parse(request.deadlineAt) <= now.getTime()
-        ) {
+        if (!Number.isFinite(now.getTime()) || Date.parse(request.deadlineAt) <= now.getTime()) {
           throw new TrustedHiddenCatalogError(
             "request-invalid",
             "The trusted allocation request is expired.",
@@ -2431,25 +2198,16 @@ export class DurableTrustedHiddenCatalog
             "The trusted disposition nonce source violated policy.",
           );
         }
-        const dispositionNonce =
-          Buffer.from(nonceBytes).toString("base64url");
+        const dispositionNonce = Buffer.from(nonceBytes).toString("base64url");
         const leaseId = `lease-${dispositionNonce}`;
-        if (
-          Object.values(state.allocations).some(
-            (record) => record.panel.leaseId === leaseId,
-          )
-        ) {
+        if (Object.values(state.allocations).some((record) => record.panel.leaseId === leaseId)) {
           throw new TrustedHiddenCatalogError(
             "allocation-conflict",
             "The one-use allocation identity has already been consumed.",
           );
         }
 
-        const selected = selectForRequest(
-          state,
-          request,
-          experimentOrdinal,
-        );
+        const selected = selectForRequest(state, request, experimentOrdinal);
         const cells = buildCells(state, selected.selection.tasks);
         const disposition = dispositionAttestation(
           this.#secrets.disposition,
@@ -2461,7 +2219,7 @@ export class DurableTrustedHiddenCatalog
             requestHash,
             claimTokenCommitment: claimCommitment,
             leaseId,
-            stage: request.stage,
+            stage,
             sealedAt,
             expiresAt: request.deadlineAt,
           },
@@ -2470,7 +2228,7 @@ export class DurableTrustedHiddenCatalog
           sensitivity: "hidden-benchmark-panel",
           leaseId,
           requestId: request.requestId,
-          stage: request.stage,
+          stage,
           sealedAt,
           expiresAt: request.deadlineAt,
           dispositionAttestationHash: disposition,
@@ -2501,26 +2259,20 @@ export class DurableTrustedHiddenCatalog
               );
             })(),
           repairSourceExperimentId:
-            request.selection.kind === "repair-reuse"
-              ? request.selection.sourceExperimentId
-              : null,
+            request.selection.kind === "repair-reuse" ? request.selection.sourceExperimentId : null,
           repairSourceRequestHash: selected.repairSourceRequestHash,
           repairAttemptOrdinal:
-            request.selection.kind === "repair-reuse"
-              ? request.selection.candidateAttempt
-              : null,
-          selectedBuckets: selected.selection.tasks.map(
-            (task) => task.bucket,
-          ),
+            request.selection.kind === "repair-reuse" ? request.selection.candidateAttempt : null,
+          selectedBuckets: selected.selection.tasks.map((task) => task.bucket),
           panel,
         };
         const tasks = consumeTasks(
           state,
           selected.selection,
-          request.stage,
+          stage,
           experimentOrdinal,
           request.selection.kind === "repair-reuse" ||
-          request.selection.kind === "fresh-matched-validation"
+            request.selection.kind === "fresh-matched-validation"
             ? request.selection.frozenHypothesisHash
             : request.candidate.archiveSha256,
         );
@@ -2529,13 +2281,8 @@ export class DurableTrustedHiddenCatalog
           {
             tasks,
             validationCarry: selected.nextCarry,
-            repairEpoch:
-              state.repairEpoch + (request.stage === "repair" ? 1 : 0),
-            shadowSlices: markShadowConsumed(
-              state.shadowSlices,
-              selected.shadowSlice,
-              requestHash,
-            ),
+            repairEpoch: state.repairEpoch + (stage === "repair" ? 1 : 0),
+            shadowSlices: markShadowConsumed(state.shadowSlices, selected.shadowSlice, requestHash),
             allocations: {
               ...state.allocations,
               [requestHash]: record,
@@ -2567,7 +2314,7 @@ export class DurableTrustedHiddenCatalog
     }
 
     return this.#sanitized(async () =>
-      this.#store.transact((state) => {
+      this.#store.transact<TrustedHiddenCatalogOutcomeCommitReceipt>((state) => {
         if (state === null) {
           throw new TrustedHiddenCatalogError(
             "catalog-uninitialized",
@@ -2594,8 +2341,7 @@ export class DurableTrustedHiddenCatalog
         }
         if (
           Object.values(state.outcomeUpdates).some(
-            (commitment) =>
-              commitment.requestHash === update.requestHash,
+            (commitment) => commitment.requestHash === update.requestHash,
           )
         ) {
           throw new TrustedHiddenCatalogError(
@@ -2611,14 +2357,9 @@ export class DurableTrustedHiddenCatalog
           );
         }
         assertSignedOutcomeUpdate(update, allocation);
-        const tasks = applyOutcomeUpdate(
-          state,
-          allocation,
-          update,
-        );
+        const tasks = applyOutcomeUpdate(state, allocation, update);
         const commitment: TrustedHiddenCatalogOutcomeCommitment = {
-          sensitivity:
-            "trusted-hidden-catalog-outcome-commitment",
+          sensitivity: "trusted-hidden-catalog-outcome-commitment",
           updateId: update.updateId,
           requestHash: update.requestHash,
           sourceBindingHash: update.sourceBindingHash,
@@ -2672,10 +2413,7 @@ export class DurableTrustedHiddenCatalog
         }
         this.#assertState(state);
         const task = state.tasks[taskId];
-        if (
-          task === undefined ||
-          task.taskRevisionDigest !== taskRevisionDigest
-        ) {
+        if (task === undefined || task.taskRevisionDigest !== taskRevisionDigest) {
           throw new TrustedHiddenCatalogError(
             "resolution-failed",
             "Trusted hidden-task resolution failed closed.",
@@ -2721,9 +2459,7 @@ export class DurableTrustedHiddenCatalog
     });
   }
 
-  #health(
-    state: TrustedHiddenCatalogState,
-  ): ReleaseSafeHiddenCatalogAttestation {
+  #health(state: TrustedHiddenCatalogState): ReleaseSafeHiddenCatalogAttestation {
     const tasks = taskList(state);
     let repairPanelCapacity: "available" | "unavailable" = "unavailable";
     try {
@@ -2738,16 +2474,11 @@ export class DurableTrustedHiddenCatalog
     }
     let validationCapacity = 0;
     try {
-      validationCapacity = countFreshValidationPanels(
-        tasks,
-        state.validationCarry,
-      );
+      validationCapacity = countFreshValidationPanels(tasks, state.validationCarry);
     } catch {
       validationCapacity = 0;
     }
-    const remaining = state.shadowSlices.filter(
-      (slice) => !slice.consumed,
-    ).length;
+    const remaining = state.shadowSlices.filter((slice) => !slice.consumed).length;
     if (remaining !== 0 && remaining !== 1 && remaining !== 2) {
       throw new TrustedHiddenCatalogError(
         "catalog-invalid",
@@ -2771,9 +2502,7 @@ export class DurableTrustedHiddenCatalog
     };
   }
 
-  async #sanitized<Result>(
-    operation: () => Promise<Result>,
-  ): Promise<Result> {
+  async #sanitized<Result>(operation: () => Promise<Result>): Promise<Result> {
     try {
       return await operation();
     } catch (error) {

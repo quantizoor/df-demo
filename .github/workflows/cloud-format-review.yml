@@ -5,10 +5,19 @@ on:
     branches:
       - codex/dark-factory-mvp
     paths:
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - biome.json
-      - .github/workflows/cloud-format-review.yml
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "containers/**"
+      - "claude-plugin/**"
+      - ".dockerignore"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "biome.json"
+      - "tsconfig*.json"
+      - "vitest.config.ts"
+      - ".github/workflows/cloud-format-review.yml"
 
 permissions:
   contents: read

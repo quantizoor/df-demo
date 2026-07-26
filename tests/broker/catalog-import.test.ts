@@ -13,8 +13,7 @@ const DATASET_PIN_HASH = "a".repeat(64);
 
 function inventory(): TrustedTerminalBenchTaskInventory {
   const unsigned = {
-    sensitivity:
-      "trusted-terminal-bench-task-inventory" as const,
+    sensitivity: "trusted-terminal-bench-task-inventory" as const,
     schemaVersion: 1 as const,
     datasetPinHash: DATASET_PIN_HASH,
     registryRevision: 6 as const,
@@ -22,12 +21,9 @@ function inventory(): TrustedTerminalBenchTaskInventory {
     createdAt: "2026-07-01T00:00:00.000Z",
     tasks: Array.from({ length: 89 }, (_, index) => ({
       packageTaskName: `terminal-bench/task-${String(index + 1).padStart(3, "0")}`,
-      taskRevisionDigest: (index + 1)
-        .toString(16)
-        .padStart(64, "0"),
+      taskRevisionDigest: (index + 1).toString(16).padStart(64, "0"),
       capabilityStratum: `capability-${index % 9}`,
-      difficultyStratum:
-        index % 3 === 0 ? "difficult" : "moderate",
+      difficultyStratum: index % 3 === 0 ? "difficult" : "moderate",
       normalizedExpectedCost: (index % 10) / 10,
       scoringEligible: true,
       infrastructureValid: true,
@@ -47,10 +43,7 @@ function observationSet(
     sensitivity: "trusted-task-observation-set" as const,
     schemaVersion: 1 as const,
     sourceKind: kind,
-    sourceCommitment:
-      kind === "initial-pi-baseline"
-        ? "b".repeat(64)
-        : "c".repeat(64),
+    sourceCommitment: kind === "initial-pi-baseline" ? "b".repeat(64) : "c".repeat(64),
     datasetPinHash: DATASET_PIN_HASH,
     registryRevision: 6 as const,
     observedAt: "2026-07-01T01:00:00.000Z",
@@ -58,8 +51,7 @@ function observationSet(
   };
   return {
     ...unsigned,
-    observationSetHash:
-      computeTrustedTaskObservationSetHash(unsigned),
+    observationSetHash: computeTrustedTaskObservationSetHash(unsigned),
   };
 }
 
@@ -70,9 +62,7 @@ function row(
 ): TrustedTaskObservationRow {
   return {
     packageTaskName: `terminal-bench/task-${String(taskIndex).padStart(3, "0")}`,
-    taskRevisionDigest: taskIndex
-      .toString(16)
-      .padStart(64, "0"),
+    taskRevisionDigest: taskIndex.toString(16).padStart(64, "0"),
     validAttempts,
     passedAttempts,
     meanReward: passedAttempts / validAttempts,
@@ -84,14 +74,11 @@ function row(
 describe("trusted hidden catalog import", () => {
   it("combines private baseline and comparable leaderboard evidence without releasing it", () => {
     const taskInventory = inventory();
-    const baseline = observationSet("initial-pi-baseline", [
-      row(1, 20, 0),
+    const baseline = observationSet("initial-pi-baseline", [row(1, 20, 0), row(2, 20, 20)]);
+    const leaderboard = observationSet("comparable-public-leaderboard", [
+      row(1, 20, 2),
       row(2, 20, 20),
     ]);
-    const leaderboard = observationSet(
-      "comparable-public-leaderboard",
-      [row(1, 20, 2), row(2, 20, 20)],
-    );
     const imported = buildTrustedHiddenCatalogImport({
       expectedDatasetPinHash: DATASET_PIN_HASH,
       inventory: taskInventory,
@@ -105,21 +92,14 @@ describe("trusted hidden catalog import", () => {
       imported.seeds.every(
         (seed) =>
           seed.initialFeedbackReleased === false &&
-          seed.buckets.join(",") ===
-            "hard,uncertain,easy,coverage",
+          seed.buckets.join(",") === "hard,uncertain,easy,coverage",
       ),
     ).toBe(true);
     const failing = imported.seeds.find(
-      (seed) =>
-        seed.packageTaskName === "terminal-bench/task-001",
+      (seed) => seed.packageTaskName === "terminal-bench/task-001",
     );
-    const easy = imported.seeds.find(
-      (seed) =>
-        seed.packageTaskName === "terminal-bench/task-002",
-    );
-    expect(
-      failing?.estimates.recentFailureProbability,
-    ).toBeGreaterThan(
+    const easy = imported.seeds.find((seed) => seed.packageTaskName === "terminal-bench/task-002");
+    expect(failing?.estimates.recentFailureProbability).toBeGreaterThan(
       easy?.estimates.recentFailureProbability ?? 1,
     );
     expect(easy?.regressionCanary).toBe(true);
@@ -139,10 +119,7 @@ describe("trusted hidden catalog import", () => {
       }),
     ).toThrow(TrustedCatalogImportError);
 
-    const duplicated = observationSet("initial-pi-baseline", [
-      row(1, 2, 1),
-      row(1, 2, 1),
-    ]);
+    const duplicated = observationSet("initial-pi-baseline", [row(1, 2, 1), row(1, 2, 1)]);
     expect(() =>
       buildTrustedHiddenCatalogImport({
         expectedDatasetPinHash: DATASET_PIN_HASH,
@@ -152,15 +129,12 @@ describe("trusted hidden catalog import", () => {
       }),
     ).toThrow(TrustedCatalogImportError);
 
-    const detached = observationSet(
-      "comparable-public-leaderboard",
-      [
-        {
-          ...row(1, 2, 1),
-          taskRevisionDigest: "e".repeat(64),
-        },
-      ],
-    );
+    const detached = observationSet("comparable-public-leaderboard", [
+      {
+        ...row(1, 2, 1),
+        taskRevisionDigest: "e".repeat(64),
+      },
+    ]);
     expect(() =>
       buildTrustedHiddenCatalogImport({
         expectedDatasetPinHash: DATASET_PIN_HASH,

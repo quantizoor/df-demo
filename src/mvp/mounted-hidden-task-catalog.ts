@@ -1,16 +1,16 @@
 import { createHmac } from "node:crypto";
 import { join } from "node:path";
 import { Type } from "@sinclair/typebox";
-import Ajv2020 from "ajv/dist/2020.js";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import {
-  MVP_SCHEMA_VERSION,
+  canonicalJson,
   type HiddenEvaluationCell,
   type HiddenTaskCatalogPort,
   type HiddenTaskHandle,
   type HiddenTaskOutcomeUpdate,
   type HiddenTaskProfile,
-  canonicalJson,
   hiddenTaskHandle,
+  MVP_SCHEMA_VERSION,
   sha256,
 } from "./contracts.js";
 import {
@@ -74,11 +74,7 @@ const TaskRecordSchema = Type.Object(
       pattern: "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$",
     }),
     revisionDigest: DigestSchema,
-    difficulty: Type.Union([
-      Type.Literal("hard"),
-      Type.Literal("medium"),
-      Type.Literal("easy"),
-    ]),
+    difficulty: Type.Union([Type.Literal("hard"), Type.Literal("medium"), Type.Literal("easy")]),
     easyCanary: Type.Boolean(),
     baselineFailureRate: UnitIntervalSchema,
     baselineProvenance: MeasurementProvenanceSchema,
@@ -248,9 +244,7 @@ export class MountedHiddenTaskCatalog implements HiddenTaskCatalogPort {
       this.taskRecord(definition, input.datasetRevision),
     );
     assertGenesisTasks(tasks);
-    const genesisDigest = sha256(
-      canonicalJson({ datasetRevision: input.datasetRevision, tasks }),
-    );
+    const genesisDigest = sha256(canonicalJson({ datasetRevision: input.datasetRevision, tasks }));
     await withMountedLock(this.root, "hidden-task-catalog", async () => {
       const existing = await readOptionalBoundedJson(this.path);
       if (existing !== null) {
@@ -308,9 +302,7 @@ export class MountedHiddenTaskCatalog implements HiddenTaskCatalogPort {
 
     await withMountedLock(this.root, "hidden-task-catalog", async () => {
       const current = await this.read();
-      const prior = current.appliedExperiments.find(
-        (entry) => entry.experimentId === experimentId,
-      );
+      const prior = current.appliedExperiments.find((entry) => entry.experimentId === experimentId);
       if (prior !== undefined) {
         if (prior.updateDigest !== updateDigest) {
           throw new Error("Hidden catalog experiment replay contains different outcomes");
@@ -338,15 +330,12 @@ export class MountedHiddenTaskCatalog implements HiddenTaskCatalogPort {
             consecutiveSelections: 0,
           };
         }
-        const observedFailure =
-          1 - (update.candidateMeanReward + update.championMeanReward) / 2;
+        const observedFailure = 1 - (update.candidateMeanReward + update.championMeanReward) / 2;
         const observedUncertainty =
           1 - Math.abs(update.candidateMeanReward - update.championMeanReward);
         return {
           ...task,
-          previousFailureRate: rounded(
-            0.65 * task.previousFailureRate + 0.35 * observedFailure,
-          ),
+          previousFailureRate: rounded(0.65 * task.previousFailureRate + 0.35 * observedFailure),
           uncertainty: rounded(0.7 * task.uncertainty + 0.3 * observedUncertainty),
           underexposure: rounded(Math.max(0, task.underexposure - 0.25)),
           consecutiveSelections:
@@ -486,8 +475,7 @@ function catalogDocument(value: unknown): CatalogDocument {
     throw new Error("Hidden task catalog contains duplicate handles");
   }
   if (
-    new Set(document.tasks.map((task) => task.harborTaskLocator)).size !==
-    document.tasks.length
+    new Set(document.tasks.map((task) => task.harborTaskLocator)).size !== document.tasks.length
   ) {
     throw new Error("Hidden task catalog contains duplicate Harbor locators");
   }
@@ -537,13 +525,10 @@ function validateDefinition(
   }
   if (
     definition.graderIsolation.verifierEnvironmentMode !== "separate" ||
-    definition.graderIsolation.allStepVerifierEnvironmentModesSeparate !==
-      true ||
+    definition.graderIsolation.allStepVerifierEnvironmentModesSeparate !== true ||
     !/^[a-f0-9]{64}$/u.test(definition.graderIsolation.sourceDigest)
   ) {
-    throw new Error(
-      "Hidden task requires a separate-verifier isolation attestation",
-    );
+    throw new Error("Hidden task requires a separate-verifier isolation attestation");
   }
   if (definition.leaderboard.kind === "comparable-measurement") {
     if (
@@ -562,10 +547,7 @@ function validateOutcomeUpdates(
   experimentId: string,
   updates: readonly HiddenTaskOutcomeUpdate[],
 ): void {
-  if (
-    updates.length !== 5 ||
-    new Set(updates.map((update) => update.taskHandle)).size !== 5
-  ) {
+  if (updates.length !== 5 || new Set(updates.map((update) => update.taskHandle)).size !== 5) {
     throw new Error("Hidden catalog requires outcomes for exactly five distinct tasks");
   }
   for (const update of updates) {

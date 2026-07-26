@@ -1,5 +1,5 @@
 import { checkBudget, spendBudget } from "../core/budget.js";
-import { DarkFactoryError, asErrorMessage } from "../core/errors.js";
+import { asErrorMessage, DarkFactoryError } from "../core/errors.js";
 import { reproduceFreshValidationDisposition } from "../core/validation-decision.js";
 import type { BudgetSnapshot } from "../domain/models.js";
 import { VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION } from "../evaluation/validation-attempt-ledger.js";
@@ -41,16 +41,11 @@ function assertExactPlainObjectKeys(
     actualKeys.length !== expectedKeys.length ||
     actualKeys.some((key) => !expectedKeys.includes(key))
   ) {
-    throw new DarkFactoryError(
-      "EVIDENCE_INVALID",
-      `${label} contains non-canonical fields`,
-    );
+    throw new DarkFactoryError("EVIDENCE_INVALID", `${label} contains non-canonical fields`);
   }
 }
 
-function assertDiagnosticBriefReference(
-  brief: DiagnosticBriefReference,
-): void {
+function assertDiagnosticBriefReference(brief: DiagnosticBriefReference): void {
   assertExactPlainObjectKeys(
     brief,
     ["hash", "releaseId", "actionable"],
@@ -127,9 +122,7 @@ function assertRepairAggregate(repair: RepairAggregate, leaseMaximum: number): v
     !["passed", "rejected", "inconclusive"].includes(repair.disposition) ||
     (repair.attemptOrdinal !== 1 && repair.attemptOrdinal !== 2) ||
     typeof repair.integrityPassed !== "boolean" ||
-    !["not-used", "eligible", "miss", "drift-failed"].includes(
-      repair.cacheStatus,
-    ) ||
+    !["not-used", "eligible", "miss", "drift-failed"].includes(repair.cacheStatus) ||
     !Number.isFinite(repair.aggregateCostUsd) ||
     repair.aggregateCostUsd < 0 ||
     !Number.isSafeInteger(repair.tokens) ||
@@ -264,8 +257,7 @@ function assertValidationAggregate(
     !/^[a-f0-9]{64}$/u.test(onlineError.resultingStateHash) ||
     onlineError.priorStateHash === onlineError.resultingStateHash ||
     validation.onlineGateAuthorized !== true ||
-    validation.requiredPosteriorProbability !==
-      Math.max(0.95, 1 - onlineError.alphaSpent)
+    validation.requiredPosteriorProbability !== Math.max(0.95, 1 - onlineError.alphaSpent)
   ) {
     throw new DarkFactoryError(
       "EVIDENCE_INVALID",
@@ -280,8 +272,7 @@ function assertValidationAggregate(
     accounting.validArmCount !== 24 ||
     accounting.attemptedArmCount !== 24 ||
     accounting.unresolvedArmCount !== 0 ||
-    accounting.totalAttemptCount !==
-      validation.validArms + validation.replacementAttempts ||
+    accounting.totalAttemptCount !== validation.validArms + validation.replacementAttempts ||
     accounting.replacementAttemptCount !== validation.replacementAttempts ||
     accounting.infrastructureFailureCount !== validation.replacementAttempts ||
     accounting.nonInfrastructureFailureCount !== 0 ||
@@ -307,9 +298,7 @@ function assertValidationAggregate(
     (validation.releasedEvidenceHash !== null &&
       !/^[a-f0-9]{64}$/u.test(validation.releasedEvidenceHash)) ||
     (validation.behavioralSourceCommitmentHash !== null &&
-      !/^[a-f0-9]{64}$/u.test(
-        validation.behavioralSourceCommitmentHash,
-      )) ||
+      !/^[a-f0-9]{64}$/u.test(validation.behavioralSourceCommitmentHash)) ||
     (validation.releasedEvidenceHash !== null) !==
       (validation.behavioralSourceCommitmentHash !== null)
   ) {
@@ -348,11 +337,7 @@ function assertValidationAggregate(
     accuracyTradeoffPredeclared: validation.accuracyTradeoffPredeclared,
   });
   const expectedDisposition =
-    reproduced === "promote"
-      ? "promoted"
-      : reproduced === "reject"
-        ? "rejected"
-        : "inconclusive";
+    reproduced === "promote" ? "promoted" : reproduced === "reject" ? "rejected" : "inconclusive";
   if (validation.disposition !== expectedDisposition) {
     throw new DarkFactoryError(
       "EVIDENCE_INVALID",
@@ -380,9 +365,11 @@ export class ExperimentRunner {
     let phase = "create";
     let budget = input.budget;
     let journalCreated = false;
-    let validationLease:
-      | { readonly leaseToken: string; readonly attestationHash: string; readonly started: boolean }
-      | null = null;
+    let validationLease: {
+      readonly leaseToken: string;
+      readonly attestationHash: string;
+      readonly started: boolean;
+    } | null = null;
     try {
       await this.#dependencies.journal.create({
         experiment: input.experiment,
@@ -484,8 +471,7 @@ export class ExperimentRunner {
           return await this.#closeWithoutValidation({
             input,
             budget,
-            disposition:
-              repair.disposition === "rejected" ? "rejected" : "inconclusive",
+            disposition: repair.disposition === "rejected" ? "rejected" : "inconclusive",
             proposal,
             repair,
           });
@@ -540,28 +526,17 @@ export class ExperimentRunner {
         candidateCommit: proposal.candidate.commit,
         activeChampionCommit: input.activeChampion.activeCommit,
       });
-      assertValidationAggregate(
-        validation,
-        lease.expectedValidArms,
-        lease.maximumAttempts,
-      );
+      assertValidationAggregate(validation, lease.expectedValidArms, lease.maximumAttempts);
       if (
-        validation.onlineErrorBudget.maximumOnlineError !==
-          budget.limits.maximumOnlineError ||
-        validation.onlineErrorBudget.cumulativeSpentBefore !==
-          budget.usage.onlineErrorSpent
+        validation.onlineErrorBudget.maximumOnlineError !== budget.limits.maximumOnlineError ||
+        validation.onlineErrorBudget.cumulativeSpentBefore !== budget.usage.onlineErrorSpent
       ) {
         throw new DarkFactoryError(
           "EVIDENCE_INVALID",
           "Validation online error reservation does not continue the campaign budget",
         );
       }
-      if (
-        (repair?.attempts ?? 0) +
-          validation.validArms +
-          validation.replacementAttempts >
-        38
-      ) {
+      if ((repair?.attempts ?? 0) + validation.validArms + validation.replacementAttempts > 38) {
         throw new DarkFactoryError(
           "EVIDENCE_INVALID",
           "Evaluation exceeded the sealed 38-attempt experiment ceiling",
@@ -627,10 +602,7 @@ export class ExperimentRunner {
       if (diagnosticBrief !== null) {
         assertDiagnosticBriefReference(diagnosticBrief);
       }
-      if (
-        validation.releasedEvidenceHash !==
-        (diagnosticBrief?.hash ?? null)
-      ) {
+      if (validation.releasedEvidenceHash !== (diagnosticBrief?.hash ?? null)) {
         throw new DarkFactoryError(
           "EVIDENCE_INVALID",
           "Diagnostic release does not match the signed validation evidence hash",

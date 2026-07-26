@@ -1,24 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  ProductionOptimizeCompositionOwner,
   type ProductionOptimizeBootstrapOrReconstructReceipt,
   type ProductionOptimizeBootstrapOrReconstructRequest,
+  ProductionOptimizeCompositionOwner,
   type ProductionOptimizeLifecycleRegistrar,
   type ProductionOptimizeRuntimeAssembly,
   type ProductionOptimizeRuntimeFactoryInput,
   type TrustedProductionOptimizeCloseable,
 } from "../../src/cloud/production-optimize-composition-owner.js";
-import type {
-  OptimizationCampaignStateStore,
-} from "../../src/orchestrator/campaign-state-coordinator.js";
+import type { OptimizationCampaignStateStore } from "../../src/orchestrator/campaign-state-coordinator.js";
 import {
   PRODUCTION_RUNTIME_PORT_IDS,
-  productionRuntimePortBindingsHash,
   type ProductionOptimizationCompositionManifest,
-  type ProductionRuntimePortAttestationCommitment,
   type ProductionRuntimeComponentManifest,
+  type ProductionRuntimePortAttestationCommitment,
   type ProductionRuntimeRole,
+  productionRuntimePortBindingsHash,
 } from "../../src/orchestrator/production-runtime.js";
 import { canonicalHash, withContentHash } from "../../src/schemas/canonical.js";
 import type { CampaignState } from "../../src/schemas/control.js";
@@ -128,14 +126,11 @@ function holdoutExhaustedState(): CampaignState {
 
 function receipt(
   request: ProductionOptimizeBootstrapOrReconstructRequest,
-  overrides: Partial<
-    Omit<ProductionOptimizeBootstrapOrReconstructReceipt, "receiptHash">
-  > = {},
+  overrides: Partial<Omit<ProductionOptimizeBootstrapOrReconstructReceipt, "receiptHash">> = {},
 ): ProductionOptimizeBootstrapOrReconstructReceipt {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" as const,
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" as const,
     requestHash: request.requestHash,
     manifestHash: request.manifestHash,
     campaignId: request.campaignId,
@@ -269,9 +264,7 @@ function runtimeAssembly(
       broker,
     },
   };
-  const attestation = (
-    portId: (typeof PRODUCTION_RUNTIME_PORT_IDS)[number],
-  ): string => {
+  const attestation = (portId: (typeof PRODUCTION_RUNTIME_PORT_IDS)[number]): string => {
     const commitment = signedManifest.runtimePortAttestations.find(
       (item) => item.portId === portId,
     );
@@ -290,30 +283,15 @@ function runtimeAssembly(
   return {
     components,
     runtimePortBindings: {
-      campaignStore: runtimePortBinding(
-        "control.campaign-state-store",
-        campaignStore,
-      ),
-      inputFactory: runtimePortBinding(
-        "control.optimization-input-factory",
-        inputFactory,
-      ),
-      resumeVerifier: runtimePortBinding(
-        "control.optimization-resume-verifier",
-        resumeVerifier,
-      ),
+      campaignStore: runtimePortBinding("control.campaign-state-store", campaignStore),
+      inputFactory: runtimePortBinding("control.optimization-input-factory", inputFactory),
+      resumeVerifier: runtimePortBinding("control.optimization-resume-verifier", resumeVerifier),
       completionMaterial: runtimePortBinding(
         "control.optimization-completion-material",
         completionMaterial,
       ),
-      interruption: runtimePortBinding(
-        "control.optimization-interruption-port",
-        interruption,
-      ),
-      journal: runtimePortBinding(
-        "control.experiment-journal",
-        journal,
-      ),
+      interruption: runtimePortBinding("control.optimization-interruption-port", interruption),
+      journal: runtimePortBinding("control.experiment-journal", journal),
       optimizer: runtimePortBinding("optimizer.adapter", optimizer),
       gates: runtimePortBinding("build.correctness-gate", gates),
       broker: runtimePortBinding("evaluator.blind-broker", broker),
@@ -416,32 +394,23 @@ describe("production optimize composition owner", () => {
       });
 
       const result =
-        operation === "status"
-          ? await current.owner.status()
-          : await current.owner.run();
+        operation === "status" ? await current.owner.status() : await current.owner.run();
 
       expect(result.domain).toBe(
         operation === "status"
           ? "dark-factory.production-optimization-runtime-status.v1"
           : "dark-factory.production-optimization-runtime-run.v1",
       );
-      expect(closed).toEqual([
-        "provider-lease",
-        "component-store",
-        "bootstrap-store",
-      ]);
+      expect(closed).toEqual(["provider-lease", "component-store", "bootstrap-store"]);
       expect(current.verify).toHaveBeenCalledTimes(3);
       expect(current.bootstrap).toHaveBeenCalledTimes(1);
       expect(current.create).toHaveBeenCalledTimes(1);
       const request = current.bootstrap.mock.calls[0]?.[0];
       expect(request).toMatchObject({
         manifestHash: current.signedManifest.manifestHash,
-        sourcePrerequisiteHash:
-          current.signedManifest.bindings.harnessRegistrationHash,
-        genesisPrerequisiteHash:
-          current.signedManifest.bindings.campaignGenesisHash,
-        catalogPrerequisiteHash:
-          current.signedManifest.bindings.hiddenCatalogGenesisHash,
+        sourcePrerequisiteHash: current.signedManifest.bindings.harnessRegistrationHash,
+        genesisPrerequisiteHash: current.signedManifest.bindings.campaignGenesisHash,
+        catalogPrerequisiteHash: current.signedManifest.bindings.hiddenCatalogGenesisHash,
       });
       await expect(current.owner.status()).rejects.toThrow(/failed closed/u);
     },
@@ -534,11 +503,7 @@ describe("production optimize composition owner", () => {
     });
 
     await expect(current.owner.run()).rejects.toThrow(/failed closed/u);
-    expect(closed).toEqual([
-      "factory-second",
-      "factory-first",
-      "bootstrap-store",
-    ]);
+    expect(closed).toEqual(["factory-second", "factory-first", "bootstrap-store"]);
   });
 
   it("attempts every close and fails closed when one close rejects", async () => {

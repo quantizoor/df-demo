@@ -1,38 +1,26 @@
-import {
-  generateKeyPairSync,
-  type KeyObject,
-} from "node:crypto";
+import { generateKeyPairSync, type KeyObject } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
   CanonicalEvaluatorClient,
-  EphemeralCanonicalEvaluatorReplayLedger,
   type CanonicalEvaluatorKeyring,
   type CanonicalEvaluatorTransport,
+  EphemeralCanonicalEvaluatorReplayLedger,
   type ReleasedEvaluationBundle,
 } from "../../src/evaluator/canonical-client.js";
 import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "../../src/evaluator/contracts.js";
-import {
-  resultEnvelopeBehavioralSourceCommitmentHash,
-} from "../../src/evaluator/release-lineage.js";
-import {
-  createEd25519Signature,
-} from "../../src/evidence/signatures.js";
+import { resultEnvelopeBehavioralSourceCommitmentHash } from "../../src/evaluator/release-lineage.js";
+import { createEd25519Signature } from "../../src/evidence/signatures.js";
 import type {
   BehavioralEvidence,
   DiagnosticBrief,
   FailureCards,
 } from "../../src/schemas/artifacts.js";
-import {
-  withContentHash,
-} from "../../src/schemas/canonical.js";
-import type {
-  SignedBehavioralRelease,
-  SignedResultEnvelope,
-} from "../../src/schemas/trusted.js";
+import { withContentHash } from "../../src/schemas/canonical.js";
+import type { SignedBehavioralRelease, SignedResultEnvelope } from "../../src/schemas/trusted.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -102,12 +90,7 @@ function signedDocument(
   privateKey: KeyObject,
   signedAt = DERIVED_AT,
 ): Readonly<Record<string, unknown>> {
-  const signature = createEd25519Signature(
-    body,
-    privateKey,
-    "evaluator-key-1",
-    signedAt,
-  );
+  const signature = createEd25519Signature(body, privateKey, "evaluator-key-1", signedAt);
   return withContentHash({ ...body, signature });
 }
 
@@ -254,15 +237,8 @@ function diagnosticReleaseBundle(
   privateKey: KeyObject,
   legacySourceReference = false,
 ): ReleasedEvaluationBundle {
-  const base = releaseBundle(
-    evaluationRequest,
-    privateKey,
-  ) as ReleasedEvaluationBundle;
-  const {
-    contentHash: _baseContentHash,
-    signature: _baseSignature,
-    ...resultBody
-  } = base.result;
+  const base = releaseBundle(evaluationRequest, privateKey) as ReleasedEvaluationBundle;
+  const { contentHash: _baseContentHash, signature: _baseSignature, ...resultBody } = base.result;
   const provisionalResult = signedDocument(
     {
       ...resultBody,
@@ -279,9 +255,7 @@ function diagnosticReleaseBundle(
   ) as unknown as SignedResultEnvelope;
   const sourceHash = legacySourceReference
     ? provisionalResult.contentHash
-    : resultEnvelopeBehavioralSourceCommitmentHash(
-        provisionalResult,
-      );
+    : resultEnvelopeBehavioralSourceCommitmentHash(provisionalResult);
   const policyVersions = {
     protocol: "protocol-v1",
     broker: "broker-v1",
@@ -408,7 +382,10 @@ class StaticTransport implements CanonicalEvaluatorTransport {
   }
 }
 
-function client(response: unknown, publicKey: KeyObject): {
+function client(
+  response: unknown,
+  publicKey: KeyObject,
+): {
   readonly evaluator: CanonicalEvaluatorClient;
   readonly transport: StaticTransport;
 } {
@@ -430,10 +407,7 @@ describe("canonical evaluator client", () => {
   it("accepts an authenticated, linked, fresh, release-safe bundle", async () => {
     const evaluationRequest = request();
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-    const { evaluator } = client(
-      releaseBundle(evaluationRequest, privateKey),
-      publicKey,
-    );
+    const { evaluator } = client(releaseBundle(evaluationRequest, privateKey), publicKey);
     await expect(evaluator.evaluate(evaluationRequest)).resolves.toMatchObject({
       result: {
         payload: { kind: "validation", disposition: "promote" },
@@ -447,10 +421,7 @@ describe("canonical evaluator client", () => {
   it("accepts the cycle-free behavioral source commitment", async () => {
     const evaluationRequest = request();
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-    const { evaluator } = client(
-      diagnosticReleaseBundle(evaluationRequest, privateKey),
-      publicKey,
-    );
+    const { evaluator } = client(diagnosticReleaseBundle(evaluationRequest, privateKey), publicKey);
     const bundle = await evaluator.evaluate(evaluationRequest);
     expect(bundle.behavioralRelease?.sourceResultEnvelopeHash).toBe(
       resultEnvelopeBehavioralSourceCommitmentHash(bundle.result),
@@ -461,16 +432,10 @@ describe("canonical evaluator client", () => {
     const evaluationRequest = request();
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const { evaluator } = client(
-      diagnosticReleaseBundle(
-        evaluationRequest,
-        privateKey,
-        true,
-      ),
+      diagnosticReleaseBundle(evaluationRequest, privateKey, true),
       publicKey,
     );
-    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(
-      /hash lineage/u,
-    );
+    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(/hash lineage/u);
   });
 
   it("burns one-use requests before submission and rejects a replay", async () => {
@@ -481,9 +446,7 @@ describe("canonical evaluator client", () => {
       publicKey,
     );
     await evaluator.evaluate(evaluationRequest);
-    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(
-      /already been consumed/u,
-    );
+    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(/already been consumed/u);
     expect(transport.calls).toBe(1);
   });
 
@@ -496,9 +459,7 @@ describe("canonical evaluator client", () => {
       }),
       publicKey,
     );
-    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(
-      /cache attestation/u,
-    );
+    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(/cache attestation/iu);
   });
 
   it("rejects a correctly signed but stale release", async () => {

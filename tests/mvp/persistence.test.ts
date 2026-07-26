@@ -3,35 +3,33 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  MVP_SCHEMA_VERSION,
+  buildMatchedCells,
+  type CachedChampionObservation,
+  type ChampionCacheKey,
+  championCacheKey,
+  type EvaluationEnvironment,
+  type HiddenTaskProfile,
+  hiddenTaskHandle,
   MountedChampionCache,
   MountedHiddenTaskCatalog,
   MountedMvpCampaignStateStore,
-  buildMatchedCells,
-  championCacheKey,
-  hiddenTaskHandle,
-  prepareNextMvpOptimization,
-  runMvpCampaignIterations,
-  selectFailureWeightedTasks,
-  sha256,
-  validateMvpExperimentArtifacts,
-  type CachedChampionObservation,
-  type ChampionCacheKey,
-  type EvaluationEnvironment,
-  type HiddenTaskProfile,
+  MVP_SCHEMA_VERSION,
   type MvpExperimentArtifacts,
   type MvpIterationResult,
   type PrivateEvaluationRequest,
+  prepareNextMvpOptimization,
+  runMvpCampaignIterations,
   type SanitizedDiagnosticBrief,
+  selectFailureWeightedTasks,
+  sha256,
   type TrustedHarborTaskDefinition,
+  validateMvpExperimentArtifacts,
 } from "../../src/mvp/index.js";
 
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  );
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("mounted MVP champion cache", () => {
@@ -139,7 +137,7 @@ describe("mounted MVP campaign driver", () => {
           recordOutcomes: vi.fn(async () => undefined),
         },
         evaluator: {
-          evaluateBatch: vi.fn(async (requests) =>
+          evaluateBatch: vi.fn(async (requests: readonly PrivateEvaluationRequest[]) =>
             requests.map((request) => freshObservation(request, 0.5)),
           ),
         },
@@ -192,7 +190,9 @@ describe("mounted MVP campaign driver", () => {
       frozenBaselineRevision: "a".repeat(40),
       initializedAt: "2026-07-26T10:00:00.000Z",
     });
-    const retained = taskProfiles().slice(0, 5).map((profile) => profile.handle);
+    const retained = taskProfiles()
+      .slice(0, 5)
+      .map((profile) => profile.handle);
     const rejected = iterationResult("001-rejected-change", "reject", "a".repeat(40));
     const afterReject = await store.advance({
       expectedRevision: initial.revision,
@@ -286,10 +286,7 @@ function environment(): EvaluationEnvironment {
   };
 }
 
-function cachedObservation(
-  key: ChampionCacheKey,
-  reward: number,
-): CachedChampionObservation {
+function cachedObservation(key: ChampionCacheKey, reward: number): CachedChampionObservation {
   return {
     keyDigest: key.keyDigest,
     taskHandle: key.taskHandle,

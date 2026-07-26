@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  type FeedbackEntry,
   renderFeedbackDocument,
   renderFeedbackEntry,
-  type FeedbackEntry,
 } from "../../src/feedback/render.js";
 
 const entry: FeedbackEntry = {
@@ -63,4 +63,3 @@ describe("feedback rendering", () => {
     expect(() => renderFeedbackDocument("# Feedback", [entry, entry])).toThrow(/unique/u);
   });
 });
-

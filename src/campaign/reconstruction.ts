@@ -33,9 +33,7 @@ export interface CampaignReconstructionInputs {
  * and signed ledger hashes. Selection and allocation identities remain in the
  * trusted broker.
  */
-export function campaignReconstructionInputs(
-  state: CampaignState,
-): CampaignReconstructionInputs {
+export function campaignReconstructionInputs(state: CampaignState): CampaignReconstructionInputs {
   return {
     campaignId: state.campaignId,
     currentStateHash: state.contentHash,
@@ -50,19 +48,16 @@ export function campaignReconstructionInputs(
     champions: state.champions,
     budget: state.budget,
     holdout: state.holdout,
-    lastFullySealedExperimentNumber:
-      state.reconstruction.lastFullySealedExperimentNumber,
+    lastFullySealedExperimentNumber: state.reconstruction.lastFullySealedExperimentNumber,
     experimentSealChainHead: state.reconstruction.experimentSealChainHead,
     lastSealedDecision: state.reconstruction.lastSealedDecision,
-    brokerExposureStateAttestationHash:
-      state.reconstruction.brokerExposureStateAttestationHash,
+    brokerExposureStateAttestationHash: state.reconstruction.brokerExposureStateAttestationHash,
     repeatedTestingLedgerHash: state.reconstruction.repeatedTestingLedgerHash,
     privacyLedgerHash: state.reconstruction.privacyLedgerHash,
     cacheStateAttestationHash: state.reconstruction.cacheStateAttestationHash,
     publicationQueueHash: state.reconstruction.publicationQueueHash,
     lastControllerRecoveryAuthorizationHash:
       state.reconstruction.lastControllerRecoveryAuthorizationHash,
-    lastControllerRecoveryLockHash:
-      state.reconstruction.lastControllerRecoveryLockHash,
+    lastControllerRecoveryLockHash: state.reconstruction.lastControllerRecoveryLockHash,
   };
 }

@@ -6,14 +6,13 @@ import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "../../src/evaluator/contracts.js";
-import { createTrustedOnlineErrorBudgetReservation } from "../../src/evaluator/online-error-authority.js";
 import {
   fingerprintForbiddenReleaseLiteral,
   hashTrustedCacheEvidence,
 } from "../../src/evaluator/deriver.js";
+import { createTrustedOnlineErrorBudgetReservation } from "../../src/evaluator/online-error-authority.js";
 import {
   BoundCanonicalDerivationPolicyResolver,
-  TrustedPolicyResolutionError,
   hashTrustedBehavioralPolicyBinding,
   hashTrustedCachePolicyBinding,
   hashTrustedCanonicalPolicyAttestation,
@@ -26,6 +25,7 @@ import {
   type TrustedCanonicalPolicyMaterialProvider,
   type TrustedGuardrailPolicyBinding,
   type TrustedOnlineErrorBudgetBinding,
+  TrustedPolicyResolutionError,
   type TrustedReleaseScannerBinding,
 } from "../../src/evaluator/policy-resolver.js";
 import {
@@ -42,6 +42,10 @@ const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const forbiddenLiteral = "private-grader-canary";
 
+type MatchedEvaluationRequest = TrustedEvaluationRequest & {
+  readonly champion: NonNullable<TrustedEvaluationRequest["champion"]>;
+};
+
 const retentionPolicy: TrustedRawRetentionPolicy = {
   policyHash: "c".repeat(64),
   storageRoot: "trusted://raw/evaluator/",
@@ -51,7 +55,7 @@ const retentionPolicy: TrustedRawRetentionPolicy = {
   localExportAllowed: false,
 };
 
-function request(): TrustedEvaluationRequest {
+function request(): MatchedEvaluationRequest {
   return {
     schemaVersion: 1,
     requestId: "policy-request-1",
@@ -115,12 +119,8 @@ function panel(): TrustedMatchedPanel {
     dispositionAttestationHash: "7".repeat(64),
     cells: Array.from({ length: 12 }, (_, index) => ({
       sensitivity: "hidden-benchmark-cell" as const,
-      taskId: hiddenTaskId(
-        (index + 1).toString(16).padStart(64, "0"),
-      ),
-      taskRevisionDigest: (index + 20)
-        .toString(16)
-        .padStart(64, "0"),
+      taskId: hiddenTaskId((index + 1).toString(16).padStart(64, "0")),
+      taskRevisionDigest: (index + 20).toString(16).padStart(64, "0"),
       capabilityStratum: index % 2 === 0 ? "shell" : "filesystem",
       replicateOrdinal: 1,
       order: index < 6 ? ("AB" as const) : ("BA" as const),
@@ -176,12 +176,8 @@ function onlineReservation(
   return createTrustedOnlineErrorBudgetReservation({
     request: evaluationRequest,
     requestHash: hashEvaluationRequest(evaluationRequest),
-    dispositionAttestationHash:
-      hiddenPanel.dispositionAttestationHash,
-    stateBefore: createOnlineErrorBudget(
-      0.05,
-      "null-calibration-v1",
-    ),
+    dispositionAttestationHash: hiddenPanel.dispositionAttestationHash,
+    stateBefore: createOnlineErrorBudget(0.05, "null-calibration-v1"),
     reservedAt: "2026-07-01T00:01:15.000Z",
   });
 }
@@ -203,13 +199,11 @@ function material(
     {
       sensitivity: "trusted-cache-policy-binding",
       requestHash,
-      dispositionAttestationHash:
-        hiddenPanel.dispositionAttestationHash,
+      dispositionAttestationHash: hiddenPanel.dispositionAttestationHash,
       cacheAttestationHash: "1".repeat(64),
       cacheEvidenceSetHash: hashTrustedCacheEvidence({
         requestHash,
-        dispositionAttestationHash:
-          hiddenPanel.dispositionAttestationHash,
+        dispositionAttestationHash: hiddenPanel.dispositionAttestationHash,
         repairControls: [],
       }),
       repair: null,
@@ -236,9 +230,7 @@ function material(
       requestHash,
       scannerPolicyVersion: "release-scanner-v1",
       forbiddenReleaseLiterals: [forbiddenLiteral],
-      forbiddenContentFingerprints: [
-        fingerprintForbiddenReleaseLiteral(forbiddenLiteral),
-      ],
+      forbiddenContentFingerprints: [fingerprintForbiddenReleaseLiteral(forbiddenLiteral)],
       graderCanaryFingerprints: ["2".repeat(64)],
     },
     hashTrustedReleaseScannerBinding,
@@ -274,16 +266,12 @@ function material(
     },
     hashTrustedBehavioralPolicyBinding,
   );
-  const unsigned: Omit<
-    TrustedCanonicalPolicyMaterial,
-    "policyAttestationHash"
-  > = {
+  const unsigned: Omit<TrustedCanonicalPolicyMaterial, "policyAttestationHash"> = {
     sensitivity: "trusted-canonical-policy-material",
     schemaVersion: 1,
     requestHash,
     protocolHash: evaluationRequest.protocolHash,
-    dispositionAttestationHash:
-      hiddenPanel.dispositionAttestationHash,
+    dispositionAttestationHash: hiddenPanel.dispositionAttestationHash,
     rawManifestHash: raw.manifest.manifestHash,
     rawArtifactSetHash: raw.manifest.artifactSetHash,
     jobSha256: raw.jobSha256,
@@ -305,8 +293,7 @@ function material(
   };
   return {
     ...unsigned,
-    policyAttestationHash:
-      hashTrustedCanonicalPolicyAttestation(unsigned),
+    policyAttestationHash: hashTrustedCanonicalPolicyAttestation(unsigned),
   };
 }
 
@@ -332,9 +319,7 @@ describe("bound canonical policy resolver", () => {
     );
     const resolver = new BoundCanonicalDerivationPolicyResolver({
       deployment: "trusted-cloud",
-      provider: provider(
-        material(evaluationRequest, hiddenPanel, raw),
-      ),
+      provider: provider(material(evaluationRequest, hiddenPanel, raw)),
     });
     await expect(
       resolver.resolve({
@@ -342,10 +327,7 @@ describe("bound canonical policy resolver", () => {
         panel: hiddenPanel,
         schedule,
         rawRun: raw,
-        onlineErrorReservation: onlineReservation(
-          evaluationRequest,
-          hiddenPanel,
-        ),
+        onlineErrorReservation: onlineReservation(evaluationRequest, hiddenPanel),
       }),
     ).resolves.toMatchObject({
       sensitivity: "trusted-canonical-derivation-policy",
@@ -362,13 +344,7 @@ describe("bound canonical policy resolver", () => {
     });
   });
 
-  it.each([
-    "cache",
-    "guardrails",
-    "scanner",
-    "errorBudget",
-    "behavioral",
-  ] as const)(
+  it.each(["cache", "guardrails", "scanner", "errorBudget", "behavioral"] as const)(
     "fails closed when the %s component changes after sealing",
     async (component) => {
       const evaluationRequest = request();
@@ -397,10 +373,7 @@ describe("bound canonical policy resolver", () => {
           panel: hiddenPanel,
           schedule,
           rawRun: raw,
-          onlineErrorReservation: onlineReservation(
-            evaluationRequest,
-            hiddenPanel,
-          ),
+          onlineErrorReservation: onlineReservation(evaluationRequest, hiddenPanel),
         }),
       ).rejects.toBeInstanceOf(TrustedPolicyResolutionError);
     },
@@ -416,21 +389,14 @@ describe("bound canonical policy resolver", () => {
       evaluationRequest.champion,
     );
     const original = material(evaluationRequest, hiddenPanel, raw);
-    const {
-      policyAttestationHash: _policyAttestationHash,
-      ...originalUnsigned
-    } = original;
-    const lateUnsigned: Omit<
-      TrustedCanonicalPolicyMaterial,
-      "policyAttestationHash"
-    > = {
+    const { policyAttestationHash: _policyAttestationHash, ...originalUnsigned } = original;
+    const lateUnsigned: Omit<TrustedCanonicalPolicyMaterial, "policyAttestationHash"> = {
       ...originalUnsigned,
       sealedAt: "2026-07-01T00:03:00.000Z",
     };
     const late: TrustedCanonicalPolicyMaterial = {
       ...lateUnsigned,
-      policyAttestationHash:
-        hashTrustedCanonicalPolicyAttestation(lateUnsigned),
+      policyAttestationHash: hashTrustedCanonicalPolicyAttestation(lateUnsigned),
     };
     const resolver = new BoundCanonicalDerivationPolicyResolver({
       deployment: "trusted-cloud",
@@ -442,10 +408,7 @@ describe("bound canonical policy resolver", () => {
         panel: hiddenPanel,
         schedule,
         rawRun: raw,
-        onlineErrorReservation: onlineReservation(
-          evaluationRequest,
-          hiddenPanel,
-        ),
+        onlineErrorReservation: onlineReservation(evaluationRequest, hiddenPanel),
       }),
     ).rejects.toBeInstanceOf(TrustedPolicyResolutionError);
   });
@@ -467,18 +430,14 @@ describe("bound canonical policy resolver", () => {
         sourceSetHash: "9".repeat(64),
       },
     } as unknown as TrustedBehavioralPolicyBinding;
-    const {
-      policyAttestationHash: _policyAttestationHash,
-      ...originalUnsigned
-    } = original;
+    const { policyAttestationHash: _policyAttestationHash, ...originalUnsigned } = original;
     const tamperedUnsigned = {
       ...originalUnsigned,
       behavioral,
     };
     const tampered = {
       ...tamperedUnsigned,
-      policyAttestationHash:
-        hashTrustedCanonicalPolicyAttestation(tamperedUnsigned),
+      policyAttestationHash: hashTrustedCanonicalPolicyAttestation(tamperedUnsigned),
     } as TrustedCanonicalPolicyMaterial;
     await expect(
       new BoundCanonicalDerivationPolicyResolver({
@@ -489,10 +448,7 @@ describe("bound canonical policy resolver", () => {
         panel: hiddenPanel,
         schedule,
         rawRun: raw,
-        onlineErrorReservation: onlineReservation(
-          evaluationRequest,
-          hiddenPanel,
-        ),
+        onlineErrorReservation: onlineReservation(evaluationRequest, hiddenPanel),
       }),
     ).rejects.toBeInstanceOf(TrustedPolicyResolutionError);
   });
@@ -505,10 +461,7 @@ describe("bound canonical policy resolver", () => {
       () =>
         new BoundCanonicalDerivationPolicyResolver({
           deployment: "trusted-cloud",
-          provider: provider(
-            material(evaluationRequest, hiddenPanel, raw),
-            "test-only-in-memory",
-          ),
+          provider: provider(material(evaluationRequest, hiddenPanel, raw), "test-only-in-memory"),
         }),
     ).toThrow(TrustedPolicyResolutionError);
   });

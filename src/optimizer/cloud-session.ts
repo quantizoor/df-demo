@@ -11,13 +11,8 @@ import type {
   TrustedCloudArtifactRef,
 } from "../cloud/types.js";
 import type { ExperimentIdentity } from "../domain/models.js";
-import {
-  trustedGitCandidateBundleRef,
-} from "../harness/git-publication.js";
-import {
-  TRUSTED_GIT_SOURCE_BUNDLE_REF,
-  type GitSourceTarget,
-} from "../harness/git-source.js";
+import { trustedGitCandidateBundleRef } from "../harness/git-publication.js";
+import { type GitSourceTarget, TRUSTED_GIT_SOURCE_BUNDLE_REF } from "../harness/git-source.js";
 import type { RepositoryRegistration } from "../harness/repository.js";
 import {
   assertGitObjectId,
@@ -25,8 +20,8 @@ import {
   assertSha256,
   assertSuccessfulCloudExecution,
   assertTrustedGitArtifact,
-  privateGitHubRemoteUrl,
   type PrivateGitHubOrigin,
+  privateGitHubRemoteUrl,
   TRUSTED_GIT_CREDENTIAL_TARGET,
 } from "../harness/trusted-git.js";
 import type {
@@ -38,15 +33,11 @@ import type {
   RepairAggregate,
   ValidationAggregate,
 } from "../orchestrator/contracts.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
-import {
-  createClaudeCodeLaunchSpec,
   type ClaudeCodeLaunchOptions,
   type ClaudeCodeSessionSummary,
+  createClaudeCodeLaunchSpec,
 } from "./claude-code.js";
 
 const WORKING_DIRECTORY = "/workspace";
@@ -73,11 +64,8 @@ const MAXIMUM_RESULT_BYTES = 4 * 1024 * 1024;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const ALLOWED_OPTIMIZER_SECRET_TARGETS = new Set([
-  "ANTHROPIC_FOUNDRY_API_KEY",
-]);
-const SAFE_FOUNDRY_RESOURCE =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const ALLOWED_OPTIMIZER_SECRET_TARGETS = new Set(["ANTHROPIC_FOUNDRY_API_KEY"]);
+const SAFE_FOUNDRY_RESOURCE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const SAFE_NETWORK_HOST =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/u;
 
@@ -90,10 +78,7 @@ export interface TrustedOptimizerArtifactReader {
    * Implementations must read through a verifying trusted artifact bridge.
    * The returned bytes are re-hashed here before any JSON is trusted.
    */
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 export interface OptimizerPrivateGitSource {
@@ -112,9 +97,7 @@ export interface OptimizerBundleGitSource {
   readonly target: GitSourceTarget;
 }
 
-export type OptimizerGitSource =
-  | OptimizerPrivateGitSource
-  | OptimizerBundleGitSource;
+export type OptimizerGitSource = OptimizerPrivateGitSource | OptimizerBundleGitSource;
 
 export interface CloudOptimizerSandboxProfile {
   readonly imageReference: string;
@@ -262,9 +245,7 @@ export interface CloudOptimizerAnalysisResult {
 function experimentId(experiment: ExperimentIdentity): string {
   const value = `${experiment.number.toString().padStart(3, "0")}-${experiment.slug}`;
   if (!EXPERIMENT_ID.test(value)) {
-    throw new CloudOptimizerSessionError(
-      "Optimizer experiment identity is malformed.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer experiment identity is malformed.");
   }
   return value;
 }
@@ -280,9 +261,7 @@ function assertArtifact(
 
 function assertTarget(target: GitSourceTarget): void {
   if (
-    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(
-      target.remoteRef,
-    ) ||
+    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(target.remoteRef) ||
     target.remoteRef.includes("..") ||
     target.remoteRef.includes("@{") ||
     target.remoteRef.includes("//") ||
@@ -303,12 +282,8 @@ function assertOptimizerSecrets(references: readonly SecretReference[]): void {
     references.length !== 1 ||
     references.some(
       (reference) =>
-        !/^[A-Z_][A-Z0-9_]{0,127}$/u.test(
-          reference.sourceEnvironmentName,
-        ) ||
-        !ALLOWED_OPTIMIZER_SECRET_TARGETS.has(
-          reference.targetEnvironmentName,
-        ) ||
+        !/^[A-Z_][A-Z0-9_]{0,127}$/u.test(reference.sourceEnvironmentName) ||
+        !ALLOWED_OPTIMIZER_SECRET_TARGETS.has(reference.targetEnvironmentName) ||
         reference.targetEnvironmentName === TRUSTED_GIT_CREDENTIAL_TARGET ||
         targets.has(reference.targetEnvironmentName),
     )
@@ -326,12 +301,9 @@ function assertSandboxProfile(
   profile: CloudOptimizerSandboxProfile,
   foundryResourceName: string,
 ): void {
-  const foundryHost =
-    `${foundryResourceName}.services.ai.azure.com`;
+  const foundryHost = `${foundryResourceName}.services.ai.azure.com`;
   if (
-    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u.test(
-      profile.imageReference,
-    ) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u.test(profile.imageReference) ||
     !/^sha256:[a-f0-9]{64}$/u.test(profile.imageDigest) ||
     !profile.imageReference.endsWith(`@${profile.imageDigest}`) ||
     !SAFE_ID.test(profile.regionClass) ||
@@ -350,11 +322,8 @@ function assertSandboxProfile(
     profile.lifetimeMs < 1 ||
     profile.lifetimeMs > MAXIMUM_OPTIMIZER_LIFETIME_MS ||
     profile.networkAllowDomains.length < 1 ||
-    profile.networkAllowDomains.some(
-      (host) => !SAFE_NETWORK_HOST.test(host),
-    ) ||
-    new Set(profile.networkAllowDomains).size !==
-      profile.networkAllowDomains.length ||
+    profile.networkAllowDomains.some((host) => !SAFE_NETWORK_HOST.test(host)) ||
+    new Set(profile.networkAllowDomains).size !== profile.networkAllowDomains.length ||
     !SAFE_FOUNDRY_RESOURCE.test(foundryResourceName) ||
     !profile.networkAllowDomains.includes(foundryHost) ||
     profile.networkAllowDomains.includes("api.anthropic.com")
@@ -382,23 +351,17 @@ function sourceIdentity(source: OptimizerGitSource): {
     }
     return {
       registrationId: source.registration.registrationId,
-      originRepositoryHash:
-        source.registration.originFingerprint.repositoryHash,
+      originRepositoryHash: source.registration.originFingerprint.repositoryHash,
     };
   }
   assertSha256(source.registrationId, "Optimizer source registration");
   assertSha256(source.originRepositoryHash, "Optimizer source origin");
-  assertArtifact(
-    source.bundle,
-    "application/vnd.git.bundle",
-    "Optimizer source Git bundle",
-  );
+  assertArtifact(source.bundle, "application/vnd.git.bundle", "Optimizer source Git bundle");
   if (
     source.target.remoteRef !== source.bundleRef ||
     (source.bundleRef !== TRUSTED_GIT_SOURCE_BUNDLE_REF &&
-      source.bundleRef !== trustedGitCandidateBundleRef(
-        source.bundleRef.slice("refs/heads/df/bundle/".length),
-      ))
+      source.bundleRef !==
+        trustedGitCandidateBundleRef(source.bundleRef.slice("refs/heads/df/bundle/".length)))
   ) {
     throw new CloudOptimizerSessionError(
       "Optimizer bundle source ref is outside the candidate namespace.",
@@ -420,9 +383,7 @@ function exactSecretsForSource(
       : [...optimizerSecrets];
   const targets = all.map((binding) => binding.targetEnvironmentName);
   if (new Set(targets).size !== targets.length) {
-    throw new CloudOptimizerSessionError(
-      "Optimizer and Git credential planes overlap.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer and Git credential planes overlap.");
   }
   return all;
 }
@@ -511,10 +472,7 @@ function setupCommand(input: {
     SETUP_RESULT_REMOTE_PATH,
   ];
   if (input.source.mode === "private-github") {
-    arguments_.push(
-      "--remote",
-      privateGitHubRemoteUrl(input.source.origin),
-    );
+    arguments_.push("--remote", privateGitHubRemoteUrl(input.source.origin));
   } else {
     arguments_.push(
       "--source-bundle",
@@ -542,9 +500,7 @@ function setupCommand(input: {
       GIT_TERMINAL_PROMPT: "0",
     },
     secretReferences:
-      input.source.mode === "private-github"
-        ? [input.source.origin.credential]
-        : [],
+      input.source.mode === "private-github" ? [input.source.origin.credential] : [],
   };
 }
 
@@ -554,10 +510,7 @@ function claudeWorkerCommand(
   campaignId: string,
   experimentId_: string,
 ): RemoteCommandSpec {
-  const encoded = Buffer.from(
-    canonicalJson(spec.command),
-    "utf8",
-  ).toString("base64url");
+  const encoded = Buffer.from(canonicalJson(spec.command), "utf8").toString("base64url");
   return {
     executionId: `claude-${canonicalHash({
       phase,
@@ -695,13 +648,8 @@ function assertExactKeys(
   label: string,
 ): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
-    throw new CloudOptimizerSessionError(
-      `${label} contains non-canonical fields.`,
-    );
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
+    throw new CloudOptimizerSessionError(`${label} contains non-canonical fields.`);
   }
 }
 
@@ -711,9 +659,7 @@ function assertContentHash(value: Readonly<Record<string, unknown>>): void {
     !SHA256.test(value.contentHash) ||
     value.contentHash !== computeContentHash(value)
   ) {
-    throw new CloudOptimizerSessionError(
-      "Optimizer worker result content hash is invalid.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer worker result content hash is invalid.");
   }
 }
 
@@ -726,9 +672,7 @@ async function readCanonicalResult(
     artifact.byteLength <= 0 ||
     artifact.byteLength > MAXIMUM_RESULT_BYTES
   ) {
-    throw new CloudOptimizerSessionError(
-      "Optimizer result artifact metadata is invalid.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer result artifact metadata is invalid.");
   }
   const raw = await reader.readUtf8(artifact, MAXIMUM_RESULT_BYTES);
   if (
@@ -743,14 +687,10 @@ async function readCanonicalResult(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new CloudOptimizerSessionError(
-      "Optimizer result artifact is not JSON.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer result artifact is not JSON.");
   }
   if (!isRecord(parsed) || raw !== `${canonicalJson(parsed)}\n`) {
-    throw new CloudOptimizerSessionError(
-      "Optimizer result artifact is not canonical JSON.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer result artifact is not canonical JSON.");
   }
   assertContentHash(parsed);
   return parsed;
@@ -905,10 +845,7 @@ function parseClaudeManifest(
   };
 }
 
-function artifactMetadata(
-  value: unknown,
-  label: string,
-): OptimizerSealedArtifactMetadata {
+function artifactMetadata(value: unknown, label: string): OptimizerSealedArtifactMetadata {
   if (!isRecord(value)) {
     throw new CloudOptimizerSessionError(`${label} metadata is malformed.`);
   }
@@ -946,8 +883,7 @@ function parseFrozenHypothesis(value: unknown): FrozenHypothesis {
     typeof value.hash !== "string" ||
     !SHA256.test(value.hash) ||
     (value.sourceBriefHash !== null &&
-      (typeof value.sourceBriefHash !== "string" ||
-        !SHA256.test(value.sourceBriefHash))) ||
+      (typeof value.sourceBriefHash !== "string" || !SHA256.test(value.sourceBriefHash))) ||
     typeof value.causalClaim !== "string" ||
     typeof value.intervention !== "string" ||
     typeof value.predictedRepairBehavior !== "string" ||
@@ -997,9 +933,7 @@ function assertDownloadedArtifact(
     artifact.sha256 !== metadata.sha256 ||
     artifact.byteLength !== metadata.byteLength
   ) {
-    throw new CloudOptimizerSessionError(
-      `${label} does not match the sealed worker manifest.`,
-    );
+    throw new CloudOptimizerSessionError(`${label} does not match the sealed worker manifest.`);
   }
 }
 
@@ -1123,9 +1057,7 @@ function parseAnalysisSeal(
 
 function campaignIdFor(experiment: ExperimentIdentity): string {
   if (!SAFE_ID.test(experiment.lineageId)) {
-    throw new CloudOptimizerSessionError(
-      "Optimizer campaign identifier is malformed.",
-    );
+    throw new CloudOptimizerSessionError("Optimizer campaign identifier is malformed.");
   }
   return experiment.lineageId;
 }
@@ -1134,10 +1066,7 @@ export class CloudOnlyClaudeOptimizerSession {
   readonly #options: CloudOptimizerSessionOptions;
 
   constructor(options: CloudOptimizerSessionOptions) {
-    assertSandboxProfile(
-      options.sandbox,
-      options.claude.foundryResourceName,
-    );
+    assertSandboxProfile(options.sandbox, options.claude.foundryResourceName);
     assertOptimizerSecrets(options.optimizerSecretReferences);
     assertArtifact(
       options.workerArtifact,
@@ -1151,10 +1080,7 @@ export class CloudOnlyClaudeOptimizerSession {
       "Claude optimizer plugin",
       512 * 1024 * 1024,
     );
-    if (
-      options.sandbox.lifetimeMs <
-      options.claude.timeoutMs + 42 * 60_000
-    ) {
+    if (options.sandbox.lifetimeMs < options.claude.timeoutMs + 42 * 60_000) {
       throw new CloudOptimizerSessionError(
         "Optimizer lease leaves insufficient time for setup, Claude, sealing, and confirmed teardown.",
       );
@@ -1165,33 +1091,19 @@ export class CloudOnlyClaudeOptimizerSession {
       workerArtifact: structuredClone(options.workerArtifact),
       pluginArtifact: structuredClone(options.pluginArtifact),
       claude: structuredClone(options.claude),
-      optimizerSecretReferences: structuredClone(
-        options.optimizerSecretReferences,
-      ),
+      optimizerSecretReferences: structuredClone(options.optimizerSecretReferences),
     };
   }
 
-  async propose(
-    input: CloudOptimizerProposalInput,
-  ): Promise<CloudOptimizerProposalResult> {
+  async propose(input: CloudOptimizerProposalInput): Promise<CloudOptimizerProposalResult> {
     const phase = "proposal" as const;
     const id = experimentId(input.context.experiment);
     const campaignId = campaignIdFor(input.context.experiment);
-    if (
-      input.source.target.commitSha !==
-      input.context.activeChampion.activeCommit
-    ) {
-      throw new CloudOptimizerSessionError(
-        "Optimizer source is not the active champion.",
-      );
+    if (input.source.target.commitSha !== input.context.activeChampion.activeCommit) {
+      throw new CloudOptimizerSessionError("Optimizer source is not the active champion.");
     }
-    if (
-      input.context.sourceOnlyBootstrap !==
-      (input.context.experiment.number === 1)
-    ) {
-      throw new CloudOptimizerSessionError(
-        "Optimizer bootstrap evidence policy is inconsistent.",
-      );
+    if (input.context.sourceOnlyBootstrap !== (input.context.experiment.number === 1)) {
+      throw new CloudOptimizerSessionError("Optimizer bootstrap evidence policy is inconsistent.");
     }
     assertArtifact(
       input.releasedEvidence,
@@ -1218,19 +1130,12 @@ export class CloudOnlyClaudeOptimizerSession {
     });
   }
 
-  async analyze(
-    input: CloudOptimizerAnalysisInput,
-  ): Promise<CloudOptimizerAnalysisResult> {
+  async analyze(input: CloudOptimizerAnalysisInput): Promise<CloudOptimizerAnalysisResult> {
     const phase = "analysis" as const;
     const id = experimentId(input.experiment);
     const campaignId = campaignIdFor(input.experiment);
-    if (
-      input.proposal.seal.experimentId !== id ||
-      input.proposal.seal.campaignId !== campaignId
-    ) {
-      throw new CloudOptimizerSessionError(
-        "Analysis proposal belongs to another experiment.",
-      );
+    if (input.proposal.seal.experimentId !== id || input.proposal.seal.campaignId !== campaignId) {
+      throw new CloudOptimizerSessionError("Analysis proposal belongs to another experiment.");
     }
     assertArtifact(
       input.releasedEvidence,
@@ -1304,34 +1209,18 @@ export class CloudOnlyClaudeOptimizerSession {
     evidence: TrustedCloudArtifactRef,
     state?: TrustedCloudArtifactRef,
   ): Promise<void> {
-    await this.#options.provider.upload(
-      lease,
-      this.#options.workerArtifact,
-      WORKER_REMOTE_PATH,
-    );
+    await this.#options.provider.upload(lease, this.#options.workerArtifact, WORKER_REMOTE_PATH);
     await this.#options.provider.upload(
       lease,
       this.#options.pluginArtifact,
       PLUGIN_ARCHIVE_REMOTE_PATH,
     );
-    await this.#options.provider.upload(
-      lease,
-      evidence,
-      EVIDENCE_ARCHIVE_REMOTE_PATH,
-    );
+    await this.#options.provider.upload(lease, evidence, EVIDENCE_ARCHIVE_REMOTE_PATH);
     if (source.mode === "trusted-bundle") {
-      await this.#options.provider.upload(
-        lease,
-        source.bundle,
-        SOURCE_BUNDLE_REMOTE_PATH,
-      );
+      await this.#options.provider.upload(lease, source.bundle, SOURCE_BUNDLE_REMOTE_PATH);
     }
     if (state !== undefined) {
-      await this.#options.provider.upload(
-        lease,
-        state,
-        INPUT_STATE_REMOTE_PATH,
-      );
+      await this.#options.provider.upload(lease, state, INPUT_STATE_REMOTE_PATH);
     }
   }
 
@@ -1358,17 +1247,14 @@ export class CloudOnlyClaudeOptimizerSession {
   }): Promise<CloudOptimizerProposalResult> {
     let lease: SandboxLease | undefined;
     let result: CloudOptimizerProposalResult | undefined;
-    let failure: unknown;
+    let failure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       ({ lease } = await this.#prepareLease({
         source: input.input.source,
         requestId: input.requestId,
       }));
-      await this.#uploadCommon(
-        lease,
-        input.input.source,
-        input.input.releasedEvidence,
-      );
+      await this.#uploadCommon(lease, input.input.source, input.input.releasedEvidence);
       const setupReceipt = await this.#execute(
         lease,
         setupCommand({
@@ -1391,10 +1277,7 @@ export class CloudOnlyClaudeOptimizerSession {
         },
       );
       const setup = parseSetupManifest(
-        await readCanonicalResult(
-          this.#options.artifactReader,
-          setupManifestArtifact,
-        ),
+        await readCanonicalResult(this.#options.artifactReader, setupManifestArtifact),
         {
           phase: input.phase,
           campaignId: input.campaignId,
@@ -1421,12 +1304,7 @@ export class CloudOnlyClaudeOptimizerSession {
       });
       const claudeReceipt = await this.#execute(
         lease,
-        claudeWorkerCommand(
-          launch,
-          input.phase,
-          input.campaignId,
-          input.id,
-        ),
+        claudeWorkerCommand(launch, input.phase, input.campaignId, input.id),
         "Claude proposal",
       );
       const claudeManifestArtifact = await this.#options.provider.download(
@@ -1438,10 +1316,7 @@ export class CloudOnlyClaudeOptimizerSession {
         },
       );
       const claude = parseClaudeManifest(
-        await readCanonicalResult(
-          this.#options.artifactReader,
-          claudeManifestArtifact,
-        ),
+        await readCanonicalResult(this.#options.artifactReader, claudeManifestArtifact),
         {
           phase: input.phase,
           campaignId: input.campaignId,
@@ -1462,38 +1337,27 @@ export class CloudOnlyClaudeOptimizerSession {
         }),
         "Optimizer proposal sealing",
       );
-      const [
-        sealManifestArtifact,
-        candidateBundle,
-        candidateDiff,
-        sessionState,
-      ] = await Promise.all([
-        this.#options.provider.download(lease, SEALED_RESULT_REMOTE_PATH, {
-          mediaType: "application/json",
-          maximumByteLength: MAXIMUM_RESULT_BYTES,
-        }),
-        this.#options.provider.download(
-          lease,
-          CANDIDATE_BUNDLE_REMOTE_PATH,
-          {
+      const [sealManifestArtifact, candidateBundle, candidateDiff, sessionState] =
+        await Promise.all([
+          this.#options.provider.download(lease, SEALED_RESULT_REMOTE_PATH, {
+            mediaType: "application/json",
+            maximumByteLength: MAXIMUM_RESULT_BYTES,
+          }),
+          this.#options.provider.download(lease, CANDIDATE_BUNDLE_REMOTE_PATH, {
             mediaType: "application/vnd.git.bundle",
             maximumByteLength: 2 * 1024 * 1024 * 1024,
-          },
-        ),
-        this.#options.provider.download(lease, CANDIDATE_DIFF_REMOTE_PATH, {
-          mediaType: "text/x-diff",
-          maximumByteLength: 2 * 1024 * 1024 * 1024,
-        }),
-        this.#options.provider.download(lease, OUTPUT_STATE_REMOTE_PATH, {
-          mediaType: "application/x-tar",
-          maximumByteLength: 2 * 1024 * 1024 * 1024,
-        }),
-      ]);
+          }),
+          this.#options.provider.download(lease, CANDIDATE_DIFF_REMOTE_PATH, {
+            mediaType: "text/x-diff",
+            maximumByteLength: 2 * 1024 * 1024 * 1024,
+          }),
+          this.#options.provider.download(lease, OUTPUT_STATE_REMOTE_PATH, {
+            mediaType: "application/x-tar",
+            maximumByteLength: 2 * 1024 * 1024 * 1024,
+          }),
+        ]);
       const seal = parseProposalSeal(
-        await readCanonicalResult(
-          this.#options.artifactReader,
-          sealManifestArtifact,
-        ),
+        await readCanonicalResult(this.#options.artifactReader, sealManifestArtifact),
         {
           campaignId: input.campaignId,
           experimentId: input.id,
@@ -1507,18 +1371,8 @@ export class CloudOnlyClaudeOptimizerSession {
         "application/vnd.git.bundle",
         "Candidate bundle",
       );
-      assertDownloadedArtifact(
-        candidateDiff,
-        seal.diff,
-        "text/x-diff",
-        "Candidate diff",
-      );
-      assertDownloadedArtifact(
-        sessionState,
-        seal.state,
-        "application/x-tar",
-        "Optimizer state",
-      );
+      assertDownloadedArtifact(candidateDiff, seal.diff, "text/x-diff", "Candidate diff");
+      assertDownloadedArtifact(sessionState, seal.state, "application/x-tar", "Optimizer state");
       result = {
         proposal: {
           hypothesis: seal.hypothesis,
@@ -1540,22 +1394,34 @@ export class CloudOnlyClaudeOptimizerSession {
         },
       };
     } catch (error) {
-      failure = error;
+      failure = { error };
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          throw new CloudOptimizerSessionError(
-            "Optimizer sandbox teardown failed; no result is usable.",
-          );
+        } catch (error) {
+          teardownFailure = { error };
         }
       }
     }
-    if (failure !== undefined || result === undefined) {
+    if (teardownFailure !== undefined) {
       throw new CloudOptimizerSessionError(
-        "Cloud-only optimizer proposal failed closed.",
+        "Optimizer sandbox teardown failed; no result is usable.",
+        {
+          cause:
+            failure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [failure.error, teardownFailure.error],
+                  "Optimizer proposal and sandbox teardown both failed.",
+                ),
+        },
       );
+    }
+    if (failure !== undefined || result === undefined) {
+      throw new CloudOptimizerSessionError("Cloud-only optimizer proposal failed closed.", {
+        cause: failure?.error,
+      });
     }
     return result;
   }
@@ -1574,7 +1440,8 @@ export class CloudOnlyClaudeOptimizerSession {
   }): Promise<CloudOptimizerAnalysisResult> {
     let lease: SandboxLease | undefined;
     let result: CloudOptimizerAnalysisResult | undefined;
-    let failure: unknown;
+    let failure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       ({ lease } = await this.#prepareLease({
         source: input.source,
@@ -1609,10 +1476,7 @@ export class CloudOnlyClaudeOptimizerSession {
         },
       );
       const setup = parseSetupManifest(
-        await readCanonicalResult(
-          this.#options.artifactReader,
-          setupManifestArtifact,
-        ),
+        await readCanonicalResult(this.#options.artifactReader, setupManifestArtifact),
         {
           phase: input.phase,
           campaignId: input.campaignId,
@@ -1639,12 +1503,7 @@ export class CloudOnlyClaudeOptimizerSession {
       });
       const claudeReceipt = await this.#execute(
         lease,
-        claudeWorkerCommand(
-          launch,
-          input.phase,
-          input.campaignId,
-          input.id,
-        ),
+        claudeWorkerCommand(launch, input.phase, input.campaignId, input.id),
         "Claude analysis",
       );
       const claudeManifestArtifact = await this.#options.provider.download(
@@ -1656,10 +1515,7 @@ export class CloudOnlyClaudeOptimizerSession {
         },
       );
       const claude = parseClaudeManifest(
-        await readCanonicalResult(
-          this.#options.artifactReader,
-          claudeManifestArtifact,
-        ),
+        await readCanonicalResult(this.#options.artifactReader, claudeManifestArtifact),
         {
           phase: input.phase,
           campaignId: input.campaignId,
@@ -1689,22 +1545,14 @@ export class CloudOnlyClaudeOptimizerSession {
         }),
       ]);
       const seal = parseAnalysisSeal(
-        await readCanonicalResult(
-          this.#options.artifactReader,
-          sealManifestArtifact,
-        ),
+        await readCanonicalResult(this.#options.artifactReader, sealManifestArtifact),
         {
           campaignId: input.campaignId,
           experimentId: input.id,
           candidateCommit: input.source.target.commitSha,
         },
       );
-      assertDownloadedArtifact(
-        sessionState,
-        seal.state,
-        "application/x-tar",
-        "Optimizer state",
-      );
+      assertDownloadedArtifact(sessionState, seal.state, "application/x-tar", "Optimizer state");
       result = {
         analysisHash: seal.analysisHash,
         rollbackRequired: seal.rollbackRequired,
@@ -1722,22 +1570,34 @@ export class CloudOnlyClaudeOptimizerSession {
         },
       };
     } catch (error) {
-      failure = error;
+      failure = { error };
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          throw new CloudOptimizerSessionError(
-            "Optimizer analysis sandbox teardown failed; no result is usable.",
-          );
+        } catch (error) {
+          teardownFailure = { error };
         }
       }
     }
-    if (failure !== undefined || result === undefined) {
+    if (teardownFailure !== undefined) {
       throw new CloudOptimizerSessionError(
-        "Cloud-only optimizer analysis failed closed.",
+        "Optimizer analysis sandbox teardown failed; no result is usable.",
+        {
+          cause:
+            failure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [failure.error, teardownFailure.error],
+                  "Optimizer analysis and sandbox teardown both failed.",
+                ),
+        },
       );
+    }
+    if (failure !== undefined || result === undefined) {
+      throw new CloudOptimizerSessionError("Cloud-only optimizer analysis failed closed.", {
+        cause: failure?.error,
+      });
     }
     return result;
   }
@@ -1748,20 +1608,10 @@ export interface CloudOptimizerSessionRecordStore {
    * Implementations are immutable/idempotent by experiment identity and must
    * reject a second record with different canonical content.
    */
-  put(
-    experiment: ExperimentIdentity,
-    result: CloudOptimizerProposalResult,
-  ): Promise<void>;
-  get(
-    experiment: ExperimentIdentity,
-  ): Promise<CloudOptimizerProposalResult | null>;
-  putAnalysis(
-    experiment: ExperimentIdentity,
-    result: CloudOptimizerAnalysisResult,
-  ): Promise<void>;
-  getAnalysis(
-    experiment: ExperimentIdentity,
-  ): Promise<CloudOptimizerAnalysisResult | null>;
+  put(experiment: ExperimentIdentity, result: CloudOptimizerProposalResult): Promise<void>;
+  get(experiment: ExperimentIdentity): Promise<CloudOptimizerProposalResult | null>;
+  putAnalysis(experiment: ExperimentIdentity, result: CloudOptimizerAnalysisResult): Promise<void>;
+  getAnalysis(experiment: ExperimentIdentity): Promise<CloudOptimizerAnalysisResult | null>;
 }
 
 export interface CloudOptimizerAdapterResolver {
@@ -1795,12 +1645,10 @@ export function createCloudOnlyClaudeOptimizerAdapter(input: {
         if (
           existing.seal.campaignId !== context.experiment.lineageId ||
           existing.seal.experimentId !== experimentId(context.experiment) ||
-          existing.seal.sourceCommit !==
-            context.activeChampion.activeCommit ||
+          existing.seal.sourceCommit !== context.activeChampion.activeCommit ||
           existing.proposal.hypothesis.sourceBriefHash !==
             (context.diagnosticBrief?.hash ?? null) ||
-          context.sourceOnlyBootstrap !==
-            (context.experiment.number === 1)
+          context.sourceOnlyBootstrap !== (context.experiment.number === 1)
         ) {
           throw new CloudOptimizerSessionError(
             "Stored optimizer proposal is detached from the requested context.",
@@ -1821,24 +1669,18 @@ export function createCloudOnlyClaudeOptimizerAdapter(input: {
       const proposal = await input.records.get(analysisInput.experiment);
       if (
         proposal === null ||
-        canonicalHash(proposal.proposal.hypothesis) !==
-          canonicalHash(analysisInput.hypothesis) ||
-        canonicalHash(proposal.proposal.candidate) !==
-          canonicalHash(analysisInput.candidate)
+        canonicalHash(proposal.proposal.hypothesis) !== canonicalHash(analysisInput.hypothesis) ||
+        canonicalHash(proposal.proposal.candidate) !== canonicalHash(analysisInput.candidate)
       ) {
         throw new CloudOptimizerSessionError(
           "Optimizer analysis cannot resolve the exact sealed proposal.",
         );
       }
-      const existingAnalysis = await input.records.getAnalysis(
-        analysisInput.experiment,
-      );
+      const existingAnalysis = await input.records.getAnalysis(analysisInput.experiment);
       if (existingAnalysis !== null) {
         if (
-          existingAnalysis.seal.candidateCommit !==
-            analysisInput.candidate.commit ||
-          existingAnalysis.seal.experimentId !==
-            experimentId(analysisInput.experiment)
+          existingAnalysis.seal.candidateCommit !== analysisInput.candidate.commit ||
+          existingAnalysis.seal.experimentId !== experimentId(analysisInput.experiment)
         ) {
           throw new CloudOptimizerSessionError(
             "Stored optimizer analysis is detached from the requested candidate.",

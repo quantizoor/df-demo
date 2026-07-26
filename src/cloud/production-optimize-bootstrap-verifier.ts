@@ -1,18 +1,14 @@
 import { createPublicKey } from "node:crypto";
 
 import { verifyEd25519Signature } from "../evidence/signatures.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, sha256 } from "../schemas/canonical.js";
 import {
   assertProductionOptimizeBootstrapDescriptor,
-  productionOptimizeBootstrapDescriptorHash,
-  productionOptimizeBootstrapVerificationCommitmentHash,
   type ProductionOptimizeBootstrapDescriptor,
   type ProductionOptimizeBootstrapDescriptorUnsigned,
   type ProductionOptimizeBootstrapDescriptorVerification,
+  productionOptimizeBootstrapDescriptorHash,
+  productionOptimizeBootstrapVerificationCommitmentHash,
   type TrustedProductionOptimizeBootstrapDescriptorVerifier,
 } from "./production-optimize-bootstrap.js";
 
@@ -37,8 +33,7 @@ export interface ProductionOptimizeBootstrapKeyRotation {
 
 export interface ProductionOptimizeBootstrapPublicKeyRequest {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimize-bootstrap-public-key-request.v1";
+  readonly domain: "dark-factory.production-optimize-bootstrap-public-key-request.v1";
   readonly purpose: typeof PRODUCTION_OPTIMIZE_BOOTSTRAP_KEY_PURPOSE;
   readonly keyId: string;
   readonly keyVersion: string;
@@ -67,8 +62,7 @@ export interface TrustedProductionOptimizeBootstrapPublicKey {
 }
 
 export interface TrustedProductionOptimizeBootstrapPublicKeyAuthority {
-  readonly boundary:
-    "trusted-cloud-production-optimize-bootstrap-public-key-authority";
+  readonly boundary: "trusted-cloud-production-optimize-bootstrap-public-key-authority";
   resolve(
     request: ProductionOptimizeBootstrapPublicKeyRequest,
   ): Promise<TrustedProductionOptimizeBootstrapPublicKey | undefined>;
@@ -95,8 +89,7 @@ interface CapturedRotation extends ProductionOptimizeBootstrapKeyRotation {
 }
 
 export class ProductionOptimizeBootstrapDescriptorVerifierError extends Error {
-  override readonly name =
-    "ProductionOptimizeBootstrapDescriptorVerifierError";
+  override readonly name = "ProductionOptimizeBootstrapDescriptorVerifierError";
 
   constructor() {
     super("Production optimize bootstrap descriptor verification failed.");
@@ -107,9 +100,7 @@ function fail(): never {
   throw new ProductionOptimizeBootstrapDescriptorVerifierError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -124,10 +115,7 @@ function exactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -135,10 +123,7 @@ function exactKeys(
 function timestamp(value: unknown): number {
   if (typeof value !== "string") fail();
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail();
   }
   return parsed;
@@ -146,10 +131,7 @@ function timestamp(value: unknown): number {
 
 function readNow(now: () => Date): Date {
   const value = now();
-  if (
-    !(value instanceof Date) ||
-    !Number.isFinite(value.getTime())
-  ) {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
     fail();
   }
   return new Date(value.getTime());
@@ -170,8 +152,7 @@ function unsignedDescriptor(
     authoritySetHash: descriptor.authoritySetHash,
     verificationKeySetHash: descriptor.verificationKeySetHash,
     verifierPolicyHash: descriptor.verifierPolicyHash,
-    verificationCommitmentHash:
-      descriptor.verificationCommitmentHash,
+    verificationCommitmentHash: descriptor.verificationCommitmentHash,
     issuedAt: descriptor.issuedAt,
     expiresAt: descriptor.expiresAt,
   };
@@ -180,22 +161,12 @@ function unsignedDescriptor(
 function captureRotations(
   rotations: readonly ProductionOptimizeBootstrapKeyRotation[],
 ): readonly CapturedRotation[] {
-  if (
-    !Array.isArray(rotations) ||
-    rotations.length < 1 ||
-    rotations.length > MAXIMUM_ROTATIONS
-  ) {
+  if (!Array.isArray(rotations) || rotations.length < 1 || rotations.length > MAXIMUM_ROTATIONS) {
     fail();
   }
   const captured = rotations.map((value): CapturedRotation => {
-    exactKeys(value, [
-      "keyId",
-      "keyVersion",
-      "validFrom",
-      "validUntil",
-    ]);
-    const rotation =
-      value as unknown as ProductionOptimizeBootstrapKeyRotation;
+    exactKeys(value, ["keyId", "keyVersion", "validFrom", "validUntil"]);
+    const rotation = value as unknown as ProductionOptimizeBootstrapKeyRotation;
     const validFromMs = timestamp(rotation.validFrom);
     const validUntilMs = timestamp(rotation.validUntil);
     if (
@@ -215,9 +186,7 @@ function captureRotations(
     });
   });
   const versions = new Set(
-    captured.map(
-      (rotation) => `${rotation.keyId}\u0000${rotation.keyVersion}`,
-    ),
+    captured.map((rotation) => `${rotation.keyId}\u0000${rotation.keyVersion}`),
   );
   if (versions.size !== captured.length) fail();
   captured.sort((left, right) => {
@@ -261,8 +230,7 @@ function assertPublicKey(
     "verificationKeySetHash",
     "publicKeySpkiDer",
   ]);
-  const key =
-    value as unknown as TrustedProductionOptimizeBootstrapPublicKey;
+  const key = value as unknown as TrustedProductionOptimizeBootstrapPublicKey;
   if (
     key.boundary !== "trusted-cloud-key-material" ||
     key.algorithm !== "Ed25519" ||
@@ -285,10 +253,8 @@ function assertPublicKey(
 export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
   implements TrustedProductionOptimizeBootstrapDescriptorVerifier
 {
-  readonly boundary =
-    "trusted-cloud-bootstrap-descriptor-verifier" as const;
-  readonly #resolveKey:
-    TrustedProductionOptimizeBootstrapPublicKeyAuthority["resolve"];
+  readonly boundary = "trusted-cloud-bootstrap-descriptor-verifier" as const;
+  readonly #resolveKey: TrustedProductionOptimizeBootstrapPublicKeyAuthority["resolve"];
   readonly #rotations: readonly CapturedRotation[];
   readonly #authoritySetHash: string;
   readonly #verificationKeySetHash: string;
@@ -297,12 +263,9 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
   readonly #maximumClockSkewMs: number;
   readonly #now: () => Date;
 
-  constructor(
-    options: Ed25519ProductionOptimizeBootstrapDescriptorVerifierOptions,
-  ) {
+  constructor(options: Ed25519ProductionOptimizeBootstrapDescriptorVerifierOptions) {
     try {
-      const maximumClockSkewMs =
-        options.maximumClockSkewMs ?? 0;
+      const maximumClockSkewMs = options.maximumClockSkewMs ?? 0;
       if (
         options.authority.boundary !==
           "trusted-cloud-production-optimize-bootstrap-public-key-authority" ||
@@ -316,21 +279,16 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
         !Number.isSafeInteger(maximumClockSkewMs) ||
         maximumClockSkewMs < 0 ||
         maximumClockSkewMs > MAXIMUM_CLOCK_SKEW_MS ||
-        (options.now !== undefined &&
-          typeof options.now !== "function")
+        (options.now !== undefined && typeof options.now !== "function")
       ) {
         fail();
       }
-      this.#resolveKey = options.authority.resolve.bind(
-        options.authority,
-      );
+      this.#resolveKey = options.authority.resolve.bind(options.authority);
       this.#rotations = captureRotations(options.rotations);
       this.#authoritySetHash = options.authoritySetHash;
-      this.#verificationKeySetHash =
-        options.verificationKeySetHash;
+      this.#verificationKeySetHash = options.verificationKeySetHash;
       this.#verifierPolicyHash = options.verifierPolicyHash;
-      this.#verificationCommitmentHash =
-        options.verificationCommitmentHash;
+      this.#verificationCommitmentHash = options.verificationCommitmentHash;
       this.#maximumClockSkewMs = maximumClockSkewMs;
       this.#now = options.now ?? (() => new Date());
     } catch {
@@ -349,22 +307,16 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
       assertProductionOptimizeBootstrapDescriptor(snapshot, startedAt);
       const unsigned = unsignedDescriptor(snapshot);
       if (
-        productionOptimizeBootstrapDescriptorHash(unsigned) !==
-          snapshot.descriptorHash ||
+        productionOptimizeBootstrapDescriptorHash(unsigned) !== snapshot.descriptorHash ||
         snapshot.authoritySetHash !== this.#authoritySetHash ||
-        snapshot.verificationKeySetHash !==
-          this.#verificationKeySetHash ||
+        snapshot.verificationKeySetHash !== this.#verificationKeySetHash ||
         snapshot.verifierPolicyHash !== this.#verifierPolicyHash ||
-        snapshot.verificationCommitmentHash !==
-          this.#verificationCommitmentHash
+        snapshot.verificationCommitmentHash !== this.#verificationCommitmentHash
       ) {
         fail();
       }
       const signedAtMs = timestamp(snapshot.signature.signedAt);
-      if (
-        signedAtMs >
-        startedAt.getTime() + this.#maximumClockSkewMs
-      ) {
+      if (signedAtMs > startedAt.getTime() + this.#maximumClockSkewMs) {
         fail();
       }
       const matchingRotations = this.#rotations.filter(
@@ -376,29 +328,23 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
       if (matchingRotations.length !== 1) fail();
       const rotation = matchingRotations[0];
       if (rotation === undefined) fail();
-      const request: ProductionOptimizeBootstrapPublicKeyRequest =
-        Object.freeze({
-          schemaVersion: 1,
-          domain:
-            "dark-factory.production-optimize-bootstrap-public-key-request.v1",
-          purpose: PRODUCTION_OPTIMIZE_BOOTSTRAP_KEY_PURPOSE,
-          keyId: rotation.keyId,
-          keyVersion: rotation.keyVersion,
-          signedAt: snapshot.signature.signedAt,
-          authoritySetHash: this.#authoritySetHash,
-          verificationKeySetHash:
-            this.#verificationKeySetHash,
-          verifierPolicyHash: this.#verifierPolicyHash,
-          verificationCommitmentHash:
-            this.#verificationCommitmentHash,
-        });
+      const request: ProductionOptimizeBootstrapPublicKeyRequest = Object.freeze({
+        schemaVersion: 1,
+        domain: "dark-factory.production-optimize-bootstrap-public-key-request.v1",
+        purpose: PRODUCTION_OPTIMIZE_BOOTSTRAP_KEY_PURPOSE,
+        keyId: rotation.keyId,
+        keyVersion: rotation.keyVersion,
+        signedAt: snapshot.signature.signedAt,
+        authoritySetHash: this.#authoritySetHash,
+        verificationKeySetHash: this.#verificationKeySetHash,
+        verifierPolicyHash: this.#verifierPolicyHash,
+        verificationCommitmentHash: this.#verificationCommitmentHash,
+      });
       const resolved = await this.#resolveKey(request);
       const completedAt = readNow(this.#now);
       if (
-        completedAt.getTime() + this.#maximumClockSkewMs <
-          startedAt.getTime() ||
-        signedAtMs >
-          completedAt.getTime() + this.#maximumClockSkewMs
+        completedAt.getTime() + this.#maximumClockSkewMs < startedAt.getTime() ||
+        signedAtMs > completedAt.getTime() + this.#maximumClockSkewMs
       ) {
         fail();
       }
@@ -413,10 +359,7 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
       if (
         publicKey.type !== "public" ||
         publicKey.asymmetricKeyType !== "ed25519" ||
-        !verifyEd25519Signature(
-          snapshot as unknown as Readonly<Record<string, unknown>>,
-          publicKey,
-        )
+        !verifyEd25519Signature(snapshot as unknown as Readonly<Record<string, unknown>>, publicKey)
       ) {
         fail();
       }
@@ -426,8 +369,7 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
       });
       const verifierAttestationHash = canonicalHash({
         schemaVersion: 1,
-        domain:
-          "dark-factory.production-optimize-bootstrap-verifier-attestation.v1",
+        domain: "dark-factory.production-optimize-bootstrap-verifier-attestation.v1",
         descriptorHash: snapshot.descriptorHash,
         signatureHash: canonicalHash(snapshot.signature),
         signingKeyId: rotation.keyId,
@@ -441,28 +383,22 @@ export class Ed25519ProductionOptimizeBootstrapDescriptorVerifier
         verificationKeySetHash: this.#verificationKeySetHash,
         verifierPolicyHash: this.#verifierPolicyHash,
         maximumClockSkewMs: this.#maximumClockSkewMs,
-        verificationCommitmentHash:
-          this.#verificationCommitmentHash,
+        verificationCommitmentHash: this.#verificationCommitmentHash,
       });
       return Object.freeze({
         schemaVersion: 1,
-        domain:
-          "dark-factory.production-optimize-bootstrap-verification.v1",
+        domain: "dark-factory.production-optimize-bootstrap-verification.v1",
         descriptorHash: snapshot.descriptorHash,
         signingKeyId: rotation.keyId,
         authoritySetHash: this.#authoritySetHash,
         verificationKeySetHash: this.#verificationKeySetHash,
         verifierPolicyHash: this.#verifierPolicyHash,
-        verificationCommitmentHash:
-          this.#verificationCommitmentHash,
+        verificationCommitmentHash: this.#verificationCommitmentHash,
         verifierAttestationHash,
         verified: true,
       });
     } catch (error) {
-      if (
-        error instanceof
-        ProductionOptimizeBootstrapDescriptorVerifierError
-      ) {
+      if (error instanceof ProductionOptimizeBootstrapDescriptorVerifierError) {
         throw error;
       }
       fail();

@@ -5,18 +5,14 @@ import {
   redactSensitiveText,
   SafeGit,
 } from "../../src/harness/git.js";
-import type {
-  ProcessInvocation,
-  ProcessResult,
-  ProcessRunner,
-} from "../../src/harness/process.js";
+import type { ProcessInvocation, ProcessResult, ProcessRunner } from "../../src/harness/process.js";
 import { CloudGitProcessRunner } from "../../src/harness/process.js";
 import {
   createImmutableBaselineTag,
   doctorRepository,
-  registerRepository,
-  type RemoteVerifier,
   type RemoteVerification,
+  type RemoteVerifier,
+  registerRepository,
   type UpstreamLineageVerification,
 } from "../../src/harness/repository.js";
 
@@ -216,16 +212,13 @@ describe("repository doctor and registration", () => {
       upstreamBaseCommit: UPSTREAM_BASE,
     });
     expect(verifier.seenUrl).toBe(ORIGIN_URL);
-    expect(verifier.seenUpstreamUrl).toBe(
-      "https://github.com/earendil-works/pi.git",
-    );
+    expect(verifier.seenUpstreamUrl).toBe("https://github.com/earendil-works/pi.git");
     expect(
       runner.invocations.some(
         (invocation) =>
           invocation.arguments[0] === "fetch" ||
           invocation.arguments[0] === "tag" ||
-          (invocation.arguments[0] === "remote" &&
-            invocation.arguments[1] === "add"),
+          (invocation.arguments[0] === "remote" && invocation.arguments[1] === "add"),
       ),
     ).toBe(false);
     expect(JSON.stringify(registration)).not.toContain("top-secret");
@@ -242,9 +235,7 @@ describe("repository doctor and registration", () => {
         expectedTrackingRemote: "origin",
       }),
     ).rejects.toThrow(/private/u);
-    expect(
-      runner.invocations.some((invocation) => invocation.arguments[1] === "add"),
-    ).toBe(false);
+    expect(runner.invocations.some((invocation) => invocation.arguments[1] === "add")).toBe(false);
   });
 
   it("refuses to create any baseline tag in the canonical local checkout", async () => {
@@ -256,14 +247,10 @@ describe("repository doctor and registration", () => {
       expectedTrackingRemote: "origin",
     });
     const invocationCount = runner.invocations.length;
-    await expect(
-      createImmutableBaselineTag(git, registration, "df/baseline/000"),
-    ).rejects.toThrow(/cloud Git publication/u);
+    await expect(createImmutableBaselineTag(git, registration, "df/baseline/000")).rejects.toThrow(
+      /cloud Git publication/u,
+    );
     expect(runner.invocations).toHaveLength(invocationCount);
-    expect(
-      runner.invocations.some(
-        (invocation) => invocation.arguments[0] === "tag",
-      ),
-    ).toBe(false);
+    expect(runner.invocations.some((invocation) => invocation.arguments[0] === "tag")).toBe(false);
   });
 });

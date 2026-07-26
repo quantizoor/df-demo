@@ -9,10 +9,7 @@ import type {
 } from "../schemas/artifacts.js";
 import { canonicalJson } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
-import type {
-  SignedBehavioralRelease,
-  SignedResultEnvelope,
-} from "../schemas/trusted.js";
+import type { SignedBehavioralRelease, SignedResultEnvelope } from "../schemas/trusted.js";
 import {
   assertEvaluationRequest,
   hashEvaluationRequest,
@@ -52,9 +49,7 @@ export interface CanonicalEvaluatorReplayLedger {
  * Suitable for tests and single-process simulations only. Production
  * composition must inject a durable compare-and-swap ledger.
  */
-export class EphemeralCanonicalEvaluatorReplayLedger
-  implements CanonicalEvaluatorReplayLedger
-{
+export class EphemeralCanonicalEvaluatorReplayLedger implements CanonicalEvaluatorReplayLedger {
   readonly #requestIds = new Map<string, string>();
   readonly #requestHashes = new Set<string>();
 
@@ -251,11 +246,9 @@ function assertBundleLinks(
     if (release === null || evidence === null || cards === null || brief === null) {
       throw new CanonicalEvaluatorClientError("Unreachable incomplete behavioral release.");
     }
-    const sourceResultCommitmentHash =
-      resultEnvelopeBehavioralSourceCommitmentHash(result);
+    const sourceResultCommitmentHash = resultEnvelopeBehavioralSourceCommitmentHash(result);
     if (
-      release.sourceResultEnvelopeHash !==
-        sourceResultCommitmentHash ||
+      release.sourceResultEnvelopeHash !== sourceResultCommitmentHash ||
       result.derivation.behavioralAggregateHash !== release.contentHash ||
       result.releaseChecks.privacyThresholdPassed !== true ||
       release.releaseOnce !== true ||
@@ -273,16 +266,14 @@ function assertBundleLinks(
       evidence.contentHash !== release.aggregateArtifactHashes.behavioralEvidence ||
       cards.contentHash !== release.aggregateArtifactHashes.failureCards ||
       brief.contentHash !== release.aggregateArtifactHashes.diagnosticBrief ||
-      release.suppressedFindingCountBand !==
-        evidence.suppressedFindingCountBand ||
+      release.suppressedFindingCountBand !== evidence.suppressedFindingCountBand ||
       cards.behavioralEvidenceHash !== evidence.contentHash ||
       brief.failureCardsHash !== cards.contentHash ||
       brief.aggregateEvidenceHash !== evidence.contentHash ||
       canonicalJson(release.policyVersions) !== canonicalJson(evidence.policyVersions) ||
       canonicalJson(release.policyVersions) !== canonicalJson(cards.policyVersions) ||
       canonicalJson(release.policyVersions) !== canonicalJson(brief.policyVersions) ||
-      canonicalJson(release.support) !==
-        canonicalJson(evidence.analysisWindow.support) ||
+      canonicalJson(release.support) !== canonicalJson(evidence.analysisWindow.support) ||
       !release.support.complementaryCountSuppressionPassed ||
       !release.support.differencingBudgetPassed
     ) {
@@ -302,9 +293,7 @@ function assertSignedAtWithinPolicy(input: {
 }): void {
   const signature = record(input.document.signature, `${input.label} signature`);
   const signedAt =
-    typeof signature.signedAt === "string"
-      ? Date.parse(signature.signedAt)
-      : Number.NaN;
+    typeof signature.signedAt === "string" ? Date.parse(signature.signedAt) : Number.NaN;
   const createdAt =
     typeof input.document.createdAt === "string"
       ? Date.parse(input.document.createdAt)
@@ -344,9 +333,7 @@ export class CanonicalEvaluatorClient {
     this.#maximumClockSkewMs = options.maximumClockSkewMs ?? 5 * 60_000;
   }
 
-  public async evaluate(
-    request: TrustedEvaluationRequest,
-  ): Promise<ReleasedEvaluationBundle> {
+  public async evaluate(request: TrustedEvaluationRequest): Promise<ReleasedEvaluationBundle> {
     assertEvaluationRequest(request);
     const requestHash = hashEvaluationRequest(request);
     const claimedAt = this.#now().toISOString();
@@ -362,11 +349,7 @@ export class CanonicalEvaluatorClient {
       );
     }
     const bundle = parseBundle(
-      await this.#transport.submit(
-        this.#endpoint,
-        request,
-        this.#credentialEnvironmentName,
-      ),
+      await this.#transport.submit(this.#endpoint, request, this.#credentialEnvironmentName),
     );
     await verifyDocumentSignature(
       bundle.result as unknown as Readonly<Record<string, unknown>>,
@@ -388,38 +371,27 @@ export class CanonicalEvaluatorClient {
     assertSignedAtWithinPolicy({
       document: bundle.result as unknown as Readonly<Record<string, unknown>>,
       label: "Result envelope",
-      earliestMs: Math.max(
-        submittedAt,
-        Date.parse(bundle.result.derivation.derivedAt),
-      ),
+      earliestMs: Math.max(submittedAt, Date.parse(bundle.result.derivation.derivedAt)),
       nowMs: now,
       maximumClockSkewMs: this.#maximumClockSkewMs,
     });
     assertSignedAtWithinPolicy({
-      document:
-        bundle.cacheAttestation as unknown as Readonly<Record<string, unknown>>,
+      document: bundle.cacheAttestation as unknown as Readonly<Record<string, unknown>>,
       label: "Cache attestation",
-      earliestMs: Math.max(
-        submittedAt,
-        Date.parse(bundle.cacheAttestation.sealedWindow.closedAt),
-      ),
+      earliestMs: Math.max(submittedAt, Date.parse(bundle.cacheAttestation.sealedWindow.closedAt)),
       nowMs: now,
       maximumClockSkewMs: this.#maximumClockSkewMs,
     });
     if (bundle.behavioralRelease !== null) {
       assertSignedAtWithinPolicy({
-        document:
-          bundle.behavioralRelease as unknown as Readonly<Record<string, unknown>>,
+        document: bundle.behavioralRelease as unknown as Readonly<Record<string, unknown>>,
         label: "Behavioral release",
         earliestMs: submittedAt,
         nowMs: now,
         maximumClockSkewMs: this.#maximumClockSkewMs,
       });
     }
-    if (
-      bundle.diagnosticBrief !== null &&
-      Date.parse(bundle.diagnosticBrief.expiresAt) <= now
-    ) {
+    if (bundle.diagnosticBrief !== null && Date.parse(bundle.diagnosticBrief.expiresAt) <= now) {
       throw new CanonicalEvaluatorClientError(
         "Diagnostic brief expired before it crossed the trust boundary.",
       );

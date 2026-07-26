@@ -1,30 +1,17 @@
 import { isAbsolute, join } from "node:path";
 
-import type {
-  CandidateProposal,
-  OptimizerInput,
-} from "./contracts.js";
-import {
-  validateCandidateProposal,
-  validateMvpArtifact,
-} from "./schemas.js";
+import type { CandidateProposal, OptimizerInput } from "./contracts.js";
+import { validateCandidateProposal, validateMvpArtifact } from "./schemas.js";
 
-export const MVP_OPTIMIZER_WORKER_SOURCE =
-  "scripts/mvp-optimizer-worker.mjs" as const;
-export const MVP_OPTIMIZER_BUNDLE_ROOT =
-  "/tmp/df-mvp-controller" as const;
-export const MVP_OPTIMIZER_WORKER_EXECUTABLE =
-  "/usr/bin/node" as const;
+export const MVP_OPTIMIZER_WORKER_SOURCE = "scripts/mvp-optimizer-worker.mjs" as const;
+export const MVP_OPTIMIZER_BUNDLE_ROOT = "/tmp/df-mvp-controller" as const;
+export const MVP_OPTIMIZER_WORKER_EXECUTABLE = "/usr/bin/node" as const;
 export const MVP_OPTIMIZER_WORKER_INSTALLED_SCRIPT =
   "/tmp/df-mvp-controller/scripts/mvp-optimizer-worker.mjs" as const;
-export const MVP_OPTIMIZER_PLUGIN_SOURCE =
-  "/tmp/df-mvp-controller/claude-plugin" as const;
-export const MVP_OPTIMIZER_CLAUDE_EXECUTABLE =
-  "/usr/local/bin/claude" as const;
-export const MVP_OPTIMIZER_CLAUDE_CODE_VERSION =
-  "2.1.217" as const;
-export const MVP_OPTIMIZER_MODEL_FAMILY =
-  "claude-opus-5" as const;
+export const MVP_OPTIMIZER_PLUGIN_SOURCE = "/tmp/df-mvp-controller/claude-plugin" as const;
+export const MVP_OPTIMIZER_CLAUDE_EXECUTABLE = "/usr/local/bin/claude" as const;
+export const MVP_OPTIMIZER_CLAUDE_CODE_VERSION = "2.1.217" as const;
+export const MVP_OPTIMIZER_MODEL_FAMILY = "claude-opus-5" as const;
 export const MVP_OPTIMIZER_REASONING_EFFORT = "high" as const;
 export const MVP_OPTIMIZER_ALLOWED_TOOLS = [
   "Read",
@@ -61,19 +48,11 @@ export const MVP_OPTIMIZER_WORKER_DELIVERY = {
   installedScriptPath: MVP_OPTIMIZER_WORKER_INSTALLED_SCRIPT,
   nodeExecutablePath: MVP_OPTIMIZER_WORKER_EXECUTABLE,
   pluginSourcePath: MVP_OPTIMIZER_PLUGIN_SOURCE,
-  requiredExecutablePaths: [
-    "/usr/bin/git",
-    "/usr/bin/node",
-    MVP_OPTIMIZER_CLAUDE_EXECUTABLE,
-  ],
+  requiredExecutablePaths: ["/usr/bin/git", "/usr/bin/node", MVP_OPTIMIZER_CLAUDE_EXECUTABLE],
   exactClaudeCodeVersion: MVP_OPTIMIZER_CLAUDE_CODE_VERSION,
   requiredNodeMajor: 24,
-  requiredSecretTargets: [
-    "ANTHROPIC_FOUNDRY_API_KEY",
-    "DF_GITHUB_BASIC_AUTH",
-  ],
-  secretValueTransport:
-    "daytona-opaque-outbound-header-placeholder-v1",
+  requiredSecretTargets: ["ANTHROPIC_FOUNDRY_API_KEY", "DF_GITHUB_BASIC_AUTH"],
+  secretValueTransport: "daytona-opaque-outbound-header-placeholder-v1",
   defaultInputRelativePath: "inbox/optimizer-input.json",
   defaultOutputRelativePath: "outbox/candidate-proposal.json",
 } as const;
@@ -101,8 +80,7 @@ export interface MvpOptimizerWorkerInvocation {
   readonly outputPath: string;
 }
 
-const SAFE_CAMPAIGN =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SAFE_CAMPAIGN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const FORBIDDEN_SUMMARY_CONTENT =
   /\b(?:terminal[-_ ]?bench|tbench|harbor|grader|verifier|reference solution|task id|task name|benchmark answer)\b|https?:\/\//iu;
@@ -118,22 +96,16 @@ export function createMvpOptimizerWorkerInvocation(input: {
     !Number.isSafeInteger(input.maximumIterations) ||
     input.maximumIterations < 1 ||
     input.maximumIterations > 10 ||
-    input.stateRoot !== "/workspace/df-state" ||
     !isAbsolute(input.stateRoot) ||
     input.stateRoot === "/" ||
     input.stateRoot.includes("/../") ||
+    input.stateRoot !== "/workspace/df-state" ||
     !SHA256.test(input.configurationHash)
   ) {
     throw new Error("MVP optimizer worker invocation is invalid");
   }
-  const inputPath = join(
-    input.stateRoot,
-    MVP_OPTIMIZER_WORKER_DELIVERY.defaultInputRelativePath,
-  );
-  const outputPath = join(
-    input.stateRoot,
-    MVP_OPTIMIZER_WORKER_DELIVERY.defaultOutputRelativePath,
-  );
+  const inputPath = join(input.stateRoot, MVP_OPTIMIZER_WORKER_DELIVERY.defaultInputRelativePath);
+  const outputPath = join(input.stateRoot, MVP_OPTIMIZER_WORKER_DELIVERY.defaultOutputRelativePath);
   return {
     executable: MVP_OPTIMIZER_WORKER_EXECUTABLE,
     arguments: [
@@ -162,15 +134,11 @@ export function createMvpOptimizerWorkerInvocation(input: {
   };
 }
 
-export function assertTaskFreeMvpOptimizerInput(
-  value: unknown,
-): asserts value is OptimizerInput {
+export function assertTaskFreeMvpOptimizerInput(value: unknown): asserts value is OptimizerInput {
   validateMvpArtifact("optimizerInput", value);
 }
 
-export function assertMvpCandidateProposal(
-  value: unknown,
-): asserts value is CandidateProposal {
+export function assertMvpCandidateProposal(value: unknown): asserts value is CandidateProposal {
   validateCandidateProposal(value);
   const proposal = value as CandidateProposal;
   assertMvpCandidateChangedFiles(proposal.changedFiles);
@@ -178,15 +146,11 @@ export function assertMvpCandidateProposal(
     FORBIDDEN_SUMMARY_CONTENT.test(proposal.hypothesisSummary) ||
     FORBIDDEN_SUMMARY_CONTENT.test(proposal.interventionSummary)
   ) {
-    throw new Error(
-      "MVP candidate proposal contains benchmark-specific content",
-    );
+    throw new Error("MVP candidate proposal contains benchmark-specific content");
   }
 }
 
-export function assertMvpCandidateChangedFiles(
-  changedFiles: readonly string[],
-): void {
+export function assertMvpCandidateChangedFiles(changedFiles: readonly string[]): void {
   if (
     changedFiles.length < 1 ||
     changedFiles.length > 12 ||
@@ -197,19 +161,13 @@ export function assertMvpCandidateChangedFiles(
         path === ".." ||
         path.startsWith("../") ||
         path.includes("/../") ||
-        !MVP_OPTIMIZER_ALLOWED_SOURCE_ROOTS.some((root) =>
-          path.startsWith(root),
-        ) ||
-        !/\.(?:cjs|css|js|json|jsx|mjs|ts|tsx|txt|yaml|yml)$/u.test(
-          path,
-        ) ||
+        !MVP_OPTIMIZER_ALLOWED_SOURCE_ROOTS.some((root) => path.startsWith(root)) ||
+        !/\.(?:cjs|css|js|json|jsx|mjs|ts|tsx|txt|yaml|yml)$/u.test(path) ||
         /(^|\/)(?:test|tests|grader|graders|verifier|verifiers|solution|solutions|reference|benchmarks?|evals?|fixtures?)(\/|$)/iu.test(
           path,
         ),
     )
   ) {
-    throw new Error(
-      "MVP candidate changed paths are outside the general Pi harness",
-    );
+    throw new Error("MVP candidate changed paths are outside the general Pi harness");
   }
 }

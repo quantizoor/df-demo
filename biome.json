@@ -5,6 +5,7 @@
       "**",
       "!dist",
       "!coverage",
+      "!claude-plugin/server",
       "!node_modules",
       "!experiments",
       "!worktrees",

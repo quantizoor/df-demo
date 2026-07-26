@@ -1,10 +1,10 @@
 import {
   CAUSE_CODES,
+  canonicalJson,
   DIAGNOSTIC_CATEGORIES,
   INTERVENTION_CODES,
   type SanitizedDiagnosticBrief,
   TOOL_CLASSES,
-  canonicalJson,
 } from "./contracts.js";
 import { validateMvpArtifact } from "./schemas.js";
 

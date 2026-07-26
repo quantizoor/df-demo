@@ -36,16 +36,10 @@ export function decideMatchedComparison(input: MatchedDecisionInput): ReleaseSaf
   const taskDeltas = input.cells
     .filter((cell) => cell.repetition === 1)
     .map((firstCell) => {
-      const taskCells = input.cells.filter(
-        (cell) => cell.task.handle === firstCell.task.handle,
-      );
+      const taskCells = input.cells.filter((cell) => cell.task.handle === firstCell.task.handle);
       return (
-        mean(
-          taskCells.map((cell) => requiredObservation(candidateByCell, cell.cellId).reward),
-        ) -
-        mean(
-          taskCells.map((cell) => requiredObservation(championByCell, cell.cellId).reward),
-        )
+        mean(taskCells.map((cell) => requiredObservation(candidateByCell, cell.cellId).reward)) -
+        mean(taskCells.map((cell) => requiredObservation(championByCell, cell.cellId).reward))
       );
     });
 
@@ -221,11 +215,7 @@ function requiredObservation(
 }
 
 function validateThreshold(value: number, name: string, openLowerBound: boolean): void {
-  if (
-    !Number.isFinite(value) ||
-    (openLowerBound ? value <= 0 : value < 0) ||
-    value >= 1
-  ) {
+  if (!Number.isFinite(value) || (openLowerBound ? value <= 0 : value < 0) || value >= 1) {
     throw new Error(`${name} must be ${openLowerBound ? "in (0, 1)" : "in [0, 1)"}`);
   }
 }

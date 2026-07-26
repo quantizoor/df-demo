@@ -2,25 +2,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TrustedArtifactRuntimeGuard } from "../../src/cloud/artifact-bridge.js";
 import {
+  type AtomicOptimizationCoordinationStateStore,
   AttestedTrustedOptimizationResumeVerifier,
+  assertDurableOptimizationCoordinationState,
+  type DurableOptimizationCoordinationState,
   DurableTrustedOptimizationInputFactory,
   DurableTrustedOptimizationInterruptionPort,
-  MountedVolumeOptimizationCoordinationPorts,
-  assertDurableOptimizationCoordinationState,
   emptyOptimizationCoordinationState,
+  MountedVolumeOptimizationCoordinationPorts,
   optimizationResumeCheckpointChainHash,
-  type AtomicOptimizationCoordinationStateStore,
-  type DurableOptimizationCoordinationState,
   type TaskFreeOptimizationDiagnosticDiscovery,
   type TrustedOptimizationInterruptionAuthority,
   type TrustedOptimizationResumeAttestationAuthority,
@@ -36,9 +30,7 @@ import type {
   OptimizationResumeVerification,
   PersistedOptimizationClaimBinding,
 } from "../../src/orchestrator/campaign-state-coordinator.js";
-import type {
-  ExperimentRunInput,
-} from "../../src/orchestrator/contracts.js";
+import type { ExperimentRunInput } from "../../src/orchestrator/contracts.js";
 import { canonicalHash } from "../../src/schemas/canonical.js";
 
 const CAMPAIGN_ID = "campaign-a";
@@ -56,23 +48,15 @@ const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((path) =>
-        rm(path, { recursive: true, force: true }),
-      ),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
-class MemoryCoordinationState
-  implements AtomicOptimizationCoordinationStateStore
-{
+class MemoryCoordinationState implements AtomicOptimizationCoordinationStateStore {
   public value: DurableOptimizationCoordinationState;
 
   public constructor() {
-    this.value = emptyOptimizationCoordinationState(
-      canonicalHash({ scope: "test" }),
-    );
+    this.value = emptyOptimizationCoordinationState(canonicalHash({ scope: "test" }));
   }
 
   public async transact<Result>(
@@ -82,10 +66,7 @@ class MemoryCoordinationState
     },
   ): Promise<Result> {
     const transition = operation(structuredClone(this.value));
-    assertDurableOptimizationCoordinationState(
-      transition.next,
-      this.value.storeScopeHash,
-    );
+    assertDurableOptimizationCoordinationState(transition.next, this.value.storeScopeHash);
     this.value = structuredClone(transition.next);
     return structuredClone(transition.result);
   }
@@ -124,11 +105,8 @@ function context(
   } = {},
 ): OptimizationInputPreparationContext {
   const allocationStateHash =
-    input.allocationStateHash ??
-    (experimentNumber + 1).toString(16).repeat(64);
-  const priorStateHash =
-    input.priorStateHash ??
-    (experimentNumber + 8).toString(16).repeat(64);
+    input.allocationStateHash ?? (experimentNumber + 1).toString(16).repeat(64);
+  const priorStateHash = input.priorStateHash ?? (experimentNumber + 8).toString(16).repeat(64);
   const activeExperiment = input.activeExperiment ?? 0;
   const activeCommit = input.activeCommit ?? "a".repeat(40);
   return {
@@ -194,8 +172,7 @@ function discovery(
   const ordinal = input.ordinal ?? 1;
   return {
     schemaVersion: 1,
-    domain:
-      "dark-factory.task-free-optimization-diagnostic-discovery.v1",
+    domain: "dark-factory.task-free-optimization-diagnostic-discovery.v1",
     campaignId: CAMPAIGN_ID,
     lineageId: LINEAGE_ID,
     protocolHash: PROTOCOL_HASH,
@@ -209,15 +186,10 @@ function discovery(
     previousDiscoveryAttestationHash: DISCOVERY_HASH,
     repairAttemptOrdinal: ordinal,
     priorAllocationStateHash:
-      input.priorAllocationStateHash ??
-      (ordinal === 1 ? null : "d".repeat(64)),
-    priorClaimHash:
-      input.priorClaimHash ??
-      (ordinal === 1 ? null : "e".repeat(64)),
+      input.priorAllocationStateHash ?? (ordinal === 1 ? null : "d".repeat(64)),
+    priorClaimHash: input.priorClaimHash ?? (ordinal === 1 ? null : "e".repeat(64)),
     diagnosticBindingHash: diagnosticBindingHash(),
-    resolutionAttestationHash:
-      input.resolutionHash ??
-      (ordinal === 1 ? "f" : "0").repeat(64),
+    resolutionAttestationHash: input.resolutionHash ?? (ordinal === 1 ? "f" : "0").repeat(64),
     containsTaskIdentifiers: false,
   };
 }
@@ -242,8 +214,7 @@ function claimBinding(
       input: runInput,
     }),
     inputHash: canonicalHash(runInput),
-    previousDiscoveryAttestationHash:
-      runInput.previousDiscoveryAttestationHash,
+    previousDiscoveryAttestationHash: runInput.previousDiscoveryAttestationHash,
     repairAttemptOrdinal: runInput.repairAttemptOrdinal,
   };
 }
@@ -263,11 +234,9 @@ function resumeAttestation(
 ) {
   return {
     schemaVersion: 1 as const,
-    sensitivity:
-      "release-safe-optimization-resume-path-attestation" as const,
+    sensitivity: "release-safe-optimization-resume-path-attestation" as const,
     pathHash: canonicalHash(path),
-    checkpointChainHash:
-      optimizationResumeCheckpointChainHash(path),
+    checkpointChainHash: optimizationResumeCheckpointChainHash(path),
     checkpointCount: path.checkpoints.length,
     authorizationAttestationHash: authorizationHash,
     signerKeyId: "campaign-resume-key",
@@ -280,17 +249,14 @@ function resumeAuthority(
 ): TrustedOptimizationResumeAttestationAuthority {
   return {
     boundary: "trusted-cloud-attestation-authority",
-    verifyAndAttest:
-      implementation ??
-      (async (path) => resumeAttestation(path)),
+    verifyAndAttest: implementation ?? (async (path) => resumeAttestation(path)),
   };
 }
 
 function interruptionDraft() {
   return {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.optimization-interruption.v1" as const,
+    domain: "dark-factory.optimization-interruption.v1" as const,
     campaignId: CAMPAIGN_ID,
     lineageId: LINEAGE_ID,
     protocolHash: PROTOCOL_HASH,
@@ -302,37 +268,31 @@ function interruptionDraft() {
 }
 
 function draftHash(
-  draft: Omit<
-    OptimizationInterruptionRecordDraft,
-    "brokerExposureStateAttestationHash"
-  >,
+  draft: Omit<OptimizationInterruptionRecordDraft, "brokerExposureStateAttestationHash">,
 ) {
   return canonicalHash({
-    domain:
-      "dark-factory.optimization-interruption-draft-binding.v1",
+    domain: "dark-factory.optimization-interruption-draft-binding.v1",
     draft,
   });
 }
 
-function interruptionAuthority(input: {
-  readonly brokerAuthorizationHash?: string;
-  readonly attestBrokerExposure?: TrustedOptimizationInterruptionAuthority["attestBrokerExposure"];
-  readonly authorizeControl?: TrustedOptimizationInterruptionAuthority["authorizeControl"];
-} = {}): TrustedOptimizationInterruptionAuthority {
+function interruptionAuthority(
+  input: {
+    readonly brokerAuthorizationHash?: string;
+    readonly attestBrokerExposure?: TrustedOptimizationInterruptionAuthority["attestBrokerExposure"];
+    readonly authorizeControl?: TrustedOptimizationInterruptionAuthority["authorizeControl"];
+  } = {},
+): TrustedOptimizationInterruptionAuthority {
   return {
     boundary: "trusted-cloud-attestation-authority",
     attestBrokerExposure:
       input.attestBrokerExposure ??
       (async (draft) => ({
         schemaVersion: 1,
-        sensitivity:
-          "release-safe-optimization-broker-exposure-attestation",
+        sensitivity: "release-safe-optimization-broker-exposure-attestation",
         draftHash: draftHash(draft),
-        brokerExposureStateAttestationHash:
-          BROKER_EXPOSURE_HASH,
-        authorizationAttestationHash:
-          input.brokerAuthorizationHash ??
-          BROKER_AUTHORIZATION_HASH,
+        brokerExposureStateAttestationHash: BROKER_EXPOSURE_HASH,
+        authorizationAttestationHash: input.brokerAuthorizationHash ?? BROKER_AUTHORIZATION_HASH,
         containsTaskIdentifiers: false,
       })),
     authorizeControl:
@@ -345,14 +305,12 @@ function interruptionAuthority(input: {
         };
         return {
           schemaVersion: 1,
-          sensitivity:
-            "release-safe-optimization-interruption-control-authorization",
+          sensitivity: "release-safe-optimization-interruption-control-authorization",
           recordHash: record.recordHash,
           currentStateHash,
           control,
           controlHash: canonicalHash(control),
-          authorizationAttestationHash:
-            CONTROL_AUTHORIZATION_HASH,
+          authorizationAttestationHash: CONTROL_AUTHORIZATION_HASH,
           containsTaskIdentifiers: false,
         };
       }),
@@ -372,8 +330,7 @@ function resumePath(
     experimentNumber: 2,
     priorStateHash: "a".repeat(64),
     allocationStateHash,
-    currentStateHash:
-      checkpoints.at(-1)?.stateHash ?? allocationStateHash,
+    currentStateHash: checkpoints.at(-1)?.stateHash ?? allocationStateHash,
     checkpoints,
   };
 }
@@ -384,51 +341,38 @@ describe("durable optimization input factory", () => {
     const resolve = vi.fn(async () => {
       throw new Error("Bootstrap must not query diagnostics.");
     });
-    const factory =
-      new DurableTrustedOptimizationInputFactory({
-        state,
-        diagnosticResolver: resolver(resolve),
-      });
+    const factory = new DurableTrustedOptimizationInputFactory({
+      state,
+      diagnosticResolver: resolver(resolve),
+    });
     const preparation = context(1);
 
     const first = await factory.prepareOrResume(preparation);
-    const retry = await factory.prepareOrResume(
-      structuredClone(preparation),
-    );
-    await factory.bindClaim(
-      claimBinding(preparation, first),
-    );
-    await factory.bindClaim(
-      claimBinding(preparation, first),
-    );
+    const retry = await factory.prepareOrResume(structuredClone(preparation));
+    await factory.bindClaim(claimBinding(preparation, first));
+    await factory.bindClaim(claimBinding(preparation, first));
 
     expect(retry).toEqual(first);
     expect(resolve).not.toHaveBeenCalled();
     expect(state.value.revision).toBe(2);
-    expect(JSON.stringify(state.value)).not.toMatch(
-      /taskId|panelId|packageTaskName/u,
-    );
+    expect(JSON.stringify(state.value)).not.toMatch(/taskId|panelId|packageTaskName/u);
   });
 
   it("allows exactly one ordinal-2 continuation of the same task-free discovery", async () => {
     const state = new MemoryCoordinationState();
     let priorAllocation: string | null = null;
     let priorClaim: string | null = null;
-    const factory =
-      new DurableTrustedOptimizationInputFactory({
-        state,
-        diagnosticResolver: resolver(async (preparation) =>
-          discovery(preparation, {
-            ordinal:
-              preparation.experimentNumber === 2 ? 1 : 2,
-            priorAllocationStateHash: priorAllocation,
-            priorClaimHash: priorClaim,
-            resolutionHash:
-              preparation.experimentNumber === 2
-                ? "d".repeat(64)
-                : "e".repeat(64),
-          })),
-      });
+    const factory = new DurableTrustedOptimizationInputFactory({
+      state,
+      diagnosticResolver: resolver(async (preparation) =>
+        discovery(preparation, {
+          ordinal: preparation.experimentNumber === 2 ? 1 : 2,
+          priorAllocationStateHash: priorAllocation,
+          priorClaimHash: priorClaim,
+          resolutionHash: preparation.experimentNumber === 2 ? "d".repeat(64) : "e".repeat(64),
+        }),
+      ),
+    });
     const firstContext = context(2, {
       allocationStateHash: "2".repeat(64),
     });
@@ -439,31 +383,24 @@ describe("durable optimization input factory", () => {
     priorClaim = binding.claimHash;
     const secondContext = context(3, {
       allocationStateHash: "3".repeat(64),
-      activeCommit:
-        firstContext.allocationSnapshot.activeChampion.activeCommit,
+      activeCommit: firstContext.allocationSnapshot.activeChampion.activeCommit,
     });
 
-    const second =
-      await factory.prepareOrResume(secondContext);
+    const second = await factory.prepareOrResume(secondContext);
 
     expect(second.repairAttemptOrdinal).toBe(2);
-    expect(second.diagnosticBrief).toEqual(
-      first.diagnosticBrief,
-    );
-    expect(
-      second.previousDiscoveryAttestationHash,
-    ).toBe(first.previousDiscoveryAttestationHash);
+    expect(second.diagnosticBrief).toEqual(first.diagnosticBrief);
+    expect(second.previousDiscoveryAttestationHash).toBe(first.previousDiscoveryAttestationHash);
 
-    const resetFactory =
-      new DurableTrustedOptimizationInputFactory({
-        state,
-        diagnosticResolver: resolver(async (preparation) =>
-          discovery(preparation, {
-            ordinal: 1,
-            resolutionHash: "0".repeat(64),
-          }),
-        ),
-      });
+    const resetFactory = new DurableTrustedOptimizationInputFactory({
+      state,
+      diagnosticResolver: resolver(async (preparation) =>
+        discovery(preparation, {
+          ordinal: 1,
+          resolutionHash: "0".repeat(64),
+        }),
+      ),
+    });
     await expect(
       resetFactory.prepareOrResume(
         context(4, {
@@ -483,11 +420,10 @@ describe("durable optimization input factory", () => {
         resolutionHash: "6".repeat(64),
       }),
     );
-    const factory =
-      new DurableTrustedOptimizationInputFactory({
-        state,
-        diagnosticResolver: resolver(resolve),
-      });
+    const factory = new DurableTrustedOptimizationInputFactory({
+      state,
+      diagnosticResolver: resolver(resolve),
+    });
 
     const [left, right] = await Promise.all([
       factory.prepareOrResume(preparation),
@@ -513,16 +449,12 @@ describe("attested optimization resume verifier", () => {
     let calls = 0;
     const authority = resumeAuthority(async (path) => {
       calls += 1;
-      return resumeAttestation(
-        path,
-        (calls + 8).toString(16).repeat(64),
-      );
+      return resumeAttestation(path, (calls + 8).toString(16).repeat(64));
     });
-    const verifier =
-      new AttestedTrustedOptimizationResumeVerifier({
-        state,
-        authority,
-      });
+    const verifier = new AttestedTrustedOptimizationResumeVerifier({
+      state,
+      authority,
+    });
     const initial = resumePath();
     const checkpoint = {
       stateHash: "c".repeat(64),
@@ -558,14 +490,13 @@ describe("attested optimization resume verifier", () => {
 
   it("rejects a mismatched authority binding without committing it", async () => {
     const state = new MemoryCoordinationState();
-    const verifier =
-      new AttestedTrustedOptimizationResumeVerifier({
-        state,
-        authority: resumeAuthority(async (path) => ({
-          ...resumeAttestation(path),
-          pathHash: "0".repeat(64),
-        })),
-      });
+    const verifier = new AttestedTrustedOptimizationResumeVerifier({
+      state,
+      authority: resumeAuthority(async (path) => ({
+        ...resumeAttestation(path),
+        pathHash: "0".repeat(64),
+      })),
+    });
 
     await expect(verifier.verify(resumePath())).rejects.toThrow();
     expect(state.value.revision).toBe(0);
@@ -575,11 +506,10 @@ describe("attested optimization resume verifier", () => {
 describe("durable optimization interruption port", () => {
   it("persists intent before return and CAS-binds one authorized final state", async () => {
     const state = new MemoryCoordinationState();
-    const port =
-      new DurableTrustedOptimizationInterruptionPort({
-        state,
-        authority: interruptionAuthority(),
-      });
+    const port = new DurableTrustedOptimizationInterruptionPort({
+      state,
+      authority: interruptionAuthority(),
+    });
     const draft = interruptionDraft();
 
     const record = await port.begin(draft);
@@ -629,60 +559,46 @@ describe("durable optimization interruption port", () => {
 
   it("rejects adversarial broker and control authority responses", async () => {
     const brokerState = new MemoryCoordinationState();
-    const brokerPort =
-      new DurableTrustedOptimizationInterruptionPort({
-        state: brokerState,
-        authority: interruptionAuthority({
-          attestBrokerExposure: async (draft) => ({
-            schemaVersion: 1,
-            sensitivity:
-              "release-safe-optimization-broker-exposure-attestation",
-            draftHash: canonicalHash(draft),
-            brokerExposureStateAttestationHash:
-              BROKER_EXPOSURE_HASH,
-            authorizationAttestationHash:
-              BROKER_AUTHORIZATION_HASH,
-            containsTaskIdentifiers: false,
-          }),
+    const brokerPort = new DurableTrustedOptimizationInterruptionPort({
+      state: brokerState,
+      authority: interruptionAuthority({
+        attestBrokerExposure: async (draft) => ({
+          schemaVersion: 1,
+          sensitivity: "release-safe-optimization-broker-exposure-attestation",
+          draftHash: canonicalHash(draft),
+          brokerExposureStateAttestationHash: BROKER_EXPOSURE_HASH,
+          authorizationAttestationHash: BROKER_AUTHORIZATION_HASH,
+          containsTaskIdentifiers: false,
         }),
-      });
-    await expect(
-      brokerPort.begin(interruptionDraft()),
-    ).rejects.toThrow();
+      }),
+    });
+    await expect(brokerPort.begin(interruptionDraft())).rejects.toThrow();
     expect(brokerState.value.revision).toBe(0);
 
     const controlState = new MemoryCoordinationState();
-    const controlPort =
-      new DurableTrustedOptimizationInterruptionPort({
-        state: controlState,
-        authority: interruptionAuthority({
-          authorizeControl: async ({
-            record,
+    const controlPort = new DurableTrustedOptimizationInterruptionPort({
+      state: controlState,
+      authority: interruptionAuthority({
+        authorizeControl: async ({ record, currentStateHash }) => {
+          const control = {
+            kind: "pause" as const,
+            reason: "infrastructure" as const,
+            attestationHash: CONTROL_ATTESTATION_HASH,
+          };
+          return {
+            schemaVersion: 1,
+            sensitivity: "release-safe-optimization-interruption-control-authorization",
+            recordHash: record.recordHash,
             currentStateHash,
-          }) => {
-            const control = {
-              kind: "pause" as const,
-              reason: "infrastructure" as const,
-              attestationHash: CONTROL_ATTESTATION_HASH,
-            };
-            return {
-              schemaVersion: 1,
-              sensitivity:
-                "release-safe-optimization-interruption-control-authorization",
-              recordHash: record.recordHash,
-              currentStateHash,
-              control,
-              controlHash: "0".repeat(64),
-              authorizationAttestationHash:
-                CONTROL_AUTHORIZATION_HASH,
-              containsTaskIdentifiers: false,
-            };
-          },
-        }),
-      });
-    const record = await controlPort.begin(
-      interruptionDraft(),
-    );
+            control,
+            controlHash: "0".repeat(64),
+            authorizationAttestationHash: CONTROL_AUTHORIZATION_HASH,
+            containsTaskIdentifiers: false,
+          };
+        },
+      }),
+    });
+    const record = await controlPort.begin(interruptionDraft());
     await expect(
       controlPort.prepareControl({
         record,
@@ -693,17 +609,13 @@ describe("durable optimization interruption port", () => {
   });
 
   it("detects corruption and forbidden identity-shaped fields", () => {
-    const state = emptyOptimizationCoordinationState(
-      canonicalHash({ scope: "corruption-test" }),
-    );
+    const state = emptyOptimizationCoordinationState(canonicalHash({ scope: "corruption-test" }));
     const corrupted = {
       ...state,
       taskId: "hidden-task",
     };
 
-    expect(() =>
-      assertDurableOptimizationCoordinationState(corrupted),
-    ).toThrow();
+    expect(() => assertDurableOptimizationCoordinationState(corrupted)).toThrow();
   });
 });
 
@@ -738,34 +650,20 @@ function unusedResolver(): TrustedTaskFreeOptimizationDiagnosticResolver {
 
 describe("mounted-volume optimization coordination handoff", () => {
   it("recovers each interruption crash window without re-authorizing", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-optimization-coordination-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-optimization-coordination-test-"));
     temporaryDirectories.push(root);
     const first = new MountedVolumeOptimizationCoordinationPorts({
-      durableState: durableOptions(
-        root,
-        "1".repeat(64),
-        "a".repeat(48),
-      ),
+      durableState: durableOptions(root, "1".repeat(64), "a".repeat(48)),
       diagnosticResolver: unusedResolver(),
       resumeAuthority: resumeAuthority(),
       interruptionAuthority: interruptionAuthority(),
     });
-    const record = await first.interruption.begin(
-      interruptionDraft(),
-    );
+    const record = await first.interruption.begin(interruptionDraft());
     await first.close();
 
-    const authorizeControl = vi.fn(
-      interruptionAuthority().authorizeControl,
-    );
+    const authorizeControl = vi.fn(interruptionAuthority().authorizeControl);
     const second = new MountedVolumeOptimizationCoordinationPorts({
-      durableState: durableOptions(
-        root,
-        "2".repeat(64),
-        "b".repeat(48),
-      ),
+      durableState: durableOptions(root, "2".repeat(64), "b".repeat(48)),
       diagnosticResolver: unusedResolver(),
       resumeAuthority: resumeAuthority(),
       interruptionAuthority: interruptionAuthority({
@@ -787,11 +685,7 @@ describe("mounted-volume optimization coordination handoff", () => {
     await second.close();
 
     const third = new MountedVolumeOptimizationCoordinationPorts({
-      durableState: durableOptions(
-        root,
-        "3".repeat(64),
-        "c".repeat(48),
-      ),
+      durableState: durableOptions(root, "3".repeat(64), "c".repeat(48)),
       diagnosticResolver: unusedResolver(),
       resumeAuthority: resumeAuthority(),
       interruptionAuthority: interruptionAuthority({
@@ -822,16 +716,10 @@ describe("mounted-volume optimization coordination handoff", () => {
   });
 
   it("reuses a committed input after a clean controller handoff", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-optimization-input-test-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-optimization-input-test-"));
     temporaryDirectories.push(root);
     const first = new MountedVolumeOptimizationCoordinationPorts({
-      durableState: durableOptions(
-        root,
-        "4".repeat(64),
-        "d".repeat(48),
-      ),
+      durableState: durableOptions(root, "4".repeat(64), "d".repeat(48)),
       diagnosticResolver: unusedResolver(),
       resumeAuthority: resumeAuthority(),
       interruptionAuthority: interruptionAuthority(),
@@ -840,27 +728,19 @@ describe("mounted-volume optimization coordination handoff", () => {
       allocationStateHash: "5".repeat(64),
       priorStateHash: "6".repeat(64),
     });
-    const input =
-      await first.inputFactory.prepareOrResume(preparation);
+    const input = await first.inputFactory.prepareOrResume(preparation);
     await first.close();
 
     const successorResolver = vi.fn(async () => {
       throw new Error("Committed input must be read.");
     });
-    const successor =
-      new MountedVolumeOptimizationCoordinationPorts({
-        durableState: durableOptions(
-          root,
-          "5".repeat(64),
-          "e".repeat(48),
-        ),
-        diagnosticResolver: resolver(successorResolver),
-        resumeAuthority: resumeAuthority(),
-        interruptionAuthority: interruptionAuthority(),
-      });
-    await expect(
-      successor.inputFactory.prepareOrResume(preparation),
-    ).resolves.toEqual(input);
+    const successor = new MountedVolumeOptimizationCoordinationPorts({
+      durableState: durableOptions(root, "5".repeat(64), "e".repeat(48)),
+      diagnosticResolver: resolver(successorResolver),
+      resumeAuthority: resumeAuthority(),
+      interruptionAuthority: interruptionAuthority(),
+    });
+    await expect(successor.inputFactory.prepareOrResume(preparation)).resolves.toEqual(input);
     expect(successorResolver).not.toHaveBeenCalled();
     await successor.close();
   });

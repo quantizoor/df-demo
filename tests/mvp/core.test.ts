@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  MVP_SCHEMA_VERSION,
   assertTaskFreeDiagnosticBrief,
   buildMatchedCells,
   decideMatchedComparison,
+  type HiddenTaskProfile,
   hiddenTaskHandle,
+  MVP_SCHEMA_VERSION,
+  type PrivateEvaluationObservation,
   retainHiddenTaskPanel,
+  type SanitizedDiagnosticBrief,
   selectFailureWeightedTasks,
   sha256,
   validateMvpArtifact,
-  type HiddenTaskProfile,
-  type PrivateEvaluationObservation,
-  type SanitizedDiagnosticBrief,
 } from "../../src/mvp/index.js";
 
 describe("MVP hidden selection", () => {
@@ -39,9 +39,9 @@ describe("MVP hidden selection", () => {
       selectFailureWeightedTasks(taskProfiles().filter((profile) => !profile.easyCanary)),
     ).toThrow(/canary/u);
     const profiles = taskProfiles();
-    expect(() =>
-      selectFailureWeightedTasks([...profiles.slice(0, 3), profiles[7]!]),
-    ).toThrow(/four non-canary/u);
+    expect(() => selectFailureWeightedTasks([...profiles.slice(0, 3), profiles[7]!])).toThrow(
+      /four non-canary/u,
+    );
   });
 
   it("retains the exact opaque panel even when other task weights change", () => {
@@ -55,9 +55,7 @@ describe("MVP hidden selection", () => {
       first.map((task) => task.handle),
     );
 
-    expect(retained.map((task) => task.handle)).toEqual(
-      first.map((task) => task.handle),
-    );
+    expect(retained.map((task) => task.handle)).toEqual(first.map((task) => task.handle));
     expect(retained.filter((task) => task.easyCanary)).toHaveLength(1);
   });
 });
@@ -124,9 +122,9 @@ describe("MVP diagnostic release", () => {
         leakedTask: "anything",
       }),
     ).toThrow(/additional properties/u);
-    expect(() =>
-      assertTaskFreeDiagnosticBrief(brief, ["tool-invocation"]),
-    ).toThrow(/hidden source literal/u);
+    expect(() => assertTaskFreeDiagnosticBrief(brief, ["tool-invocation"])).toThrow(
+      /hidden source literal/u,
+    );
   });
 });
 
@@ -134,7 +132,8 @@ function taskProfiles(): readonly HiddenTaskProfile[] {
   return Array.from({ length: 8 }, (_, index) => ({
     handle: hiddenTaskHandle(digest(index + 1)),
     revisionDigest: digest(index + 101),
-    difficulty: index === 7 ? ("easy" as const) : index < 4 ? ("hard" as const) : ("medium" as const),
+    difficulty:
+      index === 7 ? ("easy" as const) : index < 4 ? ("hard" as const) : ("medium" as const),
     easyCanary: index === 7,
     baselineFailureRate: index === 0 ? 1 : 0.5,
     leaderboardFailureRate: index === 0 ? 1 : 0.5,

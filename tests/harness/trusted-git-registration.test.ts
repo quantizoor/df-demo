@@ -13,7 +13,6 @@ import type {
   TrustedCloudArtifactRef,
 } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
-import { ArtifactReadingTrustedGitRegistrationAttestor } from "../../src/harness/git-registration-attestor.js";
 import {
   assertTrustedGitRegistrationWorkerResult,
   CLOUD_REGISTERED_PI_CANONICAL_PATH,
@@ -24,21 +23,18 @@ import {
   TRUSTED_PI_ADAPTER_EXECUTION_MODE,
   TRUSTED_PI_ADAPTER_ID,
   TRUSTED_PI_CODING_AGENT_PACKAGE_NAME,
-  TrustedGitRegistrationRunner,
   type TrustedGitRegistrationAttestor,
   type TrustedGitRegistrationAuthorization,
   type TrustedGitRegistrationReceipt,
+  TrustedGitRegistrationRunner,
   type TrustedGitRegistrationWorkerResult,
 } from "../../src/harness/git-registration.js";
+import { ArtifactReadingTrustedGitRegistrationAttestor } from "../../src/harness/git-registration-attestor.js";
 import {
   cloudExecutionReceiptHash,
   type PrivateGitHubOrigin,
 } from "../../src/harness/trusted-git.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 
 const authorizationKeys = generateKeyPairSync("ed25519");
 const receiptKeys = generateKeyPairSync("ed25519");
@@ -46,8 +42,7 @@ const receiptKeys = generateKeyPairSync("ed25519");
 // Exact read-only observation of the operator's private Pi fork.
 const observedCommit = "5bc1c2c0a6f07e00e8c240304182f213ab8d311f";
 const observedTree = "73898c76210cc8b48f4ac07cc76397b6b5c00758";
-const observedLock =
-  "472f0726dc79f3b38df58d8a8bce96bf56fbf993a134b49aabc54947b8461e59";
+const observedLock = "472f0726dc79f3b38df58d8a8bce96bf56fbf993a134b49aabc54947b8461e59";
 const upstreamHead = "a".repeat(40);
 const upstreamBase = "b".repeat(40);
 const imageDigest = `sha256:${"c".repeat(64)}`;
@@ -101,9 +96,9 @@ function sandbox(
 }
 
 function authorization(
-  mutate: (
-    value: TrustedGitRegistrationAuthorization,
-  ) => TrustedGitRegistrationAuthorization = (value) => value,
+  mutate: (value: TrustedGitRegistrationAuthorization) => TrustedGitRegistrationAuthorization = (
+    value,
+  ) => value,
 ): TrustedGitRegistrationAuthorization {
   const payload = createTrustedGitRegistrationAuthorizationPayload({
     origin,
@@ -120,7 +115,7 @@ function authorization(
   return mutate({
     ...payload,
     signature: createEd25519Signature(
-      payload,
+      { ...payload },
       authorizationKeys.privateKey,
       "git-registration-authorization-key-001",
       "2026-07-26T10:00:01.000Z",
@@ -154,18 +149,14 @@ function expectedLineageHash(): string {
   });
 }
 
-function workerResult(
-  authorized = authorization(),
-): TrustedGitRegistrationWorkerResult {
+function workerResult(authorized = authorization()): TrustedGitRegistrationWorkerResult {
   const currentSpec = spec(authorized);
   return withContentHash({
     schemaVersion: 1 as const,
     domain: "dark-factory.trusted-git-registration.v1" as const,
     authorizationHash: currentSpec.authorizationHash,
     registrationId: createHash("sha256")
-      .update(
-        `${observedCommit}:${currentSpec.originRepositoryHash}:${upstreamBase}`,
-      )
+      .update(`${observedCommit}:${currentSpec.originRepositoryHash}:${upstreamBase}`)
       .digest("hex"),
     originRepositoryHash: currentSpec.originRepositoryHash,
     upstreamRepositoryHash: currentSpec.upstreamRepositoryHash,
@@ -175,8 +166,7 @@ function workerResult(
     lockSha256: observedLock,
     packageName: TRUSTED_PI_CODING_AGENT_PACKAGE_NAME,
     packageVersion: "0.82.1",
-    harnessRegistrationSchemaVersion:
-      TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION,
+    harnessRegistrationSchemaVersion: TRUSTED_HARNESS_REGISTRATION_SCHEMA_VERSION,
     adapterId: TRUSTED_PI_ADAPTER_ID,
     adapterExecutionMode: TRUSTED_PI_ADAPTER_EXECUTION_MODE,
     sessionsDisabled: true as const,
@@ -259,10 +249,7 @@ class FakeProvider implements CloudSandboxProvider {
     });
   }
 
-  execute(
-    lease: SandboxLease,
-    command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     this.calls.push("execute");
     this.commands.push(structuredClone(command));
     return Promise.resolve({
@@ -306,9 +293,8 @@ class FakeProvider implements CloudSandboxProvider {
 }
 
 function attestor(
-  mutate: (
-    receipt: TrustedGitRegistrationReceipt,
-  ) => TrustedGitRegistrationReceipt = (receipt) => receipt,
+  mutate: (receipt: TrustedGitRegistrationReceipt) => TrustedGitRegistrationReceipt = (receipt) =>
+    receipt,
 ): TrustedGitRegistrationAttestor {
   return {
     attest(input): Promise<TrustedGitRegistrationReceipt> {
@@ -327,8 +313,7 @@ function attestor(
         lockSha256: input.spec.lockSha256,
         packageName: input.spec.packageName,
         packageVersion: input.spec.packageVersion,
-        harnessRegistrationSchemaVersion:
-          input.spec.harnessRegistrationSchemaVersion,
+        harnessRegistrationSchemaVersion: input.spec.harnessRegistrationSchemaVersion,
         adapterId: input.spec.adapterId,
         adapterExecutionMode: input.spec.adapterExecutionMode,
         sessionsDisabled: true,
@@ -344,8 +329,7 @@ function attestor(
         fetchEvidence: verified.fetchEvidence,
         writeEvidence: verified.writeEvidence,
         lineageEvidence: verified.lineageEvidence,
-        providerRepositoryAttestationHash:
-          verified.providerRepositoryAttestationHash,
+        providerRepositoryAttestationHash: verified.providerRepositoryAttestationHash,
         lineageAttestationHash: verified.lineageAttestationHash,
         providerVerifiedAt: verified.providerVerifiedAt,
         provider: input.lease.provider,
@@ -380,10 +364,7 @@ function productionAttestor(
   const raw = mutateRaw(`${canonicalJson(workerResult(authorized))}\n`);
   return new ArtifactReadingTrustedGitRegistrationAttestor({
     reader: {
-      readUtf8(
-        artifact: TrustedCloudArtifactRef,
-        maximumBytes: number,
-      ): Promise<string> {
+      readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string> {
         expect(artifact).toEqual(resultArtifact);
         expect(maximumBytes).toBe(4 * 1024 * 1024);
         return Promise.resolve(raw);
@@ -392,9 +373,7 @@ function productionAttestor(
     signer: {
       boundary: "trusted-cloud-key-material",
       keyId: "git-registration-receipt-key-001",
-      sign(
-        body: Omit<TrustedGitRegistrationReceipt, "signature">,
-      ) {
+      sign(body: Omit<TrustedGitRegistrationReceipt, "signature">) {
         return Promise.resolve(
           createEd25519Signature(
             body,
@@ -469,22 +448,16 @@ describe("trusted cloud Git registration", () => {
       }),
     ).not.toThrow();
     expect(
-      parseTrustedGitRegistrationWorkerResult(
-        `${canonicalJson(result)}\n`,
-        {
-          authorization: authorized,
-          spec: currentSpec,
-        },
-      ),
+      parseTrustedGitRegistrationWorkerResult(`${canonicalJson(result)}\n`, {
+        authorization: authorized,
+        spec: currentSpec,
+      }),
     ).toEqual(result);
     expect(() =>
-      parseTrustedGitRegistrationWorkerResult(
-        JSON.stringify(result, null, 2),
-        {
-          authorization: authorized,
-          spec: currentSpec,
-        },
-      ),
+      parseTrustedGitRegistrationWorkerResult(JSON.stringify(result, null, 2), {
+        authorization: authorized,
+        spec: currentSpec,
+      }),
     ).toThrow(/canonical/u);
     expect(() =>
       assertTrustedGitRegistrationWorkerResult(
@@ -509,25 +482,14 @@ describe("trusted cloud Git registration", () => {
   it("returns a signed receipt and a downstream-compatible cloud registration", async () => {
     const provider = new FakeProvider();
     const result = await runner(provider).run();
-    expect(provider.calls).toEqual([
-      "probe",
-      "create",
-      "upload",
-      "execute",
-      "download",
-      "destroy",
-    ]);
+    expect(provider.calls).toEqual(["probe", "create", "upload", "execute", "download", "destroy"]);
     expect(provider.commands).toHaveLength(1);
     expect(provider.commands[0]?.arguments).toContain(observedCommit);
     expect(provider.commands[0]?.arguments).toContain("0.82.1");
     expect(provider.commands[0]?.arguments).toContain("1.2.0");
-    expect(provider.commands[0]?.arguments).toContain(
-      "harbor-pi-print-json",
-    );
+    expect(provider.commands[0]?.arguments).toContain("harbor-pi-print-json");
     expect(result.receipt.registrationId).toBe(expectedRegistrationId());
-    expect(result.receipt.lineageAttestationHash).toBe(
-      expectedLineageHash(),
-    );
+    expect(result.receipt.lineageAttestationHash).toBe(expectedLineageHash());
     expect(result.registration).toMatchObject({
       registrationId: expectedRegistrationId(),
       canonicalPath: CLOUD_REGISTERED_PI_CANONICAL_PATH,
@@ -576,9 +538,7 @@ describe("trusted cloud Git registration", () => {
       runner(
         new FakeProvider(),
         authorized,
-        productionAttestor(authorized, (raw) =>
-          raw.replace(observedTree, "9".repeat(40)),
-        ),
+        productionAttestor(authorized, (raw) => raw.replace(observedTree, "9".repeat(40))),
       ).run(),
     ).rejects.toThrow(/failed closed/u);
   });

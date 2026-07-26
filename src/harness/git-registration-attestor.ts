@@ -1,5 +1,5 @@
-import type { Signature } from "../schemas/primitives.js";
 import { canonicalJson } from "../schemas/canonical.js";
+import type { Signature } from "../schemas/primitives.js";
 import type {
   TrustedGitRegistrationAttestor,
   TrustedGitRegistrationReceipt,
@@ -11,8 +11,7 @@ import {
   cloudExecutionReceiptHash,
 } from "./trusted-git.js";
 
-const SAFE_KEY_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 
 export interface TrustedGitRegistrationResultReader {
@@ -29,9 +28,7 @@ export interface TrustedGitRegistrationResultReader {
 export interface TrustedGitRegistrationReceiptSigningAuthority {
   readonly boundary: "trusted-cloud-key-material";
   readonly keyId: string;
-  sign(
-    unsignedReceipt: Omit<TrustedGitRegistrationReceipt, "signature">,
-  ): Promise<Signature>;
+  sign(unsignedReceipt: Omit<TrustedGitRegistrationReceipt, "signature">): Promise<Signature>;
 }
 
 export interface ArtifactReadingTrustedGitRegistrationAttestorOptions {
@@ -50,10 +47,7 @@ export class TrustedGitRegistrationAttestationError extends Error {
 
 function canonicalTimestamp(value: string): number {
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     throw new TrustedGitRegistrationAttestationError();
   }
   return parsed;
@@ -73,10 +67,8 @@ function assertSignature(
     Object.keys(signature).length !== 4 ||
     signature.algorithm !== "ed25519" ||
     signature.keyId !== signer.keyId ||
-    canonicalTimestamp(signature.signedAt) <
-      canonicalTimestamp(attestedAt) ||
-    canonicalTimestamp(signature.signedAt) >
-      canonicalTimestamp(leaseExpiresAt) ||
+    canonicalTimestamp(signature.signedAt) < canonicalTimestamp(attestedAt) ||
+    canonicalTimestamp(signature.signedAt) > canonicalTimestamp(leaseExpiresAt) ||
     !BASE64URL_SIGNATURE.test(signature.signature)
   ) {
     throw new TrustedGitRegistrationAttestationError();
@@ -98,9 +90,7 @@ export class ArtifactReadingTrustedGitRegistrationAttestor
   readonly #signer: TrustedGitRegistrationReceiptSigningAuthority;
   readonly #now: () => Date;
 
-  constructor(
-    options: ArtifactReadingTrustedGitRegistrationAttestorOptions,
-  ) {
+  constructor(options: ArtifactReadingTrustedGitRegistrationAttestorOptions) {
     if (
       options.signer.boundary !== "trusted-cloud-key-material" ||
       !SAFE_KEY_ID.test(options.signer.keyId)
@@ -116,16 +106,10 @@ export class ArtifactReadingTrustedGitRegistrationAttestor
     input: Parameters<TrustedGitRegistrationAttestor["attest"]>[0],
   ): Promise<TrustedGitRegistrationReceipt> {
     try {
-      if (
-        input.sensitivity !==
-        "trusted-git-registration-attestation-request"
-      ) {
+      if (input.sensitivity !== "trusted-git-registration-attestation-request") {
         throw new TrustedGitRegistrationAttestationError();
       }
-      assertSuccessfulCloudExecution(
-        input.execution,
-        "Git registration worker",
-      );
+      assertSuccessfulCloudExecution(input.execution, "Git registration worker");
       assertTrustedGitArtifact(
         input.resultArtifact,
         "application/json",
@@ -138,20 +122,15 @@ export class ArtifactReadingTrustedGitRegistrationAttestor
       ) {
         throw new TrustedGitRegistrationAttestationError();
       }
-      const raw = await this.#reader.readUtf8(
-        input.resultArtifact,
-        4 * 1024 * 1024,
-      );
+      const raw = await this.#reader.readUtf8(input.resultArtifact, 4 * 1024 * 1024);
       const verified = parseTrustedGitRegistrationWorkerResult(raw, {
         authorization: input.authorization,
         spec: input.spec,
       });
       const attestedAt = this.#now().toISOString();
       if (
-        canonicalTimestamp(attestedAt) <
-          canonicalTimestamp(input.execution.finishedAt) ||
-        canonicalTimestamp(attestedAt) >
-          canonicalTimestamp(input.lease.expiresAt)
+        canonicalTimestamp(attestedAt) < canonicalTimestamp(input.execution.finishedAt) ||
+        canonicalTimestamp(attestedAt) > canonicalTimestamp(input.lease.expiresAt)
       ) {
         throw new TrustedGitRegistrationAttestationError();
       }
@@ -169,8 +148,7 @@ export class ArtifactReadingTrustedGitRegistrationAttestor
         lockSha256: verified.lockSha256,
         packageName: verified.packageName,
         packageVersion: verified.packageVersion,
-        harnessRegistrationSchemaVersion:
-          verified.harnessRegistrationSchemaVersion,
+        harnessRegistrationSchemaVersion: verified.harnessRegistrationSchemaVersion,
         adapterId: verified.adapterId,
         adapterExecutionMode: verified.adapterExecutionMode,
         sessionsDisabled: true,
@@ -186,8 +164,7 @@ export class ArtifactReadingTrustedGitRegistrationAttestor
         fetchEvidence: verified.fetchEvidence,
         writeEvidence: verified.writeEvidence,
         lineageEvidence: verified.lineageEvidence,
-        providerRepositoryAttestationHash:
-          verified.providerRepositoryAttestationHash,
+        providerRepositoryAttestationHash: verified.providerRepositoryAttestationHash,
         lineageAttestationHash: verified.lineageAttestationHash,
         providerVerifiedAt: verified.providerVerifiedAt,
         provider: input.lease.provider,
@@ -196,29 +173,19 @@ export class ArtifactReadingTrustedGitRegistrationAttestor
         imageDigest: input.lease.imageDigest,
         networkPolicyHash: input.lease.networkPolicyHash,
         workerSha256: input.spec.workerArtifact.sha256,
-        executionReceiptHash: cloudExecutionReceiptHash(
-          input.execution,
-        ),
+        executionReceiptHash: cloudExecutionReceiptHash(input.execution),
         resultArtifactSha256: input.resultArtifact.sha256,
         attestedAt,
         passed: true,
       };
       const bodyBeforeSigning = canonicalJson(body);
       const signature = await this.#signer.sign(
-        JSON.parse(bodyBeforeSigning) as Omit<
-          TrustedGitRegistrationReceipt,
-          "signature"
-        >,
+        JSON.parse(bodyBeforeSigning) as Omit<TrustedGitRegistrationReceipt, "signature">,
       );
       if (canonicalJson(body) !== bodyBeforeSigning) {
         throw new TrustedGitRegistrationAttestationError();
       }
-      assertSignature(
-        signature,
-        this.#signer,
-        attestedAt,
-        input.lease.expiresAt,
-      );
+      assertSignature(signature, this.#signer, attestedAt, input.lease.expiresAt);
       return { ...body, signature };
     } catch {
       throw new TrustedGitRegistrationAttestationError();

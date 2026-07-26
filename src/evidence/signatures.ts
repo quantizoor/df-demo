@@ -1,8 +1,4 @@
-import {
-  sign as nodeSign,
-  verify as nodeVerify,
-  type KeyLike,
-} from "node:crypto";
+import { type KeyLike, sign as nodeSign, verify as nodeVerify } from "node:crypto";
 
 import { canonicalJson } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";

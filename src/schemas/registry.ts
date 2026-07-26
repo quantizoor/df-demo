@@ -1,7 +1,7 @@
 import type { Static, TSchema } from "@sinclair/typebox";
 import type { ErrorObject, ValidateFunction } from "ajv";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
 import { reproduceFreshValidationDisposition } from "../core/validation-decision.js";
 
 import {
@@ -24,10 +24,10 @@ import {
 } from "./artifacts.js";
 import { canonicalHash, canonicalJson, hasValidContentHash } from "./canonical.js";
 import {
-  CampaignStateSchema,
-  HarnessRegistrationSchema,
   type CampaignState,
+  CampaignStateSchema,
   type HarnessRegistration,
+  HarnessRegistrationSchema,
 } from "./control.js";
 import { assertReleaseSafe } from "./safety.js";
 import {
@@ -117,7 +117,7 @@ const ajv = new Ajv2020({
   strict: true,
   validateFormats: true,
 });
-addFormats(ajv);
+addFormatsModule.default(ajv);
 
 const validators = new Map<SchemaName, ValidateFunction>();
 for (const [name, schema] of Object.entries(schemaRegistry) as [
@@ -181,7 +181,9 @@ function checkIntervals(name: SchemaName, value: unknown, path = ""): void {
     return;
   }
   if (Array.isArray(value)) {
-    value.forEach((item, index) => checkIntervals(name, item, `${path}/${index}`));
+    value.forEach((item, index) => {
+      checkIntervals(name, item, `${path}/${index}`);
+    });
     return;
   }
   const object = value as Readonly<Record<string, unknown>>;
@@ -220,9 +222,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
   }
 
   if (name === "evaluationPlan") {
-    const attestations = document.panelAttestations as readonly Readonly<
-      Record<string, unknown>
-    >[];
+    const attestations = document.panelAttestations as readonly Readonly<Record<string, unknown>>[];
     const oneUseHashes = attestations.map((attestation) => attestation.oneUseAttestationHash);
     if (new Set(oneUseHashes).size !== oneUseHashes.length) {
       semanticFailure(
@@ -275,7 +275,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
       if (
         stage.stage === "repair" &&
         (stage.taskCount !== 5 ||
-          stage.validArmCeiling < 5 ||
+          numberValue(stage.validArmCeiling) < 5 ||
           stage.cacheMaySubstitute !== true ||
           stage.positivePromotionWeight !== false)
       ) {
@@ -353,8 +353,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
   }
 
   if (name === "attestation" || name === "leakScanReceipt") {
-    const leakScan =
-      name === "attestation" ? objectValue(document.graderLeakScan) : document;
+    const leakScan = name === "attestation" ? objectValue(document.graderLeakScan) : document;
     const leakScanPath = name === "attestation" ? "/graderLeakScan" : "";
     if (name === "attestation" && !hasValidContentHash(leakScan)) {
       semanticFailure(
@@ -363,15 +362,12 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
         "must hash the exact signed leak-scan receipt",
       );
     }
-    const manifest = leakScan.artifactManifest as readonly Readonly<
-      Record<string, unknown>
-    >[];
+    const manifest = leakScan.artifactManifest as readonly Readonly<Record<string, unknown>>[];
     const manifestPaths = manifest.map((entry) => entry.path);
     if (
       new Set(manifestPaths).size !== manifestPaths.length ||
       manifestPaths.some(
-        (path, index) =>
-          index > 0 && String(manifestPaths[index - 1]) >= String(path),
+        (path, index) => index > 0 && String(manifestPaths[index - 1]) >= String(path),
       )
     ) {
       semanticFailure(
@@ -403,9 +399,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
         "must match the sealed experiment number",
       );
     }
-    const manifest = leakScan.artifactManifest as readonly Readonly<
-      Record<string, unknown>
-    >[];
+    const manifest = leakScan.artifactManifest as readonly Readonly<Record<string, unknown>>[];
     const manifestPaths = manifest.map((entry) => entry.path);
     if (
       names.length !== manifestPaths.length ||
@@ -466,27 +460,17 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
         );
       }
       const alphaSpent = numberValue(onlineErrorBudget.alphaSpent);
-      const spentBefore = numberValue(
-        onlineErrorBudget.cumulativeSpentBefore,
-      );
-      const spentAfter = numberValue(
-        onlineErrorBudget.cumulativeSpentAfter,
-      );
-      const maximumOnlineError = numberValue(
-        onlineErrorBudget.maximumOnlineError,
-      );
+      const spentBefore = numberValue(onlineErrorBudget.cumulativeSpentBefore);
+      const spentAfter = numberValue(onlineErrorBudget.cumulativeSpentAfter);
+      const maximumOnlineError = numberValue(onlineErrorBudget.maximumOnlineError);
       if (
         payload.onlineGateAuthorized !== true ||
         alphaSpent <= 0 ||
         spentBefore + alphaSpent !== spentAfter ||
         spentAfter > maximumOnlineError ||
-        Math.abs(
-          numberValue(onlineErrorBudget.remainingAfter) +
-            spentAfter -
-            maximumOnlineError,
-        ) > 1e-12 ||
-        numberValue(payload.requiredPosteriorProbability) !==
-          Math.max(0.95, 1 - alphaSpent)
+        Math.abs(numberValue(onlineErrorBudget.remainingAfter) + spentAfter - maximumOnlineError) >
+          1e-12 ||
+        numberValue(payload.requiredPosteriorProbability) !== Math.max(0.95, 1 - alphaSpent)
       ) {
         semanticFailure(
           name,
@@ -497,9 +481,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
       const reproducedDisposition = reproduceFreshValidationDisposition({
         probabilityPositive: numberValue(weightedAccuracy.probabilityPositive),
         medianAccuracyDelta: numberValue(weightedAccuracy.medianDelta),
-        requiredPosteriorProbability: numberValue(
-          payload.requiredPosteriorProbability,
-        ),
+        requiredPosteriorProbability: numberValue(payload.requiredPosteriorProbability),
         onlineGateAuthorized: payload.onlineGateAuthorized === true,
         stratumRegressionVeto: payload.stratumRegressionVeto === true,
         integrityVeto: payload.integrityVeto === true,
@@ -507,8 +489,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
         capabilityVeto: payload.capabilityVeto === true,
         costWithinGuardrail: payload.costWithinGuardrail === true,
         latencyWithinGuardrail: payload.latencyWithinGuardrail === true,
-        accuracyTradeoffPredeclared:
-          payload.accuracyTradeoffPredeclared === true,
+        accuracyTradeoffPredeclared: payload.accuracyTradeoffPredeclared === true,
       });
       if (payload.disposition !== reproducedDisposition) {
         semanticFailure(
@@ -572,10 +553,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
         contentHash: registration.verification.attestationHash,
       },
     ];
-    if (
-      canonicalJson(registration.provenanceRefs) !==
-      canonicalJson(expectedProvenance)
-    ) {
+    if (canonicalJson(registration.provenanceRefs) !== canonicalJson(expectedProvenance)) {
       semanticFailure(
         name,
         "/provenanceRefs",
@@ -615,10 +593,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
               contentHash: campaign.previousStateHash,
             },
           ];
-    if (
-      canonicalJson(campaign.provenanceRefs) !==
-      canonicalJson(expectedProvenance)
-    ) {
+    if (canonicalJson(campaign.provenanceRefs) !== canonicalJson(expectedProvenance)) {
       semanticFailure(
         name,
         "/provenanceRefs",
@@ -660,10 +635,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
     ) {
       semanticFailure(name, "/control", "control timestamps and reasons must agree with status");
     }
-    if (
-      (control.lastResumedAt === null) !==
-      (control.lastResumeAuthorizationHash === null)
-    ) {
+    if ((control.lastResumedAt === null) !== (control.lastResumeAuthorizationHash === null)) {
       semanticFailure(
         name,
         "/control",
@@ -672,14 +644,9 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
     }
     if (
       control.runEpoch === 0 &&
-      (control.lastResumedAt !== null ||
-        control.lastResumeAuthorizationHash !== null)
+      (control.lastResumedAt !== null || control.lastResumeAuthorizationHash !== null)
     ) {
-      semanticFailure(
-        name,
-        "/control/runEpoch",
-        "epoch zero cannot contain resume metadata",
-      );
+      semanticFailure(name, "/control/runEpoch", "epoch zero cannot contain resume metadata");
     }
 
     const numbering = campaign.numbering;
@@ -699,10 +666,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
         "must be null while the campaign is stopped",
       );
     }
-    if (
-      (numbering.inFlightExperimentNumber === null) !==
-      (numbering.inFlightKind === null)
-    ) {
+    if ((numbering.inFlightExperimentNumber === null) !== (numbering.inFlightKind === null)) {
       semanticFailure(
         name,
         "/numbering",
@@ -714,7 +678,11 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
     const baseline = champions.baseline;
     const active = champions.active;
     if (baseline.experimentNumber !== 0) {
-      semanticFailure(name, "/champions/baseline/experimentNumber", "baseline must be experiment 0");
+      semanticFailure(
+        name,
+        "/champions/baseline/experimentNumber",
+        "baseline must be experiment 0",
+      );
     }
     if (active.experimentNumber >= nextExperiment) {
       semanticFailure(
@@ -747,11 +715,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
     ] as const;
     for (const [usageField, limitField] of budgetPairs) {
       if (usage[usageField] > limits[limitField]) {
-        semanticFailure(
-          name,
-          `/budget/usage/${usageField}`,
-          `must not exceed ${limitField}`,
-        );
+        semanticFailure(name, `/budget/usage/${usageField}`, `must not exceed ${limitField}`);
       }
     }
 

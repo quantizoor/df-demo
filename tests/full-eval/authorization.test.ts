@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { expectedChannels } from "../../src/core/compliance.js";
 import {
+  type AuthorizationStore,
   authorizeFullEvaluation,
   consumeFullEvaluationAuthorization,
-  prepareFullEvaluation,
-  type AuthorizationStore,
   type FullEvaluationAuthorization,
   type FullEvaluationChallenge,
   type FullEvaluationReadiness,
+  prepareFullEvaluation,
 } from "../../src/full-eval/authorization.js";
-import { expectedChannels } from "../../src/core/compliance.js";
 
 class MemoryAuthorizationStore implements AuthorizationStore {
   readonly challenges = new Map<string, FullEvaluationChallenge>();
@@ -26,9 +26,7 @@ class MemoryAuthorizationStore implements AuthorizationStore {
   async putAuthorization(authorization: FullEvaluationAuthorization): Promise<void> {
     this.authorizations.set(authorization.authorizationId, authorization);
   }
-  async getAuthorization(
-    authorizationId: string,
-  ): Promise<FullEvaluationAuthorization | null> {
+  async getAuthorization(authorizationId: string): Promise<FullEvaluationAuthorization | null> {
     return this.authorizations.get(authorizationId) ?? null;
   }
   async consumeAuthorization(authorizationId: string, usedAt: string): Promise<boolean> {
@@ -164,13 +162,11 @@ describe("human-only full evaluation", () => {
       const now = new Date("2026-01-01T00:00:00.000Z");
       const challenge = await prepareFullEvaluation(store, readiness, now);
       await expect(
-        authorizeFullEvaluation(
-          store,
-          challenge.challengeId,
-          challenge.challenge,
-          protocolHash,
-          { stdinIsTty: false, source, now },
-        ),
+        authorizeFullEvaluation(store, challenge.challengeId, challenge.challenge, protocolHash, {
+          stdinIsTty: false,
+          source,
+          now,
+        }),
       ).rejects.toThrow(/interactive/u);
     },
   );
@@ -194,4 +190,3 @@ describe("human-only full evaluation", () => {
     ).rejects.toThrow(/submission mode/u);
   });
 });
-

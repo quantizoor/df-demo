@@ -30,4 +30,3 @@ export class DarkFactoryError extends Error {
 export function asErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-

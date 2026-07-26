@@ -1,6 +1,8 @@
 import {
   type CachedChampionObservation,
   type ChampionCacheKey,
+  championCacheKey,
+  evaluationEnvironmentDigest,
   type HiddenEvaluationCell,
   type HiddenTaskOutcomeUpdate,
   MVP_CACHE_POLICY,
@@ -13,8 +15,6 @@ import {
   type OptimizerInput,
   type PrivateEvaluationObservation,
   type PrivateEvaluationRequest,
-  championCacheKey,
-  evaluationEnvironmentDigest,
 } from "./contracts.js";
 import { decideMatchedComparison } from "./decision.js";
 import { assertTaskFreeDiagnosticBrief } from "./privacy.js";
@@ -54,13 +54,9 @@ export async function runMvpIteration(
 
   const profiles = await ports.taskCatalog.list();
   const selectedTasks =
-    input.retainedTaskHandles === undefined ||
-    input.retainedTaskHandles === null
+    input.retainedTaskHandles === undefined || input.retainedTaskHandles === null
       ? selectFailureWeightedTasks(profiles)
-      : retainHiddenTaskPanel(
-          profiles,
-          input.retainedTaskHandles,
-        );
+      : retainHiddenTaskPanel(profiles, input.retainedTaskHandles);
   const cells = buildMatchedCells(experimentId, selectedTasks);
   const environmentDigest = evaluationEnvironmentDigest(input.environment);
 
@@ -125,24 +121,14 @@ export async function runMvpIteration(
       if (item.cached !== null) {
         return {
           cacheStatus: item.cacheStatus,
-          observation: cachedToObservation(
-            experimentId,
-            item.cell,
-            item.cached,
-          ),
+          observation: cachedToObservation(experimentId, item.cell, item.cached),
         };
       }
       if (item.request === null) {
         throw new Error("Champion cache miss has no evaluation request");
       }
-      const observation = requiredFreshObservation(
-        screeningFreshByKey,
-        item.request,
-      );
-      await ports.championCache.put(
-        item.key,
-        observationToCache(item.key, observation),
-      );
+      const observation = requiredFreshObservation(screeningFreshByKey, item.request);
+      await ports.championCache.put(item.key, observationToCache(item.key, observation));
       return {
         cacheStatus: item.cacheStatus,
         observation,
@@ -187,9 +173,7 @@ export async function runMvpIteration(
     );
     const refreshed = await evaluateFreshBatch(ports, refreshRequests);
     const refreshedByKey = observationMap(refreshed);
-    const refreshKeysByCell = new Map(
-      refreshEntries.map((item) => [item.cell.cellId, item.key]),
-    );
+    const refreshKeysByCell = new Map(refreshEntries.map((item) => [item.cell.cellId, item.key]));
     finalChampion = await Promise.all(
       cells.map(async (cell, index) => {
         const screened = screenChampion[index];
@@ -200,21 +184,14 @@ export async function runMvpIteration(
           return screened;
         }
         const request = refreshRequests.find(
-          (candidateRequest) =>
-            candidateRequest.cell.cellId === cell.cellId,
+          (candidateRequest) => candidateRequest.cell.cellId === cell.cellId,
         );
         const key = refreshKeysByCell.get(cell.cellId);
         if (request === undefined || key === undefined) {
           throw new Error("Champion refresh request is incomplete");
         }
-        const observation = requiredFreshObservation(
-          refreshedByKey,
-          request,
-        );
-        await ports.championCache.put(
-          key,
-          observationToCache(key, observation),
-        );
+        const observation = requiredFreshObservation(refreshedByKey, request);
+        await ports.championCache.put(key, observationToCache(key, observation));
         return observation;
       }),
     );
@@ -255,10 +232,7 @@ export async function runMvpIteration(
               repetition: cell.repetition,
               environment: input.environment,
             });
-            await ports.championCache.put(
-              key,
-              observationToCache(key, observation),
-            );
+            await ports.championCache.put(key, observationToCache(key, observation));
             return cell.cellId;
           }),
         )
@@ -277,9 +251,7 @@ export async function runMvpIteration(
 
   const completedAt = now().toISOString();
   const championAfter =
-    finalDecision.disposition === "promote"
-      ? proposal.candidateRevision
-      : input.championRevision;
+    finalDecision.disposition === "promote" ? proposal.candidateRevision : input.championRevision;
   const artifacts: MvpExperimentArtifacts = {
     manifest: {
       schemaVersion: MVP_SCHEMA_VERSION,
@@ -355,8 +327,7 @@ export async function runMvpIteration(
       hits: cacheHits.length,
       misses: cacheMisses.length,
       refreshedForPromotion: refreshedCellIds.length,
-      seededFromPromotion:
-        seededFromPromotedCandidateCellIds.length,
+      seededFromPromotion: seededFromPromotedCandidateCellIds.length,
     },
   };
 }
@@ -364,10 +335,7 @@ export async function runMvpIteration(
 export function buildTaskFreeMvpOptimizerInput(
   input: Pick<
     MvpIterationInput,
-    | "experimentNumber"
-    | "championRevision"
-    | "previousOutcome"
-    | "previousDiagnosticBrief"
+    "experimentNumber" | "championRevision" | "previousOutcome" | "previousDiagnosticBrief"
   >,
 ): OptimizerInput {
   if (!Number.isSafeInteger(input.experimentNumber) || input.experimentNumber < 1) {
@@ -403,13 +371,9 @@ async function evaluateFreshBatch(
   requests: readonly PrivateEvaluationRequest[],
 ): Promise<readonly PrivateEvaluationObservation[]> {
   if (requests.length < 1 || requests.length > 30) {
-    throw new Error(
-      "A trusted evaluation batch must contain between one and thirty requests",
-    );
+    throw new Error("A trusted evaluation batch must contain between one and thirty requests");
   }
-  const requestedKeys = new Set(
-    requests.map((request) => evaluationRequestKey(request)),
-  );
+  const requestedKeys = new Set(requests.map((request) => evaluationRequestKey(request)));
   if (requestedKeys.size !== requests.length) {
     throw new Error("A trusted evaluation batch contains duplicate requests");
   }
@@ -431,10 +395,7 @@ function observationMap(
   observations: readonly PrivateEvaluationObservation[],
 ): ReadonlyMap<string, PrivateEvaluationObservation> {
   return new Map(
-    observations.map((observation) => [
-      `${observation.arm}:${observation.cellId}`,
-      observation,
-    ]),
+    observations.map((observation) => [`${observation.arm}:${observation.cellId}`, observation]),
   );
 }
 
@@ -462,9 +423,7 @@ function requiredFreshObservation(
     observation.environmentDigest !== request.environmentDigest ||
     observation.source !== "fresh"
   ) {
-    throw new Error(
-      "Trusted evaluator returned evidence detached from its request",
-    );
+    throw new Error("Trusted evaluator returned evidence detached from its request");
   }
   return observation;
 }
@@ -567,8 +526,7 @@ function validateIterationInput(input: MvpIterationInput): void {
   }
   const retainedTaskHandles = input.retainedTaskHandles ?? null;
   const requiresRetainedPanel =
-    input.previousOutcome === "reject" ||
-    input.previousOutcome === "inconclusive";
+    input.previousOutcome === "reject" || input.previousOutcome === "inconclusive";
   if (requiresRetainedPanel !== (retainedTaskHandles !== null)) {
     throw new Error(
       requiresRetainedPanel
@@ -578,12 +536,9 @@ function validateIterationInput(input: MvpIterationInput): void {
   }
   if (
     retainedTaskHandles !== null &&
-    (retainedTaskHandles.length !== 5 ||
-      new Set(retainedTaskHandles).size !== 5)
+    (retainedTaskHandles.length !== 5 || new Set(retainedTaskHandles).size !== 5)
   ) {
-    throw new Error(
-      "A retained hidden panel requires exactly five distinct opaque handles",
-    );
+    throw new Error("A retained hidden panel requires exactly five distinct opaque handles");
   }
 }
 

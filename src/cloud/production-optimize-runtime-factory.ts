@@ -1,37 +1,28 @@
-import {
-  createPublicKey,
-  KeyObject,
-  type KeyLike,
-} from "node:crypto";
+import { createPublicKey, type KeyLike, KeyObject } from "node:crypto";
 import { isAbsolute, join, normalize } from "node:path";
 
 import {
-  CampaignStateStore,
   type CampaignControlAttestationVerifier,
   type CampaignDecisionAttestationVerifier,
   type CampaignLedgerTransitionVerifier,
+  CampaignStateStore,
 } from "../campaign/store.js";
 import {
-  ExperimentStore,
-  type ExperimentStoreOptions,
-} from "../evidence/store.js";
-import type {
-  TrustedCandidateBuildReceiptVerifier,
-} from "../harness/candidate-build-runner.js";
-import type {
-  TrustedGitPublicationReceiptVerifier,
-} from "../harness/git-publication.js";
-import type {
-  TrustedGitSourceReceiptVerifier,
-} from "../harness/git-source.js";
+  ArtifactBackedEvaluationReleaseBundleService,
+  type ArtifactBackedEvaluationReleaseBundleServiceOptions,
+} from "../evaluator/release-bundle-service.js";
+import { ExperimentStore, type ExperimentStoreOptions } from "../evidence/store.js";
+import type { TrustedCandidateBuildReceiptVerifier } from "../harness/candidate-build-runner.js";
+import type { TrustedGitPublicationReceiptVerifier } from "../harness/git-publication.js";
+import type { TrustedGitSourceReceiptVerifier } from "../harness/git-source.js";
 import {
   ArtifactBackedCloudOptimizerAdapterResolver,
   type ArtifactBackedCloudOptimizerAdapterResolverOptions,
 } from "../optimizer/artifact-backed-resolver.js";
 import {
   CloudOnlyClaudeOptimizerSession,
-  createCloudOnlyClaudeOptimizerAdapter,
   type CloudOptimizerSessionOptions,
+  createCloudOnlyClaudeOptimizerAdapter,
 } from "../optimizer/cloud-session.js";
 import {
   ProductionBlindBroker,
@@ -51,66 +42,51 @@ import type {
   OptimizerAdapter,
 } from "../orchestrator/contracts.js";
 import {
-  ProductionCorrectnessGateRunner,
   type ProductionCorrectnessGateOptions,
+  ProductionCorrectnessGateRunner,
 } from "../orchestrator/correctness-gate.js";
-import {
-  ProductionExperimentJournal,
-} from "../orchestrator/experiment-journal.js";
+import { ProductionExperimentJournal } from "../orchestrator/experiment-journal.js";
 import {
   ProductionOptimizationCompletionMaterial,
   type ProductionOptimizationCompletionMaterialOptions,
 } from "../orchestrator/production-completion-material.js";
-import type {
-  ProductionOptimizeLifecycleRegistrar,
-  ProductionOptimizeRuntimeAssembly,
-  ProductionOptimizeRuntimeFactoryInput,
-  TrustedProductionOptimizeCloseable,
-  TrustedProductionOptimizeRuntimeFactory,
-} from "./production-optimize-composition-owner.js";
 import {
-  PRODUCTION_RUNTIME_PORT_IDS,
   assertProductionOptimizationCompositionManifest,
-  productionRuntimePortBindingsHash,
+  PRODUCTION_RUNTIME_PORT_IDS,
   type ProductionOptimizationCompositionManifest,
   type ProductionOptimizationRuntimeComponents,
   type ProductionOptimizationRuntimePortBindings,
   type ProductionRuntimePortAttestationCommitment,
   type ProductionRuntimeRole,
+  productionRuntimePortBindingsHash,
   type TrustedProductionRuntimePortBinding,
 } from "../orchestrator/production-runtime.js";
 import {
   CasBlindBrokerEvaluationConfigurationResolver,
+  type CasBlindBrokerEvaluationConfigurationResolverOptions,
   LeaseStoreTrustedRepairDiscoveryResolver,
   SignedGitSourceHarnessArtifactResolver,
-  type CasBlindBrokerEvaluationConfigurationResolverOptions,
   type SignedGitSourceHarnessArtifactResolverOptions,
 } from "../orchestrator/trusted-port-adapters.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import {
-  ArtifactBackedEvaluationReleaseBundleService,
-  type ArtifactBackedEvaluationReleaseBundleServiceOptions,
-} from "../evaluator/release-bundle-service.js";
 import {
   MountedVolumeAtomicBlindBrokerLeaseStore,
   MountedVolumeTrustedDiagnosticBriefPublisher,
 } from "./mounted-volume-blind-broker-ports.js";
 import {
   MountedVolumeCorrectnessGateRecordStore,
-  MountedVolumeTrustedCandidateSourceIndex,
   type MountedVolumeCorrectnessGateRecordStoreOptions,
+  MountedVolumeTrustedCandidateSourceIndex,
   type MountedVolumeTrustedCandidateSourceIndexOptions,
 } from "./mounted-volume-correctness-gate-ports.js";
+import { MountedVolumeAtomicExperimentJournalStateStore } from "./mounted-volume-experiment-journal.js";
 import {
   MountedVolumeReleaseSafeExperimentArtifactAssembler,
-  MountedVolumeTrustedExperimentSealAuthority,
-  MountedVolumeTrustedJournalInterruptionAttestor,
   type MountedVolumeReleaseSafeExperimentArtifactAssemblerOptions,
+  MountedVolumeTrustedExperimentSealAuthority,
   type MountedVolumeTrustedExperimentSealAuthorityOptions,
+  MountedVolumeTrustedJournalInterruptionAttestor,
 } from "./mounted-volume-experiment-journal-authorities.js";
-import {
-  MountedVolumeAtomicExperimentJournalStateStore,
-} from "./mounted-volume-experiment-journal.js";
 import {
   MountedVolumeOptimizationCoordinationPorts,
   type MountedVolumeOptimizationCoordinationPortsOptions,
@@ -119,14 +95,20 @@ import {
   MountedVolumeCloudOptimizerSessionRecordStore,
   type MountedVolumeDurableStateOptions,
 } from "./mounted-volume-state.js";
+import type {
+  ProductionOptimizeLifecycleRegistrar,
+  ProductionOptimizeRuntimeAssembly,
+  ProductionOptimizeRuntimeFactoryInput,
+  TrustedProductionOptimizeCloseable,
+  TrustedProductionOptimizeRuntimeFactory,
+} from "./production-optimize-composition-owner.js";
 import {
   ProductionMountedVolumeTrustedEvaluator,
   type ProductionTrustedEvaluationDependencies,
 } from "./production-trusted-evaluator.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const SAFE_STORE_ID =
-  /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
+const SAFE_STORE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
 
 const FACTORY_OPTION_KEYS = [
   "attestation",
@@ -150,22 +132,14 @@ const GROUP_KEYS = {
     "decisionAttestationVerifier",
     "controlAttestationVerifier",
   ],
-  coordination: [
-    "diagnosticResolver",
-    "resumeAuthority",
-    "interruptionAuthority",
-  ],
+  coordination: ["diagnosticResolver", "resumeAuthority", "interruptionAuthority"],
   completion: [
     "onlineErrorAuthority",
     "operationLedgerUsage",
     "accountingAuthority",
     "sealAuthority",
   ],
-  journal: [
-    "experimentStore",
-    "artifactAssembler",
-    "sealAuthority",
-  ],
+  journal: ["experimentStore", "artifactAssembler", "sealAuthority"],
   optimizer: ["session", "resolver"],
   correctness: [
     "recordStore",
@@ -192,12 +166,7 @@ const GROUP_KEYS = {
     "behavioralReleaseSigning",
     "initialPrivacyState",
   ],
-  broker: [
-    "configuration",
-    "harness",
-    "release",
-    "signatureVerifier",
-  ],
+  broker: ["configuration", "harness", "release", "signatureVerifier"],
   operationalBindings: [
     "providerReadinessHash",
     "volumeSemanticsHash",
@@ -208,30 +177,24 @@ const GROUP_KEYS = {
   ],
 } as const;
 
-type ComponentCommitmentMap = Readonly<
-  Record<ProductionRuntimeRole, string>
->;
+type ComponentCommitmentMap = Readonly<Record<ProductionRuntimeRole, string>>;
 
 export interface ProductionRuntimeFactoryDependencyAttestation {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-runtime-factory-dependencies.v1";
-  readonly boundary:
-    "trusted-cloud-production-runtime-dependency-attestation";
+  readonly domain: "dark-factory.production-runtime-factory-dependencies.v1";
+  readonly boundary: "trusted-cloud-production-runtime-dependency-attestation";
   readonly manifestHash: string;
   readonly componentManifestHashes: ComponentCommitmentMap;
   readonly operationalBindingsHash: string;
   readonly runtimePortBindingsHash: string;
-  readonly runtimePortAttestations:
-    readonly ProductionRuntimePortAttestationCommitment[];
+  readonly runtimePortAttestations: readonly ProductionRuntimePortAttestationCommitment[];
   readonly containsTaskIdentifiers: false;
   readonly attestationHash: string;
 }
 
 export interface ProductionRuntimeFactoryDependencyVerification {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-runtime-factory-dependency-verification.v1";
+  readonly domain: "dark-factory.production-runtime-factory-dependency-verification.v1";
   readonly attestationHash: string;
   readonly manifestHash: string;
   readonly compositionVerifierAttestationHash: string;
@@ -245,11 +208,9 @@ export interface ProductionRuntimeFactoryDependencyVerification {
  * an executable implementation.
  */
 export interface TrustedProductionRuntimeFactoryDependencyAttestationAuthority {
-  readonly boundary:
-    "trusted-cloud-production-runtime-dependency-attestation-authority";
+  readonly boundary: "trusted-cloud-production-runtime-dependency-attestation-authority";
   verify(input: {
-    readonly attestation:
-      ProductionRuntimeFactoryDependencyAttestation;
+    readonly attestation: ProductionRuntimeFactoryDependencyAttestation;
     readonly manifestHash: string;
     readonly compositionVerifierAttestationHash: string;
   }): Promise<ProductionRuntimeFactoryDependencyVerification>;
@@ -257,10 +218,8 @@ export interface TrustedProductionRuntimeFactoryDependencyAttestationAuthority {
 
 export interface ProductionRuntimeCampaignStateDependencies {
   readonly ledgerTransitionVerifier: CampaignLedgerTransitionVerifier;
-  readonly decisionAttestationVerifier:
-    CampaignDecisionAttestationVerifier;
-  readonly controlAttestationVerifier:
-    CampaignControlAttestationVerifier;
+  readonly decisionAttestationVerifier: CampaignDecisionAttestationVerifier;
+  readonly controlAttestationVerifier: CampaignControlAttestationVerifier;
 }
 
 export type ProductionRuntimeCoordinationDependencies = Omit<
@@ -279,29 +238,17 @@ export interface ProductionRuntimeJournalDependencies {
     MountedVolumeReleaseSafeExperimentArtifactAssemblerOptions,
     "durableState"
   >;
-  readonly sealAuthority: Omit<
-    MountedVolumeTrustedExperimentSealAuthorityOptions,
-    "durableState"
-  >;
+  readonly sealAuthority: Omit<MountedVolumeTrustedExperimentSealAuthorityOptions, "durableState">;
 }
 
 export interface ProductionRuntimeOptimizerDependencies {
   readonly session: CloudOptimizerSessionOptions;
-  readonly resolver: Omit<
-    ArtifactBackedCloudOptimizerAdapterResolverOptions,
-    "sourceIndex"
-  >;
+  readonly resolver: Omit<ArtifactBackedCloudOptimizerAdapterResolverOptions, "sourceIndex">;
 }
 
 export interface ProductionRuntimeCorrectnessDependencies {
-  readonly recordStore: Omit<
-    MountedVolumeCorrectnessGateRecordStoreOptions,
-    "durableState"
-  >;
-  readonly sourceIndex: Omit<
-    MountedVolumeTrustedCandidateSourceIndexOptions,
-    "durableState"
-  >;
+  readonly recordStore: Omit<MountedVolumeCorrectnessGateRecordStoreOptions, "durableState">;
+  readonly sourceIndex: Omit<MountedVolumeTrustedCandidateSourceIndexOptions, "durableState">;
   readonly scanner: ProductionCorrectnessGateOptions["scanner"];
   readonly builder: ProductionCorrectnessGateOptions["builder"];
   readonly publisher: ProductionCorrectnessGateOptions["publisher"];
@@ -313,18 +260,10 @@ export interface ProductionRuntimeCorrectnessDependencies {
 }
 
 export interface ProductionRuntimeBrokerDependencies {
-  readonly configuration:
-    CasBlindBrokerEvaluationConfigurationResolverOptions;
-  readonly harness: Omit<
-    SignedGitSourceHarnessArtifactResolverOptions,
-    "source"
-  >;
-  readonly release: Omit<
-    ArtifactBackedEvaluationReleaseBundleServiceOptions,
-    "service" | "now"
-  >;
-  readonly signatureVerifier:
-    TrustedAdaptiveReleaseSignatureVerifier;
+  readonly configuration: CasBlindBrokerEvaluationConfigurationResolverOptions;
+  readonly harness: Omit<SignedGitSourceHarnessArtifactResolverOptions, "source">;
+  readonly release: Omit<ArtifactBackedEvaluationReleaseBundleServiceOptions, "service" | "now">;
+  readonly signatureVerifier: TrustedAdaptiveReleaseSignatureVerifier;
 }
 
 export interface ProductionRuntimeOperationalBindings {
@@ -337,31 +276,23 @@ export interface ProductionRuntimeOperationalBindings {
 }
 
 export interface ProductionTrustedCloudRuntimeFactoryOptions {
-  readonly attestation:
-    ProductionRuntimeFactoryDependencyAttestation;
-  readonly attestationAuthority:
-    TrustedProductionRuntimeFactoryDependencyAttestationAuthority;
+  readonly attestation: ProductionRuntimeFactoryDependencyAttestation;
+  readonly attestationAuthority: TrustedProductionRuntimeFactoryDependencyAttestationAuthority;
   readonly durableState: MountedVolumeDurableStateOptions;
-  readonly campaignState:
-    ProductionRuntimeCampaignStateDependencies;
-  readonly coordination:
-    ProductionRuntimeCoordinationDependencies;
-  readonly completion:
-    ProductionRuntimeCompletionDependencies;
+  readonly campaignState: ProductionRuntimeCampaignStateDependencies;
+  readonly coordination: ProductionRuntimeCoordinationDependencies;
+  readonly completion: ProductionRuntimeCompletionDependencies;
   readonly journal: ProductionRuntimeJournalDependencies;
   readonly optimizer: ProductionRuntimeOptimizerDependencies;
-  readonly correctness:
-    ProductionRuntimeCorrectnessDependencies;
+  readonly correctness: ProductionRuntimeCorrectnessDependencies;
   readonly evaluator: ProductionTrustedEvaluationDependencies;
   readonly broker: ProductionRuntimeBrokerDependencies;
-  readonly operationalBindings:
-    ProductionRuntimeOperationalBindings;
+  readonly operationalBindings: ProductionRuntimeOperationalBindings;
   readonly now?: () => Date;
 }
 
 export class ProductionTrustedCloudRuntimeFactoryError extends Error {
-  override readonly name =
-    "ProductionTrustedCloudRuntimeFactoryError";
+  override readonly name = "ProductionTrustedCloudRuntimeFactoryError";
 
   public constructor() {
     super("Production trusted-cloud runtime factory failed closed.");
@@ -372,9 +303,7 @@ function fail(): never {
   throw new ProductionTrustedCloudRuntimeFactoryError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -395,10 +324,7 @@ function assertExactKeys(
       (key) =>
         typeof key !== "string" ||
         !expected.includes(key) ||
-        !Object.hasOwn(
-          Object.getOwnPropertyDescriptor(value, key) ?? {},
-          "value",
-        ),
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, "value"),
     )
   ) {
     fail();
@@ -428,20 +354,13 @@ function readNow(now: () => Date): Date {
 function timestamp(value: unknown): number {
   if (typeof value !== "string") fail();
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail();
   }
   return parsed;
 }
 
-function captureMethod<
-  Owner extends object,
-  Arguments extends unknown[],
-  Result,
->(
+function captureMethod<Owner extends object, Arguments extends unknown[], Result>(
   owner: Owner,
   method: (...arguments_: Arguments) => Result,
 ): (...arguments_: Arguments) => Result {
@@ -468,10 +387,7 @@ function capturePublicKey(value: KeyLike): KeyObject {
       format: "der",
       type: "spki",
     });
-    if (
-      key.type !== "public" ||
-      key.asymmetricKeyType !== "ed25519"
-    ) {
+    if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") {
       fail();
     }
     return key;
@@ -495,12 +411,7 @@ function assertAttestation(
     "containsTaskIdentifiers",
     "attestationHash",
   ]);
-  assertExactKeys(value.componentManifestHashes, [
-    "control",
-    "optimizer",
-    "build",
-    "evaluator",
-  ]);
+  assertExactKeys(value.componentManifestHashes, ["control", "optimizer", "build", "evaluator"]);
   for (const hash of Object.values(value.componentManifestHashes)) {
     assertHash(hash);
   }
@@ -510,14 +421,11 @@ function assertAttestation(
   assertHash(value.attestationHash);
   if (
     value.schemaVersion !== 1 ||
-    value.domain !==
-      "dark-factory.production-runtime-factory-dependencies.v1" ||
-    value.boundary !==
-      "trusted-cloud-production-runtime-dependency-attestation" ||
+    value.domain !== "dark-factory.production-runtime-factory-dependencies.v1" ||
+    value.boundary !== "trusted-cloud-production-runtime-dependency-attestation" ||
     value.containsTaskIdentifiers !== false ||
     !Array.isArray(value.runtimePortAttestations) ||
-    value.runtimePortAttestations.length !==
-      PRODUCTION_RUNTIME_PORT_IDS.length
+    value.runtimePortAttestations.length !== PRODUCTION_RUNTIME_PORT_IDS.length
   ) {
     fail();
   }
@@ -529,16 +437,11 @@ function assertAttestation(
   }
   if (
     value.runtimePortBindingsHash !==
-      productionRuntimePortBindingsHash(
-        value.runtimePortAttestations,
-      )
+    productionRuntimePortBindingsHash(value.runtimePortAttestations)
   ) {
     fail();
   }
-  const {
-    attestationHash: _attestationHash,
-    ...unsigned
-  } = value;
+  const { attestationHash: _attestationHash, ...unsigned } = value;
   if (value.attestationHash !== canonicalHash(unsigned)) fail();
 }
 
@@ -568,23 +471,16 @@ function captureDurableState(
     options.recoveryAuthority === undefined
       ? undefined
       : {
-          authorize: captureMethod(
-            options.recoveryAuthority,
-            options.recoveryAuthority.authorize,
-          ),
+          authorize: captureMethod(options.recoveryAuthority, options.recoveryAuthority.authorize),
         };
   const nonceFactory =
     options.nonceFactory === undefined
       ? undefined
-      : captureMethod(
-          { invoke: options.nonceFactory },
-          options.nonceFactory,
-        );
+      : captureMethod({ invoke: options.nonceFactory }, options.nonceFactory);
   return Object.freeze({
     volumeRoot: options.volumeRoot,
     storeId: options.storeId,
-    controllerInstanceIdHash:
-      options.controllerInstanceIdHash,
+    controllerInstanceIdHash: options.controllerInstanceIdHash,
     runtimeGuard: Object.freeze({
       assertTrustedCloudRuntime,
     }),
@@ -594,9 +490,7 @@ function captureDurableState(
     ...(recoveryAuthority === undefined
       ? {}
       : {
-          recoveryAuthority: Object.freeze(
-            recoveryAuthority,
-          ),
+          recoveryAuthority: Object.freeze(recoveryAuthority),
         }),
     now,
     ...(nonceFactory === undefined ? {} : { nonceFactory }),
@@ -611,10 +505,7 @@ function captureCampaignState(
 ): ProductionRuntimeCampaignStateDependencies {
   return Object.freeze({
     ledgerTransitionVerifier: Object.freeze({
-      verify: captureMethod(
-        value.ledgerTransitionVerifier,
-        value.ledgerTransitionVerifier.verify,
-      ),
+      verify: captureMethod(value.ledgerTransitionVerifier, value.ledgerTransitionVerifier.verify),
     }),
     decisionAttestationVerifier: Object.freeze({
       verify: captureMethod(
@@ -637,17 +528,11 @@ function captureCoordination(
   return Object.freeze({
     diagnosticResolver: Object.freeze({
       boundary: value.diagnosticResolver.boundary,
-      resolve: captureMethod(
-        value.diagnosticResolver,
-        value.diagnosticResolver.resolve,
-      ),
+      resolve: captureMethod(value.diagnosticResolver, value.diagnosticResolver.resolve),
     }),
     resumeAuthority: Object.freeze({
       boundary: value.resumeAuthority.boundary,
-      verifyAndAttest: captureMethod(
-        value.resumeAuthority,
-        value.resumeAuthority.verifyAndAttest,
-      ),
+      verifyAndAttest: captureMethod(value.resumeAuthority, value.resumeAuthority.verifyAndAttest),
     }),
     interruptionAuthority: Object.freeze({
       boundary: value.interruptionAuthority.boundary,
@@ -669,14 +554,8 @@ function captureCompletion(
   return Object.freeze({
     onlineErrorAuthority: Object.freeze({
       boundary: value.onlineErrorAuthority.boundary,
-      reserve: captureMethod(
-        value.onlineErrorAuthority,
-        value.onlineErrorAuthority.reserve,
-      ),
-      reconcile: captureMethod(
-        value.onlineErrorAuthority,
-        value.onlineErrorAuthority.reconcile,
-      ),
+      reserve: captureMethod(value.onlineErrorAuthority, value.onlineErrorAuthority.reserve),
+      reconcile: captureMethod(value.onlineErrorAuthority, value.onlineErrorAuthority.reconcile),
     }),
     operationLedgerUsage: Object.freeze({
       boundary: value.operationLedgerUsage.boundary,
@@ -698,10 +577,7 @@ function captureCompletion(
     }),
     sealAuthority: Object.freeze({
       boundary: value.sealAuthority.boundary,
-      authorize: captureMethod(
-        value.sealAuthority,
-        value.sealAuthority.authorize,
-      ),
+      authorize: captureMethod(value.sealAuthority, value.sealAuthority.authorize),
     }),
   });
 }
@@ -709,34 +585,25 @@ function captureCompletion(
 function captureJournal(
   value: ProductionRuntimeJournalDependencies,
 ): ProductionRuntimeJournalDependencies {
-  const trustedLeakScanner =
-    value.experimentStore.trustedLeakScanner;
+  const trustedLeakScanner = value.experimentStore.trustedLeakScanner;
   const experimentStore: Omit<ExperimentStoreOptions, "now"> = {
     ...(trustedLeakScanner === undefined
       ? {}
       : {
           trustedLeakScanner: Object.freeze({
             keyId: trustedLeakScanner.keyId,
-            publicKey: capturePublicKey(
-              trustedLeakScanner.publicKey,
-            ),
+            publicKey: capturePublicKey(trustedLeakScanner.publicKey),
           }),
         }),
-    ...(value.experimentStore.maximumLeakScanReceiptAgeMs ===
-    undefined
+    ...(value.experimentStore.maximumLeakScanReceiptAgeMs === undefined
       ? {}
       : {
-          maximumLeakScanReceiptAgeMs:
-            value.experimentStore
-              .maximumLeakScanReceiptAgeMs,
+          maximumLeakScanReceiptAgeMs: value.experimentStore.maximumLeakScanReceiptAgeMs,
         }),
-    ...(value.experimentStore.maximumLeakScanClockSkewMs ===
-    undefined
+    ...(value.experimentStore.maximumLeakScanClockSkewMs === undefined
       ? {}
       : {
-          maximumLeakScanClockSkewMs:
-            value.experimentStore
-              .maximumLeakScanClockSkewMs,
+          maximumLeakScanClockSkewMs: value.experimentStore.maximumLeakScanClockSkewMs,
         }),
   };
   return Object.freeze({
@@ -756,20 +623,15 @@ function captureJournal(
       }),
       taskIdentityExclusionAuthority: Object.freeze({
         assertTaskFree: captureMethod(
-          value.artifactAssembler
-            .taskIdentityExclusionAuthority,
-          value.artifactAssembler
-            .taskIdentityExclusionAuthority.assertTaskFree,
+          value.artifactAssembler.taskIdentityExclusionAuthority,
+          value.artifactAssembler.taskIdentityExclusionAuthority.assertTaskFree,
         ),
       }),
     }),
     sealAuthority: Object.freeze({
       scanner: Object.freeze({
         boundary: value.sealAuthority.scanner.boundary,
-        scan: captureMethod(
-          value.sealAuthority.scanner,
-          value.sealAuthority.scanner.scan,
-        ),
+        scan: captureMethod(value.sealAuthority.scanner, value.sealAuthority.scanner.scan),
       }),
       keyAuthority: Object.freeze({
         boundary: value.sealAuthority.keyAuthority.boundary,
@@ -779,10 +641,7 @@ function captureJournal(
           value.sealAuthority.keyAuthority.signLeakScanReceipt,
         ),
       }),
-      scannerPublicKey:
-        capturePublicKey(
-          value.sealAuthority.scannerPublicKey,
-        ),
+      scannerPublicKey: capturePublicKey(value.sealAuthority.scannerPublicKey),
       pinnedVersions: Object.freeze({
         resolve: captureMethod(
           value.sealAuthority.pinnedVersions,
@@ -815,22 +674,13 @@ function captureOptimizer(
   const session: CloudOptimizerSessionOptions = Object.freeze({
     provider: captureCloudProvider(value.session.provider),
     sandbox: cloneCanonical(value.session.sandbox),
-    workerArtifact: cloneCanonical(
-      value.session.workerArtifact,
-    ),
-    pluginArtifact: cloneCanonical(
-      value.session.pluginArtifact,
-    ),
+    workerArtifact: cloneCanonical(value.session.workerArtifact),
+    pluginArtifact: cloneCanonical(value.session.pluginArtifact),
     artifactReader: Object.freeze({
-      readUtf8: captureMethod(
-        value.session.artifactReader,
-        value.session.artifactReader.readUtf8,
-      ),
+      readUtf8: captureMethod(value.session.artifactReader, value.session.artifactReader.readUtf8),
     }),
     claude: cloneCanonical(value.session.claude),
-    optimizerSecretReferences: cloneCanonical(
-      value.session.optimizerSecretReferences,
-    ),
+    optimizerSecretReferences: cloneCanonical(value.session.optimizerSecretReferences),
   });
   const resolver = value.resolver;
   return Object.freeze({
@@ -842,17 +692,11 @@ function captureOptimizer(
       ),
       evidenceSource: Object.freeze({
         boundary: resolver.evidenceSource.boundary,
-        locate: captureMethod(
-          resolver.evidenceSource,
-          resolver.evidenceSource.locate,
-        ),
+        locate: captureMethod(resolver.evidenceSource, resolver.evidenceSource.locate),
       }),
       artifactReader: Object.freeze({
         boundary: resolver.artifactReader.boundary,
-        readUtf8: captureMethod(
-          resolver.artifactReader,
-          resolver.artifactReader.readUtf8,
-        ),
+        readUtf8: captureMethod(resolver.artifactReader, resolver.artifactReader.readUtf8),
       }),
       releaseArtifactReader: Object.freeze({
         boundary: resolver.releaseArtifactReader.boundary,
@@ -861,30 +705,22 @@ function captureOptimizer(
           resolver.releaseArtifactReader.readBytes,
         ),
       }),
-      releaseArtifactInspectionPolicy: cloneCanonical(
-        resolver.releaseArtifactInspectionPolicy,
-      ),
+      releaseArtifactInspectionPolicy: cloneCanonical(resolver.releaseArtifactInspectionPolicy),
       keyAuthority: Object.freeze({
         boundary: resolver.keyAuthority.boundary,
-        resolve: captureMethod(
-          resolver.keyAuthority,
-          resolver.keyAuthority.resolve,
-        ),
+        resolve: captureMethod(resolver.keyAuthority, resolver.keyAuthority.resolve),
       }),
       authoritySetHash: resolver.authoritySetHash,
-      verificationKeySetHash:
-        resolver.verificationKeySetHash,
+      verificationKeySetHash: resolver.verificationKeySetHash,
       ...(resolver.maximumMetadataBytes === undefined
         ? {}
         : {
-            maximumMetadataBytes:
-              resolver.maximumMetadataBytes,
+            maximumMetadataBytes: resolver.maximumMetadataBytes,
           }),
       ...(resolver.maximumEvidenceBytes === undefined
         ? {}
         : {
-            maximumEvidenceBytes:
-              resolver.maximumEvidenceBytes,
+            maximumEvidenceBytes: resolver.maximumEvidenceBytes,
           }),
     }),
   });
@@ -927,29 +763,17 @@ function captureCorrectness(
   return Object.freeze({
     recordStore: Object.freeze({
       integrityScanVerifier: Object.freeze({
-        trustedKeyId:
-          value.recordStore.integrityScanVerifier.trustedKeyId,
-        publicKey: capturePublicKey(
-          value.recordStore.integrityScanVerifier.publicKey,
-        ),
+        trustedKeyId: value.recordStore.integrityScanVerifier.trustedKeyId,
+        publicKey: capturePublicKey(value.recordStore.integrityScanVerifier.publicKey),
       }),
-      candidateBuildVerifier: captureBuildVerifier(
-        value.recordStore.candidateBuildVerifier,
-      ),
-      gitPublicationVerifier: capturePublicationVerifier(
-        value.recordStore.gitPublicationVerifier,
-      ),
-      gitSourceVerifier: captureSourceVerifier(
-        value.recordStore.gitSourceVerifier,
-      ),
+      candidateBuildVerifier: captureBuildVerifier(value.recordStore.candidateBuildVerifier),
+      gitPublicationVerifier: capturePublicationVerifier(value.recordStore.gitPublicationVerifier),
+      gitSourceVerifier: captureSourceVerifier(value.recordStore.gitSourceVerifier),
     }),
     sourceIndex: Object.freeze({
-      sourceReceiptVerifier: captureSourceVerifier(
-        value.sourceIndex.sourceReceiptVerifier,
-      ),
+      sourceReceiptVerifier: captureSourceVerifier(value.sourceIndex.sourceReceiptVerifier),
       attestationAuthority: Object.freeze({
-        boundary:
-          value.sourceIndex.attestationAuthority.boundary,
+        boundary: value.sourceIndex.attestationAuthority.boundary,
         attest: captureMethod(
           value.sourceIndex.attestationAuthority,
           value.sourceIndex.attestationAuthority.attest,
@@ -966,17 +790,11 @@ function captureCorrectness(
     }),
     publisher: Object.freeze({
       boundary: value.publisher.boundary,
-      publish: captureMethod(
-        value.publisher,
-        value.publisher.publish,
-      ),
+      publish: captureMethod(value.publisher, value.publisher.publish),
     }),
     snapshotter: Object.freeze({
       boundary: value.snapshotter.boundary,
-      snapshot: captureMethod(
-        value.snapshotter,
-        value.snapshotter.snapshot,
-      ),
+      snapshot: captureMethod(value.snapshotter, value.snapshotter.snapshot),
     }),
     integrityPolicyHash: value.integrityPolicyHash,
     integrityWorkerSha256: value.integrityWorkerSha256,
@@ -993,33 +811,19 @@ function captureBroker(
     "source",
     "reader",
     "signatureVerifier",
-    ...(release.maximumArtifactBytes === undefined
-      ? []
-      : ["maximumArtifactBytes"] as const),
-    ...(release.maximumTotalBytes === undefined
-      ? []
-      : ["maximumTotalBytes"] as const),
-    ...(release.maximumReplayRecords === undefined
-      ? []
-      : ["maximumReplayRecords"] as const),
-    ...(release.maximumClockSkewMs === undefined
-      ? []
-      : ["maximumClockSkewMs"] as const),
+    ...(release.maximumArtifactBytes === undefined ? [] : (["maximumArtifactBytes"] as const)),
+    ...(release.maximumTotalBytes === undefined ? [] : (["maximumTotalBytes"] as const)),
+    ...(release.maximumReplayRecords === undefined ? [] : (["maximumReplayRecords"] as const)),
+    ...(release.maximumClockSkewMs === undefined ? [] : (["maximumClockSkewMs"] as const)),
   ]);
   return Object.freeze({
     configuration: Object.freeze({
       source: Object.freeze({
         boundary: value.configuration.source.boundary,
-        locate: captureMethod(
-          value.configuration.source,
-          value.configuration.source.locate,
-        ),
+        locate: captureMethod(value.configuration.source, value.configuration.source.locate),
       }),
       reader: Object.freeze({
-        readUtf8: captureMethod(
-          value.configuration.reader,
-          value.configuration.reader.readUtf8,
-        ),
+        readUtf8: captureMethod(value.configuration.reader, value.configuration.reader.readUtf8),
       }),
       ...(value.configuration.maximumBytes === undefined
         ? {}
@@ -1032,40 +836,27 @@ function captureBroker(
           value.harness.keyring.getVerificationKey,
         ),
       }),
-      trustedKeyIds: Object.freeze([
-        ...value.harness.trustedKeyIds,
-      ]),
+      trustedKeyIds: Object.freeze([...value.harness.trustedKeyIds]),
       registrationId: value.harness.registrationId,
-      originRepositoryHash:
-        value.harness.originRepositoryHash,
+      originRepositoryHash: value.harness.originRepositoryHash,
     }),
     release: Object.freeze({
       source: Object.freeze({
         boundary: release.source.boundary,
-        locate: captureMethod(
-          release.source,
-          release.source.locate,
-        ),
+        locate: captureMethod(release.source, release.source.locate),
       }),
       reader: Object.freeze({
         boundary: release.reader.boundary,
-        readUtf8: captureMethod(
-          release.reader,
-          release.reader.readUtf8,
-        ),
+        readUtf8: captureMethod(release.reader, release.reader.readUtf8),
       }),
       signatureVerifier: Object.freeze({
         boundary: release.signatureVerifier.boundary,
-        verify: captureMethod(
-          release.signatureVerifier,
-          release.signatureVerifier.verify,
-        ),
+        verify: captureMethod(release.signatureVerifier, release.signatureVerifier.verify),
       }),
       ...(release.maximumArtifactBytes === undefined
         ? {}
         : {
-            maximumArtifactBytes:
-              release.maximumArtifactBytes,
+            maximumArtifactBytes: release.maximumArtifactBytes,
           }),
       ...(release.maximumTotalBytes === undefined
         ? {}
@@ -1073,45 +864,33 @@ function captureBroker(
       ...(release.maximumReplayRecords === undefined
         ? {}
         : {
-            maximumReplayRecords:
-              release.maximumReplayRecords,
+            maximumReplayRecords: release.maximumReplayRecords,
           }),
       ...(release.maximumClockSkewMs === undefined
         ? {}
         : {
-            maximumClockSkewMs:
-              release.maximumClockSkewMs,
+            maximumClockSkewMs: release.maximumClockSkewMs,
           }),
     }),
     signatureVerifier: Object.freeze({
-      verify: captureMethod(
-        value.signatureVerifier,
-        value.signatureVerifier.verify,
-      ),
+      verify: captureMethod(value.signatureVerifier, value.signatureVerifier.verify),
     }),
   });
 }
 
 interface CapturedFactoryOptions {
-  readonly attestation:
-    ProductionRuntimeFactoryDependencyAttestation;
-  readonly verifyDependencyAttestation:
-    TrustedProductionRuntimeFactoryDependencyAttestationAuthority["verify"];
+  readonly attestation: ProductionRuntimeFactoryDependencyAttestation;
+  readonly verifyDependencyAttestation: TrustedProductionRuntimeFactoryDependencyAttestationAuthority["verify"];
   readonly durableState: MountedVolumeDurableStateOptions;
-  readonly campaignState:
-    ProductionRuntimeCampaignStateDependencies;
-  readonly coordination:
-    ProductionRuntimeCoordinationDependencies;
-  readonly completion:
-    ProductionRuntimeCompletionDependencies;
+  readonly campaignState: ProductionRuntimeCampaignStateDependencies;
+  readonly coordination: ProductionRuntimeCoordinationDependencies;
+  readonly completion: ProductionRuntimeCompletionDependencies;
   readonly journal: ProductionRuntimeJournalDependencies;
   readonly optimizer: ProductionRuntimeOptimizerDependencies;
-  readonly correctness:
-    ProductionRuntimeCorrectnessDependencies;
+  readonly correctness: ProductionRuntimeCorrectnessDependencies;
   readonly evaluator: ProductionMountedVolumeTrustedEvaluator;
   readonly broker: ProductionRuntimeBrokerDependencies;
-  readonly operationalBindings:
-    ProductionRuntimeOperationalBindings;
+  readonly operationalBindings: ProductionRuntimeOperationalBindings;
   readonly now: () => Date;
 }
 
@@ -1126,10 +905,7 @@ function captureOptions(
         : FACTORY_OPTION_KEYS,
     );
     for (const [group, keys] of Object.entries(GROUP_KEYS)) {
-      assertExactKeys(
-        options[group as keyof typeof GROUP_KEYS],
-        keys,
-      );
+      assertExactKeys(options[group as keyof typeof GROUP_KEYS], keys);
     }
     assertAttestation(options.attestation);
     if (
@@ -1139,42 +915,28 @@ function captureOptions(
     ) {
       fail();
     }
-    const sourceNow =
-      options.now ?? options.durableState.now ?? (() => new Date());
+    const sourceNow = options.now ?? options.durableState.now ?? (() => new Date());
     const now = (): Date => readNow(sourceNow);
-    const operationalBindings = cloneCanonical(
-      options.operationalBindings,
-    );
+    const operationalBindings = cloneCanonical(options.operationalBindings);
     for (const hash of Object.values(operationalBindings)) {
       assertHash(hash);
     }
     return Object.freeze({
-      attestation: Object.freeze(
-        cloneCanonical(options.attestation),
-      ),
+      attestation: Object.freeze(cloneCanonical(options.attestation)),
       verifyDependencyAttestation: captureMethod(
         options.attestationAuthority,
         options.attestationAuthority.verify,
       ),
-      durableState: captureDurableState(
-        options.durableState,
-        now,
-      ),
-      campaignState: captureCampaignState(
-        options.campaignState,
-      ),
+      durableState: captureDurableState(options.durableState, now),
+      campaignState: captureCampaignState(options.campaignState),
       coordination: captureCoordination(options.coordination),
       completion: captureCompletion(options.completion),
       journal: captureJournal(options.journal),
       optimizer: captureOptimizer(options.optimizer),
       correctness: captureCorrectness(options.correctness),
-      evaluator: new ProductionMountedVolumeTrustedEvaluator(
-        options.evaluator,
-      ),
+      evaluator: new ProductionMountedVolumeTrustedEvaluator(options.evaluator),
       broker: captureBroker(options.broker),
-      operationalBindings: Object.freeze(
-        operationalBindings,
-      ),
+      operationalBindings: Object.freeze(operationalBindings),
       now,
     });
   } catch {
@@ -1186,17 +948,9 @@ function assertFactoryInput(
   input: ProductionOptimizeRuntimeFactoryInput,
   options: CapturedFactoryOptions,
 ): void {
-  assertExactKeys(input, [
-    "manifest",
-    "compositionVerification",
-    "bootstrapReceipt",
-    "lifecycle",
-  ]);
+  assertExactKeys(input, ["manifest", "compositionVerification", "bootstrapReceipt", "lifecycle"]);
   const now = options.now();
-  assertProductionOptimizationCompositionManifest(
-    input.manifest,
-    now,
-  );
+  assertProductionOptimizationCompositionManifest(input.manifest, now);
   const manifest = input.manifest;
   const verification = input.compositionVerification;
   const receipt = input.bootstrapReceipt;
@@ -1255,67 +1009,47 @@ function assertFactoryInput(
   }
   const expectedBootstrapRequestHash = canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1",
+    domain: "dark-factory.production-optimize-bootstrap-or-reconstruct-request.v1",
     manifestId: manifest.manifestId,
     manifestHash: manifest.manifestHash,
     campaignId: manifest.campaignId,
     lineageId: manifest.lineageId,
     protocolHash: manifest.protocolHash,
-    sourcePrerequisiteHash:
-      manifest.bindings.harnessRegistrationHash,
-    genesisPrerequisiteHash:
-      manifest.bindings.campaignGenesisHash,
-    catalogPrerequisiteHash:
-      manifest.bindings.hiddenCatalogGenesisHash,
+    sourcePrerequisiteHash: manifest.bindings.harnessRegistrationHash,
+    genesisPrerequisiteHash: manifest.bindings.campaignGenesisHash,
+    catalogPrerequisiteHash: manifest.bindings.hiddenCatalogGenesisHash,
   });
-  const {
-    receiptHash: _receiptHash,
-    ...unsignedReceipt
-  } = receipt;
+  const { receiptHash: _receiptHash, ...unsignedReceipt } = receipt;
   const verifiedAt = timestamp(receipt.verifiedAt);
   if (
-    input.lifecycle.boundary !==
-      "production-optimize-composition-owner" ||
+    input.lifecycle.boundary !== "production-optimize-composition-owner" ||
     typeof input.lifecycle.register !== "function" ||
     options.durableState.storeId !== manifest.campaignId ||
     attestation.manifestHash !== manifest.manifestHash ||
-    attestation.operationalBindingsHash !==
-      canonicalHash(manifest.bindings) ||
+    attestation.operationalBindingsHash !== canonicalHash(manifest.bindings) ||
     attestation.runtimePortBindingsHash !==
-      productionRuntimePortBindingsHash(
-        manifest.runtimePortAttestations,
-      ) ||
+      productionRuntimePortBindingsHash(manifest.runtimePortAttestations) ||
     canonicalJson(attestation.runtimePortAttestations) !==
       canonicalJson(manifest.runtimePortAttestations) ||
     verification.manifestHash !== manifest.manifestHash ||
     verification.schemaVersion !== 1 ||
-    verification.domain !==
-      "dark-factory.production-composition-verification.v1" ||
+    verification.domain !== "dark-factory.production-composition-verification.v1" ||
     verification.signingKeyId !== manifest.signature.keyId ||
-    verification.componentBindingsHash !==
-      canonicalHash(manifest.components) ||
-    verification.operationalBindingsHash !==
-      canonicalHash(manifest.bindings) ||
-    verification.runtimePortBindingsHash !==
-      attestation.runtimePortBindingsHash ||
+    verification.componentBindingsHash !== canonicalHash(manifest.components) ||
+    verification.operationalBindingsHash !== canonicalHash(manifest.bindings) ||
+    verification.runtimePortBindingsHash !== attestation.runtimePortBindingsHash ||
     verification.verified !== true ||
     receipt.schemaVersion !== 1 ||
-    receipt.domain !==
-      "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" ||
+    receipt.domain !== "dark-factory.production-optimize-bootstrap-or-reconstruct-receipt.v1" ||
     receipt.requestHash !== expectedBootstrapRequestHash ||
     receipt.manifestHash !== manifest.manifestHash ||
     receipt.campaignId !== manifest.campaignId ||
     receipt.lineageId !== manifest.lineageId ||
     receipt.protocolHash !== manifest.protocolHash ||
-    receipt.sourcePrerequisiteHash !==
-      manifest.bindings.harnessRegistrationHash ||
-    receipt.genesisPrerequisiteHash !==
-      manifest.bindings.campaignGenesisHash ||
-    receipt.catalogPrerequisiteHash !==
-      manifest.bindings.hiddenCatalogGenesisHash ||
-    (receipt.disposition !== "bootstrapped" &&
-      receipt.disposition !== "reconstructed") ||
+    receipt.sourcePrerequisiteHash !== manifest.bindings.harnessRegistrationHash ||
+    receipt.genesisPrerequisiteHash !== manifest.bindings.campaignGenesisHash ||
+    receipt.catalogPrerequisiteHash !== manifest.bindings.hiddenCatalogGenesisHash ||
+    (receipt.disposition !== "bootstrapped" && receipt.disposition !== "reconstructed") ||
     receipt.prerequisitesVerified !== true ||
     receipt.idempotentlyBound !== true ||
     verifiedAt < timestamp(manifest.issuedAt) ||
@@ -1324,40 +1058,24 @@ function assertFactoryInput(
   ) {
     fail();
   }
-  for (const role of [
-    "control",
-    "optimizer",
-    "build",
-    "evaluator",
-  ] as const) {
-    if (
-      attestation.componentManifestHashes[role] !==
-      canonicalHash(manifest.components[role])
-    ) {
+  for (const role of ["control", "optimizer", "build", "evaluator"] as const) {
+    if (attestation.componentManifestHashes[role] !== canonicalHash(manifest.components[role])) {
       fail();
     }
   }
   const bindings = options.operationalBindings;
   if (
-    bindings.providerReadinessHash !==
-      manifest.bindings.providerReadinessHash ||
-    bindings.volumeSemanticsHash !==
-      manifest.bindings.volumeSemanticsHash ||
-    bindings.correctnessPolicyHash !==
-      manifest.bindings.correctnessPolicyHash ||
-    bindings.brokerPolicyHash !==
-      manifest.bindings.brokerPolicyHash ||
-    bindings.evaluatorPolicyHash !==
-      manifest.bindings.evaluatorPolicyHash ||
-    bindings.journalPolicyHash !==
-      manifest.bindings.journalPolicyHash ||
-    options.optimizer.resolver.releaseArtifactInspectionPolicy
-      .evaluatorPolicyHash !==
+    bindings.providerReadinessHash !== manifest.bindings.providerReadinessHash ||
+    bindings.volumeSemanticsHash !== manifest.bindings.volumeSemanticsHash ||
+    bindings.correctnessPolicyHash !== manifest.bindings.correctnessPolicyHash ||
+    bindings.brokerPolicyHash !== manifest.bindings.brokerPolicyHash ||
+    bindings.evaluatorPolicyHash !== manifest.bindings.evaluatorPolicyHash ||
+    bindings.journalPolicyHash !== manifest.bindings.journalPolicyHash ||
+    options.optimizer.resolver.releaseArtifactInspectionPolicy.evaluatorPolicyHash !==
       manifest.bindings.evaluatorPolicyHash ||
     options.optimizer.session.pluginArtifact.sha256 !==
       manifest.bindings.optimizerPluginBundleHash ||
-    options.optimizer.session.sandbox.imageDigest !==
-      manifest.components.optimizer.imageDigest ||
+    options.optimizer.session.sandbox.imageDigest !== manifest.components.optimizer.imageDigest ||
     options.optimizer.session.sandbox.imageReference !==
       manifest.components.optimizer.imageReference
   ) {
@@ -1368,35 +1086,22 @@ function assertFactoryInput(
 function captureFactoryInput(
   input: ProductionOptimizeRuntimeFactoryInput,
 ): ProductionOptimizeRuntimeFactoryInput {
-  assertExactKeys(input, [
-    "manifest",
-    "compositionVerification",
-    "bootstrapReceipt",
-    "lifecycle",
-  ]);
+  assertExactKeys(input, ["manifest", "compositionVerification", "bootstrapReceipt", "lifecycle"]);
   assertExactKeys(input.lifecycle, ["boundary", "register"]);
   if (
-    input.lifecycle.boundary !==
-      "production-optimize-composition-owner" ||
+    input.lifecycle.boundary !== "production-optimize-composition-owner" ||
     typeof input.lifecycle.register !== "function"
   ) {
     fail();
   }
   const lifecycle = Object.freeze({
     boundary: input.lifecycle.boundary,
-    register: captureMethod(
-      input.lifecycle,
-      input.lifecycle.register,
-    ),
+    register: captureMethod(input.lifecycle, input.lifecycle.register),
   });
   return Object.freeze({
     manifest: cloneCanonical(input.manifest),
-    compositionVerification: cloneCanonical(
-      input.compositionVerification,
-    ),
-    bootstrapReceipt: cloneCanonical(
-      input.bootstrapReceipt,
-    ),
+    compositionVerification: cloneCanonical(input.compositionVerification),
+    bootstrapReceipt: cloneCanonical(input.bootstrapReceipt),
     lifecycle,
   });
 }
@@ -1408,12 +1113,10 @@ async function verifyDependencyAttestation(
   const request = {
     attestation: cloneCanonical(options.attestation),
     manifestHash: input.manifest.manifestHash,
-    compositionVerifierAttestationHash:
-      input.compositionVerification.verifierAttestationHash,
+    compositionVerifierAttestationHash: input.compositionVerification.verifierAttestationHash,
   };
   const requestJson = canonicalJson(request);
-  const verification =
-    await options.verifyDependencyAttestation(request);
+  const verification = await options.verifyDependencyAttestation(request);
   if (canonicalJson(request) !== requestJson) fail();
   assertExactKeys(verification, [
     "schemaVersion",
@@ -1434,10 +1137,8 @@ async function verifyDependencyAttestation(
   }
   if (
     verification.schemaVersion !== 1 ||
-    verification.domain !==
-      "dark-factory.production-runtime-factory-dependency-verification.v1" ||
-    verification.attestationHash !==
-      options.attestation.attestationHash ||
+    verification.domain !== "dark-factory.production-runtime-factory-dependency-verification.v1" ||
+    verification.attestationHash !== options.attestation.attestationHash ||
     verification.manifestHash !== input.manifest.manifestHash ||
     verification.compositionVerifierAttestationHash !==
       input.compositionVerification.verifierAttestationHash ||
@@ -1448,34 +1149,20 @@ async function verifyDependencyAttestation(
 }
 
 class ConstructionLifecycle {
-  readonly #register: (
-    closeable: TrustedProductionOptimizeCloseable,
-  ) => void;
-  readonly #registered:
-    TrustedProductionOptimizeCloseable[] = [];
+  readonly #register: (closeable: TrustedProductionOptimizeCloseable) => void;
+  readonly #registered: TrustedProductionOptimizeCloseable[] = [];
   readonly #ids = new Set<string>();
 
-  public constructor(
-    input: ProductionOptimizeRuntimeFactoryInput["lifecycle"],
-  ) {
+  public constructor(input: ProductionOptimizeRuntimeFactoryInput["lifecycle"]) {
     this.#register = captureMethod(input, input.register);
   }
 
-  public add(
-    lifecycleId: string,
-    close: () => Promise<void>,
-  ): void {
-    if (
-      !SAFE_STORE_ID.test(lifecycleId) ||
-      this.#ids.has(lifecycleId)
-    ) {
+  public add(lifecycleId: string, close: () => Promise<void>): void {
+    if (!SAFE_STORE_ID.test(lifecycleId) || this.#ids.has(lifecycleId)) {
       fail();
     }
     this.#ids.add(lifecycleId);
-    const capturedClose = captureMethod(
-      { close },
-      close,
-    );
+    const capturedClose = captureMethod({ close }, close);
     let closePromise: Promise<void> | null = null;
     const closeOnce = (): Promise<void> => {
       if (closePromise === null) {
@@ -1484,8 +1171,7 @@ class ConstructionLifecycle {
       return closePromise;
     };
     const closeable = Object.freeze({
-      boundary:
-        "trusted-cloud-production-optimize-lifecycle" as const,
+      boundary: "trusted-cloud-production-optimize-lifecycle" as const,
       lifecycleId,
       close: closeOnce,
     });
@@ -1493,13 +1179,9 @@ class ConstructionLifecycle {
     this.#register(closeable);
   }
 
-  public addStore(
-    lifecycleId: string,
-    store: object,
-  ): void {
+  public addStore(lifecycleId: string, store: object): void {
     const close =
-      "close" in store &&
-      typeof (store as { close?: unknown }).close === "function"
+      "close" in store && typeof (store as { close?: unknown }).close === "function"
         ? captureMethod(
             store,
             (
@@ -1514,36 +1196,25 @@ class ConstructionLifecycle {
 
   public registrar(): ProductionOptimizeLifecycleRegistrar {
     return Object.freeze({
-      boundary:
-        "production-optimize-composition-owner" as const,
-      register: (
-        closeable: TrustedProductionOptimizeCloseable,
-      ): void => {
+      boundary: "production-optimize-composition-owner" as const,
+      register: (closeable: TrustedProductionOptimizeCloseable): void => {
         if (
           closeable === null ||
           typeof closeable !== "object" ||
-          closeable.boundary !==
-            "trusted-cloud-production-optimize-lifecycle" ||
+          closeable.boundary !== "trusted-cloud-production-optimize-lifecycle" ||
           typeof closeable.lifecycleId !== "string" ||
           typeof closeable.close !== "function"
         ) {
           fail();
         }
-        this.add(
-          closeable.lifecycleId,
-          captureMethod(closeable, closeable.close),
-        );
+        this.add(closeable.lifecycleId, captureMethod(closeable, closeable.close));
       },
     });
   }
 
   public async cleanup(): Promise<void> {
     let failed = false;
-    for (
-      let index = this.#registered.length - 1;
-      index >= 0;
-      index -= 1
-    ) {
+    for (let index = this.#registered.length - 1; index >= 0; index -= 1) {
       const entry = this.#registered[index];
       if (entry === undefined) {
         failed = true;
@@ -1564,28 +1235,13 @@ function frozenCampaignStore(
 ): OptimizationCampaignStateStore {
   return Object.freeze({
     reconstruct: captureMethod(source, source.reconstruct),
-    allocateExperiment: captureMethod(
-      source,
-      source.allocateExperiment,
-    ),
-    recordBudgetUsage: captureMethod(
-      source,
-      source.recordBudgetUsage,
-    ),
-    sealExperiment: captureMethod(
-      source,
-      source.sealExperiment,
-    ),
-    archiveInterruptedExperiment: captureMethod(
-      source,
-      source.archiveInterruptedExperiment,
-    ),
+    allocateExperiment: captureMethod(source, source.allocateExperiment),
+    recordBudgetUsage: captureMethod(source, source.recordBudgetUsage),
+    sealExperiment: captureMethod(source, source.sealExperiment),
+    archiveInterruptedExperiment: captureMethod(source, source.archiveInterruptedExperiment),
     pause: captureMethod(source, source.pause),
     requestStop: captureMethod(source, source.requestStop),
-    acknowledgeStopped: captureMethod(
-      source,
-      source.acknowledgeStopped,
-    ),
+    acknowledgeStopped: captureMethod(source, source.acknowledgeStopped),
   });
 }
 
@@ -1594,10 +1250,7 @@ function frozenInputFactory(
 ): TrustedOptimizationInputFactory {
   return Object.freeze({
     boundary: "trusted-cloud" as const,
-    prepareOrResume: captureMethod(
-      source,
-      source.prepareOrResume,
-    ),
+    prepareOrResume: captureMethod(source, source.prepareOrResume),
     bindClaim: captureMethod(source, source.bindClaim),
   });
 }
@@ -1620,15 +1273,11 @@ function frozenCompletionMaterial(
       source,
       source.createBudgetAccountingAttestation,
     ),
-    createInterruptedBudgetAccountingAttestation:
-      captureMethod(
-        source,
-        source.createInterruptedBudgetAccountingAttestation,
-      ),
-    createSealMaterial: captureMethod(
+    createInterruptedBudgetAccountingAttestation: captureMethod(
       source,
-      source.createSealMaterial,
+      source.createInterruptedBudgetAccountingAttestation,
     ),
+    createSealMaterial: captureMethod(source, source.createSealMaterial),
   });
 }
 
@@ -1639,51 +1288,33 @@ function frozenInterruption(
     boundary: "trusted-cloud" as const,
     begin: captureMethod(source, source.begin),
     findPending: captureMethod(source, source.findPending),
-    prepareControl: captureMethod(
-      source,
-      source.prepareControl,
-    ),
+    prepareControl: captureMethod(source, source.prepareControl),
     markApplied: captureMethod(source, source.markApplied),
   });
 }
 
-function frozenJournal(
-  source: ExperimentJournal,
-): ExperimentJournal {
+function frozenJournal(source: ExperimentJournal): ExperimentJournal {
   return Object.freeze({
     create: captureMethod(source, source.create),
-    freezeProposal: captureMethod(
-      source,
-      source.freezeProposal,
-    ),
+    freezeProposal: captureMethod(source, source.freezeProposal),
     recordGates: captureMethod(source, source.recordGates),
     recordRepair: captureMethod(source, source.recordRepair),
-    recordValidation: captureMethod(
-      source,
-      source.recordValidation,
-    ),
-    recordAnalysis: captureMethod(
-      source,
-      source.recordAnalysis,
-    ),
+    recordValidation: captureMethod(source, source.recordValidation),
+    recordAnalysis: captureMethod(source, source.recordAnalysis),
     updateBudget: captureMethod(source, source.updateBudget),
     seal: captureMethod(source, source.seal),
     interrupt: captureMethod(source, source.interrupt),
   });
 }
 
-function frozenOptimizer(
-  source: OptimizerAdapter,
-): OptimizerAdapter {
+function frozenOptimizer(source: OptimizerAdapter): OptimizerAdapter {
   return Object.freeze({
     propose: captureMethod(source, source.propose),
     analyze: captureMethod(source, source.analyze),
   });
 }
 
-function frozenGates(
-  source: CorrectnessGateRunner,
-): CorrectnessGateRunner {
+function frozenGates(source: CorrectnessGateRunner): CorrectnessGateRunner {
   return Object.freeze({
     run: captureMethod(source, source.run),
   });
@@ -1691,27 +1322,12 @@ function frozenGates(
 
 function frozenBroker(source: BlindBroker): BlindBroker {
   return Object.freeze({
-    prepareRepair: captureMethod(
-      source,
-      source.prepareRepair,
-    ),
+    prepareRepair: captureMethod(source, source.prepareRepair),
     runRepair: captureMethod(source, source.runRepair),
-    prepareValidation: captureMethod(
-      source,
-      source.prepareValidation,
-    ),
-    runValidation: captureMethod(
-      source,
-      source.runValidation,
-    ),
-    consumeOrQuarantine: captureMethod(
-      source,
-      source.consumeOrQuarantine,
-    ),
-    releaseDiagnosticBrief: captureMethod(
-      source,
-      source.releaseDiagnosticBrief,
-    ),
+    prepareValidation: captureMethod(source, source.prepareValidation),
+    runValidation: captureMethod(source, source.runValidation),
+    consumeOrQuarantine: captureMethod(source, source.consumeOrQuarantine),
+    releaseDiagnosticBrief: captureMethod(source, source.releaseDiagnosticBrief),
   });
 }
 
@@ -1722,14 +1338,10 @@ function runtimePortBinding<
   commitment: ProductionRuntimePortAttestationCommitment,
   portId: PortId,
   implementation: Implementation,
-): TrustedProductionRuntimePortBinding<
-  PortId,
-  Implementation
-> {
+): TrustedProductionRuntimePortBinding<PortId, Implementation> {
   if (commitment.portId !== portId) fail();
   return Object.freeze({
-    boundary:
-      "trusted-cloud-runtime-port-binding" as const,
+    boundary: "trusted-cloud-runtime-port-binding" as const,
     portId,
     attestationSha256: commitment.attestationSha256,
     implementation,
@@ -1742,8 +1354,7 @@ function createComponents(
     readonly campaignStore: OptimizationCampaignStateStore;
     readonly inputFactory: TrustedOptimizationInputFactory;
     readonly resumeVerifier: TrustedOptimizationResumeVerifier;
-    readonly completionMaterial:
-      TrustedOptimizationCompletionMaterialPort;
+    readonly completionMaterial: TrustedOptimizationCompletionMaterialPort;
     readonly interruption: TrustedOptimizationInterruptionPort;
     readonly journal: ExperimentJournal;
     readonly optimizer: OptimizerAdapter;
@@ -1755,9 +1366,7 @@ function createComponents(
     control: Object.freeze({
       boundary: "trusted-cloud" as const,
       role: "control" as const,
-      manifestBindingHash: canonicalHash(
-        manifest.components.control,
-      ),
+      manifestBindingHash: canonicalHash(manifest.components.control),
       imageDigest: manifest.components.control.imageDigest,
       campaignStore: ports.campaignStore,
       inputFactory: ports.inputFactory,
@@ -1769,27 +1378,21 @@ function createComponents(
     optimizer: Object.freeze({
       boundary: "trusted-cloud" as const,
       role: "optimizer" as const,
-      manifestBindingHash: canonicalHash(
-        manifest.components.optimizer,
-      ),
+      manifestBindingHash: canonicalHash(manifest.components.optimizer),
       imageDigest: manifest.components.optimizer.imageDigest,
       adapter: ports.optimizer,
     }),
     build: Object.freeze({
       boundary: "trusted-cloud" as const,
       role: "build" as const,
-      manifestBindingHash: canonicalHash(
-        manifest.components.build,
-      ),
+      manifestBindingHash: canonicalHash(manifest.components.build),
       imageDigest: manifest.components.build.imageDigest,
       gates: ports.gates,
     }),
     evaluator: Object.freeze({
       boundary: "trusted-cloud" as const,
       role: "evaluator" as const,
-      manifestBindingHash: canonicalHash(
-        manifest.components.evaluator,
-      ),
+      manifestBindingHash: canonicalHash(manifest.components.evaluator),
       imageDigest: manifest.components.evaluator.imageDigest,
       broker: ports.broker,
     }),
@@ -1802,8 +1405,7 @@ function createBindings(
     readonly campaignStore: OptimizationCampaignStateStore;
     readonly inputFactory: TrustedOptimizationInputFactory;
     readonly resumeVerifier: TrustedOptimizationResumeVerifier;
-    readonly completionMaterial:
-      TrustedOptimizationCompletionMaterialPort;
+    readonly completionMaterial: TrustedOptimizationCompletionMaterialPort;
     readonly interruption: TrustedOptimizationInterruptionPort;
     readonly journal: ExperimentJournal;
     readonly optimizer: OptimizerAdapter;
@@ -1814,59 +1416,38 @@ function createBindings(
   const commitments = manifest.runtimePortAttestations;
   const bindings = {
     campaignStore: runtimePortBinding(
-      commitments[0] ??
-        fail(),
+      commitments[0] ?? fail(),
       "control.campaign-state-store",
       ports.campaignStore,
     ),
     inputFactory: runtimePortBinding(
-      commitments[1] ??
-        fail(),
+      commitments[1] ?? fail(),
       "control.optimization-input-factory",
       ports.inputFactory,
     ),
     resumeVerifier: runtimePortBinding(
-      commitments[2] ??
-        fail(),
+      commitments[2] ?? fail(),
       "control.optimization-resume-verifier",
       ports.resumeVerifier,
     ),
     completionMaterial: runtimePortBinding(
-      commitments[3] ??
-        fail(),
+      commitments[3] ?? fail(),
       "control.optimization-completion-material",
       ports.completionMaterial,
     ),
     interruption: runtimePortBinding(
-      commitments[4] ??
-        fail(),
+      commitments[4] ?? fail(),
       "control.optimization-interruption-port",
       ports.interruption,
     ),
     journal: runtimePortBinding(
-      commitments[5] ??
-        fail(),
+      commitments[5] ?? fail(),
       "control.experiment-journal",
       ports.journal,
     ),
-    optimizer: runtimePortBinding(
-      commitments[6] ??
-        fail(),
-      "optimizer.adapter",
-      ports.optimizer,
-    ),
-    gates: runtimePortBinding(
-      commitments[7] ??
-        fail(),
-      "build.correctness-gate",
-      ports.gates,
-    ),
-    broker: runtimePortBinding(
-      commitments[8] ??
-        fail(),
-      "evaluator.blind-broker",
-      ports.broker,
-    ),
+    optimizer: runtimePortBinding(commitments[6] ?? fail(), "optimizer.adapter", ports.optimizer),
+    gates: runtimePortBinding(commitments[7] ?? fail(), "build.correctness-gate", ports.gates),
+    broker: runtimePortBinding(commitments[8] ?? fail(), "evaluator.blind-broker", ports.broker),
   };
   if (
     canonicalJson(Object.keys(bindings)) !==
@@ -1896,14 +1477,11 @@ function createBindings(
 export class ProductionTrustedCloudRuntimeFactory
   implements TrustedProductionOptimizeRuntimeFactory
 {
-  readonly boundary =
-    "trusted-cloud-production-optimize-runtime-factory" as const;
+  readonly boundary = "trusted-cloud-production-optimize-runtime-factory" as const;
   readonly #options: CapturedFactoryOptions;
   #used = false;
 
-  public constructor(
-    options: ProductionTrustedCloudRuntimeFactoryOptions,
-  ) {
+  public constructor(options: ProductionTrustedCloudRuntimeFactoryOptions) {
     this.#options = captureOptions(options);
   }
 
@@ -1913,109 +1491,69 @@ export class ProductionTrustedCloudRuntimeFactory
     if (this.#used) fail();
     this.#used = true;
     const capturedInput = captureFactoryInput(input);
-    const lifecycle = new ConstructionLifecycle(
-      capturedInput.lifecycle,
-    );
+    const lifecycle = new ConstructionLifecycle(capturedInput.lifecycle);
     try {
       assertFactoryInput(capturedInput, this.#options);
       const options = this.#options;
       options.durableState.runtimeGuard.assertTrustedCloudRuntime();
-      options.durableState.semanticsGuard
-        .assertLinearizableStateVolume({
-          volumeRoot: options.durableState.volumeRoot,
-          namespace:
-            `production-runtime-${capturedInput.manifest.campaignId}`,
-        });
-      await verifyDependencyAttestation(
-        capturedInput,
-        options,
-      );
+      options.durableState.semanticsGuard.assertLinearizableStateVolume({
+        volumeRoot: options.durableState.volumeRoot,
+        namespace: `production-runtime-${capturedInput.manifest.campaignId}`,
+      });
+      await verifyDependencyAttestation(capturedInput, options);
 
       const campaignStore = new CampaignStateStore(
         join(options.durableState.volumeRoot, "campaigns"),
         capturedInput.manifest.campaignId,
         {
           now: options.now,
-          ledgerTransitionVerifier:
-            options.campaignState.ledgerTransitionVerifier,
-          decisionAttestationVerifier:
-            options.campaignState.decisionAttestationVerifier,
-          controlAttestationVerifier:
-            options.campaignState.controlAttestationVerifier,
+          ledgerTransitionVerifier: options.campaignState.ledgerTransitionVerifier,
+          decisionAttestationVerifier: options.campaignState.decisionAttestationVerifier,
+          controlAttestationVerifier: options.campaignState.controlAttestationVerifier,
         },
       );
       lifecycle.addStore("runtime-campaign-state", campaignStore);
 
-      const coordination =
-        new MountedVolumeOptimizationCoordinationPorts({
-          ...options.coordination,
-          durableState: options.durableState,
-        });
-      lifecycle.addStore(
-        "runtime-optimization-coordination",
-        coordination,
-      );
+      const coordination = new MountedVolumeOptimizationCoordinationPorts({
+        ...options.coordination,
+        durableState: options.durableState,
+      });
+      lifecycle.addStore("runtime-optimization-coordination", coordination);
 
-      const journalState =
-        new MountedVolumeAtomicExperimentJournalStateStore(
-          options.durableState,
-        );
-      lifecycle.addStore(
-        "runtime-experiment-journal-state",
-        journalState,
-      );
+      const journalState = new MountedVolumeAtomicExperimentJournalStateStore(options.durableState);
+      lifecycle.addStore("runtime-experiment-journal-state", journalState);
 
       const evidenceStore = new ExperimentStore(
-        join(
-          options.durableState.volumeRoot,
-          "experiments",
-          capturedInput.manifest.campaignId,
-        ),
+        join(options.durableState.volumeRoot, "experiments", capturedInput.manifest.campaignId),
         {
           ...options.journal.experimentStore,
           now: options.now,
         },
       );
-      lifecycle.addStore(
-        "runtime-experiment-evidence",
-        evidenceStore,
-      );
+      lifecycle.addStore("runtime-experiment-evidence", evidenceStore);
 
-      const artifactAssembler =
-        new MountedVolumeReleaseSafeExperimentArtifactAssembler({
-          ...options.journal.artifactAssembler,
-          durableState: options.durableState,
-        });
-      lifecycle.addStore(
-        "runtime-journal-artifact-assembler",
-        artifactAssembler,
-      );
+      const artifactAssembler = new MountedVolumeReleaseSafeExperimentArtifactAssembler({
+        ...options.journal.artifactAssembler,
+        durableState: options.durableState,
+      });
+      lifecycle.addStore("runtime-journal-artifact-assembler", artifactAssembler);
 
-      const journalSealAuthority =
-        new MountedVolumeTrustedExperimentSealAuthority({
-          ...options.journal.sealAuthority,
-          durableState: options.durableState,
-        });
-      lifecycle.addStore(
-        "runtime-journal-seal-authority",
-        journalSealAuthority,
-      );
+      const journalSealAuthority = new MountedVolumeTrustedExperimentSealAuthority({
+        ...options.journal.sealAuthority,
+        durableState: options.durableState,
+      });
+      lifecycle.addStore("runtime-journal-seal-authority", journalSealAuthority);
 
-      const journalInterruptionAttestor =
-        new MountedVolumeTrustedJournalInterruptionAttestor({
-          durableState: options.durableState,
-          now: options.now,
-        });
-      lifecycle.addStore(
-        "runtime-journal-interruption-attestor",
-        journalInterruptionAttestor,
-      );
+      const journalInterruptionAttestor = new MountedVolumeTrustedJournalInterruptionAttestor({
+        durableState: options.durableState,
+        now: options.now,
+      });
+      lifecycle.addStore("runtime-journal-interruption-attestor", journalInterruptionAttestor);
 
-      const completionMaterial =
-        new ProductionOptimizationCompletionMaterial({
-          ...options.completion,
-          journalStateStore: journalState,
-        });
+      const completionMaterial = new ProductionOptimizationCompletionMaterial({
+        ...options.completion,
+        journalStateStore: journalState,
+      });
       const journal = new ProductionExperimentJournal({
         evidenceStore,
         stateStore: journalState,
@@ -2025,44 +1563,28 @@ export class ProductionTrustedCloudRuntimeFactory
         now: options.now,
       });
 
-      const optimizerRecords =
-        new MountedVolumeCloudOptimizerSessionRecordStore(
-          options.durableState,
-        );
-      lifecycle.addStore(
-        "runtime-optimizer-records",
-        optimizerRecords,
+      const optimizerRecords = new MountedVolumeCloudOptimizerSessionRecordStore(
+        options.durableState,
       );
+      lifecycle.addStore("runtime-optimizer-records", optimizerRecords);
 
-      const correctnessRecords =
-        new MountedVolumeCorrectnessGateRecordStore({
-          ...options.correctness.recordStore,
-          durableState: options.durableState,
-        });
-      lifecycle.addStore(
-        "runtime-correctness-records",
-        correctnessRecords,
-      );
+      const correctnessRecords = new MountedVolumeCorrectnessGateRecordStore({
+        ...options.correctness.recordStore,
+        durableState: options.durableState,
+      });
+      lifecycle.addStore("runtime-correctness-records", correctnessRecords);
 
-      const sourceIndex =
-        new MountedVolumeTrustedCandidateSourceIndex({
-          ...options.correctness.sourceIndex,
-          durableState: options.durableState,
-        });
-      lifecycle.addStore(
-        "runtime-candidate-source-index",
+      const sourceIndex = new MountedVolumeTrustedCandidateSourceIndex({
+        ...options.correctness.sourceIndex,
+        durableState: options.durableState,
+      });
+      lifecycle.addStore("runtime-candidate-source-index", sourceIndex);
+
+      const optimizerResolver = new ArtifactBackedCloudOptimizerAdapterResolver({
+        ...options.optimizer.resolver,
         sourceIndex,
-      );
-
-      const optimizerResolver =
-        new ArtifactBackedCloudOptimizerAdapterResolver({
-          ...options.optimizer.resolver,
-          sourceIndex,
-        });
-      const optimizerSession =
-        new CloudOnlyClaudeOptimizerSession(
-          options.optimizer.session,
-        );
+      });
+      const optimizerSession = new CloudOnlyClaudeOptimizerSession(options.optimizer.session);
       const optimizer = createCloudOnlyClaudeOptimizerAdapter({
         session: optimizerSession,
         resolver: optimizerResolver,
@@ -2077,124 +1599,79 @@ export class ProductionTrustedCloudRuntimeFactory
         publisher: options.correctness.publisher,
         snapshotter: options.correctness.snapshotter,
         sourceIndex,
-        integrityReceiptVerifier:
-          options.correctness.recordStore.integrityScanVerifier,
-        integrityPolicyHash:
-          options.correctness.integrityPolicyHash,
-        integrityWorkerSha256:
-          options.correctness.integrityWorkerSha256,
-        fragmentCatalogHash:
-          options.correctness.fragmentCatalogHash,
+        integrityReceiptVerifier: options.correctness.recordStore.integrityScanVerifier,
+        integrityPolicyHash: options.correctness.integrityPolicyHash,
+        integrityWorkerSha256: options.correctness.integrityWorkerSha256,
+        fragmentCatalogHash: options.correctness.fragmentCatalogHash,
         buildPolicyHash: options.correctness.buildPolicyHash,
       });
 
-      const brokerLeases =
-        new MountedVolumeAtomicBlindBrokerLeaseStore(
-          options.durableState,
-        );
-      lifecycle.addStore(
-        "runtime-blind-broker-leases",
-        brokerLeases,
-      );
+      const brokerLeases = new MountedVolumeAtomicBlindBrokerLeaseStore(options.durableState);
+      lifecycle.addStore("runtime-blind-broker-leases", brokerLeases);
 
-      const diagnosticPublisher =
-        new MountedVolumeTrustedDiagnosticBriefPublisher({
-          durableState: options.durableState,
-          signatureVerifier:
-            options.broker.signatureVerifier,
-        });
-      lifecycle.addStore(
-        "runtime-diagnostic-publications",
-        diagnosticPublisher,
-      );
+      const diagnosticPublisher = new MountedVolumeTrustedDiagnosticBriefPublisher({
+        durableState: options.durableState,
+        signatureVerifier: options.broker.signatureVerifier,
+      });
+      lifecycle.addStore("runtime-diagnostic-publications", diagnosticPublisher);
 
-      const configurations =
-        new CasBlindBrokerEvaluationConfigurationResolver(
-          options.broker.configuration,
-        );
-      const harness =
-        new SignedGitSourceHarnessArtifactResolver({
-          ...options.broker.harness,
-          source: sourceIndex,
-        });
-      const repairDiscovery =
-        new LeaseStoreTrustedRepairDiscoveryResolver(
-          brokerLeases,
-        );
-      const trustedEvaluator =
-        await options.evaluator.create({
-          durableState: options.durableState,
-          lifecycle: lifecycle.registrar(),
-          releaseSource: options.broker.release.source,
-          releaseReader: options.broker.release.reader,
-          now: options.now,
-        });
-      const evaluator =
-        new ArtifactBackedEvaluationReleaseBundleService({
-          ...options.broker.release,
-          service: trustedEvaluator.service,
-          source: trustedEvaluator.releaseSource,
-          reader: trustedEvaluator.releaseReader,
-          now: options.now,
-        });
+      const configurations = new CasBlindBrokerEvaluationConfigurationResolver(
+        options.broker.configuration,
+      );
+      const harness = new SignedGitSourceHarnessArtifactResolver({
+        ...options.broker.harness,
+        source: sourceIndex,
+      });
+      const repairDiscovery = new LeaseStoreTrustedRepairDiscoveryResolver(brokerLeases);
+      const trustedEvaluator = await options.evaluator.create({
+        durableState: options.durableState,
+        lifecycle: lifecycle.registrar(),
+        releaseSource: options.broker.release.source,
+        releaseReader: options.broker.release.reader,
+        now: options.now,
+      });
+      const evaluator = new ArtifactBackedEvaluationReleaseBundleService({
+        ...options.broker.release,
+        service: trustedEvaluator.service,
+        source: trustedEvaluator.releaseSource,
+        reader: trustedEvaluator.releaseReader,
+        now: options.now,
+      });
       const broker = new ProductionBlindBroker({
         store: brokerLeases,
         configurations,
         artifacts: harness,
         repairDiscovery,
         evaluator,
-        signatureVerifier:
-          options.broker.signatureVerifier,
+        signatureVerifier: options.broker.signatureVerifier,
         diagnosticPublisher,
         now: options.now,
       });
 
       const ports = Object.freeze({
         campaignStore: frozenCampaignStore(campaignStore),
-        inputFactory: frozenInputFactory(
-          coordination.inputFactory,
-        ),
-        resumeVerifier: frozenResumeVerifier(
-          coordination.resumeVerifier,
-        ),
-        completionMaterial: frozenCompletionMaterial(
-          completionMaterial,
-        ),
-        interruption: frozenInterruption(
-          coordination.interruption,
-        ),
+        inputFactory: frozenInputFactory(coordination.inputFactory),
+        resumeVerifier: frozenResumeVerifier(coordination.resumeVerifier),
+        completionMaterial: frozenCompletionMaterial(completionMaterial),
+        interruption: frozenInterruption(coordination.interruption),
         journal: frozenJournal(journal),
         optimizer: frozenOptimizer(optimizer),
         gates: frozenGates(gates),
         broker: frozenBroker(broker),
       });
-      const components = createComponents(
-        capturedInput.manifest,
-        ports,
-      );
-      const runtimePortBindings = createBindings(
-        capturedInput.manifest,
-        ports,
-      );
+      const components = createComponents(capturedInput.manifest, ports);
+      const runtimePortBindings = createBindings(capturedInput.manifest, ports);
       if (
-        runtimePortBindings.campaignStore.implementation !==
-          components.control.campaignStore ||
-        runtimePortBindings.inputFactory.implementation !==
-          components.control.inputFactory ||
-        runtimePortBindings.resumeVerifier.implementation !==
-          components.control.resumeVerifier ||
+        runtimePortBindings.campaignStore.implementation !== components.control.campaignStore ||
+        runtimePortBindings.inputFactory.implementation !== components.control.inputFactory ||
+        runtimePortBindings.resumeVerifier.implementation !== components.control.resumeVerifier ||
         runtimePortBindings.completionMaterial.implementation !==
           components.control.completionMaterial ||
-        runtimePortBindings.interruption.implementation !==
-          components.control.interruption ||
-        runtimePortBindings.journal.implementation !==
-          components.control.journal ||
-        runtimePortBindings.optimizer.implementation !==
-          components.optimizer.adapter ||
-        runtimePortBindings.gates.implementation !==
-          components.build.gates ||
-        runtimePortBindings.broker.implementation !==
-          components.evaluator.broker
+        runtimePortBindings.interruption.implementation !== components.control.interruption ||
+        runtimePortBindings.journal.implementation !== components.control.journal ||
+        runtimePortBindings.optimizer.implementation !== components.optimizer.adapter ||
+        runtimePortBindings.gates.implementation !== components.build.gates ||
+        runtimePortBindings.broker.implementation !== components.evaluator.broker
       ) {
         fail();
       }

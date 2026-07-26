@@ -40,11 +40,7 @@ function panel(): TrustedMatchedPanel {
 
 describe("hidden matched-arm schedule", () => {
   it("runs candidate and champion on the exact same twelve task/replicate cells", () => {
-    const schedule = createTrustedMatchedArmSchedule(
-      panel(),
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(panel(), candidate, champion);
     expect(schedule).toMatchObject({
       executionPolicy: "fresh-matched-pairs",
       cellCount: 12,
@@ -57,9 +53,7 @@ describe("hidden matched-arm schedule", () => {
     for (let cellOrdinal = 0; cellOrdinal < 12; cellOrdinal += 1) {
       const pair = schedule.arms.filter((arm) => arm.cellOrdinal === cellOrdinal);
       expect(pair).toHaveLength(2);
-      expect(new Set(pair.map((arm) => arm.arm))).toEqual(
-        new Set(["candidate", "champion"]),
-      );
+      expect(new Set(pair.map((arm) => arm.arm))).toEqual(new Set(["candidate", "champion"]));
       expect(new Set(pair.map((arm) => arm.taskId)).size).toBe(1);
       expect(new Set(pair.map((arm) => arm.replicateOrdinal)).size).toBe(1);
     }
@@ -71,16 +65,14 @@ describe("hidden matched-arm schedule", () => {
       ...valid,
       cells: [valid.cells[0]!, ...valid.cells.slice(0, 11)],
     };
-    expect(() =>
-      createTrustedMatchedArmSchedule(duplicated, candidate, champion),
-    ).toThrow(/duplicated/u);
+    expect(() => createTrustedMatchedArmSchedule(duplicated, candidate, champion)).toThrow(
+      /duplicated/u,
+    );
     const unbalanced: TrustedMatchedPanel = {
       ...valid,
       cells: valid.cells.map((cell) => ({ ...cell, order: "AB" as const })),
     };
-    expect(() =>
-      createTrustedMatchedArmSchedule(unbalanced, candidate, champion),
-    ).toThrow(/six/u);
+    expect(() => createTrustedMatchedArmSchedule(unbalanced, candidate, champion)).toThrow(/six/u);
   });
 
   it("rejects identical candidate and champion harnesses", () => {
@@ -99,11 +91,7 @@ describe("hidden matched-arm schedule", () => {
       stage: "repair",
       cells: validationPanel.cells.slice(0, 5),
     };
-    const schedule = createTrustedMatchedArmSchedule(
-      repairPanel,
-      candidate,
-      champion,
-    );
+    const schedule = createTrustedMatchedArmSchedule(repairPanel, candidate, champion);
     expect(schedule).toMatchObject({
       executionPolicy: "candidate-only-repair",
       cellCount: 5,

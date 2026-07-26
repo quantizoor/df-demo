@@ -63,9 +63,7 @@ function readinessResources(): CloudResourceSpec {
 
 function assertDigest(value: string, label: string): void {
   if (!SHA256.test(value)) {
-    throw new ProductionProviderReadinessError(
-      `${label} is not a SHA-256 digest.`,
-    );
+    throw new ProductionProviderReadinessError(`${label} is not a SHA-256 digest.`);
   }
 }
 
@@ -90,14 +88,8 @@ function executionHash(execution: RemoteExecutionReceipt): string {
     exitCode: execution.exitCode,
     timedOut: execution.timedOut,
     cancelled: execution.cancelled,
-    stdoutArtifactHash:
-      execution.stdout === undefined
-        ? null
-        : canonicalHash(execution.stdout),
-    stderrArtifactHash:
-      execution.stderr === undefined
-        ? null
-        : canonicalHash(execution.stderr),
+    stdoutArtifactHash: execution.stdout === undefined ? null : canonicalHash(execution.stdout),
+    stderrArtifactHash: execution.stderr === undefined ? null : canonicalHash(execution.stderr),
     resourceReport: execution.resourceReport,
   });
 }
@@ -126,14 +118,8 @@ async function destroyLeases(
 export async function runProductionProviderReadiness(
   input: ProductionProviderReadinessInput,
 ): Promise<ProductionProviderReadinessReceipt> {
-  assertDigest(
-    input.volumeSemanticsReceiptHash,
-    "Volume-semantics receipt hash",
-  );
-  assertDigest(
-    input.volumeSemanticsArtifactSha256,
-    "Volume-semantics artifact hash",
-  );
+  assertDigest(input.volumeSemanticsReceiptHash, "Volume-semantics receipt hash");
+  assertDigest(input.volumeSemanticsArtifactSha256, "Volume-semantics artifact hash");
   const resources = readinessResources();
   const campaignHash = sha256(input.campaignId).slice(0, 24);
   const buildRequestId = `control-build-${campaignHash}`;
@@ -157,7 +143,9 @@ export async function runProductionProviderReadiness(
 
   let buildLease: SandboxLease | undefined;
   let evaluatorLease: SandboxLease | undefined;
-  let primaryError: unknown;
+  let receipt: ProductionProviderReadinessReceipt | undefined;
+  let primaryError: { readonly error: unknown } | undefined;
+  let destroyError: { readonly error: unknown } | undefined;
   try {
     buildLease = await input.provider.create({
       requestId: buildRequestId,
@@ -188,15 +176,8 @@ export async function runProductionProviderReadiness(
       environment: {},
       secretReferences: [],
     } as const;
-    const dockerExecution = await input.provider.execute(
-      evaluatorLease,
-      dockerCommand,
-    );
-    if (
-      dockerExecution.exitCode !== 0 ||
-      dockerExecution.timedOut ||
-      dockerExecution.cancelled
-    ) {
+    const dockerExecution = await input.provider.execute(evaluatorLease, dockerCommand);
+    if (dockerExecution.exitCode !== 0 || dockerExecution.timedOut || dockerExecution.cancelled) {
       throw new ProductionProviderReadinessError(
         "Evaluator image did not prove a working nested Docker daemon.",
       );
@@ -219,25 +200,33 @@ export async function runProductionProviderReadiness(
       evaluatorNetworkPolicyHash: evaluatorLease.networkPolicyHash,
       dockerInDockerVerified: true as const,
       volumeSemanticsReceiptHash: input.volumeSemanticsReceiptHash,
-      volumeSemanticsArtifactSha256:
-        input.volumeSemanticsArtifactSha256,
+      volumeSemanticsArtifactSha256: input.volumeSemanticsArtifactSha256,
     };
-    return {
+    receipt = {
       ...unsigned,
       receiptHash: canonicalHash(unsigned),
     };
   } catch (error) {
-    primaryError = error;
-    throw error;
+    primaryError = { error };
   } finally {
     try {
       await destroyLeases(input.provider, [buildLease, evaluatorLease]);
-    } catch (destroyError) {
-      if (primaryError === undefined) throw destroyError;
-      throw new AggregateError(
-        [primaryError, destroyError],
-        "Provider readiness failed and its sandbox teardown also failed.",
-      );
+    } catch (error) {
+      destroyError = { error };
     }
   }
+  if (destroyError !== undefined) {
+    if (primaryError === undefined) throw destroyError.error;
+    throw new AggregateError(
+      [primaryError.error, destroyError.error],
+      "Provider readiness failed and its sandbox teardown also failed.",
+    );
+  }
+  if (primaryError !== undefined) throw primaryError.error;
+  if (receipt === undefined) {
+    throw new ProductionProviderReadinessError(
+      "Provider readiness completed without an attested receipt.",
+    );
+  }
+  return receipt;
 }

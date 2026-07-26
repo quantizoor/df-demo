@@ -76,10 +76,7 @@ class FakeProvider implements CloudSandboxProvider {
     });
   }
 
-  execute(
-    lease: SandboxLease,
-    command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     this.commands.push(command);
     return Promise.resolve({
       provider: this.name,
@@ -110,10 +107,7 @@ class FakeProvider implements CloudSandboxProvider {
     throw new Error("not used");
   }
 
-  cancel(
-    _lease: SandboxLease,
-    _executionId: string,
-  ): Promise<void> {
+  cancel(_lease: SandboxLease, _executionId: string): Promise<void> {
     return Promise.resolve();
   }
 
@@ -167,9 +161,7 @@ describe("production provider readiness", () => {
       evaluatorImageDigest: EVALUATOR_DIGEST,
       dockerInDockerVerified: true,
     });
-    expect(receipt.evaluatorDockerCommandHash).toMatch(
-      /^[a-f0-9]{64}$/u,
-    );
+    expect(receipt.evaluatorDockerCommandHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(receipt.receiptHash).toMatch(/^[a-f0-9]{64}$/u);
   });
 
@@ -177,9 +169,9 @@ describe("production provider readiness", () => {
     const provider = new FakeProvider();
     provider.dockerExitCode = 1;
 
-    await expect(
-      runProductionProviderReadiness(input(provider)),
-    ).rejects.toThrow("nested Docker daemon");
+    await expect(runProductionProviderReadiness(input(provider))).rejects.toThrow(
+      "nested Docker daemon",
+    );
     expect(provider.destroyed).toEqual(["sandbox-2", "sandbox-1"]);
   });
 });

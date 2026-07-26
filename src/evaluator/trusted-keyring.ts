@@ -1,4 +1,4 @@
-import { createPublicKey, type KeyLike } from "node:crypto";
+import { createPublicKey, type KeyLike, KeyObject } from "node:crypto";
 
 import type { CanonicalEvaluatorKeyring } from "./canonical-client.js";
 import type { TrustedCloudEd25519PublicKeyProvider } from "./hidden-update-signature.js";
@@ -23,6 +23,24 @@ export class TrustedCanonicalEvaluatorKeyringError extends Error {
   }
 }
 
+function capturePublicKey(value: KeyLike): KeyObject {
+  const publicKey =
+    value instanceof KeyObject
+      ? createPublicKey({
+          key: value.export({
+            format: "der",
+            type: "spki",
+          }),
+          format: "der",
+          type: "spki",
+        })
+      : createPublicKey(value);
+  if (publicKey.type !== "public" || publicKey.asymmetricKeyType !== "ed25519") {
+    throw new TrustedCanonicalEvaluatorKeyringError();
+  }
+  return publicKey;
+}
+
 /**
  * Adapts the evaluator's versioned cloud public-key provider to both the
  * canonical evaluator client and the adaptive-release signature verifier.
@@ -30,9 +48,7 @@ export class TrustedCanonicalEvaluatorKeyringError extends Error {
  * Only result-envelope keys may cross this port. Private material is never
  * requested, cached, or returned.
  */
-export class CloudBackedCanonicalEvaluatorKeyring
-  implements CanonicalEvaluatorKeyring
-{
+export class CloudBackedCanonicalEvaluatorKeyring implements CanonicalEvaluatorKeyring {
   readonly #keys: TrustedCloudEd25519PublicKeyProvider;
   readonly #trustedKeyIds: ReadonlySet<string>;
 
@@ -50,9 +66,7 @@ export class CloudBackedCanonicalEvaluatorKeyring
     this.#trustedKeyIds = trustedKeyIds;
   }
 
-  public async getVerificationKey(
-    keyId: string,
-  ): Promise<KeyLike | undefined> {
+  public async getVerificationKey(keyId: string): Promise<KeyLike | undefined> {
     if (!SAFE_KEY_ID.test(keyId) || !this.#trustedKeyIds.has(keyId)) {
       return undefined;
     }
@@ -73,14 +87,10 @@ export class CloudBackedCanonicalEvaluatorKeyring
       ) {
         throw new TrustedCanonicalEvaluatorKeyringError();
       }
-      const publicKey = createPublicKey(key.publicKey);
-      if (
-        publicKey.type !== "public" ||
-        publicKey.asymmetricKeyType !== "ed25519"
-      ) {
+      if (key.publicKey instanceof KeyObject && key.publicKey.type !== "public") {
         throw new TrustedCanonicalEvaluatorKeyringError();
       }
-      return publicKey;
+      return capturePublicKey(key.publicKey);
     } catch (error) {
       if (error instanceof TrustedCanonicalEvaluatorKeyringError) throw error;
       throw new TrustedCanonicalEvaluatorKeyringError();

@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   CloudMarkerTrustedArtifactRuntimeGuard,
-  TrustedArtifactBridgeError,
-  VerifyingTrustedArtifactBridge,
   type TrustedArtifactBackend,
+  TrustedArtifactBridgeError,
   type TrustedArtifactRuntimeGuard,
   type TrustedArtifactWriteSession,
+  VerifyingTrustedArtifactBridge,
 } from "../../src/cloud/artifact-bridge.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 
@@ -14,9 +14,7 @@ function digest(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function collect(
-  chunks: AsyncIterable<Uint8Array>,
-): Promise<Buffer> {
+async function collect(chunks: AsyncIterable<Uint8Array>): Promise<Buffer> {
   const result: Uint8Array[] = [];
   for await (const chunk of chunks) result.push(chunk);
   return Buffer.concat(result);
@@ -29,9 +27,7 @@ class Guard implements TrustedArtifactRuntimeGuard {
   assertTrustedCloudRuntime(): void {
     this.calls += 1;
     if (!this.allowed) {
-      throw new TrustedArtifactBridgeError(
-        "Trusted cloud runtime attestation is absent.",
-      );
+      throw new TrustedArtifactBridgeError("Trusted cloud runtime attestation is absent.");
     }
   }
 }
@@ -71,9 +67,7 @@ class Backend implements TrustedArtifactBackend {
         this.values.set(input.uri, value);
         return Promise.resolve({
           uri: input.uri,
-          sha256: this.tamperCommit
-            ? "f".repeat(64)
-            : metadata.sha256,
+          sha256: this.tamperCommit ? "f".repeat(64) : metadata.sha256,
           mediaType: metadata.mediaType,
           byteLength: metadata.byteLength,
         });
@@ -89,10 +83,7 @@ class Backend implements TrustedArtifactBackend {
   }
 }
 
-function reference(
-  uri: `trusted://${string}`,
-  value: Uint8Array,
-): TrustedCloudArtifactRef {
+function reference(uri: `trusted://${string}`, value: Uint8Array): TrustedCloudArtifactRef {
   return {
     uri,
     sha256: digest(value),
@@ -120,9 +111,7 @@ describe("verifying trusted artifact bridge", () => {
         DF_CLOUD_EXECUTION: "1",
       }),
     });
-    expect(() => localGuard.assertTrustedCloudRuntime()).toThrow(
-      /runtime marker/u,
-    );
+    expect(() => localGuard.assertTrustedCloudRuntime()).toThrow(/runtime marker/u);
   });
 
   it("streams an artifact only when EOF, length, and digest agree", async () => {
@@ -147,9 +136,7 @@ describe("verifying trusted artifact bridge", () => {
     backend.values.set(artifact.uri, Buffer.from("tampered bytes"));
     const bridge = new VerifyingTrustedArtifactBridge(backend, guard);
 
-    await expect(
-      bridge.openVerified(artifact).then(collect),
-    ).rejects.toThrow(/sealed metadata/u);
+    await expect(bridge.openVerified(artifact).then(collect)).rejects.toThrow(/sealed metadata/u);
 
     backend.values.set(artifact.uri, expected);
     const stream = await bridge.openVerified(artifact);

@@ -60,9 +60,7 @@ export function initialValidationQuotaCarry(): ValidationQuotaCarry {
  * Integer carry arithmetic avoids platform-dependent floating point rounding.
  * Carry units are tenths of a task and always sum to zero.
  */
-export function allocateValidationQuotas(
-  carry: ValidationQuotaCarry,
-): ValidationQuotaAllocation {
+export function allocateValidationQuotas(carry: ValidationQuotaCarry): ValidationQuotaAllocation {
   validateCarry(carry);
   const idealUnits = Object.fromEntries(
     BUCKETS.map((bucket) => [bucket, 12 * TARGET_UNITS[bucket] + carry[bucket]]),
@@ -74,8 +72,7 @@ export function allocateValidationQuotas(
   let remaining = 12 - BUCKETS.reduce((sum, bucket) => sum + quota[bucket], 0);
   const remainderOrder = [...BUCKETS].sort((left, right) => {
     const remainderDelta =
-      modulo(idealUnits[right], TARGET_DENOMINATOR) -
-      modulo(idealUnits[left], TARGET_DENOMINATOR);
+      modulo(idealUnits[right], TARGET_DENOMINATOR) - modulo(idealUnits[left], TARGET_DENOMINATOR);
     return remainderDelta === 0 ? BUCKETS.indexOf(left) - BUCKETS.indexOf(right) : remainderDelta;
   });
   for (const bucket of remainderOrder) {
@@ -90,10 +87,7 @@ export function allocateValidationQuotas(
   }
 
   const nextCarry = Object.fromEntries(
-    BUCKETS.map((bucket) => [
-      bucket,
-      idealUnits[bucket] - quota[bucket] * TARGET_DENOMINATOR,
-    ]),
+    BUCKETS.map((bucket) => [bucket, idealUnits[bucket] - quota[bucket] * TARGET_DENOMINATOR]),
   ) as unknown as ValidationQuotaCarry;
   validateCarry(nextCarry);
   return { quota, nextCarry };
@@ -105,11 +99,7 @@ export function scoreTask(
   changedComponentRelevance: Readonly<Record<string, number>> = {},
 ): number {
   const estimate = task.estimates;
-  if (
-    Object.values(estimate).some(
-      (value) => !Number.isFinite(value) || value < 0 || value > 1,
-    )
-  ) {
+  if (Object.values(estimate).some((value) => !Number.isFinite(value) || value < 0 || value > 1)) {
     throw new SelectionError("Task estimates must be finite probabilities or normalized scores");
   }
   validateChangedComponentRelevance(changedComponentRelevance);
@@ -147,9 +137,7 @@ export function selectRepairPanel(
   context: SelectionContext & { readonly epoch: number },
 ): HiddenPanelSelection {
   return selectRepairPanelByEligibility(
-    tasks.filter((task) =>
-      eligibleForRepair(task, context.currentExperiment),
-    ),
+    tasks.filter((task) => eligibleForRepair(task, context.currentExperiment)),
     context,
   );
 }
@@ -168,10 +156,7 @@ export function selectRepairPanelFromSource(
 ): HiddenPanelSelection {
   return selectRepairPanelByEligibility(
     tasks.filter(
-      (task) =>
-        task.infrastructureValid &&
-        task.exposure.feedbackReleased &&
-        !task.shadowReserved,
+      (task) => task.infrastructureValid && task.exposure.feedbackReleased && !task.shadowReserved,
     ),
     context,
   );
@@ -191,11 +176,7 @@ function selectRepairPanelByEligibility(
     easy: alternating === "easy" ? 1 : 0,
     coverage: alternating === "coverage" ? 1 : 0,
   };
-  const selected = selectByQuota(
-    eligible,
-    quota,
-    context.changedComponentRelevance,
-  );
+  const selected = selectByQuota(eligible, quota, context.changedComponentRelevance);
   return {
     stage: "repair",
     tasks: selected,
@@ -214,11 +195,7 @@ export function selectValidationPanel(
       eligibleForValidation(task, context.currentExperiment, context.frozenHypothesisDigest) &&
       !context.repairTaskIds.has(task.taskId),
   );
-  const selected = selectByQuota(
-    eligible,
-    allocation.quota,
-    context.changedComponentRelevance,
-  );
+  const selected = selectByQuota(eligible, allocation.quota, context.changedComponentRelevance);
   return {
     stage: "validation",
     tasks: selected,
@@ -311,10 +288,7 @@ export function countFreshValidationPanels(
   return count;
 }
 
-export function eligibleForRepair(
-  task: HiddenTaskLedgerEntry,
-  currentExperiment: number,
-): boolean {
+export function eligibleForRepair(task: HiddenTaskLedgerEntry, currentExperiment: number): boolean {
   const cooldown = task.exposure.repairCooldownThroughExperiment;
   return (
     task.infrastructureValid &&
@@ -382,12 +356,7 @@ function validateChangedComponentRelevance(
   changedComponentRelevance: Readonly<Record<string, number>>,
 ): void {
   for (const [stratum, relevance] of Object.entries(changedComponentRelevance)) {
-    if (
-      stratum.length === 0 ||
-      !Number.isFinite(relevance) ||
-      relevance < 0 ||
-      relevance > 1
-    ) {
+    if (stratum.length === 0 || !Number.isFinite(relevance) || relevance < 0 || relevance > 1) {
       throw new SelectionError(
         "Changed-component relevance must map non-empty capability strata to finite unit-interval values",
       );
@@ -420,7 +389,9 @@ function validateCarry(carry: ValidationQuotaCarry): void {
     values.some((value) => !Number.isSafeInteger(value) || value < -9 || value > 9) ||
     values.reduce((sum, value) => sum + value, 0) !== 0
   ) {
-    throw new SelectionError("Validation quota carry must be bounded integer tenths summing to zero");
+    throw new SelectionError(
+      "Validation quota carry must be bounded integer tenths summing to zero",
+    );
   }
 }
 

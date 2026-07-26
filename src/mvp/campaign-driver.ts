@@ -1,19 +1,16 @@
 import { Type } from "@sinclair/typebox";
-import Ajv2020 from "ajv/dist/2020.js";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import { type MvpCampaignState, type MvpCampaignStateStore } from "./campaign-state.js";
 import {
-  MVP_SCHEMA_VERSION,
   type CandidateProposal,
+  canonicalJson,
   type EvaluationEnvironment,
   type HiddenTaskHandle,
+  MVP_SCHEMA_VERSION,
   type MvpLoopPorts,
   type OptimizerInput,
   type OptimizerPort,
-  canonicalJson,
 } from "./contracts.js";
-import {
-  type MvpCampaignState,
-  type MvpCampaignStateStore,
-} from "./campaign-state.js";
 import { buildTaskFreeMvpOptimizerInput, runMvpIteration } from "./loop.js";
 import { validateCandidateProposal } from "./schemas.js";
 
@@ -88,9 +85,7 @@ export interface ReleaseSafeMvpCampaignReceipt {
   readonly meanRewardDelta: number;
   readonly confidenceCandidateBetter: number;
   readonly nextExperimentNumber: number;
-  readonly panelAction:
-    | "cleared-after-promotion"
-    | "retained-after-nonpromotion";
+  readonly panelAction: "cleared-after-promotion" | "retained-after-nonpromotion";
   readonly cache: {
     readonly hits: number;
     readonly misses: number;
@@ -246,9 +241,7 @@ async function runOne(input: {
       ...input.loopPorts,
       artifacts: {
         persist: async (artifacts) => {
-          capture.taskHandles = artifacts.privateSelection.tasks.map(
-            (task) => task.handle,
-          );
+          capture.taskHandles = artifacts.privateSelection.tasks.map((task) => task.handle);
           return input.loopPorts.artifacts.persist(artifacts);
         },
       },
@@ -274,9 +267,7 @@ async function runOne(input: {
     throw new Error("MVP artifact store did not capture the private selected panel");
   }
   const retainedTaskHandles =
-    result.decision.disposition === "promote"
-      ? null
-      : selectedTaskHandles;
+    result.decision.disposition === "promote" ? null : selectedTaskHandles;
   const next = await input.stateStore.advance({
     expectedRevision: input.state.revision,
     iteration: result,
@@ -327,9 +318,7 @@ export function validateReleaseSafeMvpCampaignReceipt(
   if (
     receipt.championChanged !== promoted ||
     receipt.panelAction !==
-      (promoted
-        ? "cleared-after-promotion"
-        : "retained-after-nonpromotion") ||
+      (promoted ? "cleared-after-promotion" : "retained-after-nonpromotion") ||
     receipt.cache.seededFromPromotion !== (promoted ? 15 : 0) ||
     (promoted && !receipt.evidenceFresh)
   ) {

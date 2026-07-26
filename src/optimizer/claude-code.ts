@@ -46,8 +46,7 @@ export interface ClaudeCodeSessionSummary {
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
-const SAFE_FOUNDRY_RESOURCE =
-  /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const SAFE_FOUNDRY_RESOURCE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const PROPOSAL_TOOLS = [
   "Read",
   "Edit",
@@ -114,9 +113,7 @@ function optimizerPrompt(
   ].join(" ");
 }
 
-export function createClaudeCodeLaunchSpec(
-  options: ClaudeCodeLaunchOptions,
-): ClaudeCodeLaunchSpec {
+export function createClaudeCodeLaunchSpec(options: ClaudeCodeLaunchOptions): ClaudeCodeLaunchSpec {
   for (const [label, path] of [
     ["Claude executable", options.claudeExecutable],
     ["Pi candidate root", options.projectRoot],
@@ -138,8 +135,7 @@ export function createClaudeCodeLaunchSpec(
     options.modelFamily !== "claude-opus-5" ||
     !SAFE_FOUNDRY_RESOURCE.test(options.foundryResourceName) ||
     options.secretReferences.length !== 1 ||
-    options.secretReferences[0]?.targetEnvironmentName !==
-      "ANTHROPIC_FOUNDRY_API_KEY"
+    options.secretReferences[0]?.targetEnvironmentName !== "ANTHROPIC_FOUNDRY_API_KEY"
   ) {
     throw new ClaudeCodeSpecificationError(
       "Claude optimizer must use the pinned Microsoft Foundry Opus 5 binding.",
@@ -233,9 +229,7 @@ function stringArray(value: unknown): readonly string[] {
  * retained only in the cloud optimizer sandbox and is never an experiment
  * artifact.
  */
-export function summarizeClaudeCodeStream(
-  jsonLines: readonly string[],
-): ClaudeCodeSessionSummary {
+export function summarizeClaudeCodeStream(jsonLines: readonly string[]): ClaudeCodeSessionSummary {
   let initialized = false;
   let pluginLoaded = false;
   let pluginErrors: string[] = [];

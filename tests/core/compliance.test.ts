@@ -48,4 +48,3 @@ describe("compliance", () => {
     expect(() => assertComparableProtocol("left", "right")).toThrow(/different protocol/u);
   });
 });
-

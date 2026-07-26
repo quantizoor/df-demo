@@ -1,12 +1,6 @@
 name: bootstrap-pnpm-lockfile-review-artifact
 
 on:
-  push:
-    branches:
-      - codex/dark-factory-mvp
-    paths:
-      - package.json
-      - .github/workflows/bootstrap-lockfile.yml
   workflow_dispatch:
     inputs:
       source_commit:
@@ -32,19 +26,17 @@ concurrency:
 jobs:
   generate-review-artifact:
     if: >-
-      (github.event_name == 'push' &&
-      github.ref == 'refs/heads/codex/dark-factory-mvp') ||
-      (github.event_name == 'workflow_dispatch' &&
+      github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      inputs.confirmation == 'GENERATE PNPM LOCKFILE')
+      inputs.confirmation == 'GENERATE PNPM LOCKFILE'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       CI: "true"
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      DF_REQUESTED_SOURCE_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.source_commit }}
-      DF_REQUESTED_SOURCE_REF: ${{ github.event_name == 'push' && github.ref || inputs.source_ref }}
+      DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_REQUESTED_SOURCE_REF: ${{ inputs.source_ref }}
     steps:
       - name: Verify cloud-hosted runner and immutable source request
         shell: bash
@@ -61,7 +53,7 @@ jobs:
       - name: Checkout the exact requested repository branch tip
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ github.event_name == 'push' && github.ref || inputs.source_ref }}
+          ref: ${{ inputs.source_ref }}
           persist-credentials: false
 
       - name: Prove this is a non-executable one-time bootstrap path
@@ -114,7 +106,7 @@ jobs:
       - name: Upload immutable review artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: pnpm-lockfile-${{ github.event_name == 'push' && github.sha || inputs.source_commit }}
+          name: pnpm-lockfile-${{ inputs.source_commit }}
           path: |
             pnpm-lock.yaml
             pnpm-lock.yaml.sha256

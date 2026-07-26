@@ -5,38 +5,45 @@ import {
   Ed25519ResultEnvelopeVerifier,
 } from "../../src/broker/issuer.js";
 import {
+  type AtomicOneUseLedgerStore,
+  type BrokerFailureCode,
   DurableOneUseRequestLedger,
   emptyOneUseLedgerState,
   hashOneUseClaimRecoveryAuthorization,
-  type AtomicOneUseLedgerStore,
-  type BrokerFailureCode,
   type OneUseClaim,
   type OneUseLedgerInspection,
   type OneUseLedgerState,
   type OneUseRequestLedger,
 } from "../../src/broker/ledger.js";
 import {
-  TrustedEvaluationBroker,
   type TrustedCanonicalAggregate,
+  TrustedEvaluationBroker,
 } from "../../src/broker/service.js";
-import {
-  hashEvaluationRequest,
-  type TrustedEvaluationRequest,
-} from "../../src/evaluator/contracts.js";
-import {
-  hashTrustedBehavioralReleaseOrphanFinalization,
-  TrustedBehavioralReleaseProducerError,
-  type TrustedBehavioralReleaseFinalization,
-  type TrustedBehavioralReleaseOrphanFinalizationReceipt,
-  type TrustedPostDestructionBehavioralReleaseProducer,
-} from "../../src/evaluator/behavioral-release-producer.js";
+import { hashNetworkPolicy } from "../../src/cloud/provider.js";
+import { createOnlineErrorBudget } from "../../src/evaluation/statistics.js";
+import { hiddenTaskId } from "../../src/evaluation/types.js";
 import {
   hashTrustedBehavioralPreparation,
   hashTrustedBehavioralPreparationAbandonment,
   hashTrustedBehavioralPreparationFinalization,
   type TrustedBehavioralPreparationStore,
 } from "../../src/evaluator/behavioral-preparation-store.js";
+import {
+  hashTrustedBehavioralReleaseOrphanFinalization,
+  type TrustedBehavioralReleaseFinalization,
+  type TrustedBehavioralReleaseOrphanFinalizationReceipt,
+  TrustedBehavioralReleaseProducerError,
+  type TrustedPostDestructionBehavioralReleaseProducer,
+} from "../../src/evaluator/behavioral-release-producer.js";
+import {
+  hashEvaluationRequest,
+  type TrustedEvaluationRequest,
+} from "../../src/evaluator/contracts.js";
 import type { TrustedPrivateBehavioralPreparation } from "../../src/evaluator/deriver.js";
+import {
+  createTrustedOnlineErrorBudgetReservation,
+  type TrustedOnlineErrorBudgetAuthority,
+} from "../../src/evaluator/online-error-authority.js";
 import { resultEnvelopeBehavioralSourceCommitmentHash } from "../../src/evaluator/release-lineage.js";
 import {
   assertPostDestructionReleaseRecoveryTransition,
@@ -44,11 +51,6 @@ import {
   type TrustedPostDestructionReleaseRecoveryRecord,
   type TrustedPostDestructionReleaseRecoveryStore,
 } from "../../src/evaluator/release-recovery-store.js";
-import { createOnlineErrorBudget } from "../../src/evaluation/statistics.js";
-import {
-  createTrustedOnlineErrorBudgetReservation,
-  type TrustedOnlineErrorBudgetAuthority,
-} from "../../src/evaluator/online-error-authority.js";
 import {
   createSignedRawDestructionReceipt,
   createTrustedRawArtifactManifest,
@@ -56,11 +58,9 @@ import {
   type TrustedRawDestructionReceiptVerifier,
   type TrustedRawRetentionPolicy,
 } from "../../src/evaluator/retention.js";
-import { hashNetworkPolicy } from "../../src/cloud/provider.js";
-import { hiddenTaskId } from "../../src/evaluation/types.js";
 import {
-  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
   createPiHarborAgentSpec,
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
 } from "../../src/terminal-bench/pi-agent.js";
 import type { TrustedRawRun } from "../../src/terminal-bench/runner.js";
 import type { TrustedMatchedPanel } from "../../src/terminal-bench/trusted.js";
@@ -244,8 +244,7 @@ function aggregate(): TrustedCanonicalAggregate {
         credibleInterval: { lower: -0.2, upper: 0.2 },
         probabilityPositive: 0.5,
       },
-      requiredPosteriorProbability:
-        reservation().allocation.requiredPosteriorProbability,
+      requiredPosteriorProbability: reservation().allocation.requiredPosteriorProbability,
       onlineGateAuthorized: true,
       onlineErrorBudget: reservation().accounting,
       stratumRegressionVeto: false,
@@ -283,10 +282,7 @@ function reservation() {
     request: evaluationRequest,
     requestHash: hashEvaluationRequest(evaluationRequest),
     dispositionAttestationHash: panel().dispositionAttestationHash,
-    stateBefore: createOnlineErrorBudget(
-      0.05,
-      "null-calibration-v1",
-    ),
+    stateBefore: createOnlineErrorBudget(0.05, "null-calibration-v1"),
     reservedAt: "2026-07-01T00:00:30.000Z",
   });
 }
@@ -303,14 +299,11 @@ function onlineErrorAuthority(): TrustedOnlineErrorBudgetAuthority {
         campaignIdHash: "9".repeat(64),
         storeRevision: 1,
         policyVersion: "online-alpha-spending-v1",
-        maximumOnlineError:
-          reserved.accounting.maximumOnlineError,
-        onlineErrorSpent:
-          reserved.accounting.cumulativeSpentAfter,
+        maximumOnlineError: reserved.accounting.maximumOnlineError,
+        onlineErrorSpent: reserved.accounting.cumulativeSpentAfter,
         onlineErrorRemaining: reserved.accounting.remainingAfter,
         gatesSpent: reserved.accounting.gateOrdinal,
-        resultingStateHash:
-          reserved.accounting.resultingStateHash,
+        resultingStateHash: reserved.accounting.resultingStateHash,
         durableStateCommitment: "8".repeat(64),
         observedAt: "2026-07-01T00:00:31.000Z",
         reconciliationHash: "7".repeat(64),
@@ -353,9 +346,7 @@ class FakeLedger implements OneUseRequestLedger {
     _claimToken: string,
     _requestHash: string,
     _dispositionAttestationHash: string,
-    _envelope: Parameters<
-      OneUseRequestLedger["complete"]
-    >[3],
+    _envelope: Parameters<OneUseRequestLedger["complete"]>[3],
   ): Promise<void> {
     return Promise.resolve();
   }
@@ -375,18 +366,14 @@ class CommitThenLoseAcknowledgementLedger extends FakeLedger {
     _claimToken: string,
     requestHash: string,
     _dispositionAttestationHash: string,
-    envelope: Parameters<
-      OneUseRequestLedger["complete"]
-    >[3],
+    envelope: Parameters<OneUseRequestLedger["complete"]>[3],
   ): Promise<void> {
     this.claimResult = {
       state: "completed",
       requestHash,
       envelope,
     };
-    return Promise.reject(
-      new Error("completion acknowledgement lost"),
-    );
+    return Promise.reject(new Error("completion acknowledgement lost"));
   }
 }
 
@@ -395,9 +382,7 @@ class CommitSubstituteThenLoseAcknowledgementLedger extends FakeLedger {
     _claimToken: string,
     requestHash: string,
     _dispositionAttestationHash: string,
-    envelope: Parameters<
-      OneUseRequestLedger["complete"]
-    >[3],
+    envelope: Parameters<OneUseRequestLedger["complete"]>[3],
   ): Promise<void> {
     this.claimResult = {
       state: "completed",
@@ -410,9 +395,7 @@ class CommitSubstituteThenLoseAcknowledgementLedger extends FakeLedger {
         },
       },
     };
-    return Promise.reject(
-      new Error("substituted completion acknowledgement lost"),
-    );
+    return Promise.reject(new Error("substituted completion acknowledgement lost"));
   }
 }
 
@@ -431,18 +414,12 @@ class AtomicMemoryStore implements AtomicOneUseLedgerStore {
   }
 }
 
-class MemoryReleaseRecoveryStore
-  implements TrustedPostDestructionReleaseRecoveryStore
-{
+class MemoryReleaseRecoveryStore implements TrustedPostDestructionReleaseRecoveryStore {
   readonly boundary = "test-only-in-memory" as const;
 
-  constructor(
-    public record: TrustedPostDestructionReleaseRecoveryRecord,
-  ) {}
+  constructor(public record: TrustedPostDestructionReleaseRecoveryRecord) {}
 
-  create(
-    record: TrustedPostDestructionReleaseRecoveryRecord,
-  ) {
+  create(record: TrustedPostDestructionReleaseRecoveryRecord) {
     if (record.recordHash !== this.record.recordHash) {
       return Promise.reject(new Error("conflicting create"));
     }
@@ -455,10 +432,7 @@ class MemoryReleaseRecoveryStore
     });
   }
 
-  resolve(input: {
-    readonly requestHash: string;
-    readonly protocolHash: string;
-  }) {
+  resolve(input: { readonly requestHash: string; readonly protocolHash: string }) {
     if (
       input.requestHash !== this.record.requestHash ||
       input.protocolHash !== this.record.protocolHash
@@ -495,10 +469,7 @@ class MemoryReleaseRecoveryStore
     if (this.record.recordHash !== input.priorRecordHash) {
       return Promise.reject(new Error("stale transition"));
     }
-    assertPostDestructionReleaseRecoveryTransition(
-      this.record,
-      input.next,
-    );
+    assertPostDestructionReleaseRecoveryTransition(this.record, input.next);
     this.record = input.next;
     return Promise.resolve({
       status: "advanced" as const,
@@ -586,30 +557,19 @@ function orphanFinalization(
   return {
     status: "orphaned",
     ...unsigned,
-    orphanFinalizationHash:
-      hashTrustedBehavioralReleaseOrphanFinalization(unsigned),
+    orphanFinalizationHash: hashTrustedBehavioralReleaseOrphanFinalization(unsigned),
   };
 }
 
-class FakeBehavioralPreparationStore
-  implements TrustedBehavioralPreparationStore
-{
+class FakeBehavioralPreparationStore implements TrustedBehavioralPreparationStore {
   readonly boundary = "test-only-in-memory" as const;
   readonly preparation = behavioralPreparation();
-  readonly preparationHash =
-    hashTrustedBehavioralPreparation(this.preparation);
-  state:
-    | "prepared"
-    | "finalized"
-    | "abandoned"
-    | "consumed" = "prepared";
+  readonly preparationHash = hashTrustedBehavioralPreparation(this.preparation);
+  state: "prepared" | "finalized" | "abandoned" | "consumed" = "prepared";
   sourceResultEnvelopeHash: string | null = null;
-  finalization: TrustedBehavioralReleaseFinalization | null =
-    null;
+  finalization: TrustedBehavioralReleaseFinalization | null = null;
   finalizationHash: string | null = null;
-  orphanFinalization:
-    | TrustedBehavioralReleaseOrphanFinalizationReceipt
-    | null = null;
+  orphanFinalization: TrustedBehavioralReleaseOrphanFinalizationReceipt | null = null;
   abandonmentHash: string | null = null;
 
   prepare() {
@@ -634,11 +594,9 @@ class FakeBehavioralPreparationStore
         requestHash: this.preparation.requestHash,
         protocolHash: this.preparation.protocolHash,
         preparationHash: this.preparationHash,
-        sourceResultEnvelopeHash:
-          this.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: this.sourceResultEnvelopeHash,
         finalizationHash: this.finalizationHash,
-        orphanFinalizationHash:
-          this.orphanFinalization.orphanFinalizationHash,
+        orphanFinalizationHash: this.orphanFinalization.orphanFinalizationHash,
         abandonmentHash: this.abandonmentHash,
         orphanFinalization: this.orphanFinalization,
       });
@@ -654,8 +612,7 @@ class FakeBehavioralPreparationStore
         requestHash: this.preparation.requestHash,
         protocolHash: this.preparation.protocolHash,
         preparationHash: this.preparationHash,
-        sourceResultEnvelopeHash:
-          this.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: this.sourceResultEnvelopeHash,
         finalizationHash: this.finalizationHash,
         finalization: this.finalization,
       });
@@ -677,16 +634,10 @@ class FakeBehavioralPreparationStore
     });
   }
 
-  finalize(
-    input: Parameters<
-      TrustedBehavioralPreparationStore["finalize"]
-    >[0],
-  ) {
-    const finalizationHash =
-      hashTrustedBehavioralPreparationFinalization(input);
+  finalize(input: Parameters<TrustedBehavioralPreparationStore["finalize"]>[0]) {
+    const finalizationHash = hashTrustedBehavioralPreparationFinalization(input);
     this.state = "finalized";
-    this.sourceResultEnvelopeHash =
-      input.sourceResultEnvelopeHash;
+    this.sourceResultEnvelopeHash = input.sourceResultEnvelopeHash;
     this.finalization = input.finalization;
     this.finalizationHash = finalizationHash;
     return Promise.resolve({
@@ -694,44 +645,30 @@ class FakeBehavioralPreparationStore
       requestHash: input.requestHash,
       protocolHash: input.protocolHash,
       preparationHash: input.preparationHash,
-      sourceResultEnvelopeHash:
-        input.sourceResultEnvelopeHash,
+      sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
       finalizationHash,
     });
   }
 
-  abandon(
-    input: Parameters<
-      TrustedBehavioralPreparationStore["abandon"]
-    >[0],
-  ) {
+  abandon(input: Parameters<TrustedBehavioralPreparationStore["abandon"]>[0]) {
     if (
-      (this.state !== "finalized" &&
-        this.state !== "abandoned") ||
-      this.sourceResultEnvelopeHash !==
-        input.sourceResultEnvelopeHash ||
+      (this.state !== "finalized" && this.state !== "abandoned") ||
+      this.sourceResultEnvelopeHash !== input.sourceResultEnvelopeHash ||
       this.finalizationHash !== input.finalizationHash ||
       input.preparationHash !== this.preparationHash
     ) {
-      return Promise.reject(
-        new Error("detached abandonment"),
-      );
+      return Promise.reject(new Error("detached abandonment"));
     }
-    const abandonmentHash =
-      hashTrustedBehavioralPreparationAbandonment({
-        requestHash: input.requestHash,
-        protocolHash: input.protocolHash,
-        preparationHash: input.preparationHash,
-        sourceResultEnvelopeHash:
-          input.sourceResultEnvelopeHash,
-        finalizationHash: input.finalizationHash,
-        orphanFinalizationHash:
-          input.orphanFinalization.orphanFinalizationHash,
-      });
+    const abandonmentHash = hashTrustedBehavioralPreparationAbandonment({
+      requestHash: input.requestHash,
+      protocolHash: input.protocolHash,
+      preparationHash: input.preparationHash,
+      sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
+      finalizationHash: input.finalizationHash,
+      orphanFinalizationHash: input.orphanFinalization.orphanFinalizationHash,
+    });
     const status =
-      this.state === "abandoned"
-        ? ("already-abandoned" as const)
-        : ("abandoned" as const);
+      this.state === "abandoned" ? ("already-abandoned" as const) : ("abandoned" as const);
     this.state = "abandoned";
     this.finalization = null;
     this.orphanFinalization = input.orphanFinalization;
@@ -741,20 +678,14 @@ class FakeBehavioralPreparationStore
       requestHash: input.requestHash,
       protocolHash: input.protocolHash,
       preparationHash: input.preparationHash,
-      sourceResultEnvelopeHash:
-        input.sourceResultEnvelopeHash,
+      sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
       finalizationHash: input.finalizationHash,
-      orphanFinalizationHash:
-        input.orphanFinalization.orphanFinalizationHash,
+      orphanFinalizationHash: input.orphanFinalization.orphanFinalizationHash,
       abandonmentHash,
     });
   }
 
-  consume(
-    input: Parameters<
-      TrustedBehavioralPreparationStore["consume"]
-    >[0],
-  ) {
+  consume(input: Parameters<TrustedBehavioralPreparationStore["consume"]>[0]) {
     if (
       this.state === "abandoned" &&
       this.sourceResultEnvelopeHash !== null &&
@@ -767,11 +698,9 @@ class FakeBehavioralPreparationStore
         requestHash: input.requestHash,
         protocolHash: input.protocolHash,
         preparationHash: this.preparationHash,
-        sourceResultEnvelopeHash:
-          this.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: this.sourceResultEnvelopeHash,
         finalizationHash: this.finalizationHash,
-        orphanFinalizationHash:
-          this.orphanFinalization.orphanFinalizationHash,
+        orphanFinalizationHash: this.orphanFinalization.orphanFinalizationHash,
         abandonmentHash: this.abandonmentHash,
       });
     }
@@ -785,15 +714,12 @@ class FakeBehavioralPreparationStore
         requestHash: input.requestHash,
         protocolHash: input.protocolHash,
         preparationHash: this.preparationHash,
-        sourceResultEnvelopeHash:
-          this.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: this.sourceResultEnvelopeHash,
         finalizationHash: this.finalizationHash,
       });
     }
     const status =
-      this.state === "consumed"
-        ? ("already-consumed" as const)
-        : ("consumed" as const);
+      this.state === "consumed" ? ("already-consumed" as const) : ("consumed" as const);
     this.state = "consumed";
     return Promise.resolve({
       status,
@@ -810,12 +736,10 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     let suppliedSourceHash = "";
     const preparation = behavioralPreparation();
-    const preparationHash =
-      hashTrustedBehavioralPreparation(preparation);
+    const preparationHash = hashTrustedBehavioralPreparation(preparation);
     const preparationStore: TrustedBehavioralPreparationStore = {
       boundary: "test-only-in-memory",
-      prepare: () =>
-        Promise.reject(new Error("deriver owns preparation")),
+      prepare: () => Promise.reject(new Error("deriver owns preparation")),
       resolve: () => {
         events.push("resolve-preparation");
         return Promise.resolve({
@@ -833,18 +757,12 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
           requestHash: input.requestHash,
           protocolHash: input.protocolHash,
           preparationHash: input.preparationHash,
-          sourceResultEnvelopeHash:
-            input.sourceResultEnvelopeHash,
-          finalizationHash:
-            hashTrustedBehavioralPreparationFinalization(
-              input,
-          ),
+          sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
+          finalizationHash: hashTrustedBehavioralPreparationFinalization(input),
         });
       },
-      abandon: () =>
-        Promise.reject(new Error("must not abandon")),
-      consume: () =>
-        Promise.reject(new Error("must not consume")),
+      abandon: () => Promise.reject(new Error("must not abandon")),
+      consume: () => Promise.reject(new Error("must not consume")),
     };
     const finalization: TrustedBehavioralReleaseFinalization = {
       contentHash: "7".repeat(64),
@@ -857,9 +775,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       finalize: (input) => {
         events.push("finalize");
         suppliedSourceHash = input.sourceResultEnvelopeHash;
-        expect(input.destructionReceipt.destroyedAt).toBe(
-          "2026-07-01T00:10:00.000Z",
-        );
+        expect(input.destructionReceipt.destroyedAt).toBe("2026-07-01T00:10:00.000Z");
         return Promise.resolve(finalization);
       },
       orphan: () => Promise.reject(new Error("must not orphan")),
@@ -915,22 +831,16 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       "finalize-preparation",
       "issue-result",
     ]);
-    expect(envelope.derivation.behavioralAggregateHash).toBe(
-      finalization.contentHash,
-    );
-    expect(suppliedSourceHash).toBe(
-      resultEnvelopeBehavioralSourceCommitmentHash(envelope),
-    );
+    expect(envelope.derivation.behavioralAggregateHash).toBe(finalization.contentHash);
+    expect(suppliedSourceHash).toBe(resultEnvelopeBehavioralSourceCommitmentHash(envelope));
   });
 
   it("permanently orphans a committed diagnostic bundle when result issuance fails", async () => {
     const ledger = new FakeLedger();
-    const orphan = vi.fn(
-      (value: TrustedBehavioralReleaseFinalization) =>
-        Promise.resolve(orphanFinalization(value)),
+    const orphan = vi.fn((value: TrustedBehavioralReleaseFinalization) =>
+      Promise.resolve(orphanFinalization(value)),
     );
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const producer: TrustedPostDestructionBehavioralReleaseProducer = {
       finalize: () =>
         Promise.resolve({
@@ -950,8 +860,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       behavioralPreparationStore: preparationStore,
       behavioralReleaseProducer: producer,
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: {
@@ -973,12 +882,9 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("preserves the request and finalized preparation when orphan reconciliation is unsafe", async () => {
     const ledger = new FakeLedger();
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const consume = vi.spyOn(preparationStore, "consume");
-    const orphan = vi.fn(() =>
-      Promise.reject(new Error("orphan acknowledgement lost")),
-    );
+    const orphan = vi.fn(() => Promise.reject(new Error("orphan acknowledgement lost")));
     const broker = new TrustedEvaluationBroker({
       ledger,
       panels: {
@@ -999,13 +905,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
         orphan,
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: {
-        issue: () =>
-          Promise.reject(new Error("signing unavailable")),
+        issue: () => Promise.reject(new Error("signing unavailable")),
       },
       verifier: { verify: () => Promise.resolve(true) },
       agent: agent(),
@@ -1013,9 +917,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       destructionReceiptVerifier,
     });
 
-    await expect(
-      broker.evaluate(request()),
-    ).rejects.toMatchObject({
+    await expect(broker.evaluate(request())).rejects.toMatchObject({
       code: "release-validation-failed",
     });
     expect(orphan).toHaveBeenCalledTimes(1);
@@ -1026,16 +928,12 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("preserves the request when durable preparation abandonment cannot be reconciled", async () => {
     const ledger = new FakeLedger();
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const abandon = vi
       .spyOn(preparationStore, "abandon")
-      .mockRejectedValue(
-        new Error("abandonment acknowledgement unavailable"),
-      );
-    const orphan = vi.fn(
-      (value: TrustedBehavioralReleaseFinalization) =>
-        Promise.resolve(orphanFinalization(value)),
+      .mockRejectedValue(new Error("abandonment acknowledgement unavailable"));
+    const orphan = vi.fn((value: TrustedBehavioralReleaseFinalization) =>
+      Promise.resolve(orphanFinalization(value)),
     );
     const broker = new TrustedEvaluationBroker({
       ledger,
@@ -1057,13 +955,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
         orphan,
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: {
-        issue: () =>
-          Promise.reject(new Error("signing unavailable")),
+        issue: () => Promise.reject(new Error("signing unavailable")),
       },
       verifier: { verify: () => Promise.resolve(true) },
       agent: agent(),
@@ -1071,9 +967,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       destructionReceiptVerifier,
     });
 
-    await expect(
-      broker.evaluate(request()),
-    ).rejects.toMatchObject({
+    await expect(broker.evaluate(request())).rejects.toMatchObject({
       code: "release-validation-failed",
     });
     expect(orphan).toHaveBeenCalledTimes(1);
@@ -1084,12 +978,10 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("reconciles a committed result after its completion acknowledgement is lost", async () => {
     const ledger = new CommitThenLoseAcknowledgementLedger();
-    const orphan = vi.fn(
-      (value: TrustedBehavioralReleaseFinalization) =>
-        Promise.resolve(orphanFinalization(value)),
+    const orphan = vi.fn((value: TrustedBehavioralReleaseFinalization) =>
+      Promise.resolve(orphanFinalization(value)),
     );
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const finalization: TrustedBehavioralReleaseFinalization = {
       contentHash: "7".repeat(64),
@@ -1109,15 +1001,13 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
         orphan,
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: new Ed25519ResultEnvelopeIssuer({
         privateKey,
         keyId: "evaluator-key-1",
-        now: () =>
-          new Date("2026-07-01T00:11:00.000Z"),
+        now: () => new Date("2026-07-01T00:11:00.000Z"),
       }),
       verifier: new Ed25519ResultEnvelopeVerifier({
         getVerificationKey: () => Promise.resolve(publicKey),
@@ -1128,22 +1018,17 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     });
 
     const envelope = await broker.evaluate(request());
-    expect(
-      envelope.derivation.behavioralAggregateHash,
-    ).toBe(finalization.contentHash);
+    expect(envelope.derivation.behavioralAggregateHash).toBe(finalization.contentHash);
     expect(orphan).not.toHaveBeenCalled();
     expect(ledger.consumed).toBeUndefined();
   });
 
   it("does not return or orphan a different envelope recovered after completion ambiguity", async () => {
-    const ledger =
-      new CommitSubstituteThenLoseAcknowledgementLedger();
-    const orphan = vi.fn(
-      (value: TrustedBehavioralReleaseFinalization) =>
-        Promise.resolve(orphanFinalization(value)),
+    const ledger = new CommitSubstituteThenLoseAcknowledgementLedger();
+    const orphan = vi.fn((value: TrustedBehavioralReleaseFinalization) =>
+      Promise.resolve(orphanFinalization(value)),
     );
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const { privateKey } = generateKeyPairSync("ed25519");
     const finalization: TrustedBehavioralReleaseFinalization = {
       contentHash: "7".repeat(64),
@@ -1165,15 +1050,13 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
         orphan,
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: new Ed25519ResultEnvelopeIssuer({
         privateKey,
         keyId: "evaluator-key-1",
-        now: () =>
-          new Date("2026-07-01T00:11:00.000Z"),
+        now: () => new Date("2026-07-01T00:11:00.000Z"),
       }),
       verifier: { verify: () => Promise.resolve(true) },
       agent: agent(),
@@ -1181,9 +1064,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       destructionReceiptVerifier,
     });
 
-    await expect(
-      broker.evaluate(request()),
-    ).rejects.toMatchObject({
+    await expect(broker.evaluate(request())).rejects.toMatchObject({
       code: "release-validation-failed",
     });
     expect(orphan).not.toHaveBeenCalled();
@@ -1192,8 +1073,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("burns the request and clears private preparation when finalization is known not committed", async () => {
     const ledger = new FakeLedger();
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const consume = vi.spyOn(preparationStore, "consume");
     const issue = vi.fn(() => Promise.reject(new Error("must not issue")));
     const broker = new TrustedEvaluationBroker({
@@ -1204,16 +1084,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       behavioralPreparationStore: preparationStore,
       behavioralReleaseProducer: {
         finalize: () =>
-          Promise.reject(
-            new TrustedBehavioralReleaseProducerError(
-              "known-not-committed",
-            ),
-          ),
+          Promise.reject(new TrustedBehavioralReleaseProducerError("known-not-committed")),
         orphan: () => Promise.reject(new Error("must not orphan")),
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: { issue },
@@ -1237,12 +1112,9 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("preserves one-use state when finalization fails without an explicit non-commit proof", async () => {
     const ledger = new FakeLedger();
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const consume = vi.spyOn(preparationStore, "consume");
-    const issue = vi.fn(() =>
-      Promise.reject(new Error("must not issue")),
-    );
+    const issue = vi.fn(() => Promise.reject(new Error("must not issue")));
     const broker = new TrustedEvaluationBroker({
       ledger,
       panels: {
@@ -1252,16 +1124,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       deriver: { derive: () => Promise.resolve(aggregate()) },
       behavioralPreparationStore: preparationStore,
       behavioralReleaseProducer: {
-        finalize: () =>
-          Promise.reject(
-            new Error("finalization acknowledgement unavailable"),
-          ),
-        orphan: () =>
-          Promise.reject(new Error("must not orphan")),
+        finalize: () => Promise.reject(new Error("finalization acknowledgement unavailable")),
+        orphan: () => Promise.reject(new Error("must not orphan")),
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: { issue },
@@ -1271,9 +1138,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       destructionReceiptVerifier,
     });
 
-    await expect(
-      broker.evaluate(request()),
-    ).rejects.toMatchObject({
+    await expect(broker.evaluate(request())).rejects.toMatchObject({
       code: "release-validation-failed",
     });
     expect(issue).not.toHaveBeenCalled();
@@ -1284,16 +1149,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("preserves the request when private preparation cleanup is not durably acknowledged", async () => {
     const ledger = new FakeLedger();
-    const preparationStore =
-      new FakeBehavioralPreparationStore();
+    const preparationStore = new FakeBehavioralPreparationStore();
     const consume = vi
       .spyOn(preparationStore, "consume")
-      .mockRejectedValue(
-        new Error("preparation consumption acknowledgement lost"),
-      );
-    const issue = vi.fn(() =>
-      Promise.reject(new Error("must not issue")),
-    );
+      .mockRejectedValue(new Error("preparation consumption acknowledgement lost"));
+    const issue = vi.fn(() => Promise.reject(new Error("must not issue")));
     const broker = new TrustedEvaluationBroker({
       ledger,
       panels: {
@@ -1304,17 +1164,11 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       behavioralPreparationStore: preparationStore,
       behavioralReleaseProducer: {
         finalize: () =>
-          Promise.reject(
-            new TrustedBehavioralReleaseProducerError(
-              "known-not-committed",
-            ),
-          ),
-        orphan: () =>
-          Promise.reject(new Error("must not orphan")),
+          Promise.reject(new TrustedBehavioralReleaseProducerError("known-not-committed")),
+        orphan: () => Promise.reject(new Error("must not orphan")),
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: { issue },
@@ -1324,9 +1178,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       destructionReceiptVerifier,
     });
 
-    await expect(
-      broker.evaluate(request()),
-    ).rejects.toMatchObject({
+    await expect(broker.evaluate(request())).rejects.toMatchObject({
       code: "release-validation-failed",
     });
     expect(issue).not.toHaveBeenCalled();
@@ -1336,19 +1188,13 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("preserves the one-use request when release commit reconciliation remains unsafe", async () => {
     const ledger = new FakeLedger();
-    const consume = vi.fn(() =>
-      Promise.reject(new Error("must not consume")),
+    const consume = vi.fn(() => Promise.reject(new Error("must not consume")));
+    const orphan = vi.fn((value: TrustedBehavioralReleaseFinalization) =>
+      Promise.resolve(orphanFinalization(value)),
     );
-    const orphan = vi.fn(
-      (value: TrustedBehavioralReleaseFinalization) =>
-        Promise.resolve(orphanFinalization(value)),
-    );
-    const issue = vi.fn(() =>
-      Promise.reject(new Error("must not issue")),
-    );
+    const issue = vi.fn(() => Promise.reject(new Error("must not issue")));
     const preparation = behavioralPreparation();
-    const preparationHash =
-      hashTrustedBehavioralPreparation(preparation);
+    const preparationHash = hashTrustedBehavioralPreparation(preparation);
     const broker = new TrustedEvaluationBroker({
       ledger,
       panels: { allocateAndConsume: () => Promise.resolve(panel()) },
@@ -1356,8 +1202,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       deriver: { derive: () => Promise.resolve(aggregate()) },
       behavioralPreparationStore: {
         boundary: "test-only-in-memory",
-        prepare: () =>
-          Promise.reject(new Error("must not prepare")),
+        prepare: () => Promise.reject(new Error("must not prepare")),
         resolve: () =>
           Promise.resolve({
             status: "prepared",
@@ -1366,24 +1211,17 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
             preparationHash,
             preparation,
           }),
-        finalize: () =>
-          Promise.reject(new Error("must not finalize")),
-        abandon: () =>
-          Promise.reject(new Error("must not abandon")),
+        finalize: () => Promise.reject(new Error("must not finalize")),
+        abandon: () => Promise.reject(new Error("must not abandon")),
         consume,
       },
       behavioralReleaseProducer: {
         finalize: () =>
-          Promise.reject(
-            new TrustedBehavioralReleaseProducerError(
-              "unsafe-to-consume",
-            ),
-          ),
+          Promise.reject(new TrustedBehavioralReleaseProducerError("unsafe-to-consume")),
         orphan,
       },
       custodian: {
-        destroy: (run) =>
-          Promise.resolve(destructionReceipt(run.manifest)),
+        destroy: (run) => Promise.resolve(destructionReceipt(run.manifest)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: { issue },
@@ -1414,8 +1252,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
           events.push("reserve");
           return Promise.resolve(reservation());
         },
-        reconcile: () =>
-          Promise.reject(new Error("must not reconcile")),
+        reconcile: () => Promise.reject(new Error("must not reconcile")),
       },
       runner: {
         run: () => {
@@ -1439,10 +1276,10 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     });
 
     await expect(broker.evaluate(request())).rejects.toMatchObject({
-      code: "evaluation-failed",
+      code: "runtime-attestation-failed",
     });
     expect(events).toEqual(["reserve", "run"]);
-    expect(ledger.consumed).toBe("evaluation-failed");
+    expect(ledger.consumed).toBe("runtime-attestation-failed");
   });
 
   it("returns the same signed result on replay without rerunning hidden cells", async () => {
@@ -1482,40 +1319,36 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
-  it(
-    "destroys raw material and consumes the request when canonical normalization fails",
-    async () => {
-      const ledger = new FakeLedger();
-      const destroy = vi.fn((run: TrustedRawRun) =>
-        Promise.resolve(destructionReceipt(run.manifest)),
-      );
-      const broker = new TrustedEvaluationBroker({
-        ledger,
-        panels: { allocateAndConsume: () => Promise.resolve(panel()) },
-        runner: { run: () => Promise.resolve(rawRun()) },
-        deriver: {
-          derive: () =>
-            Promise.reject(new Error("sensitive hidden task failure detail")),
-        },
-        custodian: { destroy },
-        onlineErrorAuthority: onlineErrorAuthority(),
-        issuer: {
-          issue: () => Promise.reject(new Error("issuer must not be called")),
-        },
-        verifier: { verify: () => Promise.resolve(true) },
-        agent: agent(),
-        retentionPolicy,
-        destructionReceiptVerifier,
-      });
-      const outcome = broker.evaluate(request());
-      await expect(outcome).rejects.toMatchObject({
-        code: "normalization-failed",
-      });
-      await expect(outcome).rejects.not.toThrow(/hidden task failure detail/u);
-      expect(destroy).toHaveBeenCalledTimes(1);
-      expect(ledger.consumed).toBe("normalization-failed");
-    },
-  );
+  it("destroys raw material and consumes the request when canonical normalization fails", async () => {
+    const ledger = new FakeLedger();
+    const destroy = vi.fn((run: TrustedRawRun) =>
+      Promise.resolve(destructionReceipt(run.manifest)),
+    );
+    const broker = new TrustedEvaluationBroker({
+      ledger,
+      panels: { allocateAndConsume: () => Promise.resolve(panel()) },
+      runner: { run: () => Promise.resolve(rawRun()) },
+      deriver: {
+        derive: () => Promise.reject(new Error("sensitive hidden task failure detail")),
+      },
+      custodian: { destroy },
+      onlineErrorAuthority: onlineErrorAuthority(),
+      issuer: {
+        issue: () => Promise.reject(new Error("issuer must not be called")),
+      },
+      verifier: { verify: () => Promise.resolve(true) },
+      agent: agent(),
+      retentionPolicy,
+      destructionReceiptVerifier,
+    });
+    const outcome = broker.evaluate(request());
+    await expect(outcome).rejects.toMatchObject({
+      code: "normalization-failed",
+    });
+    await expect(outcome).rejects.not.toThrow(/hidden task failure detail/u);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(ledger.consumed).toBe("normalization-failed");
+  });
 
   it("releases nothing when raw destruction cannot be attested", async () => {
     const ledger = new FakeLedger();
@@ -1555,9 +1388,7 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       deriver: { derive: () => Promise.resolve(aggregate()) },
       custodian: {
         destroy: (run) =>
-          Promise.resolve(
-            destructionReceipt(run.manifest, untrustedKey.privateKey),
-          ),
+          Promise.resolve(destructionReceipt(run.manifest, untrustedKey.privateKey)),
       },
       onlineErrorAuthority: onlineErrorAuthority(),
       issuer: { issue },
@@ -1576,18 +1407,14 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
 
   it("resumes an exact post-destruction checkpoint after provider-attested predecessor termination without rerunning tasks", async () => {
     const evaluationRequest = request();
-    const requestHash =
-      hashEvaluationRequest(evaluationRequest);
+    const requestHash = hashEvaluationRequest(evaluationRequest);
     const ledgerStore = new AtomicMemoryStore();
     const predecessor = new DurableOneUseRequestLedger({
       store: ledgerStore,
       controllerInstanceIdHash: "3".repeat(64),
       claimTokenFactory: () => "claim-predecessor",
     });
-    await predecessor.claim(
-      evaluationRequest.requestId,
-      requestHash,
-    );
+    await predecessor.claim(evaluationRequest.requestId, requestHash);
     await predecessor.bindDispositionAttestation(
       "claim-predecessor",
       requestHash,
@@ -1597,18 +1424,14 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
     const recovery = new MemoryReleaseRecoveryStore(
       sealPostDestructionReleaseRecoveryRecord({
         schemaVersion: 1,
-        sensitivity:
-          "trusted-private-post-destruction-release-recovery",
+        sensitivity: "trusted-private-post-destruction-release-recovery",
         requestId: evaluationRequest.requestId,
         requestHash,
         protocolHash: evaluationRequest.protocolHash,
-        dispositionAttestationHash:
-          panel().dispositionAttestationHash,
+        dispositionAttestationHash: panel().dispositionAttestationHash,
         retentionPolicyHash: retentionPolicy.policyHash,
         rawManifest: raw.manifest,
-        destructionReceipt: destructionReceipt(
-          raw.manifest,
-        ),
+        destructionReceipt: destructionReceipt(raw.manifest),
         aggregate: aggregate(),
         behavioral: { status: "none" },
         status: "open",
@@ -1623,58 +1446,38 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       controllerInstanceIdHash: "4".repeat(64),
       claimTokenFactory: () => "claim-successor",
       recoveryAuthority: {
-        boundary:
-          "trusted-cloud-provider-termination-authority",
+        boundary: "trusted-cloud-provider-termination-authority",
         authorize: (observation) => {
           const unsigned = {
             schemaVersion: 1 as const,
-            domain:
-              "dark-factory.one-use-claim-recovery-authorization.v1" as const,
+            domain: "dark-factory.one-use-claim-recovery-authorization.v1" as const,
             authorizationId: "provider-stop-001",
             requestId: observation.requestId,
             requestHash: observation.requestHash,
-            recoveryRecordHash:
-              observation.recoveryRecordHash,
-            dispositionAttestationHash:
-              observation.dispositionAttestationHash,
-            priorClaimTokenHash:
-              observation.priorClaimTokenHash,
-            priorOwnerInstanceIdHash:
-              observation.priorOwnerInstanceIdHash,
+            recoveryRecordHash: observation.recoveryRecordHash,
+            dispositionAttestationHash: observation.dispositionAttestationHash,
+            priorClaimTokenHash: observation.priorClaimTokenHash,
+            priorOwnerInstanceIdHash: observation.priorOwnerInstanceIdHash,
             priorClaimEpoch: observation.priorClaimEpoch,
-            successorOwnerInstanceIdHash:
-              observation.successorOwnerInstanceIdHash,
+            successorOwnerInstanceIdHash: observation.successorOwnerInstanceIdHash,
             observationHash: observation.observationHash,
-            providerTerminationAttestationHash:
-              "5".repeat(64),
+            providerTerminationAttestationHash: "5".repeat(64),
             authorityAttestationHash: "6".repeat(64),
             authorizedAt: "2026-07-01T00:10:30.000Z",
             signerKeyId: "provider-termination-key",
           };
           return Promise.resolve({
             ...unsigned,
-            authorizationHash:
-              hashOneUseClaimRecoveryAuthorization(
-                unsigned,
-              ),
+            authorizationHash: hashOneUseClaimRecoveryAuthorization(unsigned),
           });
         },
       },
     });
-    const { privateKey, publicKey } =
-      generateKeyPairSync("ed25519");
-    const allocate = vi.fn(() =>
-      Promise.reject(new Error("must not allocate")),
-    );
-    const run = vi.fn(() =>
-      Promise.reject(new Error("must not run")),
-    );
-    const derive = vi.fn(() =>
-      Promise.reject(new Error("must not derive")),
-    );
-    const destroy = vi.fn(() =>
-      Promise.reject(new Error("must not destroy")),
-    );
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const allocate = vi.fn(() => Promise.reject(new Error("must not allocate")));
+    const run = vi.fn(() => Promise.reject(new Error("must not run")));
+    const derive = vi.fn(() => Promise.reject(new Error("must not derive")));
+    const destroy = vi.fn(() => Promise.reject(new Error("must not destroy")));
     const broker = new TrustedEvaluationBroker({
       ledger: successor,
       panels: { allocateAndConsume: allocate },
@@ -1686,21 +1489,17 @@ describe("trusted evaluation broker fail-closed lifecycle", () => {
       issuer: new Ed25519ResultEnvelopeIssuer({
         privateKey,
         keyId: "evaluator-key-1",
-        now: () =>
-          new Date("2026-07-01T00:11:00.000Z"),
+        now: () => new Date("2026-07-01T00:11:00.000Z"),
       }),
       verifier: new Ed25519ResultEnvelopeVerifier({
-        getVerificationKey: () =>
-          Promise.resolve(publicKey),
+        getVerificationKey: () => Promise.resolve(publicKey),
       }),
       agent: agent(),
       retentionPolicy,
       destructionReceiptVerifier,
     });
 
-    await expect(
-      broker.evaluate(evaluationRequest),
-    ).resolves.toMatchObject({
+    await expect(broker.evaluate(evaluationRequest)).resolves.toMatchObject({
       oneUseRequest: {
         requestId: evaluationRequest.requestId,
         requestHash,

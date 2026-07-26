@@ -32,14 +32,8 @@ import type {
   MountedVolumeStateSemanticsGuard,
 } from "../../src/cloud/mounted-volume-state.js";
 import { VerifyingTrustedJsonArtifactReader } from "../../src/cloud/trusted-json-reader.js";
-import {
-  canonicalHash,
-  canonicalJson,
-} from "../../src/schemas/canonical.js";
-import {
-  hashTerminalBench21Pin,
-  type TerminalBench21Pin,
-} from "../../src/terminal-bench/pin.js";
+import { canonicalHash, canonicalJson } from "../../src/schemas/canonical.js";
+import { hashTerminalBench21Pin, type TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 
 const NOW = "2026-07-26T12:00:00.000Z";
 const BASELINE_COMMITMENT = "6".repeat(64);
@@ -66,9 +60,7 @@ const semanticsGuard: MountedVolumeStateSemanticsGuard = {
   assertLinearizableStateVolume() {},
 };
 
-function durableState(
-  root: string,
-): MountedVolumeDurableStateOptions {
+function durableState(root: string): MountedVolumeDurableStateOptions {
   return {
     volumeRoot: root,
     storeId: "catalog-material-test",
@@ -85,8 +77,7 @@ function inventoryFor(
   createdAt = NOW,
 ): TrustedTerminalBenchTaskInventory {
   const unsigned = {
-    sensitivity:
-      "trusted-terminal-bench-task-inventory" as const,
+    sensitivity: "trusted-terminal-bench-task-inventory" as const,
     schemaVersion: 1 as const,
     datasetPinHash: hashTerminalBench21Pin(selectedPin),
     registryRevision: 6 as const,
@@ -94,12 +85,9 @@ function inventoryFor(
     createdAt,
     tasks: Array.from({ length: 89 }, (_, index) => ({
       packageTaskName: `synthetic-suite/case-${String(index + 1).padStart(3, "0")}`,
-      taskRevisionDigest: (index + 1)
-        .toString(16)
-        .padStart(64, "0"),
+      taskRevisionDigest: (index + 1).toString(16).padStart(64, "0"),
       capabilityStratum: `capability-${index % 11}`,
-      difficultyStratum:
-        index % 4 === 0 ? "challenging" : "regular",
+      difficultyStratum: index % 4 === 0 ? "challenging" : "regular",
       normalizedExpectedCost: (index % 10) / 10,
       scoringEligible: true,
       infrastructureValid: true,
@@ -130,10 +118,8 @@ function observations(
         packageTaskName: rowTask.packageTaskName,
         taskRevisionDigest: rowTask.taskRevisionDigest,
         validAttempts: 5,
-        passedAttempts:
-          sourceKind === "initial-pi-baseline" ? 1 : 2,
-        meanReward:
-          sourceKind === "initial-pi-baseline" ? 0.2 : 0.4,
+        passedAttempts: sourceKind === "initial-pi-baseline" ? 1 : 2,
+        meanReward: sourceKind === "initial-pi-baseline" ? 0.2 : 0.4,
         meanLatencyMs: 20_000,
         meanCostUsd: 0.25,
       },
@@ -141,52 +127,40 @@ function observations(
   };
   return {
     ...unsigned,
-    observationSetHash:
-      computeTrustedTaskObservationSetHash(unsigned),
+    observationSetHash: computeTrustedTaskObservationSetHash(unsigned),
   };
 }
 
-function bundle(input: {
-  readonly selectedPin?: TerminalBench21Pin;
-  readonly selectedInventory?: TrustedTerminalBenchTaskInventory;
-  readonly baseline?: TrustedTaskObservationSet | null;
-  readonly leaderboard?: TrustedTaskObservationSet | null;
-} = {}): TrustedTerminalBenchCatalogMaterialBundle {
+function bundle(
+  input: {
+    readonly selectedPin?: TerminalBench21Pin;
+    readonly selectedInventory?: TrustedTerminalBenchTaskInventory;
+    readonly baseline?: TrustedTaskObservationSet | null;
+    readonly leaderboard?: TrustedTaskObservationSet | null;
+  } = {},
+): TrustedTerminalBenchCatalogMaterialBundle {
   const selectedPin = input.selectedPin ?? pin;
-  const selectedInventory =
-    input.selectedInventory ?? inventoryFor(selectedPin);
+  const selectedInventory = input.selectedInventory ?? inventoryFor(selectedPin);
   return createTrustedTerminalBenchCatalogMaterialBundle({
     pin: selectedPin,
     inventory: selectedInventory,
     initialPiBaseline:
       input.baseline === undefined
-        ? observations(
-            "initial-pi-baseline",
-            BASELINE_COMMITMENT,
-            selectedInventory,
-          )
+        ? observations("initial-pi-baseline", BASELINE_COMMITMENT, selectedInventory)
         : input.baseline,
     comparableLeaderboard:
       input.leaderboard === undefined
-        ? observations(
-            "comparable-public-leaderboard",
-            LEADERBOARD_COMMITMENT,
-            selectedInventory,
-          )
+        ? observations("comparable-public-leaderboard", LEADERBOARD_COMMITMENT, selectedInventory)
         : input.leaderboard,
   });
 }
 
-function canonicalBundle(
-  value: TrustedTerminalBenchCatalogMaterialBundle,
-): string {
+function canonicalBundle(value: TrustedTerminalBenchCatalogMaterialBundle): string {
   return `${canonicalJson(value)}\n`;
 }
 
 async function infrastructure() {
-  const root = await mkdtemp(
-    join(tmpdir(), "df-catalog-material-"),
-  );
+  const root = await mkdtemp(join(tmpdir(), "df-catalog-material-"));
   const bridge = new VerifyingTrustedArtifactBridge(
     new MountedVolumeTrustedArtifactBackend({
       volumeRoot: join(root, "artifacts"),
@@ -194,13 +168,12 @@ async function infrastructure() {
     }),
     runtimeGuard,
   );
-  const registry =
-    new MountedVolumeTrustedCatalogMaterialRegistry({
-      pin,
-      durableState: durableState(join(root, "state")),
-      bridge,
-      reader: new VerifyingTrustedJsonArtifactReader(bridge),
-    });
+  const registry = new MountedVolumeTrustedCatalogMaterialRegistry({
+    pin,
+    durableState: durableState(join(root, "state")),
+    bridge,
+    reader: new VerifyingTrustedJsonArtifactReader(bridge),
+  });
   return { registry };
 }
 
@@ -208,15 +181,12 @@ describe("mounted-volume trusted catalog material source", () => {
   it("publishes exact hidden material and exposes only the bounded source", async () => {
     const { registry } = await infrastructure();
     const material = bundle();
-    const publication = await registry.publishCanonicalBundle(
-      canonicalBundle(material),
-    );
+    const publication = await registry.publishCanonicalBundle(canonicalBundle(material));
     const loader = new TrustedTerminalBenchCatalogGenesisLoader({
       pin,
       source: registry.source,
       initialPiBaselineCommitment: BASELINE_COMMITMENT,
-      comparableLeaderboardCommitment:
-        LEADERBOARD_COMMITMENT,
+      comparableLeaderboardCommitment: LEADERBOARD_COMMITMENT,
     });
     const loaded = await loader.loadOnce();
 
@@ -234,14 +204,8 @@ describe("mounted-volume trusted catalog material source", () => {
       "loadInventory",
       "loadObservations",
     ]);
-    expect(
-      "list" in
-        (registry.source as unknown as Record<string, unknown>),
-    ).toBe(false);
-    expect(
-      "locate" in
-        (registry.source as unknown as Record<string, unknown>),
-    ).toBe(false);
+    expect("list" in (registry.source as unknown as Record<string, unknown>)).toBe(false);
+    expect("locate" in (registry.source as unknown as Record<string, unknown>)).toBe(false);
     const released = JSON.stringify({
       publication,
       receipt: loaded.releaseSafeReceipt,
@@ -256,24 +220,17 @@ describe("mounted-volume trusted catalog material source", () => {
     const first = bundle();
     const firstRaw = canonicalBundle(first);
 
-    await expect(
-      registry.publishCanonicalBundle(firstRaw),
-    ).resolves.toMatchObject({ status: "published" });
-    await expect(
-      registry.publishCanonicalBundle(firstRaw),
-    ).resolves.toMatchObject({
+    await expect(registry.publishCanonicalBundle(firstRaw)).resolves.toMatchObject({
+      status: "published",
+    });
+    await expect(registry.publishCanonicalBundle(firstRaw)).resolves.toMatchObject({
       status: "already-published",
     });
 
     const changed = bundle({
-      selectedInventory: inventoryFor(
-        pin,
-        "2026-07-26T12:01:00.000Z",
-      ),
+      selectedInventory: inventoryFor(pin, "2026-07-26T12:01:00.000Z"),
     });
-    await expect(
-      registry.publishCanonicalBundle(canonicalBundle(changed)),
-    ).rejects.toBeInstanceOf(
+    await expect(registry.publishCanonicalBundle(canonicalBundle(changed))).rejects.toBeInstanceOf(
       MountedVolumeTrustedCatalogMaterialRegistryError,
     );
     await registry.close();
@@ -287,29 +244,25 @@ describe("mounted-volume trusted catalog material source", () => {
     });
     const observedSpecs: unknown[] = [];
     const worker = {
-      boundary:
-        "trusted-cloud-terminal-bench-catalog-normalization-worker" as const,
+      boundary: "trusted-cloud-terminal-bench-catalog-normalization-worker" as const,
       async normalize(spec: unknown) {
         observedSpecs.push(spec);
         return canonicalBundle(material);
       },
     };
 
-    await expect(
-      registry.normalizeAndPublishOnce(worker),
-    ).resolves.toMatchObject({ status: "published" });
+    await expect(registry.normalizeAndPublishOnce(worker)).resolves.toMatchObject({
+      status: "published",
+    });
     expect(observedSpecs).toHaveLength(1);
     expect(observedSpecs[0]).toMatchObject({
-      executionBoundary:
-        "trusted-cloud-evaluator-only",
+      executionBoundary: "trusted-cloud-evaluator-only",
       registryRevision: 6,
       expectedTaskCount: 89,
       mutableAliasesAllowed: false,
       taskRowsMayLeaveTrustedArtifactStore: false,
     });
-    await expect(
-      registry.normalizeAndPublishOnce(worker),
-    ).rejects.toBeInstanceOf(
+    await expect(registry.normalizeAndPublishOnce(worker)).rejects.toBeInstanceOf(
       MountedVolumeTrustedCatalogMaterialRegistryError,
     );
     expect(observedSpecs).toHaveLength(1);
@@ -319,11 +272,7 @@ describe("mounted-volume trusted catalog material source", () => {
   it("rejects mutable/noncanonical input and a different content pin", async () => {
     const { registry } = await infrastructure();
     const material = bundle();
-    await expect(
-      registry.publishCanonicalBundle(
-        JSON.stringify(material),
-      ),
-    ).rejects.toBeInstanceOf(
+    await expect(registry.publishCanonicalBundle(JSON.stringify(material))).rejects.toBeInstanceOf(
       MountedVolumeTrustedCatalogMaterialRegistryError,
     );
 
@@ -332,9 +281,7 @@ describe("mounted-volume trusted catalog material source", () => {
       datasetContentSha256: "9".repeat(64),
     };
     const detached = bundle({ selectedPin: otherPin });
-    await expect(
-      registry.publishCanonicalBundle(canonicalBundle(detached)),
-    ).rejects.toBeInstanceOf(
+    await expect(registry.publishCanonicalBundle(canonicalBundle(detached))).rejects.toBeInstanceOf(
       MountedVolumeTrustedCatalogMaterialRegistryError,
     );
     await registry.close();
@@ -346,8 +293,7 @@ describe("mounted-volume trusted catalog material source", () => {
       index === 1
         ? {
             ...task,
-            packageTaskName:
-              valid.tasks[0]!.packageTaskName,
+            packageTaskName: valid.tasks[0]!.packageTaskName,
           }
         : task,
     );
@@ -362,25 +308,20 @@ describe("mounted-volume trusted catalog material source", () => {
     };
     const duplicated: TrustedTerminalBenchTaskInventory = {
       ...unsigned,
-      inventoryHash:
-        computeTrustedTaskInventoryHash(unsigned),
+      inventoryHash: computeTrustedTaskInventoryHash(unsigned),
     };
 
-    expect(() =>
-      bundle({ selectedInventory: duplicated }),
-    ).toThrow(
+    expect(() => bundle({ selectedInventory: duplicated })).toThrow(
       MountedVolumeTrustedCatalogMaterialRegistryError,
     );
 
-    const duplicatedRevisionTasks = valid.tasks.map(
-      (task, index) =>
-        index === 1
-          ? {
-              ...task,
-              taskRevisionDigest:
-                valid.tasks[0]!.taskRevisionDigest,
-            }
-          : task,
+    const duplicatedRevisionTasks = valid.tasks.map((task, index) =>
+      index === 1
+        ? {
+            ...task,
+            taskRevisionDigest: valid.tasks[0]!.taskRevisionDigest,
+          }
+        : task,
     );
     const revisionUnsigned = {
       ...unsigned,
@@ -390,15 +331,10 @@ describe("mounted-volume trusted catalog material source", () => {
       bundle({
         selectedInventory: {
           ...revisionUnsigned,
-          inventoryHash:
-            computeTrustedTaskInventoryHash(
-              revisionUnsigned,
-            ),
+          inventoryHash: computeTrustedTaskInventoryHash(revisionUnsigned),
         },
       }),
-    ).toThrow(
-      MountedVolumeTrustedCatalogMaterialRegistryError,
-    );
+    ).toThrow(MountedVolumeTrustedCatalogMaterialRegistryError);
   });
 
   it("rejects substituted inventory and observation queries", async () => {
@@ -406,62 +342,46 @@ describe("mounted-volume trusted catalog material source", () => {
     const material = bundle({
       leaderboard: null,
     });
-    await registry.publishCanonicalBundle(
-      canonicalBundle(material),
-    );
-    const inventoryQuery = createTrustedCatalogInventoryQuery(
-      pin,
-      hashTerminalBench21Pin(pin),
-    );
+    await registry.publishCanonicalBundle(canonicalBundle(material));
+    const inventoryQuery = createTrustedCatalogInventoryQuery(pin, hashTerminalBench21Pin(pin));
     const inventoryUnsigned = {
       schemaVersion: inventoryQuery.schemaVersion,
       domain: inventoryQuery.domain,
       datasetPinHash: inventoryQuery.datasetPinHash,
       datasetContentSha256: "9".repeat(64),
-      datasetManifestSha256:
-        inventoryQuery.datasetManifestSha256,
+      datasetManifestSha256: inventoryQuery.datasetManifestSha256,
       registryRevision: inventoryQuery.registryRevision,
-      expectedTaskCount:
-        inventoryQuery.expectedTaskCount,
+      expectedTaskCount: inventoryQuery.expectedTaskCount,
     };
     await expect(
       registry.source.loadInventory({
         ...inventoryUnsigned,
         queryHash: canonicalHash(inventoryUnsigned),
       }),
-    ).rejects.toBeInstanceOf(
-      MountedVolumeTrustedCatalogMaterialRegistryError,
-    );
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedCatalogMaterialRegistryError);
 
-    const absentObservation =
-      createTrustedCatalogObservationQuery(
-        "comparable-public-leaderboard",
-        LEADERBOARD_COMMITMENT,
-        hashTerminalBench21Pin(pin),
-        material.inventory.inventoryHash,
-      );
-    await expect(
-      registry.source.loadObservations(absentObservation),
-    ).rejects.toBeInstanceOf(
+    const absentObservation = createTrustedCatalogObservationQuery(
+      "comparable-public-leaderboard",
+      LEADERBOARD_COMMITMENT,
+      hashTerminalBench21Pin(pin),
+      material.inventory.inventoryHash,
+    );
+    await expect(registry.source.loadObservations(absentObservation)).rejects.toBeInstanceOf(
       MountedVolumeTrustedCatalogMaterialRegistryError,
     );
     await registry.close();
   });
 
   it("seals a cloud-only normalizer spec to the exact revision and hashes", () => {
-    const spec =
-      createTrustedCatalogMaterialNormalizerSpec(pin);
+    const spec = createTrustedCatalogMaterialNormalizerSpec(pin);
     expect(spec).toMatchObject({
-      executionBoundary:
-        "trusted-cloud-evaluator-only",
+      executionBoundary: "trusted-cloud-evaluator-only",
       registryRevision: 6,
       expectedTaskCount: 89,
       mutableAliasesAllowed: false,
       taskRowsMayLeaveTrustedArtifactStore: false,
     });
-    expect(spec.datasetPinHash).toBe(
-      hashTerminalBench21Pin(pin),
-    );
+    expect(spec.datasetPinHash).toBe(hashTerminalBench21Pin(pin));
     expect(spec.specHash).toBe(
       canonicalHash({
         schemaVersion: spec.schemaVersion,
@@ -470,19 +390,14 @@ describe("mounted-volume trusted catalog material source", () => {
         benchmark: spec.benchmark,
         dataset: spec.dataset,
         datasetPinHash: spec.datasetPinHash,
-        datasetContentSha256:
-          spec.datasetContentSha256,
-        datasetManifestSha256:
-          spec.datasetManifestSha256,
+        datasetContentSha256: spec.datasetContentSha256,
+        datasetManifestSha256: spec.datasetManifestSha256,
         registryRevision: spec.registryRevision,
         expectedTaskCount: spec.expectedTaskCount,
         outputMediaType: spec.outputMediaType,
-        outputMustBeCanonicalJsonLine:
-          spec.outputMustBeCanonicalJsonLine,
-        mutableAliasesAllowed:
-          spec.mutableAliasesAllowed,
-        taskRowsMayLeaveTrustedArtifactStore:
-          spec.taskRowsMayLeaveTrustedArtifactStore,
+        outputMustBeCanonicalJsonLine: spec.outputMustBeCanonicalJsonLine,
+        mutableAliasesAllowed: spec.mutableAliasesAllowed,
+        taskRowsMayLeaveTrustedArtifactStore: spec.taskRowsMayLeaveTrustedArtifactStore,
         maximumOutputBytes: spec.maximumOutputBytes,
       }),
     );

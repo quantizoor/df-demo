@@ -18,13 +18,10 @@ import type {
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
 import type { LeakScanSubject } from "../../src/evidence/store.js";
 import type { ReleaseSafeFinalExperimentSnapshot } from "../../src/orchestrator/experiment-journal.js";
+import { canonicalHash, withContentHash } from "../../src/schemas/canonical.js";
 import {
-  canonicalHash,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
-import {
-  REQUIRED_PRESEAL_ARTIFACT_FILES,
   artifactFileSchemas,
+  REQUIRED_PRESEAL_ARTIFACT_FILES,
 } from "../../src/schemas/registry.js";
 import { schemaFixture } from "../schemas/fixtures.js";
 
@@ -44,10 +41,7 @@ const semanticsGuard: MountedVolumeStateSemanticsGuard = {
   assertLinearizableStateVolume() {},
 };
 
-function stateOptions(
-  root: string,
-  nonce = "a".repeat(48),
-): MountedVolumeDurableStateOptions {
+function stateOptions(root: string, nonce = "a".repeat(48)): MountedVolumeDurableStateOptions {
   return {
     volumeRoot: root,
     storeId: "journal-authority-tests",
@@ -168,9 +162,7 @@ function snapshot(): ReleaseSafeFinalExperimentSnapshot {
 }
 
 function policyArtifactsWithUnsafeExtra(): Readonly<Record<string, unknown>> {
-  const analysis = schemaFixture("analysis") as Readonly<
-    Record<string, unknown>
-  >;
+  const analysis = schemaFixture("analysis") as Readonly<Record<string, unknown>>;
   return {
     "analysis.json": withContentHash({
       ...analysis,
@@ -184,15 +176,13 @@ function policyArtifactsWithUnsafeExtra(): Readonly<Record<string, unknown>> {
 }
 
 function subject(): LeakScanSubject {
-  const artifactManifest = [...REQUIRED_PRESEAL_ARTIFACT_FILES]
-    .sort()
-    .map((path, index) => ({
-      path,
-      schemaKind: artifactFileSchemas[path],
-      contentHash: (index % 10).toString().repeat(64),
-      byteHash: ((index + 1) % 10).toString().repeat(64),
-      bytes: 128 + index,
-    }));
+  const artifactManifest = [...REQUIRED_PRESEAL_ARTIFACT_FILES].sort().map((path, index) => ({
+    path,
+    schemaKind: artifactFileSchemas[path],
+    contentHash: (index % 10).toString().repeat(64),
+    byteHash: ((index + 1) % 10).toString().repeat(64),
+    bytes: 128 + index,
+  }));
   return {
     schemaVersion: "1.0.0",
     experimentId: "001-authority-test",
@@ -250,9 +240,7 @@ function scannerResult(input: ReturnType<typeof sealInput>) {
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((path) => rm(path, { recursive: true, force: true })),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
@@ -261,29 +249,26 @@ describe("mounted-volume experiment artifact assembler", () => {
     const root = await mkdtemp(join(tmpdir(), "df-journal-authority-"));
     temporaryDirectories.push(root);
     const input = snapshot();
-    const assembler =
-      new MountedVolumeReleaseSafeExperimentArtifactAssembler({
-        durableState: stateOptions(root),
-        policyProvider: {
-          provide: vi.fn(async () => ({
-            schemaVersion: 1 as const,
-            assemblyRequestHash: input.assemblyRequestHash,
-            policyAttestationHash: "1".repeat(64),
-            artifacts: {},
-            extra: "not-allowed",
-          })) as never,
-        },
-        provenanceProvider: {
-          provide: vi.fn(async () => ({})) as never,
-        },
-        taskIdentityExclusionAuthority: {
-          assertTaskFree: vi.fn(async () => ({})) as never,
-        },
-      });
+    const assembler = new MountedVolumeReleaseSafeExperimentArtifactAssembler({
+      durableState: stateOptions(root),
+      policyProvider: {
+        provide: vi.fn(async () => ({
+          schemaVersion: 1 as const,
+          assemblyRequestHash: input.assemblyRequestHash,
+          policyAttestationHash: "1".repeat(64),
+          artifacts: {},
+          extra: "not-allowed",
+        })) as never,
+      },
+      provenanceProvider: {
+        provide: vi.fn(async () => ({})) as never,
+      },
+      taskIdentityExclusionAuthority: {
+        assertTaskFree: vi.fn(async () => ({})) as never,
+      },
+    });
 
-    await expect(assembler.assemble(input)).rejects.toThrow(
-      /non-canonical fields/u,
-    );
+    await expect(assembler.assemble(input)).rejects.toThrow(/non-canonical fields/u);
     await assembler.close();
   });
 
@@ -291,34 +276,33 @@ describe("mounted-volume experiment artifact assembler", () => {
     const root = await mkdtemp(join(tmpdir(), "df-journal-authority-"));
     temporaryDirectories.push(root);
     const input = snapshot();
-    const assembler =
-      new MountedVolumeReleaseSafeExperimentArtifactAssembler({
-        durableState: stateOptions(root),
-        policyProvider: {
-          provide: vi.fn(async () => ({
-            schemaVersion: 1 as const,
-            assemblyRequestHash: input.assemblyRequestHash,
-            policyAttestationHash: "1".repeat(64),
-            artifacts: policyArtifactsWithUnsafeExtra(),
-          })) as never,
-        },
-        provenanceProvider: {
-          provide: vi.fn(async () => ({
-            schemaVersion: 1 as const,
-            assemblyRequestHash: input.assemblyRequestHash,
-            provenanceAttestationHash: "2".repeat(64),
-            evidence: {
-              correctnessGateHash: input.gates.checksHash,
-              brokerEvidenceHash: null,
-              cacheEvidenceHash: "3".repeat(64),
-            },
-            artifacts: {},
-          })) as never,
-        },
-        taskIdentityExclusionAuthority: {
-          assertTaskFree: vi.fn(async () => ({})) as never,
-        },
-      });
+    const assembler = new MountedVolumeReleaseSafeExperimentArtifactAssembler({
+      durableState: stateOptions(root),
+      policyProvider: {
+        provide: vi.fn(async () => ({
+          schemaVersion: 1 as const,
+          assemblyRequestHash: input.assemblyRequestHash,
+          policyAttestationHash: "1".repeat(64),
+          artifacts: policyArtifactsWithUnsafeExtra(),
+        })) as never,
+      },
+      provenanceProvider: {
+        provide: vi.fn(async () => ({
+          schemaVersion: 1 as const,
+          assemblyRequestHash: input.assemblyRequestHash,
+          provenanceAttestationHash: "2".repeat(64),
+          evidence: {
+            correctnessGateHash: input.gates.checksHash,
+            brokerEvidenceHash: null,
+            cacheEvidenceHash: "3".repeat(64),
+          },
+          artifacts: {},
+        })) as never,
+      },
+      taskIdentityExclusionAuthority: {
+        assertTaskFree: vi.fn(async () => ({})) as never,
+      },
+    });
 
     await expect(assembler.assemble(input)).rejects.toThrow(
       /non-canonical fields|schema validation/u,
@@ -333,15 +317,9 @@ describe("mounted-volume experiment seal authority", () => {
     temporaryDirectories.push(root);
     const input = sealInput();
     const scan = vi.fn(async () => scannerResult(input));
-    const sign = vi.fn(async (request: {
-      readonly receipt: Readonly<Record<string, unknown>>;
-    }) =>
-      createEd25519Signature(
-        request.receipt,
-        scannerKeys.privateKey,
-        SCANNER_KEY_ID,
-        NOW,
-      ));
+    const sign = vi.fn(async (request: { readonly receipt: Readonly<Record<string, unknown>> }) =>
+      createEd25519Signature(request.receipt, scannerKeys.privateKey, SCANNER_KEY_ID, NOW),
+    );
     const authority = new MountedVolumeTrustedExperimentSealAuthority({
       durableState: stateOptions(root),
       scanner: {
@@ -365,9 +343,7 @@ describe("mounted-volume experiment seal authority", () => {
     expect(second).toEqual(first);
     expect(scan).toHaveBeenCalledOnce();
     expect(sign).toHaveBeenCalledOnce();
-    expect(first.authorityAttestationHash).toBe(
-      first.leakScanReceipt.contentHash,
-    );
+    expect(first.authorityAttestationHash).toBe(first.leakScanReceipt.contentHash);
     await authority.close();
   });
 
@@ -399,9 +375,7 @@ describe("mounted-volume experiment seal authority", () => {
       },
     });
 
-    await expect(authority.authorize(input)).rejects.toThrow(
-      /non-canonical fields/u,
-    );
+    await expect(authority.authorize(input)).rejects.toThrow(/non-canonical fields/u);
     expect(sign).not.toHaveBeenCalled();
     await authority.close();
   });
@@ -431,30 +405,24 @@ describe("mounted-volume experiment seal authority", () => {
     await expect(first.authorize(input)).rejects.toThrow(/provider handoff/u);
     await first.close();
 
-    const successor =
-      new MountedVolumeTrustedExperimentSealAuthority({
-        durableState: stateOptions(root, "2".repeat(48)),
-        scanner: {
-          boundary: "trusted-cloud-deterministic-leak-scanner",
-          scan: vi.fn(async () => scannerResult(input)),
-        },
-        keyAuthority: {
-          boundary: "trusted-cloud-leak-scan-key",
-          keyId: SCANNER_KEY_ID,
-          signLeakScanReceipt: vi.fn(async (request) =>
-            createEd25519Signature(
-              request.receipt,
-              scannerKeys.privateKey,
-              SCANNER_KEY_ID,
-              NOW,
-            ),
-          ),
-        },
-        scannerPublicKey: scannerKeys.publicKey,
-        pinnedVersions: {
-          resolve: vi.fn(async () => pinnedVersions()),
-        },
-      });
+    const successor = new MountedVolumeTrustedExperimentSealAuthority({
+      durableState: stateOptions(root, "2".repeat(48)),
+      scanner: {
+        boundary: "trusted-cloud-deterministic-leak-scanner",
+        scan: vi.fn(async () => scannerResult(input)),
+      },
+      keyAuthority: {
+        boundary: "trusted-cloud-leak-scan-key",
+        keyId: SCANNER_KEY_ID,
+        signLeakScanReceipt: vi.fn(async (request) =>
+          createEd25519Signature(request.receipt, scannerKeys.privateKey, SCANNER_KEY_ID, NOW),
+        ),
+      },
+      scannerPublicKey: scannerKeys.publicKey,
+      pinnedVersions: {
+        resolve: vi.fn(async () => pinnedVersions()),
+      },
+    });
     const result = await successor.authorize(input);
     expect(result.leakScanReceipt.passed).toBe(true);
     await successor.close();
@@ -465,13 +433,11 @@ describe("mounted-volume journal interruption attestor", () => {
   it("persists only a fixed reason code and rejects a conflicting replay", async () => {
     const root = await mkdtemp(join(tmpdir(), "df-journal-authority-"));
     temporaryDirectories.push(root);
-    const attestor =
-      new MountedVolumeTrustedJournalInterruptionAttestor({
-        durableState: stateOptions(root),
-        now: () => new Date(NOW),
-      });
-    const raw =
-      "grader task-987 secret output at /private/hidden timed out";
+    const attestor = new MountedVolumeTrustedJournalInterruptionAttestor({
+      durableState: stateOptions(root),
+      now: () => new Date(NOW),
+    });
+    const raw = "grader task-987 secret output at /private/hidden timed out";
     const input = {
       experiment: snapshot().experiment,
       phase: "validation",

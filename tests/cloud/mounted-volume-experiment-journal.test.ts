@@ -36,13 +36,10 @@ function durableState(
 
 describe("mounted-volume experiment journal state", () => {
   it("preserves a pending operation across a clean controller handoff", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-experiment-journal-state-test-"),
+    const root = await mkdtemp(join(tmpdir(), "df-experiment-journal-state-test-"));
+    const first = new MountedVolumeAtomicExperimentJournalStateStore(
+      durableState(root, "1".repeat(64), "a".repeat(48)),
     );
-    const first =
-      new MountedVolumeAtomicExperimentJournalStateStore(
-        durableState(root, "1".repeat(64), "a".repeat(48)),
-      );
     const pending = await first.transact((state) => {
       const next = {
         ...state,
@@ -58,10 +55,9 @@ describe("mounted-volume experiment journal state", () => {
     });
     await first.close();
 
-    const successor =
-      new MountedVolumeAtomicExperimentJournalStateStore(
-        durableState(root, "2".repeat(64), "b".repeat(48)),
-      );
+    const successor = new MountedVolumeAtomicExperimentJournalStateStore(
+      durableState(root, "2".repeat(64), "b".repeat(48)),
+    );
     const restored = await successor.transact((state) => ({
       next: state,
       result: state,
@@ -74,13 +70,10 @@ describe("mounted-volume experiment journal state", () => {
   });
 
   it("rejects a corrupt successor state before it can replace the journal", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-experiment-journal-corrupt-test-"),
+    const root = await mkdtemp(join(tmpdir(), "df-experiment-journal-corrupt-test-"));
+    const store = new MountedVolumeAtomicExperimentJournalStateStore(
+      durableState(root, "4".repeat(64), "c".repeat(48)),
     );
-    const store =
-      new MountedVolumeAtomicExperimentJournalStateStore(
-        durableState(root, "4".repeat(64), "c".repeat(48)),
-      );
 
     await expect(
       store.transact((state) => ({

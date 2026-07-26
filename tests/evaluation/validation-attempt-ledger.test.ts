@@ -3,11 +3,11 @@ import {
   claimValidationAttempt,
   createValidationAttemptLedger,
   createValidationAttemptReceipt,
-  makeReleaseSafeTerminalValidationAttemptAccounting,
-  recordValidationAttemptReceipt,
   type HiddenValidationAttemptClaim,
   type HiddenValidationAttemptLedger,
   type HiddenValidationPairPlan,
+  makeReleaseSafeTerminalValidationAttemptAccounting,
+  recordValidationAttemptReceipt,
   validateValidationAttemptLedger,
   validationAttemptCompletion,
 } from "../../src/evaluation/index.js";
@@ -33,10 +33,7 @@ function ledger(): HiddenValidationAttemptLedger {
   });
 }
 
-function validReceipt(
-  claim: HiddenValidationAttemptClaim,
-  evidenceIndex: number,
-) {
+function validReceipt(claim: HiddenValidationAttemptClaim, evidenceIndex: number) {
   return createValidationAttemptReceipt({
     attemptDigest: claim.attemptDigest,
     outcome: "valid",
@@ -71,10 +68,7 @@ describe("hidden validation attempt ledger", () => {
   it("preseals exactly twelve unique matched pairs and twenty-four arms", () => {
     const state = ledger();
     expect(state.cells).toHaveLength(24);
-    expect(new Set(state.cells.map((cell) => cell.taskId))).toHaveProperty(
-      "size",
-      12,
-    );
+    expect(new Set(state.cells.map((cell) => cell.taskId))).toHaveProperty("size", 12);
     for (let pairOrdinal = 0; pairOrdinal < 12; pairOrdinal += 1) {
       const arms = state.cells
         .filter((cell) => cell.pairOrdinal === pairOrdinal)
@@ -104,9 +98,7 @@ describe("hidden validation attempt ledger", () => {
     const input = { requestId: digest(1_000), claimedAt: CLAIMED_AT };
     const first = claimValidationAttempt(initial, input);
     const independentlyReproduced = claimValidationAttempt(sameInitial, input);
-    expect(independentlyReproduced.claim.attemptDigest).toBe(
-      first.claim.attemptDigest,
-    );
+    expect(independentlyReproduced.claim.attemptDigest).toBe(first.claim.attemptDigest);
 
     const pendingReplay = claimValidationAttempt(first.ledger, input);
     expect(pendingReplay.replayed).toBe(true);
@@ -141,9 +133,9 @@ describe("hidden validation attempt ledger", () => {
       evidenceDigest: digest(2_001),
       observedAt: OBSERVED_AT,
     });
-    expect(() =>
-      recordValidationAttemptReceipt(first.ledger, conflict),
-    ).toThrow(/conflicting receipt/u);
+    expect(() => recordValidationAttemptReceipt(first.ledger, conflict)).toThrow(
+      /conflicting receipt/u,
+    );
   });
 
   it("permits a retry only after a trusted infrastructure-failure receipt", () => {
@@ -157,10 +149,7 @@ describe("hidden validation attempt ledger", () => {
       evidenceDigest: digest(2_000),
       observedAt: OBSERVED_AT,
     });
-    const failed = recordValidationAttemptReceipt(
-      initial.ledger,
-      infrastructureFailure,
-    ).ledger;
+    const failed = recordValidationAttemptReceipt(initial.ledger, infrastructureFailure).ledger;
     const replacement = claimValidationAttempt(failed, {
       requestId: digest(1_001),
       claimedAt: OBSERVED_AT,
@@ -252,8 +241,7 @@ describe("hidden validation attempt ledger", () => {
         claimedAt: OBSERVED_AT,
       }),
     ).toThrow(/incomplete validation ledger/u);
-    const accounting =
-      makeReleaseSafeTerminalValidationAttemptAccounting(state);
+    const accounting = makeReleaseSafeTerminalValidationAttemptAccounting(state);
     expect(accounting.totalAttemptCount).toBe(5);
     expect(accounting.replacementAttemptCount).toBe(4);
     expect(accounting.infrastructureFailureCount).toBe(5);
@@ -281,10 +269,7 @@ describe("hidden validation attempt ledger", () => {
       });
       state = claimed.ledger;
     }
-    state = recordValidationAttemptReceipt(
-      state,
-      validReceipt(claimed.claim, 2_100),
-    ).ledger;
+    state = recordValidationAttemptReceipt(state, validReceipt(claimed.claim, 2_100)).ledger;
     for (let index = 1; index < 24; index += 1) {
       const next = claimValidationAttempt(state, {
         requestId: digest(1_100 + index),
@@ -296,8 +281,7 @@ describe("hidden validation attempt ledger", () => {
       ).ledger;
     }
 
-    const accounting =
-      makeReleaseSafeTerminalValidationAttemptAccounting(state);
+    const accounting = makeReleaseSafeTerminalValidationAttemptAccounting(state);
     expect(accounting).toMatchObject({
       terminalStatus: "complete",
       validArmCount: 24,
@@ -326,10 +310,7 @@ describe("hidden validation attempt ledger", () => {
     ).toThrow(/already in flight/u);
 
     for (const [index, claim] of [...claims].reverse().entries()) {
-      state = recordValidationAttemptReceipt(
-        state,
-        validReceipt(claim, 2_000 + index),
-      ).ledger;
+      state = recordValidationAttemptReceipt(state, validReceipt(claim, 2_000 + index)).ledger;
     }
     expect(validationAttemptCompletion(state)).toBe("complete");
     expect(state.attempts).toHaveLength(24);
@@ -337,9 +318,7 @@ describe("hidden validation attempt ledger", () => {
 
   it("releases terminal aggregate counts and no hidden identifiers", () => {
     const completed = completeLedger();
-    const accounting = makeReleaseSafeTerminalValidationAttemptAccounting(
-      completed.ledger,
-    );
+    const accounting = makeReleaseSafeTerminalValidationAttemptAccounting(completed.ledger);
     expect(accounting).toMatchObject({
       terminalStatus: "complete",
       presealedPairCount: 12,

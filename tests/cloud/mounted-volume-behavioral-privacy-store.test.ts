@@ -1,39 +1,25 @@
 import { generateKeyPairSync } from "node:crypto";
-import {
-  mkdtemp,
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import type { TrustedArtifactRuntimeGuard } from "../../src/cloud/artifact-bridge.js";
-import {
-  MountedVolumeBehavioralPrivacyArtifactStore,
-} from "../../src/cloud/mounted-volume-behavioral-privacy-store.js";
+import { MountedVolumeBehavioralPrivacyArtifactStore } from "../../src/cloud/mounted-volume-behavioral-privacy-store.js";
 import type {
   MountedVolumeDurableStateOptions,
   MountedVolumeStateSemanticsGuard,
 } from "../../src/cloud/mounted-volume-state.js";
+import { createPrivacyBudget } from "../../src/evaluation/privacy.js";
+import { hiddenTaskId } from "../../src/evaluation/types.js";
 import {
   DeterministicPostDestructionBehavioralReleaseProducer,
   type TrustedBehavioralPrivacyArtifactStore,
 } from "../../src/evaluator/behavioral-release-producer.js";
 import type { TrustedPrivateBehavioralPreparation } from "../../src/evaluator/deriver.js";
-import { createPrivacyBudget } from "../../src/evaluation/privacy.js";
-import { hiddenTaskId } from "../../src/evaluation/types.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
-import {
-  behaviorWithFailure,
-  behaviorWithoutFailure,
-  digest,
-} from "../evaluation/fixtures.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
+import { behaviorWithFailure, behaviorWithoutFailure, digest } from "../evaluation/fixtures.js";
 
 const CREATED_AT = "2026-07-26T10:12:00.000Z";
 const keys = generateKeyPairSync("ed25519");
@@ -166,9 +152,7 @@ const destructionReceipt = {
 };
 
 function artifactSetHash(
-  artifacts: Parameters<
-    TrustedBehavioralPrivacyArtifactStore["commit"]
-  >[0]["artifacts"],
+  artifacts: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0]["artifacts"],
 ): string {
   return canonicalHash({
     domain: "dark-factory.behavioral-release-artifact-set.v1",
@@ -177,114 +161,72 @@ function artifactSetHash(
         purpose,
         contentHash: document.contentHash,
       }))
-      .sort((left, right) =>
-        left.purpose.localeCompare(right.purpose),
-      ),
+      .sort((left, right) => left.purpose.localeCompare(right.purpose)),
   });
 }
 
-class CapturingBehavioralStore
-  implements TrustedBehavioralPrivacyArtifactStore
-{
+class CapturingBehavioralStore implements TrustedBehavioralPrivacyArtifactStore {
   readonly boundary = "trusted-cloud" as const;
-  commitInput:
-    | Parameters<
-        TrustedBehavioralPrivacyArtifactStore["commit"]
-      >[0]
-    | undefined;
+  commitInput: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0] | undefined;
 
-  constructor(
-    readonly inner: MountedVolumeBehavioralPrivacyArtifactStore,
-  ) {}
+  constructor(readonly inner: MountedVolumeBehavioralPrivacyArtifactStore) {}
 
   load(): ReturnType<TrustedBehavioralPrivacyArtifactStore["load"]> {
     return this.inner.load();
   }
 
   resolveByContentHash(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]
-    >[0],
-  ): ReturnType<
-    TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]
-  > {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]> {
     return this.inner.resolveByContentHash(input);
   }
 
   inspectCommit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-    >[0],
-  ): ReturnType<
-    TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-  > {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]> {
     return this.inner.inspectCommit(input);
   }
 
   commit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["commit"]
-    >[0],
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0],
   ): ReturnType<TrustedBehavioralPrivacyArtifactStore["commit"]> {
-    this.commitInput = JSON.parse(
-      canonicalJson(input),
-    ) as typeof input;
+    this.commitInput = JSON.parse(canonicalJson(input)) as typeof input;
     return this.inner.commit(input);
   }
 
   orphan(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["orphan"]
-    >[0],
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["orphan"]>[0],
   ): ReturnType<TrustedBehavioralPrivacyArtifactStore["orphan"]> {
     return this.inner.orphan(input);
   }
 }
 
-class DoubleLostCommitAcknowledgementStore
-  implements TrustedBehavioralPrivacyArtifactStore
-{
+class DoubleLostCommitAcknowledgementStore implements TrustedBehavioralPrivacyArtifactStore {
   readonly boundary = "trusted-cloud" as const;
   commitAttempts = 0;
   orphanAttempts = 0;
-  commitInput:
-    | Parameters<
-        TrustedBehavioralPrivacyArtifactStore["commit"]
-      >[0]
-    | undefined;
+  commitInput: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0] | undefined;
 
-  constructor(
-    readonly inner: MountedVolumeBehavioralPrivacyArtifactStore,
-  ) {}
+  constructor(readonly inner: MountedVolumeBehavioralPrivacyArtifactStore) {}
 
   load(): ReturnType<TrustedBehavioralPrivacyArtifactStore["load"]> {
     return this.inner.load();
   }
 
   resolveByContentHash(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]
-    >[0],
-  ): ReturnType<
-    TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]
-  > {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["resolveByContentHash"]> {
     return this.inner.resolveByContentHash(input);
   }
 
   inspectCommit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-    >[0],
-  ): ReturnType<
-    TrustedBehavioralPrivacyArtifactStore["inspectCommit"]
-  > {
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]>[0],
+  ): ReturnType<TrustedBehavioralPrivacyArtifactStore["inspectCommit"]> {
     return this.inner.inspectCommit(input);
   }
 
   async commit(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["commit"]
-    >[0],
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0],
   ): Promise<never> {
     this.commitInput = input;
     this.commitAttempts += 1;
@@ -295,18 +237,14 @@ class DoubleLostCommitAcknowledgementStore
   }
 
   orphan(
-    input: Parameters<
-      TrustedBehavioralPrivacyArtifactStore["orphan"]
-    >[0],
+    input: Parameters<TrustedBehavioralPrivacyArtifactStore["orphan"]>[0],
   ): ReturnType<TrustedBehavioralPrivacyArtifactStore["orphan"]> {
     this.orphanAttempts += 1;
     return this.inner.orphan(input);
   }
 }
 
-async function finalize(
-  behavioralStore: TrustedBehavioralPrivacyArtifactStore,
-) {
+async function finalize(behavioralStore: TrustedBehavioralPrivacyArtifactStore) {
   const result = await producer(behavioralStore).finalize({
     preparation: preparation(),
     sourceResultEnvelopeHash: digest(104),
@@ -320,9 +258,7 @@ async function finalize(
 
 describe("mounted-volume behavioral privacy artifact store", () => {
   it("recovers after two lost commit acknowledgements without orphaning, refunding, or rebinding", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-double-lost-ack-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-double-lost-ack-"));
     const durable = store(root);
     const lossy = new DoubleLostCommitAcknowledgementStore(durable);
     const finalization = await finalize(lossy);
@@ -339,8 +275,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
       durable.inspectCommit({
         authorizationHash: committed.authorizationHash,
         requestHash: committed.requestHash,
-        sourceResultEnvelopeHash:
-          committed.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: committed.sourceResultEnvelopeHash,
         releaseContentHash: committed.releaseContentHash,
         artifactSetHash: artifactSetHash(committed.artifacts),
       }),
@@ -373,9 +308,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
   });
 
   it("atomically persists privacy spend and all four exact artifacts across handoff", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-privacy-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-privacy-"));
     const first = store(root);
     const capture = new CapturingBehavioralStore(first);
     const finalization = await finalize(capture);
@@ -387,8 +320,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
     const exactQuery = {
       authorizationHash: committed.authorizationHash,
       requestHash: committed.requestHash,
-      sourceResultEnvelopeHash:
-        committed.sourceResultEnvelopeHash,
+      sourceResultEnvelopeHash: committed.sourceResultEnvelopeHash,
       releaseContentHash: committed.releaseContentHash,
       artifactSetHash: artifactSetHash(committed.artifacts),
     };
@@ -429,23 +361,14 @@ describe("mounted-volume behavioral privacy artifact store", () => {
         artifactSetHash: digest(155),
       }),
     ).resolves.toEqual({ status: "absent" });
-    expect(canonicalJson(await first.load())).toBe(
-      canonicalJson(beforeInspection),
-    );
+    expect(canonicalJson(await first.load())).toBe(canonicalJson(beforeInspection));
     await expect(first.commit(committed)).resolves.toMatchObject({
       status: "already-committed",
       authorizationHash: finalization.authorizationHash,
     });
     await first.close();
 
-    const successor = store(
-      root,
-      durableState(
-        root,
-        "2".repeat(64),
-        "b".repeat(48),
-      ),
-    );
+    const successor = store(root, durableState(root, "2".repeat(64), "b".repeat(48)));
     await expect(successor.load()).resolves.toMatchObject({
       privacyState: { releasesUsed: 1, maximumReleases: 8 },
     });
@@ -483,9 +406,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
   });
 
   it("makes post-commit orphaning permanent, nonrefundable, and non-rebindable", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-orphan-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-orphan-"));
     const first = store(root);
     const capture = new CapturingBehavioralStore(first);
     const releaseProducer = producer(capture);
@@ -512,8 +433,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
       first.inspectCommit({
         authorizationHash: committed.authorizationHash,
         requestHash: committed.requestHash,
-        sourceResultEnvelopeHash:
-          committed.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: committed.sourceResultEnvelopeHash,
         releaseContentHash: committed.releaseContentHash,
         artifactSetHash: artifactSetHash(committed.artifacts),
       }),
@@ -554,9 +474,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
   });
 
   it("publishes no artifact prefix and spends no privacy on a malformed set", async () => {
-    const sourceRoot = await mkdtemp(
-      join(tmpdir(), "df-behavioral-source-"),
-    );
+    const sourceRoot = await mkdtemp(join(tmpdir(), "df-behavioral-source-"));
     const source = store(sourceRoot);
     const capture = new CapturingBehavioralStore(source);
     await finalize(capture);
@@ -566,21 +484,12 @@ describe("mounted-volume behavioral privacy artifact store", () => {
     const valid = capture.commitInput;
     await source.close();
 
-    const targetRoot = await mkdtemp(
-      join(tmpdir(), "df-behavioral-target-"),
-    );
+    const targetRoot = await mkdtemp(join(tmpdir(), "df-behavioral-target-"));
     const target = store(targetRoot);
     const malformed = {
       ...valid,
-      artifacts: [
-        valid.artifacts[0],
-        valid.artifacts[1],
-        valid.artifacts[2],
-        valid.artifacts[2],
-      ],
-    } as unknown as Parameters<
-      TrustedBehavioralPrivacyArtifactStore["commit"]
-    >[0];
+      artifacts: [valid.artifacts[0], valid.artifacts[1], valid.artifacts[2], valid.artifacts[2]],
+    } as unknown as Parameters<TrustedBehavioralPrivacyArtifactStore["commit"]>[0];
     await expect(target.commit(malformed)).rejects.toMatchObject({
       name: "MountedVolumeBehavioralPrivacyArtifactStoreError",
     });
@@ -598,68 +507,44 @@ describe("mounted-volume behavioral privacy artifact store", () => {
     await target.close();
   });
 
-  it(
-    "requires provider destruction proof after a crash and fences the prior owner",
-    async () => {
-      const root = await mkdtemp(
-        join(tmpdir(), "df-behavioral-recovery-"),
-      );
-      const prior = store(root);
-      const finalization = await finalize(prior);
+  it("requires provider destruction proof after a crash and fences the prior owner", async () => {
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-recovery-"));
+    const prior = store(root);
+    const finalization = await finalize(prior);
 
-      const unauthorized = store(
-        root,
-        durableState(
-          root,
-          "2".repeat(64),
-          "b".repeat(48),
-        ),
-      );
-      await expect(unauthorized.load()).rejects.toThrow(
-        /provider-attested recovery is required/u,
-      );
+    const unauthorized = store(root, durableState(root, "2".repeat(64), "b".repeat(48)));
+    await expect(unauthorized.load()).rejects.toThrow(/provider-attested recovery is required/u);
 
-      const recovered = store(root, {
-        ...durableState(
-          root,
-          "3".repeat(64),
-          "c".repeat(48),
-        ),
-        recoveryAuthority: {
-          authorize: ({ observedLock, observedLockHash }) =>
-            Promise.resolve({
-              schemaVersion: 1 as const,
-              domain:
-                "dark-factory.mounted-volume-lock-recovery.v1" as const,
-              namespace: observedLock.namespace,
-              authorizationId:
-                "provider-destruction-behavioral-1",
-              priorLockHash: observedLockHash,
-              priorFenceEpoch: observedLock.fenceEpoch,
-              providerTerminationAttestationHash: digest(120),
-              authorizedAt: "2026-07-26T10:00:00.000Z",
-              signerKeyId: "provider-termination-key",
-              signatureHash: digest(121),
-            }),
-        },
-      });
-      await expect(
-        recovered.resolveByContentHash({
-          purpose: "behavioral-release",
-          contentHash: finalization.contentHash,
-        }),
-      ).resolves.toMatchObject({ purpose: "behavioral-release" });
-      await expect(prior.load()).rejects.toThrow(
-        /ownership|continuity/u,
-      );
-      await recovered.close();
-    },
-  );
+    const recovered = store(root, {
+      ...durableState(root, "3".repeat(64), "c".repeat(48)),
+      recoveryAuthority: {
+        authorize: ({ observedLock, observedLockHash }) =>
+          Promise.resolve({
+            schemaVersion: 1 as const,
+            domain: "dark-factory.mounted-volume-lock-recovery.v1" as const,
+            namespace: observedLock.namespace,
+            authorizationId: "provider-destruction-behavioral-1",
+            priorLockHash: observedLockHash,
+            priorFenceEpoch: observedLock.fenceEpoch,
+            providerTerminationAttestationHash: digest(120),
+            authorizedAt: "2026-07-26T10:00:00.000Z",
+            signerKeyId: "provider-termination-key",
+            signatureHash: digest(121),
+          }),
+      },
+    });
+    await expect(
+      recovered.resolveByContentHash({
+        purpose: "behavioral-release",
+        contentHash: finalization.contentHash,
+      }),
+    ).resolves.toMatchObject({ purpose: "behavioral-release" });
+    await expect(prior.load()).rejects.toThrow(/ownership|continuity/u);
+    await recovered.close();
+  });
 
   it("revalidates cross-artifact bindings even when outer hashes are recomputed", async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), "df-behavioral-corruption-"),
-    );
+    const root = await mkdtemp(join(tmpdir(), "df-behavioral-corruption-"));
     const first = store(root);
     await finalize(first);
     await first.close();
@@ -670,21 +555,14 @@ describe("mounted-volume behavioral privacy artifact store", () => {
       "behavioral-privacy-campaign-behavioral",
       "state.json",
     );
-    const envelope = JSON.parse(
-      await readFile(statePath, "utf8"),
-    ) as Record<string, unknown>;
+    const envelope = JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
     const state = envelope["state"] as Record<string, unknown>;
-    const commits = state["commits"] as Record<
-      string,
-      Record<string, unknown>
-    >;
+    const commits = state["commits"] as Record<string, Record<string, unknown>>;
     const commit = Object.values(commits)[0];
     if (commit === undefined) {
       throw new Error("Expected a durable commit.");
     }
-    const artifacts = commit["artifacts"] as Array<
-      Record<string, unknown>
-    >;
+    const artifacts = commit["artifacts"] as Array<Record<string, unknown>>;
     const firstArtifact = artifacts[0];
     if (firstArtifact === undefined) {
       throw new Error("Expected a durable artifact.");
@@ -698,14 +576,7 @@ describe("mounted-volume behavioral privacy artifact store", () => {
       mode: 0o600,
     });
 
-    const successor = store(
-      root,
-      durableState(
-        root,
-        "2".repeat(64),
-        "b".repeat(48),
-      ),
-    );
+    const successor = store(root, durableState(root, "2".repeat(64), "b".repeat(48)));
     await expect(successor.load()).rejects.toMatchObject({
       name: "MountedVolumeBehavioralPrivacyArtifactStoreError",
     });

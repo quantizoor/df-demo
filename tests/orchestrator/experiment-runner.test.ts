@@ -155,7 +155,7 @@ function broker(result = validation()): BlindBroker {
       expectedValidArms: 5,
       maximumAttempts: 9,
     })),
-    runRepair: vi.fn(async () => ({
+    runRepair: vi.fn<BlindBroker["runRepair"]>(async () => ({
       disposition: "passed",
       attemptOrdinal: 1,
       integrityPassed: true,
@@ -500,16 +500,12 @@ describe("walk-forward experiment runner", () => {
     );
     expect(fakeBroker.releaseDiagnosticBrief).not.toHaveBeenCalled();
     expect(result.diagnosticBrief).toBeNull();
-    expect(result.budget.usage.privacyReleases).toBe(
-      budget.limits.maximumPrivacyReleases,
-    );
+    expect(result.budget.usage.privacyReleases).toBe(budget.limits.maximumPrivacyReleases);
   });
 
   it("persists the promotion look before requesting a fresh panel", async () => {
     const fakeBroker = broker();
-    vi.mocked(fakeBroker.prepareValidation).mockRejectedValue(
-      new Error("panel allocation failed"),
-    );
+    vi.mocked(fakeBroker.prepareValidation).mockRejectedValue(new Error("panel allocation failed"));
     const fakeJournal = journal();
     const runner = new ExperimentRunner({
       optimizer: optimizer(null),

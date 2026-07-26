@@ -2,11 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v4";
 import { ReleasedEvidenceRepository } from "./repository.js";
-import {
-  assertBoundedInput,
-  assertExistingDirectory,
-  boundedJson,
-} from "./security.js";
+import { assertBoundedInput, assertExistingDirectory, boundedJson } from "./security.js";
 
 const COMPONENTS = [
   "system-prompt",
@@ -158,7 +154,10 @@ function registerTools(server: McpServer, repository: ReleasedEvidenceRepository
   );
 
   const hypothesisSchema = {
-    sourceBriefHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+    sourceBriefHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
     citedCardIds: z.array(z.string().regex(/^[a-z0-9-]{1,64}$/u)).max(8),
     observedPattern: z.string().min(20).max(1_200),
     causalClaim: z.string().min(20).max(1_200),
@@ -217,7 +216,10 @@ function registerTools(server: McpServer, repository: ReleasedEvidenceRepository
         hypothesisReceiptId: z.string().min(16).max(128),
         candidateReceiptId: z.string().min(16).max(128),
         resultHash: z.string().regex(/^[a-f0-9]{64}$/u),
-        evidenceHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/u)).min(1).max(12),
+        evidenceHashes: z
+          .array(z.string().regex(/^[a-f0-9]{64}$/u))
+          .min(1)
+          .max(12),
         citedCardIds: z.array(z.string().regex(/^[a-z0-9-]{1,64}$/u)).max(8),
         support: z.enum(["supported", "not-supported", "inconclusive"]),
         expectedVersusObserved: z.string().min(20).max(1_600),
@@ -270,13 +272,9 @@ function registerTools(server: McpServer, repository: ReleasedEvidenceRepository
   );
 }
 
-export async function createDarkFactoryMcpServer(
-  args: ServerArguments,
-): Promise<McpServer> {
+export async function createDarkFactoryMcpServer(args: ServerArguments): Promise<McpServer> {
   const repository = new ReleasedEvidenceRepository({
-    releasedEvidenceRoot: await assertExistingDirectory(
-      args.releasedEvidenceRoot,
-    ),
+    releasedEvidenceRoot: await assertExistingDirectory(args.releasedEvidenceRoot),
     submissionRoot: await assertExistingDirectory(args.submissionRoot),
     auditRoot: await assertExistingDirectory(args.auditRoot),
     campaignId: args.campaignId,

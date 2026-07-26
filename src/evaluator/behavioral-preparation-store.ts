@@ -5,9 +5,7 @@ import type {
 } from "./behavioral-release-producer.js";
 import type { TrustedPrivateBehavioralPreparation } from "./deriver.js";
 
-export type TrustedBehavioralPreparationStoreBoundary =
-  | "trusted-cloud"
-  | "test-only-in-memory";
+export type TrustedBehavioralPreparationStoreBoundary = "trusted-cloud" | "test-only-in-memory";
 
 export interface TrustedBehavioralPreparationWriteReceipt {
   readonly status: "prepared" | "already-prepared";
@@ -141,8 +139,7 @@ export interface TrustedBehavioralPreparationStore {
     readonly preparationHash: string;
     readonly sourceResultEnvelopeHash: string;
     readonly finalizationHash: string;
-    readonly orphanFinalization:
-      TrustedBehavioralReleaseOrphanFinalizationReceipt;
+    readonly orphanFinalization: TrustedBehavioralReleaseOrphanFinalizationReceipt;
   }): Promise<TrustedBehavioralPreparationAbandonmentReceipt>;
 
   consume(input: {
@@ -168,8 +165,7 @@ export function hashTrustedBehavioralPreparationFinalization(input: {
   readonly finalization: TrustedBehavioralReleaseFinalization;
 }): string {
   return canonicalHash({
-    domain:
-      "dark-factory.trusted-behavioral-preparation-finalization.v1",
+    domain: "dark-factory.trusted-behavioral-preparation-finalization.v1",
     ...input,
   });
 }
@@ -183,8 +179,7 @@ export function hashTrustedBehavioralPreparationAbandonment(input: {
   readonly orphanFinalizationHash: string;
 }): string {
   return canonicalHash({
-    domain:
-      "dark-factory.trusted-behavioral-preparation-abandonment.v1",
+    domain: "dark-factory.trusted-behavioral-preparation-abandonment.v1",
     ...input,
   });
 }

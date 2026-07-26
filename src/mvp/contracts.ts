@@ -386,10 +386,7 @@ export interface TrustedSanitizerPort {
 
 export interface ChampionCachePort {
   readonly get: (key: ChampionCacheKey) => Promise<CachedChampionObservation | null>;
-  readonly put: (
-    key: ChampionCacheKey,
-    observation: CachedChampionObservation,
-  ) => Promise<void>;
+  readonly put: (key: ChampionCacheKey, observation: CachedChampionObservation) => Promise<void>;
 }
 
 export interface ExperimentArtifactStorePort {

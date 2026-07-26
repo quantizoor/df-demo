@@ -1,7 +1,4 @@
-import {
-  canonicalHash,
-  canonicalJson,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import {
   assertTerminalBench21Pin,
   hashTerminalBench21Pin,
@@ -18,8 +15,7 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 
 export interface TrustedCatalogInventoryQuery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-catalog-inventory-query.v1";
+  readonly domain: "dark-factory.trusted-catalog-inventory-query.v1";
   readonly datasetPinHash: string;
   readonly datasetContentSha256: string;
   readonly datasetManifestSha256: string;
@@ -30,11 +26,8 @@ export interface TrustedCatalogInventoryQuery {
 
 export interface TrustedCatalogObservationQuery {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.trusted-catalog-observation-query.v1";
-  readonly sourceKind:
-    | "initial-pi-baseline"
-    | "comparable-public-leaderboard";
+  readonly domain: "dark-factory.trusted-catalog-observation-query.v1";
+  readonly sourceKind: "initial-pi-baseline" | "comparable-public-leaderboard";
   readonly sourceCommitment: string;
   readonly datasetPinHash: string;
   readonly inventoryHash: string;
@@ -49,14 +42,9 @@ export interface TrustedCatalogObservationQuery {
  * optimizer process.
  */
 export interface TrustedTerminalBenchCatalogMaterialSource {
-  readonly boundary:
-    "trusted-cloud-terminal-bench-catalog-material-source";
-  loadInventory(
-    query: TrustedCatalogInventoryQuery,
-  ): Promise<TrustedTerminalBenchTaskInventory>;
-  loadObservations(
-    query: TrustedCatalogObservationQuery,
-  ): Promise<TrustedTaskObservationSet>;
+  readonly boundary: "trusted-cloud-terminal-bench-catalog-material-source";
+  loadInventory(query: TrustedCatalogInventoryQuery): Promise<TrustedTerminalBenchTaskInventory>;
+  loadObservations(query: TrustedCatalogObservationQuery): Promise<TrustedTaskObservationSet>;
 }
 
 export interface TrustedCatalogGenesisLoaderOptions {
@@ -76,8 +64,7 @@ export interface TrustedCatalogGenesisLoaderOptions {
 
 export interface ReleaseSafeCatalogGenesisReceipt {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.release-safe-catalog-genesis-receipt.v1";
+  readonly domain: "dark-factory.release-safe-catalog-genesis-receipt.v1";
   readonly sensitivity: "release-safe-control";
   readonly benchmark: "terminal-bench-2.1";
   readonly datasetPinHash: string;
@@ -105,8 +92,7 @@ export interface TrustedLoadedCatalogGenesis {
 }
 
 export class TrustedCatalogGenesisLoaderError extends Error {
-  override readonly name =
-    "TrustedCatalogGenesisLoaderError";
+  override readonly name = "TrustedCatalogGenesisLoaderError";
 
   public constructor() {
     super("Trusted hidden-catalog genesis loading failed closed.");
@@ -118,10 +104,8 @@ interface CapturedLoaderOptions {
   readonly datasetPinHash: string;
   readonly baselineCommitment: string | null;
   readonly leaderboardCommitment: string | null;
-  readonly loadInventory:
-    TrustedTerminalBenchCatalogMaterialSource["loadInventory"];
-  readonly loadObservations:
-    TrustedTerminalBenchCatalogMaterialSource["loadObservations"];
+  readonly loadInventory: TrustedTerminalBenchCatalogMaterialSource["loadInventory"];
+  readonly loadObservations: TrustedTerminalBenchCatalogMaterialSource["loadObservations"];
 }
 
 function fail(): never {
@@ -133,14 +117,8 @@ function cloneCanonical<T>(value: T): T {
 }
 
 function deepFreeze<T>(value: T): T {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    !Object.isFrozen(value)
-  ) {
-    for (const child of Object.values(
-      value as Readonly<Record<string, unknown>>,
-    )) {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Readonly<Record<string, unknown>>)) {
       deepFreeze(child);
     }
     Object.freeze(value);
@@ -161,10 +139,7 @@ function exactKeys(
     fail();
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -192,8 +167,7 @@ export function createTrustedCatalogInventoryQuery(
   }
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.trusted-catalog-inventory-query.v1" as const,
+    domain: "dark-factory.trusted-catalog-inventory-query.v1" as const,
     datasetPinHash,
     datasetContentSha256: pin.datasetContentSha256,
     datasetManifestSha256: pin.datasetManifestSha256,
@@ -213,8 +187,7 @@ export function createTrustedCatalogObservationQuery(
   inventoryHash: string,
 ): TrustedCatalogObservationQuery {
   if (
-    (sourceKind !== "initial-pi-baseline" &&
-      sourceKind !== "comparable-public-leaderboard") ||
+    (sourceKind !== "initial-pi-baseline" && sourceKind !== "comparable-public-leaderboard") ||
     !SHA256.test(sourceCommitment) ||
     !SHA256.test(datasetPinHash) ||
     !SHA256.test(inventoryHash)
@@ -223,8 +196,7 @@ export function createTrustedCatalogObservationQuery(
   }
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.trusted-catalog-observation-query.v1" as const,
+    domain: "dark-factory.trusted-catalog-observation-query.v1" as const,
     sourceKind,
     sourceCommitment,
     datasetPinHash,
@@ -243,18 +215,15 @@ function releaseSafeReceipt(
 ): ReleaseSafeCatalogGenesisReceipt {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.release-safe-catalog-genesis-receipt.v1" as const,
+    domain: "dark-factory.release-safe-catalog-genesis-receipt.v1" as const,
     sensitivity: "release-safe-control" as const,
     benchmark: "terminal-bench-2.1" as const,
     datasetPinHash: imported.datasetPinHash,
     registryRevision: 6 as const,
     taskCount: 89 as const,
     inventoryHash: imported.inventoryHash,
-    baselineObservationSetHash:
-      imported.baselineObservationSetHash,
-    leaderboardObservationSetHash:
-      imported.leaderboardObservationSetHash,
+    baselineObservationSetHash: imported.baselineObservationSetHash,
+    leaderboardObservationSetHash: imported.leaderboardObservationSetHash,
     seedSetHash: imported.seedSetHash,
     containsTaskNames: false as const,
     containsTaskIdentifiers: false as const,
@@ -271,8 +240,7 @@ function protectLoadedGenesis(input: {
   readonly releaseSafeReceipt: ReleaseSafeCatalogGenesisReceipt;
 }): TrustedLoadedCatalogGenesis {
   const loaded = {
-    sensitivity:
-      "trusted-hidden-catalog-genesis-material" as const,
+    sensitivity: "trusted-hidden-catalog-genesis-material" as const,
     releaseSafeReceipt: input.releaseSafeReceipt,
   } as Omit<TrustedLoadedCatalogGenesis, "hiddenImport"> &
     Partial<Pick<TrustedLoadedCatalogGenesis, "hiddenImport">>;
@@ -285,9 +253,7 @@ function protectLoadedGenesis(input: {
   return Object.freeze(loaded) as TrustedLoadedCatalogGenesis;
 }
 
-function captureOptions(
-  options: TrustedCatalogGenesisLoaderOptions,
-): CapturedLoaderOptions {
+function captureOptions(options: TrustedCatalogGenesisLoaderOptions): CapturedLoaderOptions {
   try {
     exactKeys(options, [
       "pin",
@@ -299,31 +265,22 @@ function captureOptions(
     if (
       options.pin.registryRevision !== 6 ||
       options.pin.taskCount !== 89 ||
-      options.source.boundary !==
-        "trusted-cloud-terminal-bench-catalog-material-source" ||
+      options.source.boundary !== "trusted-cloud-terminal-bench-catalog-material-source" ||
       typeof options.source.loadInventory !== "function" ||
       typeof options.source.loadObservations !== "function"
     ) {
       fail();
     }
-    assertOptionalCommitment(
-      options.initialPiBaselineCommitment,
-    );
-    assertOptionalCommitment(
-      options.comparableLeaderboardCommitment,
-    );
+    assertOptionalCommitment(options.initialPiBaselineCommitment);
+    assertOptionalCommitment(options.comparableLeaderboardCommitment);
     const pin = deepFreeze(cloneCanonical(options.pin));
     return {
       pin,
       datasetPinHash: hashTerminalBench21Pin(pin),
-      baselineCommitment:
-        options.initialPiBaselineCommitment,
-      leaderboardCommitment:
-        options.comparableLeaderboardCommitment,
-      loadInventory:
-        options.source.loadInventory.bind(options.source),
-      loadObservations:
-        options.source.loadObservations.bind(options.source),
+      baselineCommitment: options.initialPiBaselineCommitment,
+      leaderboardCommitment: options.comparableLeaderboardCommitment,
+      loadInventory: options.source.loadInventory.bind(options.source),
+      loadObservations: options.source.loadObservations.bind(options.source),
     };
   } catch {
     fail();
@@ -339,9 +296,7 @@ export class TrustedTerminalBenchCatalogGenesisLoader {
   readonly #options: CapturedLoaderOptions;
   #consumed = false;
 
-  public constructor(
-    options: TrustedCatalogGenesisLoaderOptions,
-  ) {
+  public constructor(options: TrustedCatalogGenesisLoaderOptions) {
     this.#options = captureOptions(options);
   }
 
@@ -351,10 +306,7 @@ export class TrustedTerminalBenchCatalogGenesisLoader {
     try {
       const inventory = cloneCanonical(
         await this.#options.loadInventory(
-          createTrustedCatalogInventoryQuery(
-            this.#options.pin,
-            this.#options.datasetPinHash,
-          ),
+          createTrustedCatalogInventoryQuery(this.#options.pin, this.#options.datasetPinHash),
         ),
       );
       const baseline =
@@ -384,19 +336,15 @@ export class TrustedTerminalBenchCatalogGenesisLoader {
               ),
             );
       if (
-        (baseline !== null &&
-          baseline.sourceCommitment !==
-            this.#options.baselineCommitment) ||
+        (baseline !== null && baseline.sourceCommitment !== this.#options.baselineCommitment) ||
         (leaderboard !== null &&
-          leaderboard.sourceCommitment !==
-            this.#options.leaderboardCommitment)
+          leaderboard.sourceCommitment !== this.#options.leaderboardCommitment)
       ) {
         fail();
       }
       const hiddenImport = deepFreeze(
         buildTrustedHiddenCatalogImport({
-          expectedDatasetPinHash:
-            this.#options.datasetPinHash,
+          expectedDatasetPinHash: this.#options.datasetPinHash,
           inventory,
           initialPiBaseline: baseline,
           comparableLeaderboard: leaderboard,
@@ -404,8 +352,7 @@ export class TrustedTerminalBenchCatalogGenesisLoader {
       );
       const loaded = protectLoadedGenesis({
         hiddenImport,
-        releaseSafeReceipt:
-          releaseSafeReceipt(hiddenImport),
+        releaseSafeReceipt: releaseSafeReceipt(hiddenImport),
       });
       canonicalJson(loaded);
       return loaded;

@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createReadStream } from "node:fs";
 import {
+  type FileHandle,
   lstat,
   mkdir,
   open,
@@ -9,9 +11,7 @@ import {
   rm,
   stat,
   writeFile,
-  type FileHandle,
 } from "node:fs/promises";
-import { createReadStream } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type {
@@ -22,8 +22,7 @@ import type {
 import { TrustedArtifactBridgeError } from "./artifact-bridge.js";
 import type { TrustedCloudArtifactRef } from "./types.js";
 
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MEDIA_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/u;
 const MAX_METADATA_BYTES = 4_096;
@@ -51,9 +50,7 @@ function assertTrustedUri(uri: `trusted://${string}`): void {
     uri.includes("..") ||
     uri.split("/").some((component) => component === "." || component === "..")
   ) {
-    throw new TrustedArtifactBridgeError(
-      "Mounted-volume artifact URI is malformed.",
-    );
+    throw new TrustedArtifactBridgeError("Mounted-volume artifact URI is malformed.");
   }
 }
 
@@ -65,17 +62,12 @@ function metadataJson(metadata: StoredArtifactMetadata): string {
   return `${JSON.stringify(metadata)}\n`;
 }
 
-function parseMetadata(
-  raw: string,
-  expectedUri: `trusted://${string}`,
-): StoredArtifactMetadata {
+function parseMetadata(raw: string, expectedUri: `trusted://${string}`): StoredArtifactMetadata {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new TrustedArtifactBridgeError(
-      "Mounted-volume artifact metadata is invalid.",
-    );
+    throw new TrustedArtifactBridgeError("Mounted-volume artifact metadata is invalid.");
   }
   if (
     parsed === null ||
@@ -92,13 +84,7 @@ function parseMetadata(
   if (
     keys.length !== 5 ||
     !keys.every((key) =>
-      [
-        "schemaVersion",
-        "uri",
-        "sha256",
-        "byteLength",
-        "mediaType",
-      ].includes(key),
+      ["schemaVersion", "uri", "sha256", "byteLength", "mediaType"].includes(key),
     ) ||
     record.schemaVersion !== 1 ||
     record.uri !== expectedUri ||
@@ -119,9 +105,7 @@ function parseMetadata(
 async function requireRegularFile(path: string, label: string): Promise<void> {
   const metadata = await lstat(path);
   if (!metadata.isFile() || metadata.isSymbolicLink()) {
-    throw new TrustedArtifactBridgeError(
-      `Mounted-volume ${label} is not a regular file.`,
-    );
+    throw new TrustedArtifactBridgeError(`Mounted-volume ${label} is not a regular file.`);
   }
 }
 
@@ -133,15 +117,11 @@ async function sha256File(path: string): Promise<{
   let byteLength = 0;
   for await (const chunk of createReadStream(path)) {
     if (!(chunk instanceof Buffer)) {
-      throw new TrustedArtifactBridgeError(
-        "Mounted-volume artifact stream is malformed.",
-      );
+      throw new TrustedArtifactBridgeError("Mounted-volume artifact stream is malformed.");
     }
     byteLength += chunk.byteLength;
     if (!Number.isSafeInteger(byteLength)) {
-      throw new TrustedArtifactBridgeError(
-        "Mounted-volume artifact is too large.",
-      );
+      throw new TrustedArtifactBridgeError("Mounted-volume artifact is too large.");
     }
     hash.update(chunk);
   }
@@ -170,14 +150,36 @@ async function writeAll(handle: FileHandle, chunk: Uint8Array): Promise<void> {
   }
 }
 
+function assertBackendReadIntegrity(input: {
+  readonly metadata: StoredArtifactMetadata;
+  readonly byteLength: number;
+  readonly sha256: string;
+  readonly streamFailure: { readonly error: unknown } | undefined;
+}): void {
+  if (input.byteLength === input.metadata.byteLength && input.sha256 === input.metadata.sha256) {
+    return;
+  }
+  const integrityFailure = new TrustedArtifactBridgeError(
+    "Mounted-volume artifact failed its backend integrity check.",
+  );
+  if (input.streamFailure === undefined) throw integrityFailure;
+  throw new TrustedArtifactBridgeError(
+    "Mounted-volume artifact read failed and its backend integrity check also failed.",
+    {
+      cause: new AggregateError(
+        [input.streamFailure.error, integrityFailure],
+        "Mounted-volume artifact stream and integrity verification both failed.",
+      ),
+    },
+  );
+}
+
 /**
  * Durable content-addressed storage for a provider-managed volume mounted into
  * the trusted control-plane sandbox. URI-to-path mapping is a one-way digest,
  * so URI prefix tricks cannot alias files or directories.
  */
-export class MountedVolumeTrustedArtifactBackend
-  implements TrustedArtifactBackend
-{
+export class MountedVolumeTrustedArtifactBackend implements TrustedArtifactBackend {
   readonly #root: string;
   readonly #objectsRoot: string;
   readonly #stagingRoot: string;
@@ -212,9 +214,7 @@ export class MountedVolumeTrustedArtifactBackend
       rootInfo.isSymbolicLink() ||
       (await realpath(this.#root)) !== this.#root
     ) {
-      throw new TrustedArtifactBridgeError(
-        "Trusted artifact volume root is not a real directory.",
-      );
+      throw new TrustedArtifactBridgeError("Trusted artifact volume root is not a real directory.");
     }
     await mkdir(this.#objectsRoot, { recursive: true, mode: 0o700 });
     await mkdir(this.#stagingRoot, { recursive: true, mode: 0o700 });
@@ -238,10 +238,7 @@ export class MountedVolumeTrustedArtifactBackend
     return join(this.#objectsRoot, artifactDigest(uri).slice(0, 2));
   }
 
-  async #requireObjectShard(
-    uri: `trusted://${string}`,
-    create: boolean,
-  ): Promise<string> {
+  async #requireObjectShard(uri: `trusted://${string}`, create: boolean): Promise<string> {
     const shard = this.#objectShardDirectory(uri);
     if (create) {
       try {
@@ -257,28 +254,18 @@ export class MountedVolumeTrustedArtifactBackend
       }
     }
     const info = await lstat(shard);
-    if (
-      !info.isDirectory() ||
-      info.isSymbolicLink() ||
-      (await realpath(shard)) !== shard
-    ) {
-      throw new TrustedArtifactBridgeError(
-        "Mounted-volume artifact shard is unsafe.",
-      );
+    if (!info.isDirectory() || info.isSymbolicLink() || (await realpath(shard)) !== shard) {
+      throw new TrustedArtifactBridgeError("Mounted-volume artifact shard is unsafe.");
     }
     return shard;
   }
 
-  async #readMetadata(
-    uri: `trusted://${string}`,
-  ): Promise<StoredArtifactMetadata> {
+  async #readMetadata(uri: `trusted://${string}`): Promise<StoredArtifactMetadata> {
     await this.#requireObjectShard(uri, false);
     const directory = this.#objectDirectory(uri);
     const directoryInfo = await lstat(directory);
     if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
-      throw new TrustedArtifactBridgeError(
-        "Mounted-volume artifact directory is unsafe.",
-      );
+      throw new TrustedArtifactBridgeError("Mounted-volume artifact directory is unsafe.");
     }
     const metadataPath = join(directory, "metadata.json");
     const dataPath = join(directory, "data");
@@ -293,16 +280,11 @@ export class MountedVolumeTrustedArtifactBackend
     return parseMetadata(await readFile(metadataPath, "utf8"), uri);
   }
 
-  async open(
-    uri: `trusted://${string}`,
-    signal?: AbortSignal,
-  ): Promise<AsyncIterable<Uint8Array>> {
+  async open(uri: `trusted://${string}`, signal?: AbortSignal): Promise<AsyncIterable<Uint8Array>> {
     await this.#initialize();
     assertTrustedUri(uri);
     if (signal?.aborted === true) {
-      throw new TrustedArtifactBridgeError(
-        "Mounted-volume artifact read was cancelled.",
-      );
+      throw new TrustedArtifactBridgeError("Mounted-volume artifact read was cancelled.");
     }
     const metadata = await this.#readMetadata(uri);
     const dataPath = join(this.#objectDirectory(uri), "data");
@@ -311,24 +293,18 @@ export class MountedVolumeTrustedArtifactBackend
       [Symbol.asyncIterator]: async function* () {
         let byteLength = 0;
         const hash = createHash("sha256");
+        let streamFailure: { readonly error: unknown } | undefined;
         try {
           for await (const chunk of source) {
             if (signal?.aborted === true) {
               source.destroy();
-              throw new TrustedArtifactBridgeError(
-                "Mounted-volume artifact read was cancelled.",
-              );
+              throw new TrustedArtifactBridgeError("Mounted-volume artifact read was cancelled.");
             }
             if (!(chunk instanceof Buffer)) {
-              throw new TrustedArtifactBridgeError(
-                "Mounted-volume artifact stream is malformed.",
-              );
+              throw new TrustedArtifactBridgeError("Mounted-volume artifact stream is malformed.");
             }
             byteLength += chunk.byteLength;
-            if (
-              !Number.isSafeInteger(byteLength) ||
-              byteLength > metadata.byteLength
-            ) {
+            if (!Number.isSafeInteger(byteLength) || byteLength > metadata.byteLength) {
               throw new TrustedArtifactBridgeError(
                 "Mounted-volume artifact length exceeds metadata.",
               );
@@ -336,15 +312,16 @@ export class MountedVolumeTrustedArtifactBackend
             hash.update(chunk);
             yield chunk;
           }
+        } catch (error) {
+          streamFailure = { error };
+          throw error;
         } finally {
-          if (
-            byteLength !== metadata.byteLength ||
-            hash.digest("hex") !== metadata.sha256
-          ) {
-            throw new TrustedArtifactBridgeError(
-              "Mounted-volume artifact failed its backend integrity check.",
-            );
-          }
+          assertBackendReadIntegrity({
+            metadata,
+            byteLength,
+            sha256: hash.digest("hex"),
+            streamFailure,
+          });
         }
       },
     };
@@ -357,10 +334,7 @@ export class MountedVolumeTrustedArtifactBackend
   }): Promise<TrustedArtifactWriteSession> {
     await this.#initialize();
     assertTrustedUri(input.uri);
-    if (
-      !MEDIA_TYPE.test(input.mediaType) ||
-      input.signal?.aborted === true
-    ) {
+    if (!MEDIA_TYPE.test(input.mediaType) || input.signal?.aborted === true) {
       throw new TrustedArtifactBridgeError(
         "Mounted-volume artifact write request is malformed or cancelled.",
       );
@@ -369,11 +343,7 @@ export class MountedVolumeTrustedArtifactBackend
     const stagingDirectory = join(this.#stagingRoot, stagingName);
     await mkdir(stagingDirectory, { recursive: false, mode: 0o700 });
     const stagingData = join(stagingDirectory, "data");
-    let handle: FileHandle | undefined = await open(
-      stagingData,
-      "wx",
-      0o600,
-    );
+    let handle: FileHandle | undefined = await open(stagingData, "wx", 0o600);
     let closed = false;
     let byteLength = 0;
     const hash = createHash("sha256");
@@ -401,9 +371,7 @@ export class MountedVolumeTrustedArtifactBackend
         }
         byteLength += chunk.byteLength;
         if (!Number.isSafeInteger(byteLength)) {
-          throw new TrustedArtifactBridgeError(
-            "Mounted-volume artifact is too large.",
-          );
+          throw new TrustedArtifactBridgeError("Mounted-volume artifact is too large.");
         }
         hash.update(chunk);
         await writeAll(handle, chunk);
@@ -451,16 +419,12 @@ export class MountedVolumeTrustedArtifactBackend
           if (
             !(error instanceof Error) ||
             !("code" in error) ||
-            !new Set(["EEXIST", "ENOTEMPTY"]).has(
-              String((error as NodeJS.ErrnoException).code),
-            )
+            !new Set(["EEXIST", "ENOTEMPTY"]).has(String((error as NodeJS.ErrnoException).code))
           ) {
             throw error;
           }
           const existing = await this.#readMetadata(input.uri);
-          const existingData = await sha256File(
-            join(targetDirectory, "data"),
-          );
+          const existingData = await sha256File(join(targetDirectory, "data"));
           if (
             existing.sha256 !== metadata.sha256 ||
             existing.byteLength !== metadata.byteLength ||

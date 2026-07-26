@@ -5,25 +5,29 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ArtifactBackedProductionCompositionAttestationVerifier,
   PRODUCTION_OPERATIONAL_BINDING_IDS,
-  productionRuntimePortAttestationBindingHash,
-  ProductionCompositionAttestationVerificationError,
   type ProductionComponentAttestationArtifact,
   type ProductionCompositionAttestationArtifactSet,
   type ProductionCompositionAttestationQuery,
+  ProductionCompositionAttestationVerificationError,
   type ProductionOperationalBindingsAttestationArtifact,
   type ProductionRuntimePortAttestationArtifact,
+  productionRuntimePortAttestationBindingHash,
+  type TrustedProductionCompositionAttestationArtifactReader,
+  type TrustedProductionCompositionAttestationArtifactSource,
   type TrustedProductionCompositionEvidencePublicKey,
+  type TrustedProductionCompositionEvidencePublicKeyAuthority,
   type TrustedProductionCompositionPublicKey,
+  type TrustedProductionCompositionPublicKeyAuthority,
 } from "../../src/cloud/production-composition-attestation-verifier.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
 import {
   PRODUCTION_RUNTIME_PORT_IDS,
-  productionRuntimePortBindingsHash,
   type ProductionOptimizationCompositionManifest,
   type ProductionRuntimeComponentManifest,
   type ProductionRuntimePortId,
   type ProductionRuntimeRole,
+  productionRuntimePortBindingsHash,
 } from "../../src/orchestrator/production-runtime.js";
 import {
   canonicalHash,
@@ -38,17 +42,10 @@ const EXPIRES_AT = "2026-07-26T13:00:00.000Z";
 const KEY_ID = "composition-key-2026-07";
 const EVIDENCE_KEY_ID = "composition-evidence-key-2026-07";
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-const {
-  privateKey: evidencePrivateKey,
-  publicKey: evidencePublicKey,
-} = generateKeyPairSync("ed25519");
+const { privateKey: evidencePrivateKey, publicKey: evidencePublicKey } =
+  generateKeyPairSync("ed25519");
 
-const ROLES = [
-  "control",
-  "optimizer",
-  "build",
-  "evaluator",
-] as const;
+const ROLES = ["control", "optimizer", "build", "evaluator"] as const;
 
 const PORT_ROLES = {
   "control.campaign-state-store": "control",
@@ -60,9 +57,7 @@ const PORT_ROLES = {
   "optimizer.adapter": "optimizer",
   "build.correctness-gate": "build",
   "evaluator.blind-broker": "evaluator",
-} as const satisfies Readonly<
-  Record<ProductionRuntimePortId, ProductionRuntimeRole>
->;
+} as const satisfies Readonly<Record<ProductionRuntimePortId, ProductionRuntimeRole>>;
 
 function hash(label: string): string {
   return canonicalHash({
@@ -71,26 +66,20 @@ function hash(label: string): string {
   });
 }
 
-function component(
-  role: ProductionRuntimeRole,
-): ProductionRuntimeComponentManifest {
-  const imageDigest =
-    `sha256:${hash(`image:${role}`)}` as `sha256:${string}`;
+function component(role: ProductionRuntimeRole): ProductionRuntimeComponentManifest {
+  const imageDigest = `sha256:${hash(`image:${role}`)}` as `sha256:${string}`;
   return {
     role,
     boundary: "trusted-cloud",
     componentId: `df-${role}`,
-    imageReference:
-      `ghcr.io/parallaxai/df-${role}@${imageDigest}`,
+    imageReference: `ghcr.io/parallaxai/df-${role}@${imageDigest}`,
     imageDigest,
     sourceArtifactHash: hash(`source:${role}`),
     configurationHash: hash(`configuration:${role}`),
   };
 }
 
-function implementationBindingHash(
-  portId: ProductionRuntimePortId,
-): string {
+function implementationBindingHash(portId: ProductionRuntimePortId): string {
   return hash(`implementation:${portId}`);
 }
 
@@ -101,29 +90,24 @@ function manifest(): ProductionOptimizationCompositionManifest {
     build: component("build"),
     evaluator: component("evaluator"),
   };
-  const runtimePortAttestations = PRODUCTION_RUNTIME_PORT_IDS.map(
-    (portId) => {
-      const role = PORT_ROLES[portId];
-      const descriptor = components[role];
-      return {
+  const runtimePortAttestations = PRODUCTION_RUNTIME_PORT_IDS.map((portId) => {
+    const role = PORT_ROLES[portId];
+    const descriptor = components[role];
+    return {
+      portId,
+      attestationSha256: productionRuntimePortAttestationBindingHash({
         portId,
-        attestationSha256:
-          productionRuntimePortAttestationBindingHash({
-            portId,
-            role,
-            componentBindingHash: canonicalHash(descriptor),
-            sourceArtifactHash: descriptor.sourceArtifactHash,
-            configurationHash: descriptor.configurationHash,
-            implementationBindingHash:
-              implementationBindingHash(portId),
-          }),
-      };
-    },
-  );
+        role,
+        componentBindingHash: canonicalHash(descriptor),
+        sourceArtifactHash: descriptor.sourceArtifactHash,
+        configurationHash: descriptor.configurationHash,
+        implementationBindingHash: implementationBindingHash(portId),
+      }),
+    };
+  });
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimization-composition.v1" as const,
+    domain: "dark-factory.production-optimization-composition.v1" as const,
     manifestId: "production-001",
     campaignId: "campaign-001",
     lineageId: "lineage-001",
@@ -161,18 +145,11 @@ function manifest(): ProductionOptimizationCompositionManifest {
   };
   return {
     ...signed,
-    signature: createEd25519Signature(
-      signed,
-      privateKey,
-      KEY_ID,
-      "2026-07-26T11:00:01.000Z",
-    ),
+    signature: createEd25519Signature(signed, privateKey, KEY_ID, "2026-07-26T11:00:01.000Z"),
   };
 }
 
-function commonArtifact(
-  value: ProductionOptimizationCompositionManifest,
-) {
+function commonArtifact(value: ProductionOptimizationCompositionManifest) {
   return {
     schemaVersion: 1 as const,
     sensitivity: "release-safe-control" as const,
@@ -192,8 +169,7 @@ function componentDocument(
   const descriptor = value.components[role];
   return withContentHash({
     ...commonArtifact(value),
-    domain:
-      "dark-factory.production-component-attestation.v1" as const,
+    domain: "dark-factory.production-component-attestation.v1" as const,
     role,
     componentBindingHash: canonicalHash(descriptor),
     imageReference: descriptor.imageReference,
@@ -204,9 +180,7 @@ function componentDocument(
   });
 }
 
-function operationalValues(
-  value: ProductionOptimizationCompositionManifest,
-): readonly string[] {
+function operationalValues(value: ProductionOptimizationCompositionManifest): readonly string[] {
   return [
     value.bindings.harnessRegistrationHash,
     value.bindings.campaignGenesisHash,
@@ -227,15 +201,12 @@ function operationalDocument(
   const values = operationalValues(value);
   return withContentHash({
     ...commonArtifact(value),
-    domain:
-      "dark-factory.production-operational-bindings-attestation.v1" as const,
+    domain: "dark-factory.production-operational-bindings-attestation.v1" as const,
     operationalBindingsHash: canonicalHash(value.bindings),
-    bindingAttestations: PRODUCTION_OPERATIONAL_BINDING_IDS.map(
-      (bindingId, index) => ({
-        bindingId,
-        attestationSha256: values[index]!,
-      }),
-    ),
+    bindingAttestations: PRODUCTION_OPERATIONAL_BINDING_IDS.map((bindingId, index) => ({
+      bindingId,
+      attestationSha256: values[index]!,
+    })),
   });
 }
 
@@ -245,19 +216,14 @@ function runtimePortDocument(
 ): ProductionRuntimePortAttestationArtifact {
   const role = PORT_ROLES[portId];
   const descriptor = value.components[role];
-  const commitment = value.runtimePortAttestations.find(
-    (item) => item.portId === portId,
-  );
+  const commitment = value.runtimePortAttestations.find((item) => item.portId === portId);
   if (commitment === undefined) {
     throw new Error("Missing test runtime-port commitment.");
   }
   return withContentHash({
     ...commonArtifact(value),
-    domain:
-      "dark-factory.production-runtime-port-attestation.v1" as const,
-    runtimePortBindingsHash: productionRuntimePortBindingsHash(
-      value.runtimePortAttestations,
-    ),
+    domain: "dark-factory.production-runtime-port-attestation.v1" as const,
+    runtimePortBindingsHash: productionRuntimePortBindingsHash(value.runtimePortAttestations),
     portId,
     role,
     componentBindingHash: canonicalHash(descriptor),
@@ -273,16 +239,13 @@ function query(
 ): ProductionCompositionAttestationQuery {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-composition-attestation-query.v1" as const,
+    domain: "dark-factory.production-composition-attestation-query.v1" as const,
     campaignId: value.campaignId,
     manifestId: value.manifestId,
     manifestHash: value.manifestHash,
     componentBindingsHash: canonicalHash(value.components),
     operationalBindingsHash: canonicalHash(value.bindings),
-    runtimePortBindingsHash: productionRuntimePortBindingsHash(
-      value.runtimePortAttestations,
-    ),
+    runtimePortBindingsHash: productionRuntimePortBindingsHash(value.runtimePortAttestations),
   };
   return {
     ...unsigned,
@@ -294,37 +257,29 @@ interface Fixture {
   readonly manifest: ProductionOptimizationCompositionManifest;
   readonly artifactSet: ProductionCompositionAttestationArtifactSet;
   readonly rawByUri: Map<string, string>;
-  readonly source: {
-    boundary: "trusted-cloud";
-    locate: ReturnType<typeof vi.fn>;
-  };
-  readonly reader: {
-    boundary: "trusted-cloud";
-    readUtf8: ReturnType<typeof vi.fn>;
-  };
-  readonly keyAuthority: {
-    boundary: "trusted-cloud";
-    resolve: ReturnType<typeof vi.fn>;
-  };
-  readonly evidenceKeyAuthority: {
-    boundary: "trusted-cloud";
-    resolve: ReturnType<typeof vi.fn>;
-  };
-  readonly locate: ReturnType<typeof vi.fn>;
-  readonly readUtf8: ReturnType<typeof vi.fn>;
-  readonly resolve: ReturnType<typeof vi.fn>;
-  readonly resolveEvidenceKey: ReturnType<typeof vi.fn>;
-  readonly verifier:
-    ArtifactBackedProductionCompositionAttestationVerifier;
+  readonly source: TrustedProductionCompositionAttestationArtifactSource;
+  readonly reader: TrustedProductionCompositionAttestationArtifactReader;
+  readonly keyAuthority: TrustedProductionCompositionPublicKeyAuthority;
+  readonly evidenceKeyAuthority: TrustedProductionCompositionEvidencePublicKeyAuthority;
+  readonly locate: ReturnType<
+    typeof vi.fn<TrustedProductionCompositionAttestationArtifactSource["locate"]>
+  >;
+  readonly readUtf8: ReturnType<
+    typeof vi.fn<TrustedProductionCompositionAttestationArtifactReader["readUtf8"]>
+  >;
+  readonly resolve: ReturnType<
+    typeof vi.fn<TrustedProductionCompositionPublicKeyAuthority["resolve"]>
+  >;
+  readonly resolveEvidenceKey: ReturnType<
+    typeof vi.fn<TrustedProductionCompositionEvidencePublicKeyAuthority["resolve"]>
+  >;
+  readonly verifier: ArtifactBackedProductionCompositionAttestationVerifier;
 }
 
 function fixture(): Fixture {
   const signedManifest = manifest();
   const rawByUri = new Map<string, string>();
-  const artifact = (
-    name: string,
-    document: Readonly<Record<string, unknown>>,
-  ): TrustedCloudArtifactRef => {
+  const artifact = (name: string, document: object): TrustedCloudArtifactRef => {
     const raw = `${canonicalJson(document)}\n`;
     const ref: TrustedCloudArtifactRef = {
       uri: `trusted://production-composition-evidence/${name}`,
@@ -337,37 +292,25 @@ function fixture(): Fixture {
   };
   const componentAttestations = ROLES.map((role) => ({
     role,
-    componentBindingHash: canonicalHash(
-      signedManifest.components[role],
-    ),
-    artifact: artifact(
-      `component-${role}`,
-      componentDocument(signedManifest, role),
-    ),
+    componentBindingHash: canonicalHash(signedManifest.components[role]),
+    artifact: artifact(`component-${role}`, componentDocument(signedManifest, role)),
   }));
   const operationalBindingsAttestation = {
-    operationalBindingsHash: canonicalHash(
-      signedManifest.bindings,
-    ),
-    artifact: artifact(
-      "operational-bindings",
-      operationalDocument(signedManifest),
-    ),
+    operationalBindingsHash: canonicalHash(signedManifest.bindings),
+    artifact: artifact("operational-bindings", operationalDocument(signedManifest)),
   };
-  const runtimePortAttestations =
-    signedManifest.runtimePortAttestations.map((commitment) => ({
-      portId: commitment.portId,
-      attestationSha256: commitment.attestationSha256,
-      artifact: artifact(
-        `runtime-port-${commitment.portId}`,
-        runtimePortDocument(signedManifest, commitment.portId),
-      ),
-    }));
+  const runtimePortAttestations = signedManifest.runtimePortAttestations.map((commitment) => ({
+    portId: commitment.portId,
+    attestationSha256: commitment.attestationSha256,
+    artifact: artifact(
+      `runtime-port-${commitment.portId}`,
+      runtimePortDocument(signedManifest, commitment.portId),
+    ),
+  }));
   const expectedQuery = query(signedManifest);
   const artifactSetUnsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-composition-attestation-artifact-set.v1" as const,
+    domain: "dark-factory.production-composition-attestation-artifact-set.v1" as const,
     sensitivity: "release-safe-control" as const,
     deployment: "trusted-cloud" as const,
     campaignId: signedManifest.campaignId,
@@ -380,29 +323,25 @@ function fixture(): Fixture {
     issuedAt: ISSUED_AT,
     expiresAt: EXPIRES_AT,
   };
-  const artifactSet: ProductionCompositionAttestationArtifactSet =
-    withContentHash({
-      ...artifactSetUnsigned,
-      signature: createEd25519Signature(
-        artifactSetUnsigned,
-        evidencePrivateKey,
-        EVIDENCE_KEY_ID,
-        ISSUED_AT,
-      ),
-    });
+  const artifactSet: ProductionCompositionAttestationArtifactSet = withContentHash({
+    ...artifactSetUnsigned,
+    signature: createEd25519Signature(
+      artifactSetUnsigned,
+      evidencePrivateKey,
+      EVIDENCE_KEY_ID,
+      ISSUED_AT,
+    ),
+  });
   const locate = vi.fn(
     async (
       _input: ProductionCompositionAttestationQuery,
-    ): Promise<ProductionCompositionAttestationArtifactSet> =>
-      artifactSet,
+    ): Promise<ProductionCompositionAttestationArtifactSet> => artifactSet,
   );
-  const readUtf8 = vi.fn(
-    async (ref: TrustedCloudArtifactRef): Promise<string> => {
-      const raw = rawByUri.get(ref.uri);
-      if (raw === undefined) throw new Error("Missing test artifact.");
-      return raw;
-    },
-  );
+  const readUtf8 = vi.fn(async (ref: TrustedCloudArtifactRef): Promise<string> => {
+    const raw = rawByUri.get(ref.uri);
+    if (raw === undefined) throw new Error("Missing test artifact.");
+    return raw;
+  });
   const resolve = vi.fn(
     async (): Promise<TrustedProductionCompositionPublicKey> => ({
       boundary: "trusted-cloud-key-material",
@@ -457,24 +396,19 @@ function fixture(): Fixture {
     readUtf8,
     resolve,
     resolveEvidenceKey,
-    verifier:
-      new ArtifactBackedProductionCompositionAttestationVerifier({
-        source,
-        reader,
-        keyAuthority,
-        evidenceKeyAuthority,
-        trustedKeyIds: [KEY_ID],
-        trustedEvidenceKeyIds: [EVIDENCE_KEY_ID],
-        now: () => NOW,
-      }),
+    verifier: new ArtifactBackedProductionCompositionAttestationVerifier({
+      source,
+      reader,
+      keyAuthority,
+      evidenceKeyAuthority,
+      trustedKeyIds: [KEY_ID],
+      trustedEvidenceKeyIds: [EVIDENCE_KEY_ID],
+      now: () => NOW,
+    }),
   };
 }
 
-function replaceRaw(
-  value: Fixture,
-  ref: TrustedCloudArtifactRef,
-  raw: string,
-): void {
+function replaceRaw(value: Fixture, ref: TrustedCloudArtifactRef, raw: string): void {
   value.rawByUri.set(ref.uri, raw);
   Object.assign(ref, {
     sha256: sha256(raw),
@@ -485,9 +419,7 @@ function replaceRaw(
 function replaceDocument(
   value: Fixture,
   ref: TrustedCloudArtifactRef,
-  update: (
-    document: Readonly<Record<string, unknown>>,
-  ) => Readonly<Record<string, unknown>>,
+  update: (document: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>,
 ): void {
   const raw = value.rawByUri.get(ref.uri);
   if (raw === undefined) throw new Error("Missing test artifact.");
@@ -506,21 +438,12 @@ function resignArtifactSet(
   value: Fixture,
   signingKey: typeof evidencePrivateKey = evidencePrivateKey,
 ): void {
-  const {
-    signature: _signature,
-    contentHash: _contentHash,
-    ...unsigned
-  } = value.artifactSet;
+  const { signature: _signature, contentHash: _contentHash, ...unsigned } = value.artifactSet;
   Object.assign(
     value.artifactSet,
     withContentHash({
       ...unsigned,
-      signature: createEd25519Signature(
-        unsigned,
-        signingKey,
-        EVIDENCE_KEY_ID,
-        ISSUED_AT,
-      ),
+      signature: createEd25519Signature(unsigned, signingKey, EVIDENCE_KEY_ID, ISSUED_AT),
     }),
   );
 }
@@ -540,16 +463,11 @@ describe("artifact-backed production composition attestation verifier", () => {
 
     expect(second).toEqual(first);
     expect(first).toMatchObject({
-      domain:
-        "dark-factory.production-composition-verification.v1",
+      domain: "dark-factory.production-composition-verification.v1",
       manifestHash: value.manifest.manifestHash,
       signingKeyId: KEY_ID,
-      componentBindingsHash: canonicalHash(
-        value.manifest.components,
-      ),
-      operationalBindingsHash: canonicalHash(
-        value.manifest.bindings,
-      ),
+      componentBindingsHash: canonicalHash(value.manifest.components),
+      operationalBindingsHash: canonicalHash(value.manifest.bindings),
       runtimePortBindingsHash: productionRuntimePortBindingsHash(
         value.manifest.runtimePortAttestations,
       ),
@@ -568,9 +486,7 @@ describe("artifact-backed production composition attestation verifier", () => {
     });
     expect(value.locate).toHaveBeenCalledWith(query(value.manifest));
     expect(value.readUtf8).toHaveBeenCalledTimes(28);
-    expect(
-      Object.isFrozen(value.readUtf8.mock.calls[0]?.[0]),
-    ).toBe(true);
+    expect(Object.isFrozen(value.readUtf8.mock.calls[0]?.[0])).toBe(true);
     const released = JSON.stringify({
       query: value.locate.mock.calls[0]?.[0],
       receipt: first,
@@ -585,13 +501,8 @@ describe("artifact-backed production composition attestation verifier", () => {
       signature: "A".repeat(86),
     });
     await expect(
-      forged.verifier.verify(
-        forged.manifest,
-        forged.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      forged.verifier.verify(forged.manifest, forged.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
     expect(forged.locate).not.toHaveBeenCalled();
 
     const revoked = fixture();
@@ -607,13 +518,8 @@ describe("artifact-backed production composition attestation verifier", () => {
       publicKey,
     });
     await expect(
-      revoked.verifier.verify(
-        revoked.manifest,
-        revoked.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      revoked.verifier.verify(revoked.manifest, revoked.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const wrongPurpose = fixture();
     wrongPurpose.resolve.mockResolvedValue({
@@ -632,9 +538,7 @@ describe("artifact-backed production composition attestation verifier", () => {
         wrongPurpose.manifest,
         wrongPurpose.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const privateMaterial = fixture();
     privateMaterial.resolve.mockResolvedValue({
@@ -654,9 +558,7 @@ describe("artifact-backed production composition attestation verifier", () => {
         privateMaterial.manifest,
         privateMaterial.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const privateKeyDisguisedAsPublic = fixture();
     privateKeyDisguisedAsPublic.resolve.mockResolvedValue({
@@ -675,9 +577,7 @@ describe("artifact-backed production composition attestation verifier", () => {
         privateKeyDisguisedAsPublic.manifest,
         privateKeyDisguisedAsPublic.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
   });
 
   it("rejects substituted, wrong-purpose, and revoked evidence-envelope keys", async () => {
@@ -699,9 +599,7 @@ describe("artifact-backed production composition attestation verifier", () => {
         substituted.manifest,
         substituted.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
     expect(substituted.readUtf8).not.toHaveBeenCalled();
 
     const wrongPurpose = fixture();
@@ -721,9 +619,7 @@ describe("artifact-backed production composition attestation verifier", () => {
         wrongPurpose.manifest,
         wrongPurpose.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const revoked = fixture();
     revoked.resolveEvidenceKey.mockResolvedValue({
@@ -738,13 +634,8 @@ describe("artifact-backed production composition attestation verifier", () => {
       publicKey: evidencePublicKey,
     });
     await expect(
-      revoked.verifier.verify(
-        revoked.manifest,
-        revoked.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      revoked.verifier.verify(revoked.manifest, revoked.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
   });
 
   it("requires one exact artifact per role, operation bundle, and ordered port", async () => {
@@ -756,65 +647,43 @@ describe("artifact-backed production composition attestation verifier", () => {
     });
     resignArtifactSet(extra);
     await expect(
-      extra.verifier.verify(
-        extra.manifest,
-        extra.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      extra.verifier.verify(extra.manifest, extra.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
     expect(extra.readUtf8).not.toHaveBeenCalled();
 
     const reordered = fixture();
     (
-      reordered.artifactSet.runtimePortAttestations as
-        ProductionCompositionAttestationArtifactSet["runtimePortAttestations"]
-        & unknown[]
+      reordered.artifactSet
+        .runtimePortAttestations as ProductionCompositionAttestationArtifactSet["runtimePortAttestations"] &
+        unknown[]
     ).reverse();
     resignArtifactSet(reordered);
     await expect(
-      reordered.verifier.verify(
-        reordered.manifest,
-        reordered.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      reordered.verifier.verify(reordered.manifest, reordered.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const duplicate = fixture();
-    const first =
-      duplicate.artifactSet.runtimePortAttestations[0]?.artifact;
-    const second =
-      duplicate.artifactSet.runtimePortAttestations[1];
+    const first = duplicate.artifactSet.runtimePortAttestations[0]?.artifact;
+    const second = duplicate.artifactSet.runtimePortAttestations[1];
     if (first === undefined || second === undefined) {
       throw new Error("Invalid test artifact set.");
     }
     Object.assign(second, { artifact: first });
     resignArtifactSet(duplicate);
     await expect(
-      duplicate.verifier.verify(
-        duplicate.manifest,
-        duplicate.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      duplicate.verifier.verify(duplicate.manifest, duplicate.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
   });
 
   it("rejects detached component, operational, and runtime-port evidence", async () => {
     const detachedComponent = fixture();
-    const componentRef =
-      detachedComponent.artifactSet.componentAttestations[0]
-        ?.artifact;
+    const componentRef = detachedComponent.artifactSet.componentAttestations[0]?.artifact;
     if (componentRef === undefined) throw new Error("Missing test ref.");
-    replaceDocument(
-      detachedComponent,
-      componentRef,
-      (document) =>
-        rehashDocument({
-          ...document,
-          sourceArtifactHash: hash("detached-source"),
-        }),
+    replaceDocument(detachedComponent, componentRef, (document) =>
+      rehashDocument({
+        ...document,
+        sourceArtifactHash: hash("detached-source"),
+      }),
     );
     resignArtifactSet(detachedComponent);
     await expect(
@@ -822,26 +691,15 @@ describe("artifact-backed production composition attestation verifier", () => {
         detachedComponent.manifest,
         detachedComponent.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const reorderedOperations = fixture();
-    const operationalRef =
-      reorderedOperations.artifactSet
-        .operationalBindingsAttestation.artifact;
-    replaceDocument(
-      reorderedOperations,
-      operationalRef,
-      (document) =>
-        rehashDocument({
-          ...document,
-          bindingAttestations: [
-            ...(
-              document["bindingAttestations"] as readonly unknown[]
-            ),
-          ].reverse(),
-        }),
+    const operationalRef = reorderedOperations.artifactSet.operationalBindingsAttestation.artifact;
+    replaceDocument(reorderedOperations, operationalRef, (document) =>
+      rehashDocument({
+        ...document,
+        bindingAttestations: [...(document["bindingAttestations"] as readonly unknown[])].reverse(),
+      }),
     );
     resignArtifactSet(reorderedOperations);
     await expect(
@@ -849,22 +707,16 @@ describe("artifact-backed production composition attestation verifier", () => {
         reorderedOperations.manifest,
         reorderedOperations.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const detachedPort = fixture();
-    const portRef =
-      detachedPort.artifactSet.runtimePortAttestations[0]?.artifact;
+    const portRef = detachedPort.artifactSet.runtimePortAttestations[0]?.artifact;
     if (portRef === undefined) throw new Error("Missing test ref.");
-    replaceDocument(
-      detachedPort,
-      portRef,
-      (document) =>
-        rehashDocument({
-          ...document,
-          implementationBindingHash: hash("detached-port"),
-        }),
+    replaceDocument(detachedPort, portRef, (document) =>
+      rehashDocument({
+        ...document,
+        implementationBindingHash: hash("detached-port"),
+      }),
     );
     resignArtifactSet(detachedPort);
     await expect(
@@ -872,19 +724,14 @@ describe("artifact-backed production composition attestation verifier", () => {
         detachedPort.manifest,
         detachedPort.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
   });
 
   it("rejects noncanonical, mismatched, expired, and oversized artifact transport", async () => {
     const noncanonical = fixture();
-    const noncanonicalRef =
-      noncanonical.artifactSet.componentAttestations[0]?.artifact;
+    const noncanonicalRef = noncanonical.artifactSet.componentAttestations[0]?.artifact;
     if (noncanonicalRef === undefined) throw new Error("Missing test ref.");
-    const canonicalRaw = noncanonical.rawByUri.get(
-      noncanonicalRef.uri,
-    );
+    const canonicalRaw = noncanonical.rawByUri.get(noncanonicalRef.uri);
     if (canonicalRaw === undefined) throw new Error("Missing test raw.");
     replaceRaw(
       noncanonical,
@@ -897,67 +744,41 @@ describe("artifact-backed production composition attestation verifier", () => {
         noncanonical.manifest,
         noncanonical.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const mismatched = fixture();
-    const mismatchedRef =
-      mismatched.artifactSet.componentAttestations[0]?.artifact;
+    const mismatchedRef = mismatched.artifactSet.componentAttestations[0]?.artifact;
     if (mismatchedRef === undefined) throw new Error("Missing test ref.");
     const mismatchedRaw = mismatched.rawByUri.get(mismatchedRef.uri);
     if (mismatchedRaw === undefined) throw new Error("Missing test raw.");
-    mismatched.rawByUri.set(
-      mismatchedRef.uri,
-      `${mismatchedRaw} `,
-    );
+    mismatched.rawByUri.set(mismatchedRef.uri, `${mismatchedRaw} `);
     await expect(
-      mismatched.verifier.verify(
-        mismatched.manifest,
-        mismatched.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      mismatched.verifier.verify(mismatched.manifest, mismatched.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const expired = fixture();
-    const expiredRef =
-      expired.artifactSet.componentAttestations[0]?.artifact;
+    const expiredRef = expired.artifactSet.componentAttestations[0]?.artifact;
     if (expiredRef === undefined) throw new Error("Missing test ref.");
-    replaceDocument(
-      expired,
-      expiredRef,
-      (document) =>
-        rehashDocument({
-          ...document,
-          issuedAt: "2026-07-26T11:00:00.000Z",
-          expiresAt: "2026-07-26T11:30:00.000Z",
-        }),
+    replaceDocument(expired, expiredRef, (document) =>
+      rehashDocument({
+        ...document,
+        issuedAt: "2026-07-26T11:00:00.000Z",
+        expiresAt: "2026-07-26T11:30:00.000Z",
+      }),
     );
     resignArtifactSet(expired);
     await expect(
-      expired.verifier.verify(
-        expired.manifest,
-        expired.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      expired.verifier.verify(expired.manifest, expired.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
 
     const oversized = fixture();
-    const oversizedRef =
-      oversized.artifactSet.componentAttestations[0]?.artifact;
+    const oversizedRef = oversized.artifactSet.componentAttestations[0]?.artifact;
     if (oversizedRef === undefined) throw new Error("Missing test ref.");
     Object.assign(oversizedRef, { byteLength: 256 * 1024 + 1 });
     resignArtifactSet(oversized);
     await expect(
-      oversized.verifier.verify(
-        oversized.manifest,
-        oversized.manifest.runtimePortAttestations,
-      ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+      oversized.verifier.verify(oversized.manifest, oversized.manifest.runtimePortAttestations),
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
     expect(oversized.readUtf8).not.toHaveBeenCalled();
   });
 
@@ -984,10 +805,7 @@ describe("artifact-backed production composition attestation verifier", () => {
       }),
     });
     await expect(
-      captured.verifier.verify(
-        captured.manifest,
-        captured.manifest.runtimePortAttestations,
-      ),
+      captured.verifier.verify(captured.manifest, captured.manifest.runtimePortAttestations),
     ).resolves.toMatchObject({ verified: true });
 
     const mutatedInput = fixture();
@@ -1004,9 +822,7 @@ describe("artifact-backed production composition attestation verifier", () => {
         mutatedInput.manifest,
         mutatedInput.manifest.runtimePortAttestations,
       ),
-    ).rejects.toBeInstanceOf(
-      ProductionCompositionAttestationVerificationError,
-    );
+    ).rejects.toBeInstanceOf(ProductionCompositionAttestationVerificationError);
   });
 
   it("rejects untrusted seams, undeclared options, and invalid rotation sets", () => {

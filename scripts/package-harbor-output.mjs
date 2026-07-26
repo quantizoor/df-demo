@@ -8,22 +8,14 @@ import {
   fsyncSync,
   lstatSync,
   openSync,
-  readSync,
   readdirSync,
+  readSync,
   realpathSync,
   statSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const CLOUD_MARKERS = [
   "DAYTONA_SANDBOX_ID",
@@ -41,9 +33,9 @@ const MAX_PATH_BYTES = 4_096;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 const SAFE_PATH_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Harbor archive paths are untrusted and must reject every ASCII control byte.
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
-const NESTED_ARCHIVE =
-  /(?:^|\/)[^/]+\.(?:7z|bz2|gz|rar|tar|tbz2|tgz|txz|xz|zip)$/iu;
+const NESTED_ARCHIVE = /(?:^|\/)[^/]+\.(?:7z|bz2|gz|rar|tar|tbz2|tgz|txz|xz|zip)$/iu;
 
 class PolicyError extends Error {}
 
@@ -57,11 +49,7 @@ function fail() {
 }
 
 function canonical(value) {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
@@ -71,10 +59,7 @@ function canonical(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonical(entry)).join(",")}]`;
   }
-  if (
-    typeof value !== "object" ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
     reject();
   }
   return `{${Object.keys(value)
@@ -104,11 +89,7 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (
-      typeof flag !== "string" ||
-      !flag.startsWith("--") ||
-      typeof value !== "string"
-    ) {
+    if (typeof flag !== "string" || !flag.startsWith("--") || typeof value !== "string") {
       reject();
     }
     const name = flag.slice(2);
@@ -133,10 +114,7 @@ function safeRelativePath(root, absolute) {
     CONTROL_CHARACTER.test(path) ||
     path.includes("\\") ||
     isAbsolute(path) ||
-    segments.some(
-      (segment) =>
-        segment.length === 0 || segment === "." || segment === "..",
-    )
+    segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
   ) {
     reject();
   }
@@ -145,12 +123,7 @@ function safeRelativePath(root, absolute) {
 
 function assertInside(root, candidate) {
   const path = relative(root, candidate);
-  if (
-    path.length === 0 ||
-    path === ".." ||
-    path.startsWith(`..${sep}`) ||
-    isAbsolute(path)
-  ) {
+  if (path.length === 0 || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
     reject();
   }
 }
@@ -192,17 +165,8 @@ function readFileHash(path, expected) {
     const buffer = Buffer.allocUnsafe(1024 * 1024);
     let position = 0;
     while (position < opened.byteLength) {
-      const length = Math.min(
-        buffer.byteLength,
-        opened.byteLength - position,
-      );
-      const count = readSync(
-        opened.descriptor,
-        buffer,
-        0,
-        length,
-        position,
-      );
+      const length = Math.min(buffer.byteLength, opened.byteLength - position);
+      const count = readSync(opened.descriptor, buffer, 0, length, position);
       if (count <= 0) reject();
       digest.update(buffer.subarray(0, count));
       position += count;
@@ -234,8 +198,8 @@ function enumerateFiles(root) {
   function visit(directory) {
     const directoryRealPath = realpathSync(directory);
     if (directoryRealPath !== root) assertInside(root, directoryRealPath);
-    const entries = readdirSync(directory, { withFileTypes: true }).sort(
-      (left, right) => compareUtf8(left.name, right.name),
+    const entries = readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+      compareUtf8(left.name, right.name),
     );
     for (const entry of entries) {
       if (
@@ -250,10 +214,7 @@ function enumerateFiles(root) {
       }
       const absolute = join(directory, entry.name);
       const metadata = lstatSync(absolute);
-      if (
-        metadata.isSymbolicLink() ||
-        (!metadata.isDirectory() && !metadata.isFile())
-      ) {
+      if (metadata.isSymbolicLink() || (!metadata.isDirectory() && !metadata.isFile())) {
         reject();
       }
       if (metadata.isDirectory()) {
@@ -261,11 +222,7 @@ function enumerateFiles(root) {
         continue;
       }
       const path = safeRelativePath(root, absolute);
-      if (
-        seenPaths.has(path) ||
-        files.length >= MAX_FILES ||
-        NESTED_ARCHIVE.test(path)
-      ) {
+      if (seenPaths.has(path) || files.length >= MAX_FILES || NESTED_ARCHIVE.test(path)) {
         reject();
       }
       for (let prefix = path.indexOf("/"); prefix >= 0; prefix = path.indexOf("/", prefix + 1)) {
@@ -274,10 +231,7 @@ function enumerateFiles(root) {
       const opened = readFileHash(absolute);
       closeSync(opened.descriptor);
       totalByteLength += opened.byteLength;
-      if (
-        !Number.isSafeInteger(totalByteLength) ||
-        totalByteLength > MAX_PAYLOAD_BYTES
-      ) {
+      if (!Number.isSafeInteger(totalByteLength) || totalByteLength > MAX_PAYLOAD_BYTES) {
         reject();
       }
       seenPaths.add(path);
@@ -316,11 +270,7 @@ function assertHarborLayout(files, expectedTrials) {
       if (segments.length === 2) trialsWithResult.add(segments[0]);
     }
     if (segments.at(-1) === "trajectory.json") {
-      if (
-        segments.length !== 3 ||
-        segments[1] !== "agent" ||
-        file.path === "trajectory.json"
-      ) {
+      if (segments.length !== 3 || segments[1] !== "agent" || file.path === "trajectory.json") {
         reject();
       }
       trialsWithTrajectory.add(segments[0]);
@@ -331,9 +281,7 @@ function assertHarborLayout(files, expectedTrials) {
     trialsWithResult.size > MAX_TRIALS ||
     trialsWithTrajectory.size !== trialsWithResult.size ||
     [...trialsWithResult].some(
-      (trial) =>
-        !trialsWithTrajectory.has(trial) ||
-        !paths.has(`${trial}/agent/trajectory.json`),
+      (trial) => !trialsWithTrajectory.has(trial) || !paths.has(`${trial}/agent/trajectory.json`),
     ) ||
     [...trialsWithTrajectory].some((trial) => !trialsWithResult.has(trial))
   ) {
@@ -389,20 +337,12 @@ function paxPathRecord(path) {
 
 function writeChunk(descriptor, state, chunk) {
   state.byteLength += chunk.byteLength;
-  if (
-    !Number.isSafeInteger(state.byteLength) ||
-    state.byteLength > MAX_ARCHIVE_BYTES
-  ) {
+  if (!Number.isSafeInteger(state.byteLength) || state.byteLength > MAX_ARCHIVE_BYTES) {
     reject();
   }
   let offset = 0;
   while (offset < chunk.byteLength) {
-    const count = writeSync(
-      descriptor,
-      chunk,
-      offset,
-      chunk.byteLength - offset,
-    );
+    const count = writeSync(descriptor, chunk, offset, chunk.byteLength - offset);
     if (count <= 0) reject();
     offset += count;
   }
@@ -422,13 +362,7 @@ function writeBufferEntry(descriptor, state, path, body, type = "0") {
 function writeFileEntry(descriptor, state, file, ordinal) {
   const archivePath = `payload/${file.path}`;
   const pax = paxPathRecord(archivePath);
-  writeBufferEntry(
-    descriptor,
-    state,
-    `.pax/${String(ordinal).padStart(6, "0")}`,
-    pax,
-    "x",
-  );
+  writeBufferEntry(descriptor, state, `.pax/${String(ordinal).padStart(6, "0")}`, pax, "x");
   writeChunk(
     descriptor,
     state,
@@ -442,13 +376,7 @@ function writeFileEntry(descriptor, state, file, ordinal) {
     let position = 0;
     while (position < file.byteLength) {
       const length = Math.min(buffer.byteLength, file.byteLength - position);
-      const count = readSync(
-        opened.descriptor,
-        buffer,
-        0,
-        length,
-        position,
-      );
+      const count = readSync(opened.descriptor, buffer, 0, length, position);
       if (count <= 0) reject();
       const chunk = buffer.subarray(0, count);
       digest.update(chunk);
@@ -474,9 +402,7 @@ function writeFileEntry(descriptor, state, file, ordinal) {
 function main() {
   if (
     process.env.DF_CLOUD_EXECUTION !== "1" ||
-    !CLOUD_MARKERS.some(
-      (name) => (process.env[name] ?? "").length > 0,
-    ) ||
+    !CLOUD_MARKERS.some((name) => (process.env[name] ?? "").length > 0) ||
     typeof constants.O_NOFOLLOW !== "number"
   ) {
     reject();
@@ -562,20 +488,12 @@ function main() {
   };
   const manifestBytes = Buffer.from(`${canonical(manifest)}\n`, "utf8");
   const outputFlags =
-    constants.O_WRONLY |
-    constants.O_CREAT |
-    constants.O_EXCL |
-    constants.O_NOFOLLOW;
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
   const descriptor = openSync(outputPath, outputFlags, 0o600);
   const state = { byteLength: 0 };
   let completed = false;
   try {
-    writeBufferEntry(
-      descriptor,
-      state,
-      "manifest.json",
-      manifestBytes,
-    );
+    writeBufferEntry(descriptor, state, "manifest.json", manifestBytes);
     for (const [index, file] of files.entries()) {
       writeFileEntry(descriptor, state, file, index);
     }
@@ -622,9 +540,7 @@ function main() {
       jobSha256: input["job-sha256"],
       archiveSha256: archiveHash.sha256,
       archiveByteLength: archive.size,
-      manifestSha256: createHash("sha256")
-        .update(manifestBytes)
-        .digest("hex"),
+      manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
       payloadSha256: manifest.payloadSha256,
       fileCount: manifest.fileCount,
       totalByteLength: manifest.totalByteLength,

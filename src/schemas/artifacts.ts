@@ -1,4 +1,4 @@
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 import {
   AggregateCostSchema,
@@ -629,7 +629,10 @@ export const ArtifactChecksumSchema = Type.Object(
 export const LeakScanArtifactManifestEntrySchema = Type.Object(
   {
     path: SafeIdentifierSchema,
-    schemaKind: SafeIdentifierSchema,
+    // Registry schema names are TypeScript-style identifiers (for example,
+    // "behavioralEvidence"), so the lowercase artifact-name grammar is too
+    // narrow for this field.
+    schemaKind: VersionIdentifierSchema,
     contentHash: HashSchema,
     byteHash: HashSchema,
     bytes: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
@@ -672,14 +675,11 @@ const LeakScanReceiptProperties = {
   signature: SignatureSchema,
 } as const;
 
-export const LeakScanReceiptSchema = Type.Object(
-  LeakScanReceiptProperties,
-  {
-    $schema: JSON_SCHEMA_DIALECT,
-    $id: "https://dark-factory.local/schemas/leak-scan-receipt-1.0.0.json",
-    additionalProperties: false,
-  },
-);
+export const LeakScanReceiptSchema = Type.Object(LeakScanReceiptProperties, {
+  $schema: JSON_SCHEMA_DIALECT,
+  $id: "https://dark-factory.local/schemas/leak-scan-receipt-1.0.0.json",
+  additionalProperties: false,
+});
 
 export const AttestationSchema = Type.Object(
   {
@@ -853,9 +853,7 @@ export type FailureCards = Static<typeof FailureCardsSchema>;
 export type DiagnosticBrief = Static<typeof DiagnosticBriefSchema>;
 export type Analysis = Static<typeof AnalysisSchema>;
 export type Decision = Static<typeof DecisionSchema>;
-export type LeakScanArtifactManifestEntry = Static<
-  typeof LeakScanArtifactManifestEntrySchema
->;
+export type LeakScanArtifactManifestEntry = Static<typeof LeakScanArtifactManifestEntrySchema>;
 export type LeakScanReceipt = Static<typeof LeakScanReceiptSchema>;
 export type Attestation = Static<typeof AttestationSchema>;
 export type FeedbackEntry = Static<typeof FeedbackEntrySchema>;

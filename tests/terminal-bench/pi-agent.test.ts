@@ -37,9 +37,9 @@ describe("evaluated Pi credential grants", () => {
       thinkingLevel: "high",
       foundryResourceName: "df-eu-prod",
     });
-    expect(
-      allowedPiProviderEnvironmentNames("microsoft-foundry"),
-    ).toEqual(["ANTHROPIC_FOUNDRY_API_KEY"]);
+    expect(allowedPiProviderEnvironmentNames("microsoft-foundry")).toEqual([
+      "ANTHROPIC_FOUNDRY_API_KEY",
+    ]);
   });
 
   it("rejects a Foundry URL, a different deployment, or a different effort", () => {
@@ -65,12 +65,8 @@ describe("evaluated Pi credential grants", () => {
 
   it("seals the exact provider-specific environment target list", () => {
     const spec = createPiHarborAgentSpec(base());
-    expect(spec.credentialEnvironmentNames).toEqual([
-      "OPENAI_API_KEY",
-    ]);
-    expect(
-      allowedPiProviderEnvironmentNames("github-copilot"),
-    ).toEqual(["COPILOT_GITHUB_TOKEN"]);
+    expect(spec.credentialEnvironmentNames).toEqual(["OPENAI_API_KEY"]);
+    expect(allowedPiProviderEnvironmentNames("github-copilot")).toEqual(["COPILOT_GITHUB_TOKEN"]);
   });
 
   it("rejects cloud, optimizer, unrelated-provider, and duplicate secret targets", () => {
@@ -93,10 +89,7 @@ describe("evaluated Pi credential grants", () => {
       createPiHarborAgentSpec({
         ...base(),
         provider: "azure-openai-responses",
-        credentialEnvironmentNames: [
-          "AZURE_OPENAI_BASE_URL",
-          "AZURE_OPENAI_API_VERSION",
-        ],
+        credentialEnvironmentNames: ["AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_VERSION"],
       }),
     ).toThrow(PiHarborAgentError);
 
@@ -104,14 +97,8 @@ describe("evaluated Pi credential grants", () => {
       createPiHarborAgentSpec({
         ...base(),
         provider: "azure-openai-responses",
-        credentialEnvironmentNames: [
-          "AZURE_OPENAI_API_KEY",
-          "AZURE_OPENAI_BASE_URL",
-        ],
+        credentialEnvironmentNames: ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
       }).credentialEnvironmentNames,
-    ).toEqual([
-      "AZURE_OPENAI_API_KEY",
-      "AZURE_OPENAI_BASE_URL",
-    ]);
+    ).toEqual(["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"]);
   });
 });

@@ -2,42 +2,32 @@ import { createHash } from "node:crypto";
 
 import { assertSafeForLocalPersistence } from "../evaluator/retention.js";
 import {
-  assertDurableBlindBrokerLeaseState,
-  emptyBlindBrokerLeaseState,
   type AtomicBlindBrokerLeaseStore,
+  assertDurableBlindBrokerLeaseState,
   type DurableBlindBrokerLeaseState,
+  emptyBlindBrokerLeaseState,
   type TrustedAdaptiveReleaseSignatureVerifier,
   type TrustedDiagnosticBriefPublisher,
 } from "../orchestrator/blind-broker.js";
 import type { DiagnosticBriefReference } from "../orchestrator/contracts.js";
-import type {
-  BehavioralEvidence,
-  DiagnosticBrief,
-  FailureCards,
-} from "../schemas/artifacts.js";
-import {
-  canonicalJson,
-  hasValidContentHash,
-  withContentHash,
-} from "../schemas/canonical.js";
+import type { BehavioralEvidence, DiagnosticBrief, FailureCards } from "../schemas/artifacts.js";
+import { canonicalJson, hasValidContentHash, withContentHash } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type { SignedBehavioralRelease } from "../schemas/trusted.js";
 import {
-  VerifyingTrustedArtifactBridge,
   type TrustedArtifactRuntimeGuard,
+  VerifyingTrustedArtifactBridge,
 } from "./artifact-bridge.js";
 import { MountedVolumeTrustedArtifactBackend } from "./mounted-volume-backend.js";
 import {
-  MountedVolumeTransactionalJsonStore,
   type MountedVolumeDurableStateOptions,
+  MountedVolumeTransactionalJsonStore,
 } from "./mounted-volume-state.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_STORE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
-const SAFE_PUBLICATION_ID =
-  /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const DIAGNOSTIC_MEDIA_TYPE =
-  "application/vnd.dark-factory.diagnostic-brief+json";
+const SAFE_PUBLICATION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
+const DIAGNOSTIC_MEDIA_TYPE = "application/vnd.dark-factory.diagnostic-brief+json";
 const DIAGNOSTIC_BINDING_MEDIA_TYPE =
   "application/vnd.dark-factory.diagnostic-publication-binding+json";
 const MAXIMUM_DIAGNOSTIC_BYTES = 512 * 1024;
@@ -59,28 +49,23 @@ function fail(message: string): never {
  * This adapter supplies the complete blind-broker state validator so corrupt
  * or cross-domain bytes fail before they can enter a broker transition.
  */
-export class MountedVolumeAtomicBlindBrokerLeaseStore
-  implements AtomicBlindBrokerLeaseStore
-{
-  readonly #store: MountedVolumeTransactionalJsonStore<
-    DurableBlindBrokerLeaseState
-  >;
+export class MountedVolumeAtomicBlindBrokerLeaseStore implements AtomicBlindBrokerLeaseStore {
+  readonly #store: MountedVolumeTransactionalJsonStore<DurableBlindBrokerLeaseState>;
 
   public constructor(options: MountedVolumeDurableStateOptions) {
     if (!SAFE_STORE_ID.test(options.storeId)) {
       fail("Blind-broker mounted-volume store ID is malformed.");
     }
-    this.#store =
-      new MountedVolumeTransactionalJsonStore<DurableBlindBrokerLeaseState>(
-        options,
-        `blind-broker-leases-${options.storeId}`,
-        {
-          domain: "dark-factory.blind-broker-lease-state.v1",
-          initialState: emptyBlindBrokerLeaseState,
-          assertState: assertDurableBlindBrokerLeaseState,
-          revision: (state) => state.revision,
-        },
-      );
+    this.#store = new MountedVolumeTransactionalJsonStore<DurableBlindBrokerLeaseState>(
+      options,
+      `blind-broker-leases-${options.storeId}`,
+      {
+        domain: "dark-factory.blind-broker-lease-state.v1",
+        initialState: emptyBlindBrokerLeaseState,
+        assertState: assertDurableBlindBrokerLeaseState,
+        revision: (state) => state.revision,
+      },
+    );
   }
 
   public transact<Result>(
@@ -127,14 +112,10 @@ interface DurableDiagnosticPublicationState {
   readonly sensitivity: "release-safe-diagnostic-publications";
   readonly storeScopeHash: string;
   readonly revision: number;
-  readonly records: Readonly<
-    Record<string, DurableDiagnosticPublicationRecord>
-  >;
+  readonly records: Readonly<Record<string, DurableDiagnosticPublicationRecord>>;
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -148,15 +129,10 @@ function hasExactKeys(
   expected: readonly string[],
 ): boolean {
   const actual = Object.keys(value);
-  return (
-    actual.length === expected.length &&
-    actual.every((key) => expected.includes(key))
-  );
+  return actual.length === expected.length && actual.every((key) => expected.includes(key));
 }
 
-function assertReleaseSafeDiagnosticBrief(
-  value: unknown,
-): asserts value is DiagnosticBrief {
+function assertReleaseSafeDiagnosticBrief(value: unknown): asserts value is DiagnosticBrief {
   try {
     assertValidDocument("diagnosticBrief", value);
     assertSafeForLocalPersistence(value);
@@ -174,16 +150,13 @@ function assertDurableDiagnosticPublicationState(
 ): asserts value is DurableDiagnosticPublicationState {
   if (
     !isPlainRecord(value) ||
-    !hasExactKeys(
-      value,
-      [
-        "schemaVersion",
-        "sensitivity",
-        "storeScopeHash",
-        "revision",
-        "records",
-      ],
-    ) ||
+    !hasExactKeys(value, [
+      "schemaVersion",
+      "sensitivity",
+      "storeScopeHash",
+      "revision",
+      "records",
+    ]) ||
     value.schemaVersion !== 1 ||
     value.sensitivity !== "release-safe-diagnostic-publications" ||
     value.storeScopeHash !== expectedStoreScopeHash ||
@@ -198,16 +171,13 @@ function assertDurableDiagnosticPublicationState(
   for (const [key, candidate] of Object.entries(value.records)) {
     if (
       !isPlainRecord(candidate) ||
-      !hasExactKeys(
-        candidate,
-        [
-          "publicationIdHash",
-          "diagnosticBriefHash",
-          "releaseId",
-          "actionable",
-          "diagnosticBrief",
-        ],
-      ) ||
+      !hasExactKeys(candidate, [
+        "publicationIdHash",
+        "diagnosticBriefHash",
+        "releaseId",
+        "actionable",
+        "diagnosticBrief",
+      ]) ||
       !SHA256.test(key) ||
       candidate.publicationIdHash !== key ||
       typeof candidate.diagnosticBriefHash !== "string" ||
@@ -275,36 +245,23 @@ function assertReleaseLineage(input: {
     release.experimentNumber !== brief.sourceExperimentNumber ||
     release.protocolHash !== evidence.protocolHash ||
     release.releaseId !== brief.releaseId ||
-    release.aggregateArtifactHashes.behavioralEvidence !==
-      evidence.contentHash ||
+    release.aggregateArtifactHashes.behavioralEvidence !== evidence.contentHash ||
     release.aggregateArtifactHashes.failureCards !== cards.contentHash ||
-    release.aggregateArtifactHashes.diagnosticBrief !==
-      brief.contentHash ||
+    release.aggregateArtifactHashes.diagnosticBrief !== brief.contentHash ||
     cards.behavioralEvidenceHash !== evidence.contentHash ||
     brief.aggregateEvidenceHash !== evidence.contentHash ||
     brief.failureCardsHash !== cards.contentHash ||
     evidence.releaseChecksPassed !== true ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(evidence.policyVersions) ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(cards.policyVersions) ||
-    canonicalJson(release.policyVersions) !==
-      canonicalJson(brief.policyVersions) ||
-    canonicalJson(release.support) !==
-      canonicalJson(evidence.analysisWindow.support)
+    canonicalJson(release.policyVersions) !== canonicalJson(evidence.policyVersions) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(cards.policyVersions) ||
+    canonicalJson(release.policyVersions) !== canonicalJson(brief.policyVersions) ||
+    canonicalJson(release.support) !== canonicalJson(evidence.analysisWindow.support)
   ) {
     fail("Diagnostic publication hash lineage is inconsistent.");
   }
 
-  const releasedCards = new Map(
-    cards.cards.map((card) => [card.cardId, canonicalJson(card)]),
-  );
-  if (
-    brief.cards.some(
-      (card) =>
-        releasedCards.get(card.cardId) !== canonicalJson(card),
-    )
-  ) {
+  const releasedCards = new Map(cards.cards.map((card) => [card.cardId, canonicalJson(card)]));
+  if (brief.cards.some((card) => releasedCards.get(card.cardId) !== canonicalJson(card))) {
     fail("Diagnostic brief contains a card outside its signed release.");
   }
 
@@ -384,9 +341,7 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
 {
   readonly #storeId: string;
   readonly #bridge: VerifyingTrustedArtifactBridge;
-  readonly #publications: MountedVolumeTransactionalJsonStore<
-    DurableDiagnosticPublicationState
-  >;
+  readonly #publications: MountedVolumeTransactionalJsonStore<DurableDiagnosticPublicationState>;
   readonly #signatureVerifier: TrustedAdaptiveReleaseSignatureVerifier;
   readonly #now: () => Date;
 
@@ -399,43 +354,34 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
     this.#signatureVerifier = options.signatureVerifier;
     this.#now = stateOptions.now ?? (() => new Date());
     const scopeHash = storeScopeHash(this.#storeId);
-    this.#publications =
-      new MountedVolumeTransactionalJsonStore<DurableDiagnosticPublicationState>(
-        stateOptions,
-        `diagnostic-publications-${this.#storeId}`,
-        {
-          domain: "dark-factory.diagnostic-publication-state.v1",
-          initialState: () => ({
-            schemaVersion: 1,
-            sensitivity: "release-safe-diagnostic-publications",
-            storeScopeHash: scopeHash,
-            revision: 0,
-            records: {},
-          }),
-          assertState(value): asserts value is DurableDiagnosticPublicationState {
-            assertDurableDiagnosticPublicationState(value, scopeHash);
-          },
-          revision: (state) => state.revision,
+    this.#publications = new MountedVolumeTransactionalJsonStore<DurableDiagnosticPublicationState>(
+      stateOptions,
+      `diagnostic-publications-${this.#storeId}`,
+      {
+        domain: "dark-factory.diagnostic-publication-state.v1",
+        initialState: () => ({
+          schemaVersion: 1,
+          sensitivity: "release-safe-diagnostic-publications",
+          storeScopeHash: scopeHash,
+          revision: 0,
+          records: {},
+        }),
+        assertState(value): asserts value is DurableDiagnosticPublicationState {
+          assertDurableDiagnosticPublicationState(value, scopeHash);
         },
-      );
+        revision: (state) => state.revision,
+      },
+    );
     const backend = new MountedVolumeTrustedArtifactBackend({
       volumeRoot: stateOptions.volumeRoot,
       runtimeGuard: stateOptions.runtimeGuard,
     });
-    this.#bridge = new VerifyingTrustedArtifactBridge(
-      backend,
-      stateOptions.runtimeGuard,
-    );
+    this.#bridge = new VerifyingTrustedArtifactBridge(backend, stateOptions.runtimeGuard);
   }
 
-  async #persistBriefArtifact(
-    diagnosticBrief: DiagnosticBrief,
-  ): Promise<void> {
+  async #persistBriefArtifact(diagnosticBrief: DiagnosticBrief): Promise<void> {
     const bytes = Buffer.from(`${canonicalJson(diagnosticBrief)}\n`, "utf8");
-    if (
-      bytes.byteLength <= 0 ||
-      bytes.byteLength > MAXIMUM_DIAGNOSTIC_BYTES
-    ) {
+    if (bytes.byteLength <= 0 || bytes.byteLength > MAXIMUM_DIAGNOSTIC_BYTES) {
       fail("Diagnostic brief byte length is outside policy.");
     }
     await this.#bridge.persistVerified({
@@ -473,23 +419,17 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
     const signedReleaseBefore = canonicalJson(frozen.behavioralRelease);
     let signatureValid = false;
     try {
-      signatureValid = await this.#signatureVerifier.verify(
-        frozen.behavioralRelease,
-      );
+      signatureValid = await this.#signatureVerifier.verify(frozen.behavioralRelease);
     } catch {
       fail("Diagnostic release signature verification failed closed.");
     }
     let releaseUnchanged = false;
     try {
-      releaseUnchanged =
-        canonicalJson(frozen.behavioralRelease) === signedReleaseBefore;
+      releaseUnchanged = canonicalJson(frozen.behavioralRelease) === signedReleaseBefore;
     } catch {
       releaseUnchanged = false;
     }
-    if (
-      !signatureValid ||
-      !releaseUnchanged
-    ) {
+    if (!signatureValid || !releaseUnchanged) {
       fail("Diagnostic release signature is not trusted.");
     }
 
@@ -500,8 +440,7 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
       publicationIdHash,
       diagnosticBriefHash: frozen.diagnosticBrief.contentHash,
       releaseId: frozen.diagnosticBrief.releaseId,
-      actionable:
-        frozen.diagnosticBrief.status === "actionable-evidence",
+      actionable: frozen.diagnosticBrief.status === "actionable-evidence",
       diagnosticBrief: frozen.diagnosticBrief,
     };
     await this.#publications.transact((state) => {
@@ -513,8 +452,7 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
         return { next: state, result: undefined };
       }
       const sameBrief = Object.values(state.records).find(
-        (candidate) =>
-          candidate.diagnosticBriefHash === record.diagnosticBriefHash,
+        (candidate) => candidate.diagnosticBriefHash === record.diagnosticBriefHash,
       );
       if (sameBrief !== undefined) {
         fail("Diagnostic brief hash already belongs to another publication.");
@@ -570,9 +508,7 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
    * release-safe state, rejects expiry, and repairs a missing immutable
    * artifact before returning only the brief document.
    */
-  public async readReleaseSafe(
-    reference: DiagnosticBriefReference,
-  ): Promise<DiagnosticBrief> {
+  public async readReleaseSafe(reference: DiagnosticBriefReference): Promise<DiagnosticBrief> {
     if (
       !SHA256.test(reference.hash) ||
       !SAFE_PUBLICATION_ID.test(reference.releaseId) ||
@@ -582,8 +518,7 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
     }
     const brief = await this.#publications.transact((state) => {
       const record = Object.values(state.records).find(
-        (candidate) =>
-          candidate.diagnosticBriefHash === reference.hash,
+        (candidate) => candidate.diagnosticBriefHash === reference.hash,
       );
       if (
         record === undefined ||
@@ -594,9 +529,7 @@ export class MountedVolumeTrustedDiagnosticBriefPublisher
       }
       return {
         next: state,
-        result: JSON.parse(
-          canonicalJson(record.diagnosticBrief),
-        ) as DiagnosticBrief,
+        result: JSON.parse(canonicalJson(record.diagnosticBrief)) as DiagnosticBrief,
       };
     });
     const now = this.#now();

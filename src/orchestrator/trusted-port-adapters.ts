@@ -12,11 +12,7 @@ import {
   TRUSTED_GIT_SOURCE_BUNDLE_REF,
   type TrustedGitSourceSnapshotReceipt,
 } from "../harness/git-source.js";
-import {
-  canonicalJson,
-  computeContentHash,
-  withContentHash,
-} from "../schemas/canonical.js";
+import { canonicalJson, computeContentHash, withContentHash } from "../schemas/canonical.js";
 import type {
   AtomicBlindBrokerLeaseStore,
   BlindBrokerEvaluationConfiguration,
@@ -32,10 +28,8 @@ const GIT_OBJECT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
 const SAFE_EXTERNAL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
-const SAFE_IMAGE_REFERENCE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_IMAGE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const MAXIMUM_CONFIGURATION_BYTES = 1024 * 1024;
 
 export class TrustedBlindBrokerPortAdapterError extends Error {
@@ -51,17 +45,12 @@ export interface TrustedControlJsonArtifactReader {
    * Production implementations read through the verifying trusted-artifact
    * bridge and enforce the supplied byte limit before returning UTF-8.
    */
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 export interface TrustedEvaluationConfigurationArtifactSource {
   readonly boundary: "trusted-cloud";
-  locate(
-    experiment: ExperimentIdentity,
-  ): Promise<TrustedCloudArtifactRef | undefined>;
+  locate(experiment: ExperimentIdentity): Promise<TrustedCloudArtifactRef | undefined>;
 }
 
 export interface TrustedBlindBrokerEvaluationConfigurationRecord {
@@ -86,9 +75,7 @@ export interface CasBlindBrokerEvaluationConfigurationResolverOptions {
 
 export interface TrustedGitSourceSnapshotReceiptSource {
   readonly boundary: "trusted-cloud";
-  findByCommit(
-    commit: string,
-  ): Promise<TrustedGitSourceSnapshotReceipt | undefined>;
+  findByCommit(commit: string): Promise<TrustedGitSourceSnapshotReceipt | undefined>;
 }
 
 export interface TrustedArtifactSignatureKeyring {
@@ -103,9 +90,7 @@ export interface SignedGitSourceHarnessArtifactResolverOptions {
   readonly originRepositoryHash: string;
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -122,10 +107,7 @@ function assertExactKeys(
     throw new TrustedBlindBrokerPortAdapterError();
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     throw new TrustedBlindBrokerPortAdapterError();
   }
 }
@@ -201,11 +183,7 @@ function assertConfigurationShape(
     "memoryMiB",
     "diskMiB",
   ]);
-  assertExactKeys(configuration.evaluatedModel, [
-    "provider",
-    "modelId",
-    "thinkingLevel",
-  ]);
+  assertExactKeys(configuration.evaluatedModel, ["provider", "modelId", "thinkingLevel"]);
   if (
     configuration.runMode !== "research" ||
     !SHA256.test(configuration.complianceManifestHash) ||
@@ -213,39 +191,23 @@ function assertConfigurationShape(
     !Number.isSafeInteger(configuration.requestTtlMs) ||
     configuration.requestTtlMs < 60_000 ||
     configuration.requestTtlMs > 24 * 60 * 60_000 ||
-    !["daytona", "e2b", "modal"].includes(
-      configuration.executionProfile.provider,
-    ) ||
-    !/^sha256:[a-f0-9]{64}$/u.test(
-      configuration.executionProfile.imageDigest,
-    ) ||
+    !["daytona", "e2b", "modal"].includes(configuration.executionProfile.provider) ||
+    !/^sha256:[a-f0-9]{64}$/u.test(configuration.executionProfile.imageDigest) ||
     !SAFE_EXTERNAL_ID.test(configuration.executionProfile.regionClass) ||
     !SHA256.test(configuration.executionProfile.networkPolicyHash) ||
     !SHA256.test(configuration.executionProfile.protocolHash) ||
     configuration.executionProfile.resources.architecture !== "x86_64" ||
-    !Number.isSafeInteger(
-      configuration.executionProfile.resources.cpuCores,
-    ) ||
+    !Number.isSafeInteger(configuration.executionProfile.resources.cpuCores) ||
     configuration.executionProfile.resources.cpuCores < 1 ||
-    !Number.isSafeInteger(
-      configuration.executionProfile.resources.memoryMiB,
-    ) ||
+    !Number.isSafeInteger(configuration.executionProfile.resources.memoryMiB) ||
     configuration.executionProfile.resources.memoryMiB < 1 ||
-    !Number.isSafeInteger(
-      configuration.executionProfile.resources.diskMiB,
-    ) ||
+    !Number.isSafeInteger(configuration.executionProfile.resources.diskMiB) ||
     configuration.executionProfile.resources.diskMiB < 1 ||
     !SAFE_MODEL_ID.test(configuration.evaluatedModel.provider) ||
     !SAFE_MODEL_ID.test(configuration.evaluatedModel.modelId) ||
-    ![
-      "off",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ].includes(configuration.evaluatedModel.thinkingLevel)
+    !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+      configuration.evaluatedModel.thinkingLevel,
+    )
   ) {
     throw new TrustedBlindBrokerPortAdapterError();
   }
@@ -256,10 +218,7 @@ function assertConfigurationForExperiment(
   experiment: ExperimentIdentity,
 ): void {
   assertConfigurationShape(configuration);
-  if (
-    configuration.executionProfile.protocolHash !==
-    experiment.protocolHash
-  ) {
+  if (configuration.executionProfile.protocolHash !== experiment.protocolHash) {
     throw new TrustedBlindBrokerPortAdapterError();
   }
   const probe: TrustedEvaluationRequest = {
@@ -311,14 +270,10 @@ export function createTrustedBlindBrokerEvaluationConfigurationRecord(
   draft: TrustedBlindBrokerEvaluationConfigurationRecordDraft,
 ): TrustedBlindBrokerEvaluationConfigurationRecord {
   assertExperiment(draft.experiment);
-  assertConfigurationForExperiment(
-    draft.configuration,
-    draft.experiment,
-  );
+  assertConfigurationForExperiment(draft.configuration, draft.experiment);
   if (
     draft.schemaVersion !== 1 ||
-    draft.domain !==
-      "dark-factory.blind-broker-evaluation-configuration.v1" ||
+    draft.domain !== "dark-factory.blind-broker-evaluation-configuration.v1" ||
     !canonicalTimestamp(draft.createdAt)
   ) {
     throw new TrustedBlindBrokerPortAdapterError();
@@ -333,12 +288,7 @@ function parseConfigurationRecord(
   artifact: TrustedCloudArtifactRef,
   experiment: ExperimentIdentity,
 ): TrustedBlindBrokerEvaluationConfigurationRecord {
-  assertExactKeys(artifact, [
-    "uri",
-    "sha256",
-    "mediaType",
-    "byteLength",
-  ]);
+  assertExactKeys(artifact, ["uri", "sha256", "mediaType", "byteLength"]);
   if (
     !TRUSTED_URI.test(artifact.uri) ||
     artifact.uri.includes("..") ||
@@ -371,8 +321,7 @@ function parseConfigurationRecord(
   );
   if (
     parsed.schemaVersion !== 1 ||
-    parsed.domain !==
-      "dark-factory.blind-broker-evaluation-configuration.v1" ||
+    parsed.domain !== "dark-factory.blind-broker-evaluation-configuration.v1" ||
     !canonicalTimestamp(parsed.createdAt) ||
     typeof parsed.contentHash !== "string" ||
     parsed.contentHash !== computeContentHash(parsed) ||
@@ -381,9 +330,7 @@ function parseConfigurationRecord(
   ) {
     throw new TrustedBlindBrokerPortAdapterError();
   }
-  return cloneJson(
-    parsed,
-  ) as unknown as TrustedBlindBrokerEvaluationConfigurationRecord;
+  return cloneJson(parsed) as unknown as TrustedBlindBrokerEvaluationConfigurationRecord;
 }
 
 /**
@@ -427,15 +374,8 @@ export class CasBlindBrokerEvaluationConfigurationResolver
       ) {
         throw new TrustedBlindBrokerPortAdapterError();
       }
-      const raw = await this.#reader.readUtf8(
-        artifact,
-        this.#maximumBytes,
-      );
-      const record = parseConfigurationRecord(
-        raw,
-        artifact,
-        experiment,
-      );
+      const raw = await this.#reader.readUtf8(artifact, this.#maximumBytes);
+      const record = parseConfigurationRecord(raw, artifact, experiment);
       return cloneJson(record.configuration);
     } catch (error) {
       if (error instanceof TrustedBlindBrokerPortAdapterError) throw error;
@@ -485,24 +425,9 @@ function assertSnapshotReceipt(
     "passed",
     "signature",
   ]);
-  assertExactKeys(value.sourceArtifact, [
-    "uri",
-    "sha256",
-    "mediaType",
-    "byteLength",
-  ]);
-  assertExactKeys(value.sourceBundleArtifact, [
-    "uri",
-    "sha256",
-    "mediaType",
-    "byteLength",
-  ]);
-  assertExactKeys(value.signature, [
-    "algorithm",
-    "keyId",
-    "signedAt",
-    "signature",
-  ]);
+  assertExactKeys(value.sourceArtifact, ["uri", "sha256", "mediaType", "byteLength"]);
+  assertExactKeys(value.sourceBundleArtifact, ["uri", "sha256", "mediaType", "byteLength"]);
+  assertExactKeys(value.signature, ["algorithm", "keyId", "signedAt", "signature"]);
   const receipt = value as unknown as TrustedGitSourceSnapshotReceipt;
   if (
     receipt.sensitivity !== "trusted-git-source-snapshot" ||
@@ -522,9 +447,7 @@ function assertSnapshotReceipt(
     !/^sha256:[a-f0-9]{64}$/u.test(receipt.imageDigest) ||
     !receipt.imageReference.endsWith(`@${receipt.imageDigest}`) ||
     !SHA256.test(receipt.networkPolicyHash) ||
-    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(
-      receipt.remoteRef,
-    ) ||
+    !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u.test(receipt.remoteRef) ||
     receipt.remoteRef.includes("..") ||
     receipt.remoteRef.includes("@{") ||
     receipt.remoteRef.includes("//") ||
@@ -552,19 +475,16 @@ function assertSnapshotReceipt(
     !TRUSTED_URI.test(receipt.sourceBundleArtifact.uri) ||
     receipt.sourceBundleArtifact.uri.includes("..") ||
     !SHA256.test(receipt.sourceBundleArtifact.sha256) ||
-    receipt.sourceBundleArtifact.mediaType !==
-      "application/vnd.git.bundle" ||
+    receipt.sourceBundleArtifact.mediaType !== "application/vnd.git.bundle" ||
     !Number.isSafeInteger(receipt.sourceBundleArtifact.byteLength) ||
     receipt.sourceBundleArtifact.byteLength <= 0 ||
-    receipt.sourceBundleArtifact.byteLength >
-      2 * 1024 * 1024 * 1024 ||
+    receipt.sourceBundleArtifact.byteLength > 2 * 1024 * 1024 * 1024 ||
     !canonicalTimestamp(receipt.createdAt) ||
     receipt.passed !== true ||
     receipt.signature.algorithm !== "ed25519" ||
     !input.trustedKeyIds.has(receipt.signature.keyId) ||
     !canonicalTimestamp(receipt.signature.signedAt) ||
-    Date.parse(receipt.signature.signedAt) <
-      Date.parse(receipt.createdAt) ||
+    Date.parse(receipt.signature.signedAt) < Date.parse(receipt.createdAt) ||
     !/^[A-Za-z0-9_-]{86,128}$/u.test(receipt.signature.signature)
   ) {
     throw new TrustedBlindBrokerPortAdapterError();
@@ -576,9 +496,7 @@ function assertSnapshotReceipt(
  * evaluator's narrow immutable harness reference. No branch name, credential,
  * repository URL, or source bytes cross this port.
  */
-export class SignedGitSourceHarnessArtifactResolver
-  implements TrustedHarnessArtifactResolver
-{
+export class SignedGitSourceHarnessArtifactResolver implements TrustedHarnessArtifactResolver {
   readonly #source: TrustedGitSourceSnapshotReceiptSource;
   readonly #keyring: TrustedArtifactSignatureKeyring;
   readonly #trustedKeyIds: ReadonlySet<string>;
@@ -619,15 +537,10 @@ export class SignedGitSourceHarnessArtifactResolver
         originRepositoryHash: this.#originRepositoryHash,
         trustedKeyIds: this.#trustedKeyIds,
       });
-      const key = await this.#keyring.getVerificationKey(
-        receipt.signature.keyId,
-      );
+      const key = await this.#keyring.getVerificationKey(receipt.signature.keyId);
       if (
         key === undefined ||
-        !verifyEd25519Signature(
-          receipt as unknown as Readonly<Record<string, unknown>>,
-          key,
-        )
+        !verifyEd25519Signature(receipt as unknown as Readonly<Record<string, unknown>>, key)
       ) {
         throw new TrustedBlindBrokerPortAdapterError();
       }
@@ -669,9 +582,7 @@ function isConsumedValidationDiscovery(
  * signature-validated validation record. A no-op linearizable transaction
  * prevents a concurrent state transition from creating an ambiguous source.
  */
-export class LeaseStoreTrustedRepairDiscoveryResolver
-  implements TrustedRepairDiscoveryResolver
-{
+export class LeaseStoreTrustedRepairDiscoveryResolver implements TrustedRepairDiscoveryResolver {
   readonly #store: AtomicBlindBrokerLeaseStore;
 
   constructor(store: AtomicBlindBrokerLeaseStore) {

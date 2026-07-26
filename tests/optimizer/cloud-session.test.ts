@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -14,18 +14,15 @@ import type {
   SandboxLease,
   TrustedCloudArtifactRef,
 } from "../../src/cloud/types.js";
-import type { OptimizerContext } from "../../src/orchestrator/contracts.js";
+import { fingerprintRemoteUrl } from "../../src/harness/git.js";
+import type { RepositoryRegistration } from "../../src/harness/repository.js";
 import {
   CloudOnlyClaudeOptimizerSession,
   CloudOptimizerSessionError,
   type TrustedOptimizerArtifactReader,
 } from "../../src/optimizer/cloud-session.js";
-import {
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
-import { fingerprintRemoteUrl } from "../../src/harness/git.js";
-import type { RepositoryRegistration } from "../../src/harness/repository.js";
+import type { OptimizerContext } from "../../src/orchestrator/contracts.js";
+import { canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 
 const COMMIT = "1".repeat(40);
 const TREE = "2".repeat(40);
@@ -62,9 +59,7 @@ function invokeWorker(
       (error, stdout, stderr) => {
         resolve({
           code:
-            error !== null &&
-            "code" in error &&
-            typeof error.code === "number"
+            error !== null && "code" in error && typeof error.code === "number"
               ? error.code
               : error === null
                 ? 0
@@ -109,10 +104,7 @@ class FakeReader implements TrustedOptimizerArtifactReader {
     this.values = values;
   }
 
-  readUtf8(
-    artifactRef: TrustedCloudArtifactRef,
-    _maximumBytes: number,
-  ): Promise<string> {
+  readUtf8(artifactRef: TrustedCloudArtifactRef, _maximumBytes: number): Promise<string> {
     const value = this.values.get(artifactRef.uri);
     if (value === undefined) throw new Error("missing fake artifact");
     return Promise.resolve(value);
@@ -137,9 +129,7 @@ class FakeProvider implements CloudSandboxProvider {
   destroyed = false;
   failDestroy = false;
 
-  probe(request: {
-    readonly requestId: string;
-  }): Promise<ProviderProbeReport> {
+  probe(request: { readonly requestId: string }): Promise<ProviderProbeReport> {
     return Promise.resolve({
       provider: "daytona",
       requestId: request.requestId,
@@ -181,16 +171,12 @@ class FakeProvider implements CloudSandboxProvider {
     });
   }
 
-  execute(
-    lease: SandboxLease,
-    command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     this.commands.push(command);
     return Promise.resolve({
       provider: "daytona",
       sandboxId: lease.sandboxId,
-      executionId:
-        command.executionId ?? `execution-${this.commands.length}`,
+      executionId: command.executionId ?? `execution-${this.commands.length}`,
       startedAt: "2026-07-01T00:00:00.000Z",
       finishedAt: "2026-07-01T00:00:01.000Z",
       exitCode: 0,
@@ -209,10 +195,7 @@ class FakeProvider implements CloudSandboxProvider {
     return Promise.resolve();
   }
 
-  download(
-    _lease: SandboxLease,
-    remotePath: string,
-  ): Promise<TrustedCloudArtifactRef> {
+  download(_lease: SandboxLease, remotePath: string): Promise<TrustedCloudArtifactRef> {
     const value = this.downloads.get(remotePath);
     if (value === undefined) throw new Error(`missing ${remotePath}`);
     return Promise.resolve(value);
@@ -224,9 +207,7 @@ class FakeProvider implements CloudSandboxProvider {
 
   destroy(): Promise<void> {
     this.destroyed = true;
-    return this.failDestroy
-      ? Promise.reject(new Error("destroy failed"))
-      : Promise.resolve();
+    return this.failDestroy ? Promise.reject(new Error("destroy failed")) : Promise.resolve();
   }
 }
 
@@ -241,9 +222,7 @@ function registration(): RepositoryRegistration {
     lockSha256: LOCK,
     upstreamBaseCommit: "7".repeat(40),
     originFingerprint: origin,
-    upstreamFingerprint: fingerprintRemoteUrl(
-      "https://github.com/earendil-works/pi.git",
-    ),
+    upstreamFingerprint: fingerprintRemoteUrl("https://github.com/earendil-works/pi.git"),
     originVerification: {
       private: true,
       fetchable: true,
@@ -297,12 +276,7 @@ function setupFixture(): {
     "application/vnd.git.bundle",
     500,
   );
-  const diff = artifact(
-    "trusted://optimizer/candidate-diff",
-    "e".repeat(64),
-    "text/x-diff",
-    200,
-  );
+  const diff = artifact("trusted://optimizer/candidate-diff", "e".repeat(64), "text/x-diff", 200);
   const state = artifact(
     "trusted://optimizer/session-state",
     "f".repeat(64),
@@ -372,9 +346,7 @@ function setupFixture(): {
     candidate: {
       commit: CANDIDATE_COMMIT,
       patchHash: diff.sha256,
-      changedFiles: [
-        "packages/coding-agent/src/core/system-prompt.ts",
-      ],
+      changedFiles: ["packages/coding-agent/src/core/system-prompt.ts"],
       mutationCategory: "prompt",
     },
     hypothesisReceiptId: "hypothesis_receipt_123",
@@ -409,18 +381,10 @@ function setupFixture(): {
         memoryMiB: 8192,
         diskMiB: 32_000,
       },
-      networkAllowDomains: [
-        "github.com",
-        `${FOUNDRY_RESOURCE}.services.ai.azure.com`,
-      ],
+      networkAllowDomains: ["github.com", `${FOUNDRY_RESOURCE}.services.ai.azure.com`],
       lifetimeMs: 3_600_000,
     },
-    workerArtifact: artifact(
-      "trusted://optimizer/worker",
-      "0".repeat(64),
-      "text/javascript",
-      100,
-    ),
+    workerArtifact: artifact("trusted://optimizer/worker", "0".repeat(64), "text/javascript", 100),
     pluginArtifact: artifact(
       "trusted://optimizer/plugin",
       "1".repeat(64),
@@ -495,8 +459,7 @@ describe("cloud-only Claude optimizer session", () => {
     ]);
     expect(provider.commands[2]?.secretReferences).toEqual([]);
     expect(provider.commands[1]?.arguments[1]).toBe("run-claude");
-    const encodedIndex =
-      provider.commands[1]?.arguments.indexOf("--command-base64url") ?? -1;
+    const encodedIndex = provider.commands[1]?.arguments.indexOf("--command-base64url") ?? -1;
     const encoded = provider.commands[1]?.arguments[encodedIndex + 1] ?? "";
     const nested = JSON.parse(
       Buffer.from(encoded, "base64url").toString("utf8"),
@@ -507,9 +470,7 @@ describe("cloud-only Claude optimizer session", () => {
         targetEnvironmentName: "ANTHROPIC_FOUNDRY_API_KEY",
       },
     ]);
-    expect(nested.arguments.join(" ")).toContain(
-      "Bash,Shell,WebSearch,WebFetch",
-    );
+    expect(nested.arguments.join(" ")).toContain("Bash,Shell,WebSearch,WebFetch");
     expect(JSON.stringify(nested)).not.toContain("DF_GITHUB");
     expect(provider.createRequest?.resources.architecture).toBe("x86_64");
     expect(provider.destroyed).toBe(true);
@@ -641,22 +602,10 @@ describe("cloud-only Claude optimizer session", () => {
     for (const value of [setup, claude, seal]) {
       reader.values.set(value.artifact.uri, value.raw);
     }
-    provider.downloads.set(
-      "/trusted/optimizer/setup-result.json",
-      setup.artifact,
-    );
-    provider.downloads.set(
-      "/trusted/optimizer/claude-result.json",
-      claude.artifact,
-    );
-    provider.downloads.set(
-      "/trusted/optimizer/sealed-result.json",
-      seal.artifact,
-    );
-    provider.downloads.set(
-      "/trusted/optimizer/output-state.tar",
-      outputState,
-    );
+    provider.downloads.set("/trusted/optimizer/setup-result.json", setup.artifact);
+    provider.downloads.set("/trusted/optimizer/claude-result.json", claude.artifact);
+    provider.downloads.set("/trusted/optimizer/sealed-result.json", seal.artifact);
+    provider.downloads.set("/trusted/optimizer/output-state.tar", outputState);
 
     const result = await session.analyze({
       experiment: context().experiment,
@@ -665,11 +614,13 @@ describe("cloud-only Claude optimizer session", () => {
     });
 
     expect(result.analysisHash).toBe("a".repeat(64));
-    expect(provider.commands.slice(-3).map((command) =>
-      command.secretReferences.map(
-        (reference) => reference.targetEnvironmentName,
-      )
-    )).toEqual([[], ["ANTHROPIC_FOUNDRY_API_KEY"], []]);
+    expect(
+      provider.commands
+        .slice(-3)
+        .map((command) =>
+          command.secretReferences.map((reference) => reference.targetEnvironmentName),
+        ),
+    ).toEqual([[], ["ANTHROPIC_FOUNDRY_API_KEY"], []]);
     expect(
       provider.uploads.some(
         (upload) =>
@@ -715,9 +666,7 @@ describe("cloud-only Claude optimizer session", () => {
 
   it("keeps the worker cloud-only and avoids shell execution", async () => {
     const source = await readFile(workerPath, "utf8");
-    expect(source).toContain(
-      'process.env.DF_CLOUD_EXECUTION !== "1"',
-    );
+    expect(source).toContain('process.env.DF_CLOUD_EXECUTION !== "1"');
     expect(source).toContain("shell: false");
     expect(source).not.toContain("shell: true");
     expect(source).not.toContain("execSync(");
@@ -743,9 +692,7 @@ describe("cloud-only Claude optimizer session", () => {
     });
     expect(incompleteSetup.code).toBe(78);
     expect(incompleteSetup.stdout).toBe("");
-    expect(incompleteSetup.stderr).toBe(
-      "Optimizer worker failed closed.\n",
-    );
+    expect(incompleteSetup.stderr).toBe("Optimizer worker failed closed.\n");
     expect(incompleteSetup.stderr).not.toContain(sentinel);
   });
 });

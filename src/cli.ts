@@ -8,25 +8,18 @@ import { pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
 
 import { CampaignControlError } from "./campaign/errors.js";
-import {
-  CampaignStateStore,
-  type CampaignStateStoreOptions,
-} from "./campaign/store.js";
+import { CampaignStateStore, type CampaignStateStoreOptions } from "./campaign/store.js";
 import {
   inspectBootstrapEnvironment,
   redactEnvironmentForDiagnostics,
 } from "./config/environment.js";
 import { GitCommandError, redactSensitiveText, SafeGit } from "./harness/git.js";
-import type {
-  ProcessInvocation,
-  ProcessResult,
-  ProcessRunner,
-} from "./harness/process.js";
+import type { ProcessInvocation, ProcessResult, ProcessRunner } from "./harness/process.js";
 import {
   doctorRepository,
-  RepositoryPolicyError,
   type RepositoryDoctorExpectation,
   type RepositoryDoctorReport,
+  RepositoryPolicyError,
   type RepositoryRegistration,
 } from "./harness/repository.js";
 import type { CampaignState } from "./schemas/control.js";
@@ -81,31 +74,22 @@ export interface CliOutput {
   readonly writeErr: (value: string) => void;
 }
 
-export type CampaignControlStore = Pick<
-  CampaignStateStore,
-  "read" | "requestStop" | "resume"
->;
+export type CampaignControlStore = Pick<CampaignStateStore, "read" | "requestStop" | "resume">;
 
-export type CampaignStoreFactory = (
-  stateRoot: string,
-  campaignId: string,
-) => CampaignControlStore;
+export type CampaignStoreFactory = (stateRoot: string, campaignId: string) => CampaignControlStore;
 
 export type VerifiedCampaignStoreOptions = CampaignStateStoreOptions &
   Required<
     Pick<
       CampaignStateStoreOptions,
-      | "controlAttestationVerifier"
-      | "decisionAttestationVerifier"
-      | "ledgerTransitionVerifier"
+      "controlAttestationVerifier" | "decisionAttestationVerifier" | "ledgerTransitionVerifier"
     >
   >;
 
 export function createVerifiedCampaignStoreFactory(
   options: VerifiedCampaignStoreOptions,
 ): CampaignStoreFactory {
-  return (stateRoot, campaignId) =>
-    new CampaignStateStore(stateRoot, campaignId, options);
+  return (stateRoot, campaignId) => new CampaignStateStore(stateRoot, campaignId, options);
 }
 
 export interface HarnessRegistrationResult {
@@ -227,26 +211,15 @@ function defaultOutput(): CliOutput {
   };
 }
 
-function writeJson(
-  writer: (value: string) => void,
-  value: unknown,
-): void {
+function writeJson(writer: (value: string) => void, value: unknown): void {
   writer(`${JSON.stringify(value, null, 2)}\n`);
 }
 
 function isMissingFile(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
-async function isRegularPath(
-  path: string,
-  kind: "directory" | "file",
-): Promise<boolean> {
+async function isRegularPath(path: string, kind: "directory" | "file"): Promise<boolean> {
   try {
     const info = await lstat(path);
     if (info.isSymbolicLink()) return false;
@@ -269,14 +242,8 @@ async function inspectSourcePrerequisites(
     piPackageLock,
   ] = await Promise.all([
     isRegularPath(resolve(cwd, "package.json"), "file"),
-    isRegularPath(
-      resolve(cwd, "claude-plugin/.claude-plugin/plugin.json"),
-      "file",
-    ),
-    isRegularPath(
-      resolve(repositoryPath, "packages/coding-agent/package.json"),
-      "file",
-    ),
+    isRegularPath(resolve(cwd, "claude-plugin/.claude-plugin/plugin.json"), "file"),
+    isRegularPath(resolve(repositoryPath, "packages/coding-agent/package.json"), "file"),
     isRegularPath(resolve(repositoryPath, ".git"), "directory"),
     isRegularPath(resolve(repositoryPath, "package-lock.json"), "file"),
   ]);
@@ -299,10 +266,7 @@ async function createDoctorReport(
 ): Promise<DoctorReport> {
   const repositoryPath = resolve(cwd, "../pi");
   const environmentReadiness = inspectBootstrapEnvironment(environment);
-  const sourcePrerequisites = await inspectSourcePrerequisites(
-    cwd,
-    repositoryPath,
-  );
+  const sourcePrerequisites = await inspectSourcePrerequisites(cwd, repositoryPath);
   return {
     command: "doctor",
     ok: environmentReadiness.ready && allPresent(sourcePrerequisites),
@@ -434,15 +398,10 @@ class LocalReadOnlyRepositoryRunner implements ProcessRunner {
 function defaultRepositoryInspector(
   expectation: RepositoryDoctorExpectation,
 ): Promise<RepositoryDoctorReport> {
-  return doctorRepository(
-    new SafeGit(new LocalReadOnlyRepositoryRunner()),
-    expectation,
-  );
+  return doctorRepository(new SafeGit(new LocalReadOnlyRepositoryRunner()), expectation);
 }
 
-function safeRepositorySummary(
-  report: RepositoryDoctorReport,
-): SafeRepositorySummary {
+function safeRepositorySummary(report: RepositoryDoctorReport): SafeRepositorySummary {
   return {
     repository: "pi",
     branch: report.branch,
@@ -525,14 +484,9 @@ function assertSafeRegistrationResult(
     registration.registrationId.length > 96 ||
     !hashes.every((value) => SHA256.test(value)) ||
     !objectIds.every((value) => GIT_OBJECT_ID.test(value)) ||
-    registration.upstreamBaseCommit !==
-      registration.upstreamVerification.mergeBaseCommit ||
-    !Number.isFinite(
-      Date.parse(registration.originVerification.checkedAt),
-    ) ||
-    !Number.isFinite(
-      Date.parse(registration.upstreamVerification.checkedAt),
-    ) ||
+    registration.upstreamBaseCommit !== registration.upstreamVerification.mergeBaseCommit ||
+    !Number.isFinite(Date.parse(registration.originVerification.checkedAt)) ||
+    !Number.isFinite(Date.parse(registration.upstreamVerification.checkedAt)) ||
     registration.originVerification.private !== true ||
     registration.originVerification.fetchable !== true ||
     registration.originVerification.writable !== true ||
@@ -560,8 +514,7 @@ function safeRegistrationSummary(
     command: "harness register",
     ok: true,
     persisted: result.persisted,
-    canonicalRepositoryMutationPerformed:
-      result.canonicalRepositoryMutationPerformed,
+    canonicalRepositoryMutationPerformed: result.canonicalRepositoryMutationPerformed,
     registrationId: registration.registrationId,
     registrationContentHash: result.registrationContentHash,
     repository: "pi",
@@ -577,8 +530,7 @@ function safeRegistrationSummary(
       private: registration.originVerification.private,
       fetchable: registration.originVerification.fetchable,
       writable: registration.originVerification.writable,
-      verificationAttestationHash:
-        registration.originVerification.providerAttestationHash,
+      verificationAttestationHash: registration.originVerification.providerAttestationHash,
     },
     upstream: {
       transport: registration.upstreamFingerprint.transport,
@@ -586,8 +538,7 @@ function safeRegistrationSummary(
       repositoryFingerprint: registration.upstreamFingerprint.repositoryHash,
       headCommit: registration.upstreamVerification.upstreamHeadCommit,
       fetchable: registration.upstreamVerification.fetchable,
-      verificationAttestationHash:
-        registration.upstreamVerification.providerAttestationHash,
+      verificationAttestationHash: registration.upstreamVerification.providerAttestationHash,
     },
   };
 }
@@ -611,16 +562,12 @@ function safeCampaignSummary(state: CampaignState): SafeCampaignSummary {
       nextExperimentNumber: state.numbering.nextExperimentNumber,
       inFlightExperimentNumber: state.numbering.inFlightExperimentNumber,
       inFlightKind: state.numbering.inFlightKind,
-      lastInterruptedExperimentNumber:
-        state.numbering.lastInterruptedExperimentNumber,
+      lastInterruptedExperimentNumber: state.numbering.lastInterruptedExperimentNumber,
     },
     champions: {
       baseline: pointer(state.champions.baseline),
       active: pointer(state.champions.active),
-      certified:
-        state.champions.certified === null
-          ? null
-          : pointer(state.champions.certified),
+      certified: state.champions.certified === null ? null : pointer(state.champions.certified),
     },
     budget: {
       limits: {
@@ -628,8 +575,7 @@ function safeCampaignSummary(state: CampaignState): SafeCampaignSummary {
         maximumTokens: state.budget.limits.maximumTokens,
         maximumWallTimeMs: state.budget.limits.maximumWallTimeMs,
         maximumAttempts: state.budget.limits.maximumAttempts,
-        maximumPrivacyReleases:
-          state.budget.limits.maximumPrivacyReleases,
+        maximumPrivacyReleases: state.budget.limits.maximumPrivacyReleases,
         maximumPromotionLooks: state.budget.limits.maximumPromotionLooks,
         maximumOnlineError: state.budget.limits.maximumOnlineError,
       },
@@ -644,8 +590,7 @@ function safeCampaignSummary(state: CampaignState): SafeCampaignSummary {
       },
     },
     holdout: {
-      freshValidationSetsRemaining:
-        state.holdout.freshValidationSetsRemaining,
+      freshValidationSetsRemaining: state.holdout.freshValidationSetsRemaining,
       shadowSlicesRemaining: state.holdout.shadowSlicesRemaining,
       generation: state.holdout.generation,
     },
@@ -690,11 +635,8 @@ function campaignLocation(
   environment: NodeJS.ProcessEnv,
   options: CampaignCommandOptions,
 ): { readonly campaignId: string; readonly stateRoot: string } {
-  const campaignId =
-    options.campaign?.trim() || environment["DF_CAMPAIGN_ID"]?.trim();
-  const rawStateRoot =
-    options.stateRoot?.trim() ||
-    environment["DF_CAMPAIGN_STATE_ROOT"]?.trim();
+  const campaignId = options.campaign?.trim() || environment["DF_CAMPAIGN_ID"]?.trim();
+  const rawStateRoot = options.stateRoot?.trim() || environment["DF_CAMPAIGN_STATE_ROOT"]?.trim();
   if (campaignId === undefined || campaignId.length === 0) {
     throw new DarkFactoryCliError(
       "DF_MISSING_USER_INPUT",
@@ -732,19 +674,13 @@ function campaignStore(
       "the signed campaign-state verifier and control-attestation verifier",
     );
   }
-  return dependencies.createCampaignStore(
-    location.stateRoot,
-    location.campaignId,
-  );
+  return dependencies.createCampaignStore(location.stateRoot, location.campaignId);
 }
 
 function configureCampaignOptions(command: Command): Command {
   return command
     .option("--campaign <id>", "durable campaign identifier")
-    .option(
-      "--state-root <path>",
-      "trusted cloud-volume campaign-state root",
-    );
+    .option("--state-root <path>", "trusted cloud-volume campaign-state root");
 }
 
 function overrideProcessExit(command: Command): void {
@@ -761,20 +697,15 @@ function addStatusAction(
   environment: NodeJS.ProcessEnv,
   output: CliOutput,
 ): void {
-  configureCampaignOptions(command).action(
-    async (actionCommand: Command) => {
-      const options = actionCommand.opts<CampaignCommandOptions>();
-      const location = campaignLocation(cwd, environment, options);
-      const state = verifiedCampaignState(
-        await campaignStore(dependencies, location).read(),
-      );
-      writeJson(output.writeOut, {
-        command: "campaign status",
-        ok: true,
-        campaign: safeCampaignSummary(state),
-      });
-    },
-  );
+  configureCampaignOptions(command).action(async (options: CampaignCommandOptions) => {
+    const location = campaignLocation(cwd, environment, options);
+    const state = verifiedCampaignState(await campaignStore(dependencies, location).read());
+    writeJson(output.writeOut, {
+      command: "campaign status",
+      ok: true,
+      campaign: safeCampaignSummary(state),
+    });
+  });
 }
 
 function addStopAction(
@@ -784,35 +715,27 @@ function addStopAction(
   environment: NodeJS.ProcessEnv,
   output: CliOutput,
 ): void {
-  configureCampaignOptions(command).action(
-    async (actionCommand: Command) => {
-      const options = actionCommand.opts<CampaignCommandOptions>();
-      const location = campaignLocation(cwd, environment, options);
-      const store = campaignStore(dependencies, location);
-      const current = verifiedCampaignState(await store.read());
-      if (
-        current.control.status === "stop-requested" ||
-        current.control.status === "stopped"
-      ) {
-        writeJson(output.writeOut, {
-          command: "campaign stop",
-          ok: true,
-          changed: false,
-          campaign: safeCampaignSummary(current),
-        });
-        return;
-      }
-      const next = verifiedCampaignState(
-        await store.requestStop(current.contentHash, "operator"),
-      );
+  configureCampaignOptions(command).action(async (options: CampaignCommandOptions) => {
+    const location = campaignLocation(cwd, environment, options);
+    const store = campaignStore(dependencies, location);
+    const current = verifiedCampaignState(await store.read());
+    if (current.control.status === "stop-requested" || current.control.status === "stopped") {
       writeJson(output.writeOut, {
         command: "campaign stop",
         ok: true,
-        changed: true,
-        campaign: safeCampaignSummary(next),
+        changed: false,
+        campaign: safeCampaignSummary(current),
       });
-    },
-  );
+      return;
+    }
+    const next = verifiedCampaignState(await store.requestStop(current.contentHash, "operator"));
+    writeJson(output.writeOut, {
+      command: "campaign stop",
+      ok: true,
+      changed: true,
+      campaign: safeCampaignSummary(next),
+    });
+  });
 }
 
 function addResumeAction(
@@ -823,17 +746,10 @@ function addResumeAction(
   output: CliOutput,
 ): void {
   configureCampaignOptions(command)
-    .option(
-      "--authorization-hash <sha256>",
-      "one-use signed resume authorization digest",
-    )
-    .action(async (actionCommand: Command) => {
-      const options = actionCommand.opts<CampaignCommandOptions>();
+    .option("--authorization-hash <sha256>", "one-use signed resume authorization digest")
+    .action(async (options: CampaignCommandOptions) => {
       const authorizationHash = options.authorizationHash?.trim();
-      if (
-        authorizationHash === undefined ||
-        !SHA256.test(authorizationHash)
-      ) {
+      if (authorizationHash === undefined || !SHA256.test(authorizationHash)) {
         throw new DarkFactoryCliError(
           "DF_MISSING_USER_INPUT",
           "A lowercase SHA-256 --authorization-hash is required to resume.",
@@ -866,21 +782,16 @@ function addResumeAction(
     });
 }
 
-export function createDarkFactoryCli(
-  dependencies: DarkFactoryCliDependencies = {},
-): Command {
+export function createDarkFactoryCli(dependencies: DarkFactoryCliDependencies = {}): Command {
   const cwd = resolve(dependencies.cwd ?? process.cwd());
   const environment = dependencies.environment ?? process.env;
   const output = dependencies.output ?? defaultOutput();
-  const inspectRepository =
-    dependencies.inspectRepository ?? defaultRepositoryInspector;
+  const inspectRepository = dependencies.inspectRepository ?? defaultRepositoryInspector;
   const program = new Command();
 
   program
     .name("df")
-    .description(
-      "Blind, cloud-only optimization control plane for terminal-agent harnesses.",
-    )
+    .description("Blind, cloud-only optimization control plane for terminal-agent harnesses.")
     .version("0.1.0")
     .showHelpAfterError()
     .exitOverride()
@@ -894,9 +805,7 @@ export function createDarkFactoryCli(
 
   program
     .command("doctor")
-    .description(
-      "Report release-safe prerequisite presence without running a workload.",
-    )
+    .description("Report release-safe prerequisite presence without running a workload.")
     .action(async () => {
       writeJson(output.writeOut, await createDoctorReport(cwd, environment));
     });
@@ -921,9 +830,7 @@ export function createDarkFactoryCli(
     });
   harness
     .command("register")
-    .description(
-      "Verify and persist a signed private-fork registration without mutating Pi.",
-    )
+    .description("Verify and persist a signed private-fork registration without mutating Pi.")
     .argument("[repository]", "Pi repository path", "../pi")
     .action(async (repository: string) => {
       if (dependencies.registerHarness === undefined) {
@@ -995,9 +902,7 @@ export function createDarkFactoryCli(
       ),
     );
 
-  const sandbox = program
-    .command("sandbox")
-    .description("Trusted cloud sandbox controls.");
+  const sandbox = program.command("sandbox").description("Trusted cloud sandbox controls.");
   sandbox
     .command("probe")
     .description("Probe a configured cloud sandbox provider.")
@@ -1008,9 +913,7 @@ export function createDarkFactoryCli(
       ),
     );
 
-  const baseline = program
-    .command("baseline")
-    .description("Immutable baseline controls.");
+  const baseline = program.command("baseline").description("Immutable baseline controls.");
   baseline
     .command("init")
     .description("Build and seal experiment 000 in the trusted cloud.")
@@ -1079,9 +982,7 @@ function safeErrorMessage(error: unknown): string {
   if (error instanceof CommanderError) {
     return error.message.replace(/^error:\s*/u, "");
   }
-  if (
-    error instanceof RepositoryPolicyError
-  ) {
+  if (error instanceof RepositoryPolicyError) {
     return redactSensitiveText(error.message).slice(0, 1_000);
   }
   if (error instanceof CampaignControlError) {
@@ -1108,21 +1009,16 @@ export async function runDarkFactoryCli(
   } catch (error) {
     if (
       error instanceof CommanderError &&
-      (error.code === "commander.helpDisplayed" ||
-        error.code === "commander.version")
+      (error.code === "commander.helpDisplayed" || error.code === "commander.version")
     ) {
       return 0;
     }
-    const cliError =
-      error instanceof DarkFactoryCliError ? error : undefined;
+    const cliError = error instanceof DarkFactoryCliError ? error : undefined;
     writeJson(output.writeErr, {
       ok: false,
       error: {
         code:
-          cliError?.code ??
-          (error instanceof CommanderError
-            ? "DF_USAGE"
-            : "DF_COMMAND_FAILED"),
+          cliError?.code ?? (error instanceof CommanderError ? "DF_USAGE" : "DF_COMMAND_FAILED"),
         message: safeErrorMessage(error),
       },
     });
@@ -1132,10 +1028,7 @@ export async function runDarkFactoryCli(
 
 function isExecutedEntrypoint(): boolean {
   const executable = process.argv[1];
-  return (
-    executable !== undefined &&
-    import.meta.url === pathToFileURL(resolve(executable)).href
-  );
+  return executable !== undefined && import.meta.url === pathToFileURL(resolve(executable)).href;
 }
 
 if (isExecutedEntrypoint()) {

@@ -63,9 +63,7 @@ export function assertComplianceManifest(manifest: ComplianceManifest): void {
   }
 }
 
-export function isSubmissionEligibilityAllowed(
-  eligibility: LeaderboardEligibility,
-): boolean {
+export function isSubmissionEligibilityAllowed(eligibility: LeaderboardEligibility): boolean {
   return eligibility === "cleared" || eligibility === "strict-score-only";
 }
 
@@ -84,4 +82,3 @@ export function assertComparableProtocol(
     );
   }
 }
-

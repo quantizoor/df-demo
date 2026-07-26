@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
-
-import { canonicalJson } from "../../src/schemas/canonical.js";
+import type { HiddenTaskId } from "../../src/evaluation/types.js";
 import {
   HARBOR_0_20_0_VERSION,
   HARBOR_0_20_0_WHEEL_SHA256,
-  StrictHarbor020RawArtifactDecoder,
   hashTrustedHarbor020DecodingPlan,
+  StrictHarbor020RawArtifactDecoder,
   type TrustedHarbor020DecodingPlan,
 } from "../../src/evaluator/harbor-v020-decoder.js";
-import type { HiddenTaskId } from "../../src/evaluation/types.js";
+import { canonicalJson } from "../../src/schemas/canonical.js";
 
 const digest = (value: string): string => value.repeat(64).slice(0, 64);
 const REQUEST_ID = "request-1";
@@ -123,18 +122,14 @@ function trialResult() {
         load_trajectory: null,
         skills: [],
         mcp_servers: [],
-        extra_allowed_hosts: [
-          "df-eu-prod.services.ai.azure.com",
-        ],
+        extra_allowed_hosts: ["df-eu-prod.services.ai.azure.com"],
         kwargs: {
           runtime_archive_path: "/trusted/candidate.tar",
           runtime_sha256: HARNESS_SHA256,
           pi_entrypoint: "bin/pi",
           thinking: "high",
           enabled_tools: ["read", "bash"],
-          credential_environment_names: [
-            "ANTHROPIC_FOUNDRY_API_KEY",
-          ],
+          credential_environment_names: ["ANTHROPIC_FOUNDRY_API_KEY"],
           foundry_resource_name: "df-eu-prod",
           model_family: "claude-opus-4-8",
         },
@@ -313,9 +308,7 @@ function decoder() {
   });
 }
 
-async function decode(
-  mutate?: (documents: ReturnType<typeof documents>) => void,
-) {
+async function decode(mutate?: (value: ReturnType<typeof documents>) => void) {
   const docs = documents();
   mutate?.(docs);
   return decoder().decode({
@@ -361,8 +354,7 @@ describe("StrictHarbor020RawArtifactDecoder", () => {
   it("rejects a trial mapped to another hidden task", async () => {
     await expect(
       decode((docs) => {
-        docs.harbor.invocations[0]!.trials[0]!.result.task_name =
-          "terminal-bench/another-task";
+        docs.harbor.invocations[0]!.trials[0]!.result.task_name = "terminal-bench/another-task";
       }),
     ).rejects.toThrow();
   });
@@ -370,8 +362,9 @@ describe("StrictHarbor020RawArtifactDecoder", () => {
   it("rejects a Foundry endpoint not derived from the sealed resource", async () => {
     await expect(
       decode((docs) => {
-        docs.harbor.invocations[0]!.trials[0]!.result.config.agent
-          .extra_allowed_hosts = ["api.anthropic.com"];
+        docs.harbor.invocations[0]!.trials[0]!.result.config.agent.extra_allowed_hosts = [
+          "api.anthropic.com",
+        ];
       }),
     ).rejects.toThrow();
   });

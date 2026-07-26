@@ -69,7 +69,9 @@ export function renderFeedbackEntry(entry: FeedbackEntry): string {
     `- Mutation: ${entry.mutation}`,
     `- Candidate commit: \`${entry.candidateCommit}\`.`,
     `- Source diagnostic brief: ${
-      entry.sourceBriefHash === null ? "none (source-only bootstrap)" : `\`${entry.sourceBriefHash}\``
+      entry.sourceBriefHash === null
+        ? "none (source-only bootstrap)"
+        : `\`${entry.sourceBriefHash}\``
     }.`,
     "",
     "### Repair result — prior feedback panel",
@@ -80,7 +82,9 @@ export function renderFeedbackEntry(entry: FeedbackEntry): string {
     `- Cache: ${entry.repair.cacheStatus}.`,
     `- Aggregate cost: $${fixed(entry.repair.aggregateCostUsd, 4)}.`,
     `- Attestation: ${
-      entry.repair.attestationHash === null ? "not applicable" : `\`${entry.repair.attestationHash}\``
+      entry.repair.attestationHash === null
+        ? "not applicable"
+        : `\`${entry.repair.attestationHash}\``
     }.`,
     "- Repair and cache evidence had zero positive promotion weight.",
     "",
@@ -145,4 +149,3 @@ export function renderFeedbackDocument(
   }
   return `${preamble.trimEnd()}\n\n${ordered.map(renderFeedbackEntry).join("\n")}`;
 }
-

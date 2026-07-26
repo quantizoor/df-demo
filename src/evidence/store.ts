@@ -1,5 +1,5 @@
 import type { KeyLike } from "node:crypto";
-import { mkdir, lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 import type {
@@ -9,37 +9,27 @@ import type {
   LeakScanArtifactManifestEntry,
   LeakScanReceipt,
 } from "../schemas/artifacts.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-  withContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, sha256, withContentHash } from "../schemas/canonical.js";
+import type { Signature } from "../schemas/primitives.js";
 import {
   type ArtifactFileName,
-  type SchemaValue,
-  REQUIRED_PRESEAL_ARTIFACT_FILES,
   artifactFileSchemas,
   assertSchemaShape,
   assertValidDocument,
   isArtifactFileName,
+  REQUIRED_PRESEAL_ARTIFACT_FILES,
+  type SchemaValue,
   schemaNameForArtifact,
 } from "../schemas/registry.js";
-import type { Signature } from "../schemas/primitives.js";
 import { atomicWriteFile, durableAppendFile, withExclusiveFileLock } from "./atomic.js";
-import {
-  EvidenceIntegrityError,
-  EvidenceStoreError,
-  SealedExperimentError,
-} from "./errors.js";
+import { EvidenceIntegrityError, EvidenceStoreError, SealedExperimentError } from "./errors.js";
 import { readAndVerifyEventChain } from "./events.js";
 import { verifyEd25519Signature } from "./signatures.js";
 
 const EXPERIMENT_DIRECTORY_PATTERN = /^(\d{3,})-([a-z0-9]+(?:-[a-z0-9]+)*)$/u;
 const AMENDMENT_FILE_PATTERN = /^(\d{4})\.json$/u;
 
-type ArtifactSchemaName<FileName extends ArtifactFileName> =
-  (typeof artifactFileSchemas)[FileName];
+type ArtifactSchemaName<FileName extends ArtifactFileName> = (typeof artifactFileSchemas)[FileName];
 export type ArtifactDocument<FileName extends ArtifactFileName> = SchemaValue<
   ArtifactSchemaName<FileName>
 >;
@@ -116,9 +106,7 @@ const DEFAULT_MAXIMUM_LEAK_SCAN_RECEIPT_AGE_MS = 5 * 60 * 1_000;
 const DEFAULT_MAXIMUM_LEAK_SCAN_CLOCK_SKEW_MS = 30 * 1_000;
 
 function isMissingFile(error: unknown): boolean {
-  return (
-    typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function parseExperimentNumber(experimentName: string): number {
@@ -147,9 +135,7 @@ function assertCanonicalFile(contents: string, value: unknown, label: string): v
   }
 }
 
-async function readJsonFile(
-  path: string,
-): Promise<{
+async function readJsonFile(path: string): Promise<{
   readonly bytes: Uint8Array;
   readonly contents: string;
   readonly value: unknown;
@@ -182,9 +168,7 @@ function attestationSealPayload(
   return payload;
 }
 
-function leakScanReceiptProvenance(
-  receiptHash: string,
-): EventRecord["provenanceRefs"] {
+function leakScanReceiptProvenance(receiptHash: string): EventRecord["provenanceRefs"] {
   return [
     {
       artifactName: "leak-scan-receipt",
@@ -193,9 +177,7 @@ function leakScanReceiptProvenance(
   ];
 }
 
-function experimentSealedEventPayload(
-  receiptHash: string,
-): EventRecord["payload"] {
+function experimentSealedEventPayload(receiptHash: string): EventRecord["payload"] {
   return {
     messageCode: "experiment-sealed",
     artifactName: null,
@@ -217,11 +199,9 @@ export class ExperimentStore {
 
   public constructor(root: string, options: ExperimentStoreOptions = {}) {
     const maximumReceiptAgeMs =
-      options.maximumLeakScanReceiptAgeMs ??
-      DEFAULT_MAXIMUM_LEAK_SCAN_RECEIPT_AGE_MS;
+      options.maximumLeakScanReceiptAgeMs ?? DEFAULT_MAXIMUM_LEAK_SCAN_RECEIPT_AGE_MS;
     const maximumClockSkewMs =
-      options.maximumLeakScanClockSkewMs ??
-      DEFAULT_MAXIMUM_LEAK_SCAN_CLOCK_SKEW_MS;
+      options.maximumLeakScanClockSkewMs ?? DEFAULT_MAXIMUM_LEAK_SCAN_CLOCK_SKEW_MS;
     if (
       !Number.isSafeInteger(maximumReceiptAgeMs) ||
       maximumReceiptAgeMs < 0 ||
@@ -235,9 +215,7 @@ export class ExperimentStore {
     if (
       options.trustedLeakScanner !== undefined &&
       (options.trustedLeakScanner.keyId.length > 96 ||
-        !/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u.test(
-          options.trustedLeakScanner.keyId,
-        ))
+        !/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u.test(options.trustedLeakScanner.keyId))
     ) {
       throw new EvidenceStoreError("Trusted leak-scanner key id is malformed");
     }
@@ -273,9 +251,7 @@ export class ExperimentStore {
             parseExperimentNumber(entry.name) === experimentNumber,
         )
       ) {
-        throw new EvidenceStoreError(
-          `Experiment number ${experimentNumber} is already allocated`,
-        );
+        throw new EvidenceStoreError(`Experiment number ${experimentNumber} is already allocated`);
       }
       const path = this.#experimentPath(experimentName);
       try {
@@ -293,14 +269,11 @@ export class ExperimentStore {
     await this.initialize();
     const entries = await readdir(this.#root, { withFileTypes: true });
     return entries
-      .filter(
-        (entry) => entry.isDirectory() && EXPERIMENT_DIRECTORY_PATTERN.test(entry.name),
-      )
+      .filter((entry) => entry.isDirectory() && EXPERIMENT_DIRECTORY_PATTERN.test(entry.name))
       .map((entry) => entry.name)
       .sort(
         (left, right) =>
-          parseExperimentNumber(left) - parseExperimentNumber(right) ||
-          left.localeCompare(right),
+          parseExperimentNumber(left) - parseExperimentNumber(right) || left.localeCompare(right),
       );
   }
 
@@ -318,10 +291,7 @@ export class ExperimentStore {
     assertValidDocument(schemaName, value);
     this.#assertMatchingExperimentNumber(experimentName, value);
     const document = value as Readonly<Record<string, unknown>>;
-    if (
-      fileName === "experiment.json" &&
-      document.slug !== parseExperimentSlug(experimentName)
-    ) {
+    if (fileName === "experiment.json" && document.slug !== parseExperimentSlug(experimentName)) {
       throw new EvidenceStoreError(
         `Artifact slug "${String(document.slug)}" does not match directory "${parseExperimentSlug(experimentName)}"`,
       );
@@ -344,10 +314,7 @@ export class ExperimentStore {
     assertValidDocument(schemaName, value);
     this.#assertMatchingExperimentNumber(experimentName, value);
     const document = value as Readonly<Record<string, unknown>>;
-    if (
-      fileName === "experiment.json" &&
-      document.slug !== parseExperimentSlug(experimentName)
-    ) {
+    if (fileName === "experiment.json" && document.slug !== parseExperimentSlug(experimentName)) {
       throw new EvidenceStoreError(
         `Artifact slug "${String(document.slug)}" does not match directory "${parseExperimentSlug(experimentName)}"`,
       );
@@ -355,10 +322,7 @@ export class ExperimentStore {
     return value as ArtifactDocument<FileName>;
   }
 
-  public async appendEvent(
-    experimentName: string,
-    input: AppendEventInput,
-  ): Promise<EventRecord> {
+  public async appendEvent(experimentName: string, input: AppendEventInput): Promise<EventRecord> {
     const path = await this.#assertExperimentDirectory(experimentName);
     return withExclusiveFileLock(this.#mutationLockPath(experimentName), async () => {
       await this.#assertUnsealed(experimentName, path);
@@ -371,9 +335,7 @@ export class ExperimentStore {
    * must scan and sign. The snapshot is intentionally not a seal: every field
    * is recomputed and compared again while holding the mutation lock.
    */
-  public async captureLeakScanSubject(
-    experimentName: string,
-  ): Promise<LeakScanSubject> {
+  public async captureLeakScanSubject(experimentName: string): Promise<LeakScanSubject> {
     const path = await this.#assertExperimentDirectory(experimentName);
     return withExclusiveFileLock(this.#mutationLockPath(experimentName), async () => {
       await this.#assertUnsealed(experimentName, path);
@@ -392,19 +354,9 @@ export class ExperimentStore {
       await this.#assertCompleteAndValidPreseal(experimentName, path);
 
       // Detach from caller-owned memory before any await that mutates evidence.
-      const leakScanReceipt = JSON.parse(
-        canonicalJson(options.leakScanReceipt),
-      ) as LeakScanReceipt;
-      const scannedSubject = await this.#captureLeakScanSubjectUnlocked(
-        experimentName,
-        path,
-      );
-      this.#assertLeakScanReceipt(
-        leakScanReceipt,
-        scannedSubject,
-        this.#now().getTime(),
-        true,
-      );
+      const leakScanReceipt = JSON.parse(canonicalJson(options.leakScanReceipt)) as LeakScanReceipt;
+      const scannedSubject = await this.#captureLeakScanSubjectUnlocked(experimentName, path);
+      this.#assertLeakScanReceipt(leakScanReceipt, scannedSubject, this.#now().getTime(), true);
       const discoveredPreviousSealHash = await this.#latestPriorSealHash(
         parseExperimentNumber(experimentName),
       );
@@ -412,23 +364,15 @@ export class ExperimentStore {
         options.previousExperimentSealHash !== undefined &&
         options.previousExperimentSealHash !== discoveredPreviousSealHash
       ) {
-        throw new EvidenceIntegrityError(
-          "Previous experiment seal hash does not match store",
-          [
-            `expected ${discoveredPreviousSealHash ?? "null"}`,
-            `received ${options.previousExperimentSealHash ?? "null"}`,
-          ],
-        );
+        throw new EvidenceIntegrityError("Previous experiment seal hash does not match store", [
+          `expected ${discoveredPreviousSealHash ?? "null"}`,
+          `received ${options.previousExperimentSealHash ?? "null"}`,
+        ]);
       }
       const previousExperimentSealHash = discoveredPreviousSealHash;
       const sealingTime = this.#now();
       const sealedAt = sealingTime.toISOString();
-      this.#assertLeakScanReceipt(
-        leakScanReceipt,
-        scannedSubject,
-        sealingTime.getTime(),
-        true,
-      );
+      this.#assertLeakScanReceipt(leakScanReceipt, scannedSubject, sealingTime.getTime(), true);
       const scannedChecksums = scannedSubject.artifactManifest.map((artifact) => ({
         artifactName: artifact.path,
         contentHash: artifact.contentHash,
@@ -461,17 +405,12 @@ export class ExperimentStore {
         ]);
       }
 
-      const eventChainBeforeSeal = await readAndVerifyEventChain(
-        join(path, "events.jsonl"),
-      );
+      const eventChainBeforeSeal = await readAndVerifyEventChain(join(path, "events.jsonl"));
       if (
         eventChainBeforeSeal.records.length !== scannedSubject.eventRecordCount ||
         eventChainBeforeSeal.head !== scannedSubject.eventChainHead
       ) {
-        throw new EvidenceIntegrityError(
-          "Event chain changed after the accepted leak scan",
-          [],
-        );
+        throw new EvidenceIntegrityError("Event chain changed after the accepted leak scan", []);
       }
       await this.#appendEventUnlocked(experimentName, path, {
         eventType: "experiment-sealed",
@@ -492,13 +431,9 @@ export class ExperimentStore {
         finalEvent.actor !== "controller" ||
         finalEvent.previousEventHash !== scannedSubject.eventChainHead ||
         canonicalJson(finalEvent.payload) !==
-          canonicalJson(
-            experimentSealedEventPayload(leakScanReceipt.contentHash),
-          ) ||
+          canonicalJson(experimentSealedEventPayload(leakScanReceipt.contentHash)) ||
         canonicalJson(finalEvent.provenanceRefs) !==
-          canonicalJson(
-            leakScanReceiptProvenance(leakScanReceipt.contentHash),
-          )
+          canonicalJson(leakScanReceiptProvenance(leakScanReceipt.contentHash))
       ) {
         throw new EvidenceIntegrityError(
           "Seal event does not extend the signed leak-scan event head exactly once",
@@ -509,10 +444,7 @@ export class ExperimentStore {
       // A cooperative mutation cannot enter while this lock is held. This
       // second byte-for-byte snapshot also detects a direct filesystem write
       // that completed after the scan was accepted but before attestation.
-      const finalSubject = await this.#captureLeakScanSubjectUnlocked(
-        experimentName,
-        path,
-      );
+      const finalSubject = await this.#captureLeakScanSubjectUnlocked(experimentName, path);
       if (
         finalSubject.artifactManifestHash !== scannedSubject.artifactManifestHash ||
         finalSubject.protocolHash !== scannedSubject.protocolHash
@@ -525,17 +457,15 @@ export class ExperimentStore {
           ],
         );
       }
-      const artifactChecksums: Attestation["artifactChecksums"] =
-        finalSubject.artifactManifest.map((artifact) => ({
+      const artifactChecksums: Attestation["artifactChecksums"] = finalSubject.artifactManifest.map(
+        (artifact) => ({
           artifactName: artifact.path,
           contentHash: artifact.contentHash,
           byteHash: artifact.byteHash,
-        }));
+        }),
+      );
 
-      const sealPayload: Omit<
-        Attestation,
-        "contentHash" | "sealChainEntryHash" | "signer"
-      > = {
+      const sealPayload: Omit<Attestation, "contentHash" | "sealChainEntryHash" | "signer"> = {
         schemaVersion: "1.0.0",
         createdAt: sealedAt,
         provenanceRefs: artifactChecksums.map((artifact) => ({
@@ -560,10 +490,7 @@ export class ExperimentStore {
       };
       const attestation = withContentHash(withoutHash);
       assertValidDocument("attestation", attestation);
-      await atomicWriteFile(
-        join(path, "attestation.json"),
-        `${canonicalJson(attestation)}\n`,
-      );
+      await atomicWriteFile(join(path, "attestation.json"), `${canonicalJson(attestation)}\n`);
 
       const sealedReport = await this.verifyExperiment(experimentName, { requireSeal: true });
       if (!sealedReport.valid) {
@@ -618,10 +545,7 @@ export class ExperimentStore {
       const amendment = withContentHash(withoutHash);
       assertValidDocument("amendment", amendment);
       const filename = `${amendmentNumber.toString().padStart(4, "0")}.json`;
-      await atomicWriteFile(
-        join(amendmentsPath, filename),
-        `${canonicalJson(amendment)}\n`,
-      );
+      await atomicWriteFile(join(amendmentsPath, filename), `${canonicalJson(amendment)}\n`);
       return amendment;
     });
   }
@@ -771,9 +695,7 @@ export class ExperimentStore {
     await this.initialize();
     const entries = await readdir(this.#root, { withFileTypes: true });
     const experiments = entries
-      .filter(
-        (entry) => entry.isDirectory() && EXPERIMENT_DIRECTORY_PATTERN.test(entry.name),
-      )
+      .filter((entry) => entry.isDirectory() && EXPERIMENT_DIRECTORY_PATTERN.test(entry.name))
       .map((entry) => ({
         name: entry.name,
         number: parseExperimentNumber(entry.name),
@@ -803,10 +725,7 @@ export class ExperimentStore {
           errors.push(...report.errors.map((error) => `${experiment.name}: ${error}`));
         }
         if (report.artifactHashes["evaluation-plan.json"] !== undefined) {
-          const evaluationPlan = await this.readArtifact(
-            experiment.name,
-            "evaluation-plan.json",
-          );
+          const evaluationPlan = await this.readArtifact(experiment.name, "evaluation-plan.json");
           for (const panelAttestation of evaluationPlan.panelAttestations) {
             if (seenOneUseAttestations.has(panelAttestation.oneUseAttestationHash)) {
               errors.push(
@@ -845,10 +764,7 @@ export class ExperimentStore {
     };
   }
 
-  async #assertCompleteAndValidPreseal(
-    experimentName: string,
-    path: string,
-  ): Promise<void> {
+  async #assertCompleteAndValidPreseal(experimentName: string, path: string): Promise<void> {
     const missing: string[] = [];
     for (const fileName of REQUIRED_PRESEAL_ARTIFACT_FILES) {
       try {
@@ -880,10 +796,9 @@ export class ExperimentStore {
   ): Promise<LeakScanSubject> {
     const eventChain = await readAndVerifyEventChain(join(path, "events.jsonl"));
     if (eventChain.head === null || eventChain.records.length === 0) {
-      throw new EvidenceIntegrityError(
-        "Cannot leak-scan an experiment with an empty event chain",
-        ["events.jsonl must contain at least one validated event"],
-      );
+      throw new EvidenceIntegrityError("Cannot leak-scan an experiment with an empty event chain", [
+        "events.jsonl must contain at least one validated event",
+      ]);
     }
 
     const manifest: LeakScanArtifactManifestEntry[] = [];
@@ -892,20 +807,13 @@ export class ExperimentStore {
       if (entry.name === "events.jsonl") {
         continue;
       }
-      if (
-        entry.name === "attestation.json" ||
-        !isArtifactFileName(entry.name)
-      ) {
-        throw new EvidenceIntegrityError(
-          "Leak-scan snapshot contains an unexpected entry",
-          [entry.name],
-        );
+      if (entry.name === "attestation.json" || !isArtifactFileName(entry.name)) {
+        throw new EvidenceIntegrityError("Leak-scan snapshot contains an unexpected entry", [
+          entry.name,
+        ]);
       }
       if (!entry.isFile()) {
-        throw new EvidenceIntegrityError(
-          "Cannot leak-scan a non-regular artifact",
-          [entry.name],
-        );
+        throw new EvidenceIntegrityError("Cannot leak-scan a non-regular artifact", [entry.name]);
       }
       const { bytes, value } = await readJsonFile(join(path, entry.name));
       const schemaKind = artifactFileSchemas[entry.name];
@@ -919,9 +827,7 @@ export class ExperimentStore {
         bytes: bytes.byteLength,
       });
     }
-    manifest.sort((left, right) =>
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-    );
+    manifest.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
 
     const experiment = await this.readArtifact(experimentName, "experiment.json");
     return {
@@ -989,10 +895,7 @@ export class ExperimentStore {
       );
     }
     if (!verifyEd25519Signature(receipt, trustedScanner.publicKey)) {
-      throw new EvidenceIntegrityError(
-        "Leak-scan receipt signature is invalid",
-        [],
-      );
+      throw new EvidenceIntegrityError("Leak-scan receipt signature is invalid", []);
     }
 
     const checkedAtMs = Date.parse(receipt.checkedAt);
@@ -1000,15 +903,9 @@ export class ExperimentStore {
       throw new EvidenceIntegrityError("Leak-scan completion time is invalid", []);
     }
     if (checkedAtMs - validationTimeMs > this.#maximumLeakScanClockSkewMs) {
-      throw new EvidenceIntegrityError(
-        "Leak-scan receipt is dated too far in the future",
-        [],
-      );
+      throw new EvidenceIntegrityError("Leak-scan receipt is dated too far in the future", []);
     }
-    if (
-      enforceFreshness &&
-      validationTimeMs - checkedAtMs > this.#maximumLeakScanReceiptAgeMs
-    ) {
+    if (enforceFreshness && validationTimeMs - checkedAtMs > this.#maximumLeakScanReceiptAgeMs) {
       throw new EvidenceIntegrityError("Leak-scan receipt is stale", []);
     }
   }
@@ -1016,7 +913,7 @@ export class ExperimentStore {
   async #assertExperimentDirectory(experimentName: string): Promise<string> {
     parseExperimentNumber(experimentName);
     const path = this.#experimentPath(experimentName);
-    let info;
+    let info: Awaited<ReturnType<typeof lstat>>;
     try {
       info = await lstat(path);
     } catch (error) {
@@ -1042,10 +939,16 @@ export class ExperimentStore {
     }
   }
 
-  #assertMatchingExperimentNumber(
-    experimentName: string,
-    value: Readonly<{ experimentNumber: number }>,
-  ): void {
+  #assertMatchingExperimentNumber(experimentName: string, value: unknown): void {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Array.isArray(value) ||
+      !("experimentNumber" in value) ||
+      typeof value.experimentNumber !== "number"
+    ) {
+      throw new EvidenceStoreError("Artifact does not contain a numeric experiment number");
+    }
     const expected = parseExperimentNumber(experimentName);
     if (value.experimentNumber !== expected) {
       throw new EvidenceStoreError(
@@ -1228,15 +1131,9 @@ export class ExperimentStore {
       finalEvent.actor !== "controller" ||
       finalEvent.previousEventHash !== scanEventHead ||
       canonicalJson(finalEvent.payload) !==
-        canonicalJson(
-          experimentSealedEventPayload(
-            attestation.graderLeakScan.contentHash,
-          ),
-        ) ||
+        canonicalJson(experimentSealedEventPayload(attestation.graderLeakScan.contentHash)) ||
       canonicalJson(finalEvent.provenanceRefs) !==
-        canonicalJson(
-          leakScanReceiptProvenance(attestation.graderLeakScan.contentHash),
-        )
+        canonicalJson(leakScanReceiptProvenance(attestation.graderLeakScan.contentHash))
     ) {
       throw new Error(
         "Final event chain is not the single receipt-bound seal transition after the leak scan",

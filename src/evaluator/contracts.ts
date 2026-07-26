@@ -85,19 +85,16 @@ export type BehavioralPattern =
   | "invalid-tool-invocation"
   | "recovery-after-failure";
 
-export type GenericToolCategory =
-  | "execute"
-  | "read"
-  | "write"
-  | "search"
-  | "plan"
-  | "other";
+export type GenericToolCategory = "execute" | "read" | "write" | "search" | "plan" | "other";
 
 export interface BehavioralDiagnosticCard {
   readonly cardId: string;
   readonly pattern: BehavioralPattern;
   readonly toolCategory: GenericToolCategory;
-  readonly association: "more-common-in-failures" | "more-common-in-successes" | "candidate-regression";
+  readonly association:
+    | "more-common-in-failures"
+    | "more-common-in-successes"
+    | "candidate-regression";
   readonly effectSizeBand: "small" | "medium" | "large";
   readonly uncertaintyBand: "low" | "medium" | "high";
   readonly distinctTasksBand: "5-9" | "10-19" | "20+";
@@ -207,11 +204,7 @@ export class EvaluatorContractError extends Error {
   override readonly name = "EvaluatorContractError";
 }
 
-function assertExactObjectKeys(
-  value: object,
-  allowed: readonly string[],
-  label: string,
-): void {
+function assertExactObjectKeys(value: object, allowed: readonly string[], label: string): void {
   const extras = Object.keys(value).filter((key) => !allowed.includes(key));
   if (extras.length > 0) {
     throw new EvaluatorContractError(`${label} contains forbidden field(s): ${extras.join(", ")}.`);
@@ -250,14 +243,7 @@ function assertArtifact(artifact: HarnessArtifactReference, label: string): void
 function assertProfile(profile: MatchedExecutionProfile): void {
   assertExactObjectKeys(
     profile,
-    [
-      "provider",
-      "imageDigest",
-      "regionClass",
-      "resources",
-      "networkPolicyHash",
-      "protocolHash",
-    ],
+    ["provider", "imageDigest", "regionClass", "resources", "networkPolicyHash", "protocolHash"],
     "Execution profile",
   );
   assertExactObjectKeys(
@@ -281,8 +267,7 @@ function assertProfile(profile: MatchedExecutionProfile): void {
     profile.resources.memoryMiB <= 0 ||
     !Number.isSafeInteger(profile.resources.diskMiB) ||
     profile.resources.diskMiB <= 0 ||
-    (profile.resources.gpuClass !== undefined &&
-      !TOOL_OR_MODEL_ID.test(profile.resources.gpuClass))
+    (profile.resources.gpuClass !== undefined && !TOOL_OR_MODEL_ID.test(profile.resources.gpuClass))
   ) {
     throw new EvaluatorContractError("Execution resources are invalid.");
   }
@@ -293,12 +278,7 @@ function assertProfile(profile: MatchedExecutionProfile): void {
 function assertSelection(request: TrustedEvaluationRequest): void {
   const selection = request.selection;
   const allowedSelectionKeys: Readonly<Record<PanelSelectionRequest["kind"], readonly string[]>> = {
-    "weighted-baseline": [
-      "kind",
-      "taskCount",
-      "attemptsPerTask",
-      "weightingPolicyHash",
-    ],
+    "weighted-baseline": ["kind", "taskCount", "attemptsPerTask", "weightingPolicyHash"],
     "repair-reuse": [
       "kind",
       "sourceExperimentId",
@@ -316,28 +296,13 @@ function assertSelection(request: TrustedEvaluationRequest): void {
       "frozenHypothesisHash",
       "hypothesisExclusionAttestationHash",
     ],
-    "fresh-shadow": [
-      "kind",
-      "taskCount",
-      "attemptsPerTask",
-      "shadowSlice",
-      "feedback",
-    ],
-    "official-full": [
-      "kind",
-      "expectedArmCount",
-      "authorizationHash",
-      "feedback",
-    ],
+    "fresh-shadow": ["kind", "taskCount", "attemptsPerTask", "shadowSlice", "feedback"],
+    "official-full": ["kind", "expectedArmCount", "authorizationHash", "feedback"],
   };
   if (!(selection.kind in allowedSelectionKeys)) {
     throw new EvaluatorContractError("Panel selection kind is unsupported.");
   }
-  assertExactObjectKeys(
-    selection,
-    allowedSelectionKeys[selection.kind],
-    "Panel selection request",
-  );
+  assertExactObjectKeys(selection, allowedSelectionKeys[selection.kind], "Panel selection request");
   if (request.stage === "repair" && selection.kind !== "repair-reuse") {
     throw new EvaluatorContractError("Repair evaluation requires a repair-reuse selection.");
   }
@@ -354,15 +319,13 @@ function assertSelection(request: TrustedEvaluationRequest): void {
     throw new EvaluatorContractError("Official evaluation requires an authorized full selection.");
   }
   if (
-    (selection.kind === "weighted-baseline" ||
-      selection.kind === "fresh-matched-validation") &&
+    (selection.kind === "weighted-baseline" || selection.kind === "fresh-matched-validation") &&
     !SHA256.test(selection.weightingPolicyHash)
   ) {
     throw new EvaluatorContractError("Selection weighting policy must be pinned.");
   }
   if (
-    (selection.kind === "repair-reuse" ||
-      selection.kind === "fresh-matched-validation") &&
+    (selection.kind === "repair-reuse" || selection.kind === "fresh-matched-validation") &&
     !SHA256.test(selection.frozenHypothesisHash)
   ) {
     throw new EvaluatorContractError(
@@ -373,7 +336,9 @@ function assertSelection(request: TrustedEvaluationRequest): void {
     selection.kind === "fresh-matched-validation" &&
     !SHA256.test(selection.hypothesisExclusionAttestationHash)
   ) {
-    throw new EvaluatorContractError("Fresh validation requires a hypothesis-exclusion attestation.");
+    throw new EvaluatorContractError(
+      "Fresh validation requires a hypothesis-exclusion attestation.",
+    );
   }
   if (
     selection.kind === "repair-reuse" &&
@@ -442,13 +407,9 @@ export function assertEvaluationRequest(request: TrustedEvaluationRequest): void
   }
   if (
     !new Set<RunMode>(["research", "submission"]).has(request.runMode) ||
-    !new Set<EvaluationStage>([
-      "baseline",
-      "repair",
-      "validation",
-      "shadow",
-      "official",
-    ]).has(request.stage)
+    !new Set<EvaluationStage>(["baseline", "repair", "validation", "shadow", "official"]).has(
+      request.stage,
+    )
   ) {
     throw new EvaluatorContractError("Evaluation run mode or stage is unsupported.");
   }
@@ -466,13 +427,10 @@ export function assertEvaluationRequest(request: TrustedEvaluationRequest): void
   assertArtifact(request.candidate, "Candidate");
   if (request.champion !== undefined) assertArtifact(request.champion, "Champion");
   const matchedRace =
-    request.stage === "repair" ||
-    request.stage === "validation" ||
-    request.stage === "shadow";
+    request.stage === "repair" || request.stage === "validation" || request.stage === "shadow";
   if (
     matchedRace &&
-    (request.champion === undefined ||
-      request.champion.commitSha === request.candidate.commitSha)
+    (request.champion === undefined || request.champion.commitSha === request.candidate.commitSha)
   ) {
     throw new EvaluatorContractError(
       "Matched evaluation requires distinct candidate and champion artifacts.",
@@ -495,15 +453,9 @@ export function assertEvaluationRequest(request: TrustedEvaluationRequest): void
     "Evaluated model",
   );
   if (
-    !new Set([
-      "off",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ]).has(request.evaluatedModel.thinkingLevel)
+    !new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]).has(
+      request.evaluatedModel.thinkingLevel,
+    )
   ) {
     throw new EvaluatorContractError("Evaluated model thinking level is unsupported.");
   }

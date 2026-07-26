@@ -1,28 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  canonicalHash,
-  computeContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, computeContentHash } from "../../src/schemas/canonical.js";
 
-const WORKER = resolve(
-  "scripts/candidate-integrity-worker.mjs",
-);
-const PATH =
-  "packages/coding-agent/src/core/system-prompt.ts";
+const WORKER = resolve("scripts/candidate-integrity-worker.mjs");
+const PATH = "packages/coding-agent/src/core/system-prompt.ts";
 const GIT_ENVIRONMENT = {
   PATH: process.env["PATH"] ?? "/usr/bin:/bin",
   LC_ALL: "C",
@@ -37,11 +24,7 @@ const GIT_ENVIRONMENT = {
   GIT_COMMITTER_DATE: "2000-01-01T00:00:01.000Z",
 };
 
-function runGit(
-  repository: string,
-  arguments_: readonly string[],
-  input?: string,
-): string {
+function runGit(repository: string, arguments_: readonly string[], input?: string): string {
   const result = spawnSync("git", arguments_, {
     cwd: repository,
     env: GIT_ENVIRONMENT,
@@ -55,9 +38,7 @@ function runGit(
 }
 
 async function fixture() {
-  const root = await mkdtemp(
-    join(tmpdir(), "df-integrity-worker-test-"),
-  );
+  const root = await mkdtemp(join(tmpdir(), "df-integrity-worker-test-"));
   const repository = join(root, "repository");
   const bundle = join(root, "candidate.bundle");
   const diff = join(root, "candidate.diff");
@@ -69,16 +50,8 @@ async function fixture() {
   await writeFile(sourcePath, "old generic prompt\n", "utf8");
   runGit(repository, ["add", "--all", "--"]);
   const sourceTree = runGit(repository, ["write-tree"]);
-  const sourceCommit = runGit(
-    repository,
-    ["commit-tree", sourceTree],
-    "source\n",
-  );
-  runGit(repository, [
-    "update-ref",
-    "refs/heads/main",
-    sourceCommit,
-  ]);
+  const sourceCommit = runGit(repository, ["commit-tree", sourceTree], "source\n");
+  runGit(repository, ["update-ref", "refs/heads/main", sourceCommit]);
   await writeFile(sourcePath, "new generic prompt\n", "utf8");
   runGit(repository, ["add", "--all", "--"]);
   const candidateTree = runGit(repository, ["write-tree"]);
@@ -87,13 +60,8 @@ async function fixture() {
     ["commit-tree", candidateTree, "-p", sourceCommit],
     "candidate\n",
   );
-  const bundleRef =
-    "refs/heads/df/bundle/001-generic-recovery";
-  runGit(repository, [
-    "update-ref",
-    bundleRef,
-    candidateCommit,
-  ]);
+  const bundleRef = "refs/heads/df/bundle/001-generic-recovery";
+  runGit(repository, ["update-ref", bundleRef, candidateCommit]);
   runGit(repository, ["bundle", "create", bundle, bundleRef]);
   const bundleBytes = await readFile(bundle);
   return {
@@ -102,9 +70,7 @@ async function fixture() {
     diff,
     manifest,
     bundleRef,
-    bundleSha256: createHash("sha256")
-      .update(bundleBytes)
-      .digest("hex"),
+    bundleSha256: createHash("sha256").update(bundleBytes).digest("hex"),
     bundleByteLength: bundleBytes.byteLength,
     sourceCommit,
     sourceTree,
@@ -166,9 +132,7 @@ describe("candidate-integrity Git evidence worker", () => {
     try {
       const result = runWorker(workerArguments(item));
       expect(result.status).toBe(0);
-      const manifest = JSON.parse(
-        await readFile(item.manifest, "utf8"),
-      ) as Record<string, unknown>;
+      const manifest = JSON.parse(await readFile(item.manifest, "utf8")) as Record<string, unknown>;
       expect(manifest).toMatchObject({
         domain: "dark-factory.candidate-git-evidence.v1",
         sourceCommit: item.sourceCommit,
@@ -187,16 +151,10 @@ describe("candidate-integrity Git evidence worker", () => {
           },
         ],
       });
-      expect(manifest["contentHash"]).toBe(
-        computeContentHash(manifest),
-      );
+      expect(manifest["contentHash"]).toBe(computeContentHash(manifest));
       const diff = await readFile(item.diff, "utf8");
-      expect(manifest["diffSha256"]).toBe(
-        createHash("sha256").update(diff).digest("hex"),
-      );
-      expect(manifest["diffByteLength"]).toBe(
-        (await stat(item.diff)).size,
-      );
+      expect(manifest["diffSha256"]).toBe(createHash("sha256").update(diff).digest("hex"));
+      expect(manifest["diffByteLength"]).toBe((await stat(item.diff)).size);
     } finally {
       await rm(item.root, { recursive: true, force: true });
     }
@@ -213,9 +171,7 @@ describe("candidate-integrity Git evidence worker", () => {
         }),
       );
       expect(result.status).toBe(78);
-      expect(result.stderr).toBe(
-        "Candidate-integrity worker failed closed.\n",
-      );
+      expect(result.stderr).toBe("Candidate-integrity worker failed closed.\n");
     } finally {
       await rm(item.root, { recursive: true, force: true });
     }

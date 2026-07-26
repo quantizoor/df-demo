@@ -1,38 +1,34 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-
+import { createOnlineErrorBudget } from "../../src/evaluation/statistics.js";
+import { hiddenTaskId } from "../../src/evaluation/types.js";
 import {
-  DeterministicCanonicalEvaluationDeriver,
-  assertTrustedHiddenCatalogOutcomeUpdateIntegrity,
-  fingerprintForbiddenReleaseLiteral,
-  hashTrustedCacheEvidence,
-  TrustedCanonicalDeriverError,
-  type DeterministicCanonicalEvaluationDeriverOptions,
-  type TrustedCanonicalDerivationPolicy,
-  type TrustedDecodedEvaluation,
-  type TrustedDecodedEvaluationAttempt,
-  type TrustedRepairControl,
-  type TrustedSignedHiddenCatalogOutcomeUpdate,
-} from "../../src/evaluator/deriver.js";
+  hashTrustedBehavioralPreparation,
+  type TrustedBehavioralPreparationStore,
+} from "../../src/evaluator/behavioral-preparation-store.js";
 import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "../../src/evaluator/contracts.js";
 import {
-  hashTrustedBehavioralPreparation,
-  type TrustedBehavioralPreparationStore,
-} from "../../src/evaluator/behavioral-preparation-store.js";
+  assertTrustedHiddenCatalogOutcomeUpdateIntegrity,
+  DeterministicCanonicalEvaluationDeriver,
+  type DeterministicCanonicalEvaluationDeriverOptions,
+  fingerprintForbiddenReleaseLiteral,
+  hashTrustedCacheEvidence,
+  type TrustedCanonicalDerivationPolicy,
+  TrustedCanonicalDeriverError,
+  type TrustedDecodedEvaluation,
+  type TrustedDecodedEvaluationAttempt,
+  type TrustedRepairControl,
+  type TrustedSignedHiddenCatalogOutcomeUpdate,
+} from "../../src/evaluator/deriver.js";
 import { createTrustedOnlineErrorBudgetReservation } from "../../src/evaluator/online-error-authority.js";
 import {
   createTrustedRawArtifactManifest,
   type TrustedRawRetentionPolicy,
 } from "../../src/evaluator/retention.js";
-import { createOnlineErrorBudget } from "../../src/evaluation/statistics.js";
-import { hiddenTaskId } from "../../src/evaluation/types.js";
-import {
-  createEd25519Signature,
-  verifyEd25519Signature,
-} from "../../src/evidence/signatures.js";
+import { createEd25519Signature, verifyEd25519Signature } from "../../src/evidence/signatures.js";
 import type { TrustedRawRun } from "../../src/terminal-bench/runner.js";
 import {
   createTrustedMatchedArmSchedule,
@@ -60,9 +56,7 @@ function digest(index: number): string {
   return index.toString(16).padStart(64, "0");
 }
 
-function request(
-  stage: "repair" | "validation" | "shadow",
-): TrustedEvaluationRequest {
+function request(stage: "repair" | "validation" | "shadow"): TrustedEvaluationRequest {
   const selection =
     stage === "repair"
       ? ({
@@ -154,10 +148,7 @@ function panel(
       taskRevisionDigest: digest(index + 101),
       capabilityStratum: index % 2 === 0 ? "shell" : "filesystem",
       replicateOrdinal: 1,
-      order:
-        evaluationRequest.stage === "repair" || index < 6
-          ? ("AB" as const)
-          : ("BA" as const),
+      order: evaluationRequest.stage === "repair" || index < 6 ? ("AB" as const) : ("BA" as const),
     })),
   };
 }
@@ -204,9 +195,7 @@ function rawRun(evaluationRequest: TrustedEvaluationRequest): TrustedRawRun {
 }
 
 function secondsAfterMidnight(seconds: number): string {
-  return new Date(
-    Date.parse("2026-07-01T00:00:00.000Z") + seconds * 1_000,
-  ).toISOString();
+  return new Date(Date.parse("2026-07-01T00:00:00.000Z") + seconds * 1_000).toISOString();
 }
 
 function attempt(input: {
@@ -217,15 +206,11 @@ function attempt(input: {
   readonly invalid?: boolean;
   readonly startOffsetSeconds?: number;
 }): TrustedDecodedEvaluationAttempt {
-  const startedAt = secondsAfterMidnight(
-    input.startOffsetSeconds ?? 120 + input.sequence * 20,
-  );
+  const startedAt = secondsAfterMidnight(input.startOffsetSeconds ?? 120 + input.sequence * 20);
   const completedAt = secondsAfterMidnight(
     (input.startOffsetSeconds ?? 120 + input.sequence * 20) + 10,
   );
-  const attemptDigest = digest(
-    1_000 + input.sequence * 4 + (input.attemptOrdinal ?? 1),
-  );
+  const attemptDigest = digest(1_000 + input.sequence * 4 + (input.attemptOrdinal ?? 1));
   return {
     sensitivity: "trusted-decoded-evaluation-attempt",
     attemptDigest,
@@ -335,17 +320,11 @@ function decoded(input: {
   };
 }
 
-function repairControls(
-  hiddenPanel: TrustedMatchedPanel,
-): readonly TrustedRepairControl[] {
+function repairControls(hiddenPanel: TrustedMatchedPanel): readonly TrustedRepairControl[] {
   return hiddenPanel.cells.map((cell, index) => ({
     taskId: cell.taskId,
     bucket:
-      index < 3
-        ? ("hard" as const)
-        : index === 3
-          ? ("uncertain" as const)
-          : ("easy" as const),
+      index < 3 ? ("hard" as const) : index === 3 ? ("uncertain" as const) : ("easy" as const),
     championEvidence: {
       source: "fresh" as const,
       passes: 0,
@@ -361,21 +340,15 @@ function policy(input: {
   readonly hiddenPanel: TrustedMatchedPanel;
 }): TrustedCanonicalDerivationPolicy {
   const controls =
-    input.evaluationRequest.stage === "repair"
-      ? repairControls(input.hiddenPanel)
-      : [];
+    input.evaluationRequest.stage === "repair" ? repairControls(input.hiddenPanel) : [];
   const requestHash = hashEvaluationRequest(input.evaluationRequest);
-  const onlineErrorBudget = createOnlineErrorBudget(
-    0.05,
-    "null-calibration-v1",
-  );
+  const onlineErrorBudget = createOnlineErrorBudget(0.05, "null-calibration-v1");
   const onlineErrorReservation =
     input.evaluationRequest.stage === "validation"
       ? createTrustedOnlineErrorBudgetReservation({
           request: input.evaluationRequest,
           requestHash,
-          dispositionAttestationHash:
-            input.hiddenPanel.dispositionAttestationHash,
+          dispositionAttestationHash: input.hiddenPanel.dispositionAttestationHash,
           stateBefore: onlineErrorBudget,
           reservedAt: "2026-07-01T00:01:30.000Z",
         })
@@ -384,14 +357,12 @@ function policy(input: {
     sensitivity: "trusted-canonical-derivation-policy",
     requestHash,
     protocolHash: input.evaluationRequest.protocolHash,
-    dispositionAttestationHash:
-      input.hiddenPanel.dispositionAttestationHash,
+    dispositionAttestationHash: input.hiddenPanel.dispositionAttestationHash,
     expectedEnvironmentFingerprintHash: ENVIRONMENT_HASH,
     cacheAttestationHash: digest(830),
     cacheEvidenceSetHash: hashTrustedCacheEvidence({
       requestHash,
-      dispositionAttestationHash:
-        input.hiddenPanel.dispositionAttestationHash,
+      dispositionAttestationHash: input.hiddenPanel.dispositionAttestationHash,
       repairControls: controls,
     }),
     policyAttestationHash: digest(831),
@@ -439,12 +410,8 @@ function policy(input: {
       },
     },
     forbiddenReleaseLiterals: [SECRET_LITERAL, CANARY_LITERAL],
-    forbiddenContentFingerprints: [
-      fingerprintForbiddenReleaseLiteral(SECRET_LITERAL),
-    ],
-    graderCanaryFingerprints: [
-      fingerprintForbiddenReleaseLiteral(CANARY_LITERAL),
-    ],
+    forbiddenContentFingerprints: [fingerprintForbiddenReleaseLiteral(SECRET_LITERAL)],
+    graderCanaryFingerprints: [fingerprintForbiddenReleaseLiteral(CANARY_LITERAL)],
   };
 }
 
@@ -475,8 +442,7 @@ function fixture(
     ...(options.replacementOnFirstCandidate === undefined
       ? {}
       : {
-          replacementOnFirstCandidate:
-            options.replacementOnFirstCandidate,
+          replacementOnFirstCandidate: options.replacementOnFirstCandidate,
         }),
   });
   const derivationPolicy = policy({ evaluationRequest, hiddenPanel });
@@ -506,9 +472,11 @@ function deriver(
 ) {
   const committed = new Map<string, string>();
   const hiddenOutcomeSigner = {
-    sign: (unsigned: Parameters<
-      DeterministicCanonicalEvaluationDeriverOptions["hiddenOutcomeSigner"]["sign"]
-    >[0]) =>
+    sign: (
+      unsigned: Parameters<
+        DeterministicCanonicalEvaluationDeriverOptions["hiddenOutcomeSigner"]["sign"]
+      >[0],
+    ) =>
       Promise.resolve(
         createEd25519Signature(
           unsigned as unknown as Readonly<Record<string, unknown>>,
@@ -527,67 +495,49 @@ function deriver(
         ),
       ),
   };
-  const hiddenOutcomeSink: DeterministicCanonicalEvaluationDeriverOptions["hiddenOutcomeSink"] =
-    {
-      commit: (update) => {
-        const previous = committed.get(update.updateId);
-        if (
-          previous !== undefined &&
-          previous !== update.sourceBindingHash
-        ) {
-          return Promise.reject(new Error("Conflicting update"));
-        }
-        if (previous === undefined) {
-          committed.set(update.updateId, update.sourceBindingHash);
-          capturedUpdates.push(update);
-        }
-        return Promise.resolve({
-          status:
-            previous === undefined
-              ? ("committed" as const)
-              : ("already-committed" as const),
-          updateId: update.updateId,
-          sourceBindingHash: update.sourceBindingHash,
-        });
-      },
-    };
+  const hiddenOutcomeSink: DeterministicCanonicalEvaluationDeriverOptions["hiddenOutcomeSink"] = {
+    commit: (update) => {
+      const previous = committed.get(update.updateId);
+      if (previous !== undefined && previous !== update.sourceBindingHash) {
+        return Promise.reject(new Error("Conflicting update"));
+      }
+      if (previous === undefined) {
+        committed.set(update.updateId, update.sourceBindingHash);
+        capturedUpdates.push(update);
+      }
+      return Promise.resolve({
+        status: previous === undefined ? ("committed" as const) : ("already-committed" as const),
+        updateId: update.updateId,
+        sourceBindingHash: update.sourceBindingHash,
+      });
+    },
+  };
   const preparations = new Map<
     string,
     {
       readonly preparationHash: string;
-      readonly preparation: Parameters<
-        TrustedBehavioralPreparationStore["prepare"]
-      >[0];
+      readonly preparation: Parameters<TrustedBehavioralPreparationStore["prepare"]>[0];
     }
   >();
   const behavioralPreparationStore: TrustedBehavioralPreparationStore =
     overrides.behavioralPreparationStore ?? {
       boundary: "test-only-in-memory",
       prepare: (preparation) => {
-        const preparationHash =
-          hashTrustedBehavioralPreparation(preparation);
-        const existing = preparations.get(
-          preparation.requestHash,
-        );
+        const preparationHash = hashTrustedBehavioralPreparation(preparation);
+        const existing = preparations.get(preparation.requestHash);
         if (
           existing !== undefined &&
           (existing.preparationHash !== preparationHash ||
-            JSON.stringify(existing.preparation) !==
-              JSON.stringify(preparation))
+            JSON.stringify(existing.preparation) !== JSON.stringify(preparation))
         ) {
-          return Promise.reject(
-            new Error("Conflicting preparation"),
-          );
+          return Promise.reject(new Error("Conflicting preparation"));
         }
         preparations.set(preparation.requestHash, {
           preparationHash,
           preparation: structuredClone(preparation),
         });
         return Promise.resolve({
-          status:
-            existing === undefined
-              ? ("prepared" as const)
-              : ("already-prepared" as const),
+          status: existing === undefined ? ("prepared" as const) : ("already-prepared" as const),
           requestHash: preparation.requestHash,
           protocolHash: preparation.protocolHash,
           preparationHash,
@@ -613,34 +563,26 @@ function deriver(
           preparation: structuredClone(existing.preparation),
         });
       },
-      finalize: () =>
-        Promise.reject(new Error("not used by deriver")),
-      abandon: () =>
-        Promise.reject(new Error("not used by deriver")),
-      consume: () =>
-        Promise.reject(new Error("not used by deriver")),
+      finalize: () => Promise.reject(new Error("not used by deriver")),
+      abandon: () => Promise.reject(new Error("not used by deriver")),
+      consume: () => Promise.reject(new Error("not used by deriver")),
     };
-  const deterministicDeriver =
-    new DeterministicCanonicalEvaluationDeriver({
+  const deterministicDeriver = new DeterministicCanonicalEvaluationDeriver({
     reader: {
       decode: () => Promise.resolve(decodedEvaluation),
     },
     policies: {
       resolve: () => Promise.resolve(derivationPolicy),
     },
-    hiddenOutcomeSigner:
-      overrides.hiddenOutcomeSigner ?? hiddenOutcomeSigner,
-    hiddenOutcomeVerifier:
-      overrides.hiddenOutcomeVerifier ?? hiddenOutcomeVerifier,
+    hiddenOutcomeSigner: overrides.hiddenOutcomeSigner ?? hiddenOutcomeSigner,
+    hiddenOutcomeVerifier: overrides.hiddenOutcomeVerifier ?? hiddenOutcomeVerifier,
     hiddenOutcomeSink: overrides.hiddenOutcomeSink ?? hiddenOutcomeSink,
     behavioralPreparationStore,
     now: () => new Date("2026-07-01T00:20:00.000Z"),
   });
   return Object.assign(deterministicDeriver, {
-    resolvePreparation: (input: {
-      readonly requestHash: string;
-      readonly protocolHash: string;
-    }) => behavioralPreparationStore.resolve(input),
+    resolvePreparation: (input: { readonly requestHash: string; readonly protocolHash: string }) =>
+      behavioralPreparationStore.resolve(input),
   });
 }
 
@@ -660,16 +602,14 @@ describe("deterministic trusted canonical evaluation derivation", () => {
       panel: value.hiddenPanel,
       schedule: value.schedule,
       rawRun: value.raw,
-      onlineErrorReservation:
-        value.derivationPolicy.onlineErrorReservation,
+      onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
     });
     const second = await deterministicDeriver.derive({
       request: value.evaluationRequest,
       panel: value.hiddenPanel,
       schedule: value.schedule,
       rawRun: value.raw,
-      onlineErrorReservation:
-        value.derivationPolicy.onlineErrorReservation,
+      onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
     });
 
     expect(second).toEqual(first);
@@ -711,9 +651,7 @@ describe("deterministic trusted canonical evaluation derivation", () => {
         infrastructureValid: true,
       },
     });
-    expect(hiddenUpdate?.normalizedOutcomeSetHash).toBe(
-      first.normalizedOutcomeSetHash,
-    );
+    expect(hiddenUpdate?.normalizedOutcomeSetHash).toBe(first.normalizedOutcomeSetHash);
     if (hiddenUpdate === undefined) {
       throw new Error("Expected a trusted hidden catalog update");
     }
@@ -723,11 +661,10 @@ describe("deterministic trusted canonical evaluation derivation", () => {
         hiddenOutcomeKeys.publicKey,
       ),
     ).toBe(true);
-    const resolution =
-      await deterministicDeriver.resolvePreparation({
-        requestHash: first.requestHash,
-        protocolHash: first.protocolHash,
-      });
+    const resolution = await deterministicDeriver.resolvePreparation({
+      requestHash: first.requestHash,
+      protocolHash: first.protocolHash,
+    });
     expect(resolution.status).toBe("prepared");
     if (resolution.status !== "prepared") {
       throw new Error("Expected a private preparation");
@@ -745,8 +682,7 @@ describe("deterministic trusted canonical evaluation derivation", () => {
     expect(preparation.observations).toHaveLength(24);
     expect(
       preparation.observations.some(
-        (observation) =>
-          observation.taskId === value.hiddenPanel.cells[0]?.taskId,
+        (observation) => observation.taskId === value.hiddenPanel.cells[0]?.taskId,
       ),
     ).toBe(true);
     await expect(
@@ -779,17 +715,13 @@ describe("deterministic trusted canonical evaluation derivation", () => {
 
   it("derives candidate-only repair from five committed champion controls", async () => {
     const value = fixture("repair");
-    const deterministicDeriver = deriver(
-      value.decodedEvaluation,
-      value.derivationPolicy,
-    );
+    const deterministicDeriver = deriver(value.decodedEvaluation, value.derivationPolicy);
     const aggregate = await deterministicDeriver.derive({
       request: value.evaluationRequest,
       panel: value.hiddenPanel,
       schedule: value.schedule,
       rawRun: value.raw,
-      onlineErrorReservation:
-        value.derivationPolicy.onlineErrorReservation,
+      onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
     });
 
     expect(aggregate.payload).toMatchObject({
@@ -809,17 +741,13 @@ describe("deterministic trusted canonical evaluation derivation", () => {
 
   it("collapses feedback-dark shadow evidence to certification only", async () => {
     const value = fixture("shadow");
-    const deterministicDeriver = deriver(
-      value.decodedEvaluation,
-      value.derivationPolicy,
-    );
+    const deterministicDeriver = deriver(value.decodedEvaluation, value.derivationPolicy);
     const aggregate = await deterministicDeriver.derive({
       request: value.evaluationRequest,
       panel: value.hiddenPanel,
       schedule: value.schedule,
       rawRun: value.raw,
-      onlineErrorReservation:
-        value.derivationPolicy.onlineErrorReservation,
+      onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
     });
 
     expect(aggregate.payload).toMatchObject({
@@ -859,8 +787,7 @@ describe("deterministic trusted canonical evaluation derivation", () => {
       panel: value.hiddenPanel,
       schedule: value.schedule,
       rawRun: value.raw,
-      onlineErrorReservation:
-        value.derivationPolicy.onlineErrorReservation,
+      onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
     });
     await expect(rejection).rejects.toMatchObject({
       name: "TrustedCanonicalDeriverError",
@@ -896,8 +823,7 @@ describe("deterministic trusted canonical evaluation derivation", () => {
         panel: value.hiddenPanel,
         schedule: value.schedule,
         rawRun: value.raw,
-        onlineErrorReservation:
-          value.derivationPolicy.onlineErrorReservation,
+        onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
       }),
     ).rejects.toMatchObject({
       code: "normalization-failed",
@@ -922,8 +848,7 @@ describe("deterministic trusted canonical evaluation derivation", () => {
         panel: value.hiddenPanel,
         schedule: value.schedule,
         rawRun: value.raw,
-        onlineErrorReservation:
-          value.derivationPolicy.onlineErrorReservation,
+        onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
       }),
     ).rejects.toMatchObject({
       code: "normalization-failed",
@@ -943,17 +868,12 @@ describe("deterministic trusted canonical evaluation derivation", () => {
     const capturedUpdates: TrustedSignedHiddenCatalogOutcomeUpdate[] = [];
 
     await expect(
-      deriver(
-        value.decodedEvaluation,
-        adversarialPolicy,
-        capturedUpdates,
-      ).derive({
+      deriver(value.decodedEvaluation, adversarialPolicy, capturedUpdates).derive({
         request: value.evaluationRequest,
         panel: value.hiddenPanel,
         schedule: value.schedule,
         rawRun: value.raw,
-        onlineErrorReservation:
-          value.derivationPolicy.onlineErrorReservation,
+        onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
       }),
     ).rejects.toMatchObject({
       code: "release-scan-failed",
@@ -975,8 +895,7 @@ describe("deterministic trusted canonical evaluation derivation", () => {
         panel: value.hiddenPanel,
         schedule: value.schedule,
         rawRun: value.raw,
-        onlineErrorReservation:
-          value.derivationPolicy.onlineErrorReservation,
+        onlineErrorReservation: value.derivationPolicy.onlineErrorReservation,
       }),
     ).rejects.toMatchObject({
       code: "decode-failed",

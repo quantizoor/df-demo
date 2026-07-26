@@ -1,3 +1,4 @@
+import { requireCompatibleProvider } from "../cloud/probe.js";
 import type {
   CloudSandboxProvider,
   RemoteExecutionReceipt,
@@ -6,7 +7,6 @@ import type {
   SecretReference,
   TrustedCloudArtifactRef,
 } from "../cloud/types.js";
-import { requireCompatibleProvider } from "../cloud/probe.js";
 import {
   assertRawArtifactManifest,
   assertRawDestructionReceipt,
@@ -19,10 +19,10 @@ import {
 } from "../evaluator/retention.js";
 import { canonicalHash } from "../schemas/canonical.js";
 import {
-  HARBOR_AGENT_ISOLATION_POLICY,
   assertTrustedHarborJobArtifact,
   createHarborInvocationSpec,
   createHarborOutputPackageSpec,
+  HARBOR_AGENT_ISOLATION_POLICY,
   type TrustedHarborJobArtifact,
 } from "./harbor.js";
 import type { PiHarborAgentSpec } from "./pi-agent.js";
@@ -155,20 +155,14 @@ function assertModelSecretReferences(
   sandbox: SandboxCreateRequest,
   references: readonly SecretReference[],
 ): void {
-  const sandboxBindings = new Set(
-    sandbox.secretReferences.map(secretBindingKey),
-  );
+  const sandboxBindings = new Set(sandbox.secretReferences.map(secretBindingKey));
   const targets = new Set<string>();
   if (
     references.length === 0 ||
     references.some(
       (reference) =>
-        !SAFE_ENVIRONMENT_NAME.test(
-          reference.sourceEnvironmentName,
-        ) ||
-        !SAFE_ENVIRONMENT_NAME.test(
-          reference.targetEnvironmentName,
-        ) ||
+        !SAFE_ENVIRONMENT_NAME.test(reference.sourceEnvironmentName) ||
+        !SAFE_ENVIRONMENT_NAME.test(reference.targetEnvironmentName) ||
         !sandboxBindings.has(secretBindingKey(reference)) ||
         targets.has(reference.targetEnvironmentName),
     )
@@ -188,16 +182,8 @@ function assertSeparatedHarborSecretReferences(
   modelReferences: readonly SecretReference[],
 ): void {
   assertModelSecretReferences(sandbox, harborReferences);
-  const modelTargets = new Set(
-    modelReferences.map(
-      (reference) => reference.targetEnvironmentName,
-    ),
-  );
-  if (
-    harborReferences.some((reference) =>
-      modelTargets.has(reference.targetEnvironmentName),
-    )
-  ) {
+  const modelTargets = new Set(modelReferences.map((reference) => reference.targetEnvironmentName));
+  if (harborReferences.some((reference) => modelTargets.has(reference.targetEnvironmentName))) {
     throw new TerminalBenchRunnerError(
       "Harbor infrastructure and evaluated-model secret targets must be disjoint.",
     );
@@ -249,16 +235,11 @@ function assertRawRun(
     receipts.length !== job.invocations.length ||
     new Set(expectedExecutionIds).size !== expectedExecutionIds.length ||
     run.executions.length !== receipts.length ||
-    actualExecutionIds.some(
-      (executionId, index) => executionId !== expectedExecutionIds[index],
-    ) ||
+    actualExecutionIds.some((executionId, index) => executionId !== expectedExecutionIds[index]) ||
     downloadedBundles.length !== job.invocations.length ||
-    new Set(downloadedBundles.map((bundle) => bundle.uri)).size !==
-      downloadedBundles.length ||
+    new Set(downloadedBundles.map((bundle) => bundle.uri)).size !== downloadedBundles.length ||
     run.rawBundles.length !== downloadedBundles.length ||
-    actualBundleDigests.some(
-      (digest, index) => digest !== expectedBundleDigests[index],
-    ) ||
+    actualBundleDigests.some((digest, index) => digest !== expectedBundleDigests[index]) ||
     run.rawBundles.some(
       (bundle, index) =>
         bundle.uri !== downloadedBundles[index]?.uri ||
@@ -286,10 +267,7 @@ export class TerminalBenchCloudRunner {
     assertTerminalBench21Pin(options.pin);
     assertRawRetentionPolicy(options.retentionPolicy);
     assertRawDestructionReceiptVerifier(options.destructionReceiptVerifier);
-    assertModelSecretReferences(
-      options.sandbox,
-      options.modelSecretReferences,
-    );
+    assertModelSecretReferences(options.sandbox, options.modelSecretReferences);
     assertSeparatedHarborSecretReferences(
       options.sandbox,
       options.harborSecretReferences,
@@ -328,11 +306,8 @@ export class TerminalBenchCloudRunner {
       request.schedule.candidateArmCount !== request.panel.cells.length ||
       request.schedule.championArmCount !==
         (request.panel.stage === "repair" ? 0 : request.panel.cells.length) ||
-      request.agent.adapterSha256 !==
-        this.#options.pin.piHarborAdapterSha256 ||
-      canonicalHash(
-        [...request.agent.credentialEnvironmentNames].sort(),
-      ) !==
+      request.agent.adapterSha256 !== this.#options.pin.piHarborAdapterSha256 ||
+      canonicalHash([...request.agent.credentialEnvironmentNames].sort()) !==
         canonicalHash(
           this.#options.modelSecretReferences
             .map((reference) => reference.targetEnvironmentName)
@@ -356,6 +331,9 @@ export class TerminalBenchCloudRunner {
     let lease: SandboxLease | undefined;
     let persistedRawRun: TrustedRawRun | undefined;
     let persistedRawDiscarded = false;
+    let result: TrustedRawRun | undefined;
+    let primaryFailure: { readonly error: unknown } | undefined;
+    let teardownFailure: { readonly error: unknown } | undefined;
     try {
       lease = await this.#options.provider.create({
         ...this.#options.sandbox,
@@ -384,19 +362,12 @@ export class TerminalBenchCloudRunner {
         job.cellCount !== request.schedule.cellCount ||
         job.armCount !== request.schedule.armCount ||
         job.uploads.some(
-          (upload) =>
-            !isWithinRemoteRoot(upload.remotePath, this.#options.remoteUploadRoot),
+          (upload) => !isWithinRemoteRoot(upload.remotePath, this.#options.remoteUploadRoot),
         ) ||
         job.invocations.some(
           (invocation) =>
-            !isWithinRemoteRoot(
-              invocation.remoteHarborJobPath,
-              this.#options.remoteOutputRoot,
-            ) ||
-            !isWithinRemoteRoot(
-              invocation.remoteOutputPath,
-              this.#options.remoteOutputRoot,
-            ),
+            !isWithinRemoteRoot(invocation.remoteHarborJobPath, this.#options.remoteOutputRoot) ||
+            !isWithinRemoteRoot(invocation.remoteOutputPath, this.#options.remoteOutputRoot),
         )
       ) {
         throw new TerminalBenchRunnerError(
@@ -419,18 +390,13 @@ export class TerminalBenchCloudRunner {
             pin: this.#options.pin,
             job,
             invocation,
-            secretReferences:
-              [
-                ...this.#options.harborSecretReferences,
-                ...this.#options.modelSecretReferences,
-              ],
+            secretReferences: [
+              ...this.#options.harborSecretReferences,
+              ...this.#options.modelSecretReferences,
+            ],
           }),
         );
-        if (
-          execution.exitCode !== 0 ||
-          execution.timedOut ||
-          execution.cancelled
-        ) {
+        if (execution.exitCode !== 0 || execution.timedOut || execution.cancelled) {
           throw new TerminalBenchRunnerError(
             "Harbor failed or was interrupted; no evaluation result is releasable.",
           );
@@ -448,8 +414,7 @@ export class TerminalBenchCloudRunner {
         const packaging = await this.#options.provider.execute(
           lease,
           createHarborOutputPackageSpec({
-            nodeExecutable:
-              this.#options.outputPackagerNodeExecutable,
+            nodeExecutable: this.#options.outputPackagerNodeExecutable,
             workingDirectory: this.#options.harborWorkingDirectory,
             timeoutMs: this.#options.outputPackagerTimeoutMs,
             pin: this.#options.pin,
@@ -458,11 +423,7 @@ export class TerminalBenchCloudRunner {
             executionId: harborExecution.executionId,
           }),
         );
-        if (
-          packaging.exitCode !== 0 ||
-          packaging.timedOut ||
-          packaging.cancelled
-        ) {
+        if (packaging.exitCode !== 0 || packaging.timedOut || packaging.cancelled) {
           throw new TerminalBenchRunnerError(
             "Harbor output packaging failed; no raw result is releasable.",
           );
@@ -471,14 +432,10 @@ export class TerminalBenchCloudRunner {
 
       const downloadedBundles: TrustedCloudArtifactRef[] = [];
       for (const invocation of job.invocations) {
-        const bundle = await this.#options.provider.download(
-          lease,
-          invocation.remoteOutputPath,
-          {
-            mediaType: "application/x-tar",
-            maximumByteLength: 2_304 * 1024 * 1024,
-          },
-        );
+        const bundle = await this.#options.provider.download(lease, invocation.remoteOutputPath, {
+          mediaType: "application/x-tar",
+          maximumByteLength: 2_304 * 1024 * 1024,
+        });
         if (
           bundle.mediaType !== "application/x-tar" ||
           bundle.byteLength <= 0 ||
@@ -509,8 +466,9 @@ export class TerminalBenchCloudRunner {
         this.#options.retentionPolicy,
         runtimeAttestationHash,
       );
-      return persistedRawRun;
-    } catch {
+      result = persistedRawRun;
+    } catch (error) {
+      primaryFailure = { error };
       if (persistedRawRun !== undefined) {
         persistedRawDiscarded = await discardRawRun(
           this.#options.rawIngress,
@@ -519,31 +477,44 @@ export class TerminalBenchCloudRunner {
           this.#options.destructionReceiptVerifier,
         );
       }
-      throw new TerminalBenchRunnerError(
-        "Trusted Terminal-Bench execution failed closed without a releasable result.",
-      );
     } finally {
       if (lease !== undefined) {
         try {
           await this.#options.provider.destroy(lease);
-        } catch {
-          if (
-            persistedRawRun !== undefined &&
-            !persistedRawDiscarded
-          ) {
-            await discardRawRun(
+        } catch (error) {
+          teardownFailure = { error };
+          if (persistedRawRun !== undefined && !persistedRawDiscarded) {
+            persistedRawDiscarded = await discardRawRun(
               this.#options.rawIngress,
               this.#options.retentionPolicy,
               persistedRawRun,
               this.#options.destructionReceiptVerifier,
             );
           }
-          throw new TerminalBenchRunnerError(
-            "Cloud sandbox teardown failed; the evaluation was discarded.",
-          );
         }
       }
     }
+    if (teardownFailure !== undefined) {
+      throw new TerminalBenchRunnerError(
+        "Cloud sandbox teardown failed; the evaluation was discarded.",
+        {
+          cause:
+            primaryFailure === undefined
+              ? teardownFailure.error
+              : new AggregateError(
+                  [primaryFailure.error, teardownFailure.error],
+                  "Terminal-Bench execution and sandbox teardown both failed.",
+                ),
+        },
+      );
+    }
+    if (primaryFailure !== undefined || result === undefined) {
+      throw new TerminalBenchRunnerError(
+        "Trusted Terminal-Bench execution failed closed without a releasable result.",
+        { cause: primaryFailure?.error },
+      );
+    }
+    return result;
   }
 }
 

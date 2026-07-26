@@ -3,14 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExperimentIdentity } from "../../src/domain/models.js";
 import type { ReleasedEvaluationBundle } from "../../src/evaluator/canonical-client.js";
 import { hashEvaluationRequest } from "../../src/evaluator/contracts.js";
+import { resultEnvelopeBehavioralSourceCommitmentHash } from "../../src/evaluator/release-lineage.js";
 import {
-  resultEnvelopeBehavioralSourceCommitmentHash,
-} from "../../src/evaluator/release-lineage.js";
-import {
-  ProductionBlindBroker,
-  emptyBlindBrokerLeaseState,
   type AtomicBlindBrokerLeaseStore,
   type DurableBlindBrokerLeaseState,
+  emptyBlindBrokerLeaseState,
+  ProductionBlindBroker,
   type ProductionBlindBrokerOptions,
 } from "../../src/orchestrator/blind-broker.js";
 import type {
@@ -20,10 +18,7 @@ import type {
   FailureCards,
 } from "../../src/schemas/artifacts.js";
 import { withContentHash } from "../../src/schemas/canonical.js";
-import type {
-  SignedBehavioralRelease,
-  SignedResultEnvelope,
-} from "../../src/schemas/trusted.js";
+import type { SignedBehavioralRelease, SignedResultEnvelope } from "../../src/schemas/trusted.js";
 
 const PROTOCOL = "a".repeat(64);
 const COMPLIANCE = "b".repeat(64);
@@ -95,9 +90,7 @@ function cacheAttestation(experimentNumber: number): CacheAttestation {
 }
 
 function releaseFor(
-  request: Parameters<
-    ProductionBlindBrokerOptions["evaluator"]["evaluate"]
-  >[0],
+  request: Parameters<ProductionBlindBrokerOptions["evaluator"]["evaluate"]>[0],
   invalidArmTotal = 0,
   withDiagnostics = false,
   legacyDiagnosticSource = false,
@@ -169,9 +162,7 @@ function releaseFor(
           },
         };
   const behavioralReleaseAlias =
-    request.stage === "validation" && withDiagnostics
-      ? "f".repeat(64)
-      : null;
+    request.stage === "validation" && withDiagnostics ? "f".repeat(64) : null;
   let result = withContentHash({
     schemaVersion: "1.0.0",
     createdAt: "2026-07-26T10:00:00.000Z",
@@ -208,10 +199,9 @@ function releaseFor(
     signature: SIGNATURE,
   }) as SignedResultEnvelope;
   if (behavioralReleaseAlias !== null) {
-    const behavioralSourceHash =
-      legacyDiagnosticSource
-        ? result.contentHash
-        : resultEnvelopeBehavioralSourceCommitmentHash(result);
+    const behavioralSourceHash = legacyDiagnosticSource
+      ? result.contentHash
+      : resultEnvelopeBehavioralSourceCommitmentHash(result);
     const policies = {
       protocol: "protocol-v1",
       broker: "broker-v1",
@@ -293,10 +283,7 @@ function releaseFor(
       releaseOnce: true,
       signature: SIGNATURE,
     }) as SignedBehavioralRelease;
-    const {
-      contentHash: _provisionalContentHash,
-      ...resultWithoutContentHash
-    } = result;
+    const { contentHash: _provisionalContentHash, ...resultWithoutContentHash } = result;
     result = withContentHash({
       ...resultWithoutContentHash,
       derivation: {
@@ -332,9 +319,7 @@ function dependencies(input: {
   readonly diagnosticPublishFailures?: number;
 }) {
   const store = input.store ?? new AtomicMemoryLeaseStore();
-  const requests: Parameters<
-    ProductionBlindBrokerOptions["evaluator"]["evaluate"]
-  >[0][] = [];
+  const requests: Parameters<ProductionBlindBrokerOptions["evaluator"]["evaluate"]>[0][] = [];
   let tokenOrdinal = 0;
   const evaluator = {
     evaluate: vi.fn(async (request) => {
@@ -347,8 +332,7 @@ function dependencies(input: {
       );
     }),
   };
-  let diagnosticPublishFailures =
-    input.diagnosticPublishFailures ?? 0;
+  let diagnosticPublishFailures = input.diagnosticPublishFailures ?? 0;
   const options: ProductionBlindBrokerOptions = {
     store,
     configurations: {
@@ -382,8 +366,7 @@ function dependencies(input: {
         uri: `trusted://harness/${commit}`,
         commitSha: commit,
         treeSha: commit,
-        archiveSha256:
-          commit === CANDIDATE ? "8".repeat(64) : "9".repeat(64),
+        archiveSha256: commit === CANDIDATE ? "8".repeat(64) : "9".repeat(64),
       }),
     },
     repairDiscovery: {
@@ -405,8 +388,7 @@ function dependencies(input: {
         return {
           hash: diagnosticBrief.contentHash,
           releaseId: diagnosticBrief.releaseId,
-          actionable:
-            diagnosticBrief.status === "actionable-evidence",
+          actionable: diagnosticBrief.status === "actionable-evidence",
         };
       }),
     },
@@ -451,12 +433,8 @@ describe("production blind broker adapter", () => {
       candidateAttempt: 1,
       frozenHypothesisHash: "0".repeat(64),
     });
-    expect(JSON.stringify({ lease, aggregate })).not.toMatch(
-      /taskId|packageTaskName|grader/u,
-    );
-    expect(
-      Object.values(fixture.store.state.records)[0]?.disposedOutcome,
-    ).toBe("decided");
+    expect(JSON.stringify({ lease, aggregate })).not.toMatch(/taskId|packageTaskName|grader/u);
+    expect(Object.values(fixture.store.state.records)[0]?.disposedOutcome).toBe("decided");
 
     await expect(
       fixture.broker.runRepair({
@@ -536,11 +514,13 @@ describe("production blind broker adapter", () => {
       }),
     ).rejects.toMatchObject({ code: "release-invalid" });
     await expect(
-      fixture.broker.consumeOrQuarantine({
-        leaseToken: lease.leaseToken,
-        attestationHash: lease.attestationHash,
-        outcome: "decided",
-      }),
+      Promise.resolve().then(() =>
+        fixture.broker.consumeOrQuarantine({
+          leaseToken: lease.leaseToken,
+          attestationHash: lease.attestationHash,
+          outcome: "decided",
+        }),
+      ),
     ).rejects.toMatchObject({ code: "lease-state-invalid" });
     await expect(
       fixture.broker.consumeOrQuarantine({
@@ -733,12 +713,10 @@ describe("production blind broker adapter", () => {
       validationAttestationHash: aggregate.attestationHash,
       releaseAuthorized: true as const,
     };
-    await expect(
-      fixture.broker.releaseDiagnosticBrief(release),
-    ).rejects.toMatchObject({ code: "diagnostic-unavailable" });
-    await expect(
-      fixture.broker.releaseDiagnosticBrief(release),
-    ).resolves.toMatchObject({
+    await expect(fixture.broker.releaseDiagnosticBrief(release)).rejects.toMatchObject({
+      code: "diagnostic-unavailable",
+    });
+    await expect(fixture.broker.releaseDiagnosticBrief(release)).resolves.toMatchObject({
       hash: aggregate.releasedEvidenceHash,
       releaseId: "diagnostic-1",
     });

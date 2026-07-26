@@ -1,22 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  parseProductionOptimizeBootstrapDescriptorJson,
-  productionOptimizeBootstrapDescriptorHash,
-  productionOptimizeBootstrapVerificationCommitmentHash,
-  ProductionOptimizeBootstrapError,
   type ProductionOptimizeBootstrapDescriptor,
   type ProductionOptimizeBootstrapDescriptorUnsigned,
   type ProductionOptimizeBootstrapDescriptorVerification,
+  ProductionOptimizeBootstrapError,
+  parseProductionOptimizeBootstrapDescriptorJson,
+  productionOptimizeBootstrapDescriptorHash,
+  productionOptimizeBootstrapVerificationCommitmentHash,
   VerifiedProductionOptimizeBootstrapArtifactLoader,
 } from "../../src/cloud/production-optimize-bootstrap.js";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import { PRODUCTION_RUNTIME_PORT_IDS } from "../../src/orchestrator/production-runtime.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  sha256,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, canonicalJson, sha256 } from "../../src/schemas/canonical.js";
 
 const NOW = new Date("2026-07-26T12:00:00.000Z");
 const HASH_A = "a".repeat(64);
@@ -37,8 +33,7 @@ function compositionDocument(): Readonly<Record<string, unknown>> {
   });
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimization-composition.v1" as const,
+    domain: "dark-factory.production-optimization-composition.v1" as const,
     manifestId: "production-001",
     campaignId: "campaign-one",
     lineageId: "lineage-one",
@@ -99,11 +94,13 @@ interface BootstrapFixture {
   readonly raw: string;
 }
 
-function bootstrapFixture(options: {
-  readonly document?: Readonly<Record<string, unknown>>;
-  readonly raw?: string;
-  readonly artifact?: Partial<TrustedCloudArtifactRef>;
-} = {}): BootstrapFixture {
+function bootstrapFixture(
+  options: {
+    readonly document?: Readonly<Record<string, unknown>>;
+    readonly raw?: string;
+    readonly artifact?: Partial<TrustedCloudArtifactRef>;
+  } = {},
+): BootstrapFixture {
   const document = options.document ?? compositionDocument();
   const raw = options.raw ?? `${canonicalJson(document)}\n`;
   const compositionArtifact: TrustedCloudArtifactRef = {
@@ -128,16 +125,14 @@ function bootstrapFixture(options: {
     compositionArtifact,
     compositionManifestHash: document["manifestHash"] as string,
     ...commitment,
-    verificationCommitmentHash:
-      productionOptimizeBootstrapVerificationCommitmentHash(commitment),
+    verificationCommitmentHash: productionOptimizeBootstrapVerificationCommitmentHash(commitment),
     issuedAt: "2026-07-26T11:00:00.000Z",
     expiresAt: "2026-07-26T13:00:00.000Z",
   };
   return {
     descriptor: {
       ...unsigned,
-      descriptorHash:
-        productionOptimizeBootstrapDescriptorHash(unsigned),
+      descriptorHash: productionOptimizeBootstrapDescriptorHash(unsigned),
       signature: {
         algorithm: "ed25519",
         keyId: "bootstrap-key",
@@ -156,15 +151,13 @@ function verification(
 ): ProductionOptimizeBootstrapDescriptorVerification {
   return {
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-optimize-bootstrap-verification.v1",
+    domain: "dark-factory.production-optimize-bootstrap-verification.v1",
     descriptorHash: descriptor.descriptorHash,
     signingKeyId: descriptor.signature.keyId,
     authoritySetHash: descriptor.authoritySetHash,
     verificationKeySetHash: descriptor.verificationKeySetHash,
     verifierPolicyHash: descriptor.verifierPolicyHash,
-    verificationCommitmentHash:
-      descriptor.verificationCommitmentHash,
+    verificationCommitmentHash: descriptor.verificationCommitmentHash,
     verifierAttestationHash: HASH_A,
     verified: true,
     ...overrides,
@@ -173,21 +166,13 @@ function verification(
 
 function loaderFor(
   fixture: BootstrapFixture,
-  verificationOverrides: Partial<
-    ProductionOptimizeBootstrapDescriptorVerification
-  > = {},
+  verificationOverrides: Partial<ProductionOptimizeBootstrapDescriptorVerification> = {},
 ) {
-  const readUtf8 = vi.fn(
-    (
-      _artifact: TrustedCloudArtifactRef,
-      _maximumBytes: number,
-    ) => Promise.resolve(fixture.raw),
+  const readUtf8 = vi.fn((_artifact: TrustedCloudArtifactRef, _maximumBytes: number) =>
+    Promise.resolve(fixture.raw),
   );
-  const verify = vi.fn(
-    (descriptor: ProductionOptimizeBootstrapDescriptor) =>
-      Promise.resolve(
-        verification(descriptor, verificationOverrides),
-      ),
+  const verify = vi.fn((descriptor: ProductionOptimizeBootstrapDescriptor) =>
+    Promise.resolve(verification(descriptor, verificationOverrides)),
   );
   return {
     readUtf8,
@@ -198,8 +183,7 @@ function loaderFor(
         readUtf8,
       },
       verifier: {
-        boundary:
-          "trusted-cloud-bootstrap-descriptor-verifier",
+        boundary: "trusted-cloud-bootstrap-descriptor-verifier",
         verify,
       },
       now: () => NOW,
@@ -212,23 +196,14 @@ describe("production optimize bootstrap descriptor", () => {
     const fixture = bootstrapFixture();
     const canonical = canonicalJson(fixture.descriptor);
 
-    expect(
-      parseProductionOptimizeBootstrapDescriptorJson(
-        canonical,
-        "campaign-one",
-      ),
-    ).toEqual(fixture.descriptor);
+    expect(parseProductionOptimizeBootstrapDescriptorJson(canonical, "campaign-one")).toEqual(
+      fixture.descriptor,
+    );
     expect(() =>
-      parseProductionOptimizeBootstrapDescriptorJson(
-        `${canonical}\n`,
-        "campaign-one",
-      ),
+      parseProductionOptimizeBootstrapDescriptorJson(`${canonical}\n`, "campaign-one"),
     ).toThrow(ProductionOptimizeBootstrapError);
     expect(() =>
-      parseProductionOptimizeBootstrapDescriptorJson(
-        canonical,
-        "another-campaign",
-      ),
+      parseProductionOptimizeBootstrapDescriptorJson(canonical, "another-campaign"),
     ).toThrow(ProductionOptimizeBootstrapError);
     expect(() =>
       parseProductionOptimizeBootstrapDescriptorJson(
@@ -249,25 +224,15 @@ describe("production optimize bootstrap descriptor", () => {
 
     expect(verify).toHaveBeenCalledOnce();
     expect(Object.isFrozen(verify.mock.calls[0]?.[0])).toBe(true);
-    expect(
-      Object.isFrozen(
-        verify.mock.calls[0]?.[0].compositionArtifact,
-      ),
-    ).toBe(true);
-    expect(readUtf8).toHaveBeenCalledWith(
-      fixture.descriptor.compositionArtifact,
-      4 * 1024 * 1024,
-    );
-    expect(
-      Object.isFrozen(readUtf8.mock.calls[0]?.[0]),
-    ).toBe(true);
+    expect(Object.isFrozen(verify.mock.calls[0]?.[0].compositionArtifact)).toBe(true);
+    expect(readUtf8).toHaveBeenCalledWith(fixture.descriptor.compositionArtifact, 4 * 1024 * 1024);
+    expect(Object.isFrozen(readUtf8.mock.calls[0]?.[0])).toBe(true);
     expect(loaded).toMatchObject({
       campaignId: "campaign-one",
       lineageId: "lineage-one",
       protocolHash: HASH_A,
       descriptorHash: fixture.descriptor.descriptorHash,
-      compositionManifestHash:
-        fixture.descriptor.compositionManifestHash,
+      compositionManifestHash: fixture.descriptor.compositionManifestHash,
       compositionDocumentHash: canonicalHash(fixture.document),
       descriptorAuthorityVerified: true,
       artifactTransportVerified: true,
@@ -276,9 +241,7 @@ describe("production optimize bootstrap descriptor", () => {
       document: fixture.document,
     });
     expect(Object.isFrozen(loaded.document)).toBe(true);
-    expect(
-      Object.isFrozen(loaded.document["informationBoundary"]),
-    ).toBe(true);
+    expect(Object.isFrozen(loaded.document["informationBoundary"])).toBe(true);
   });
 
   it("rejects untrusted seams and a detached authority receipt", async () => {
@@ -291,10 +254,8 @@ describe("production optimize bootstrap descriptor", () => {
             readUtf8: () => Promise.resolve(fixture.raw),
           },
           verifier: {
-            boundary:
-              "trusted-cloud-bootstrap-descriptor-verifier",
-            verify: () =>
-              Promise.resolve(verification(fixture.descriptor)),
+            boundary: "trusted-cloud-bootstrap-descriptor-verifier",
+            verify: () => Promise.resolve(verification(fixture.descriptor)),
           },
         }),
     ).toThrow(ProductionOptimizeBootstrapError);
@@ -302,9 +263,9 @@ describe("production optimize bootstrap descriptor", () => {
     const detached = loaderFor(fixture, {
       verifierPolicyHash: HASH_A,
     });
-    await expect(
-      detached.loader.load(fixture.descriptor),
-    ).rejects.toBeInstanceOf(ProductionOptimizeBootstrapError);
+    await expect(detached.loader.load(fixture.descriptor)).rejects.toBeInstanceOf(
+      ProductionOptimizeBootstrapError,
+    );
   });
 
   it("rejects mismatched bytes and non-canonical composition JSON", async () => {
@@ -312,14 +273,12 @@ describe("production optimize bootstrap descriptor", () => {
     const mismatched = bootstrapFixture({
       artifact: { sha256: HASH_A },
     });
-    await expect(
-      loaderFor(mismatched).loader.load(mismatched.descriptor),
-    ).rejects.toBeInstanceOf(ProductionOptimizeBootstrapError);
+    await expect(loaderFor(mismatched).loader.load(mismatched.descriptor)).rejects.toBeInstanceOf(
+      ProductionOptimizeBootstrapError,
+    );
 
     const noncanonicalRaw = `${JSON.stringify(fixture.document)}\n`;
-    expect(noncanonicalRaw).not.toBe(
-      `${canonicalJson(fixture.document)}\n`,
-    );
+    expect(noncanonicalRaw).not.toBe(`${canonicalJson(fixture.document)}\n`);
     const noncanonical = bootstrapFixture({
       document: fixture.document,
       raw: noncanonicalRaw,
@@ -331,11 +290,7 @@ describe("production optimize bootstrap descriptor", () => {
 
   it("rejects an expired descriptor before authority or artifact access", async () => {
     const fixture = bootstrapFixture();
-    const {
-      descriptorHash: _descriptorHash,
-      signature,
-      ...unsigned
-    } = fixture.descriptor;
+    const { descriptorHash: _descriptorHash, signature, ...unsigned } = fixture.descriptor;
     const expiredUnsigned: ProductionOptimizeBootstrapDescriptorUnsigned = {
       ...unsigned,
       issuedAt: "2026-07-26T10:00:00.000Z",
@@ -345,8 +300,7 @@ describe("production optimize bootstrap descriptor", () => {
       ...fixture,
       descriptor: {
         ...expiredUnsigned,
-        descriptorHash:
-          productionOptimizeBootstrapDescriptorHash(expiredUnsigned),
+        descriptorHash: productionOptimizeBootstrapDescriptorHash(expiredUnsigned),
         signature: {
           ...signature,
           signedAt: "2026-07-26T10:00:01.000Z",
@@ -355,9 +309,9 @@ describe("production optimize bootstrap descriptor", () => {
     };
     const { loader, readUtf8, verify } = loaderFor(expired);
 
-    await expect(
-      loader.load(expired.descriptor),
-    ).rejects.toBeInstanceOf(ProductionOptimizeBootstrapError);
+    await expect(loader.load(expired.descriptor)).rejects.toBeInstanceOf(
+      ProductionOptimizeBootstrapError,
+    );
     expect(verify).not.toHaveBeenCalled();
     expect(readUtf8).not.toHaveBeenCalled();
   });
@@ -368,24 +322,18 @@ describe("production optimize bootstrap descriptor", () => {
       document: {
         ...taskBearingBase,
         informationBoundary: {
-          ...(taskBearingBase["informationBoundary"] as Record<
-            string,
-            boolean
-          >),
+          ...(taskBearingBase["informationBoundary"] as Record<string, boolean>),
           containsTaskIdentities: true,
         },
       },
     });
-    await expect(
-      loaderFor(taskBearing).loader.load(taskBearing.descriptor),
-    ).rejects.toBeInstanceOf(ProductionOptimizeBootstrapError);
+    await expect(loaderFor(taskBearing).loader.load(taskBearing.descriptor)).rejects.toBeInstanceOf(
+      ProductionOptimizeBootstrapError,
+    );
 
     const malformedBase = compositionDocument();
     const attestations = [
-      ...(malformedBase["runtimePortAttestations"] as readonly Record<
-        string,
-        unknown
-      >[]),
+      ...(malformedBase["runtimePortAttestations"] as readonly Record<string, unknown>[]),
     ];
     attestations[0] = {
       ...(attestations[0] ?? {}),
@@ -397,8 +345,8 @@ describe("production optimize bootstrap descriptor", () => {
         runtimePortAttestations: attestations,
       },
     });
-    await expect(
-      loaderFor(malformed).loader.load(malformed.descriptor),
-    ).rejects.toBeInstanceOf(ProductionOptimizeBootstrapError);
+    await expect(loaderFor(malformed).loader.load(malformed.descriptor)).rejects.toBeInstanceOf(
+      ProductionOptimizeBootstrapError,
+    );
   });
 });

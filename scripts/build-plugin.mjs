@@ -21,4 +21,3 @@ await build({
   minify: false,
   legalComments: "none",
 });
-

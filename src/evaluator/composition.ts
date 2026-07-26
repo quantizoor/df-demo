@@ -1,7 +1,4 @@
-import {
-  Ed25519ResultEnvelopeIssuer,
-  Ed25519ResultEnvelopeVerifier,
-} from "../broker/issuer.js";
+import { Ed25519ResultEnvelopeIssuer, Ed25519ResultEnvelopeVerifier } from "../broker/issuer.js";
 import type { OneUseRequestLedger } from "../broker/ledger.js";
 import {
   TrustedEvaluationBroker,
@@ -15,15 +12,12 @@ import {
   type TerminalBenchRunnerOptions,
   type TrustedRawRunIngress,
 } from "../terminal-bench/runner.js";
-import type { TrustedEvaluationRequest } from "./contracts.js";
-import type { TrustedOnlineErrorBudgetAuthority } from "./online-error-authority.js";
+import type { TrustedBehavioralPreparationStore } from "./behavioral-preparation-store.js";
 import {
   DeterministicPostDestructionBehavioralReleaseProducer,
   type TrustedBehavioralPrivacyArtifactStore,
 } from "./behavioral-release-producer.js";
-import type {
-  TrustedBehavioralPreparationStore,
-} from "./behavioral-preparation-store.js";
+import type { TrustedEvaluationRequest } from "./contracts.js";
 import {
   DeterministicCanonicalEvaluationDeriver,
   type TrustedHiddenCatalogOutcomeUpdateSink,
@@ -35,6 +29,7 @@ import {
   type TrustedCloudEd25519PublicKey,
   type TrustedCloudEd25519PublicKeyProvider,
 } from "./hidden-update-signature.js";
+import type { TrustedOnlineErrorBudgetAuthority } from "./online-error-authority.js";
 import {
   BoundCanonicalDerivationPolicyResolver,
   type TrustedCanonicalPolicyMaterialProvider,
@@ -113,10 +108,7 @@ export class TrustedEvaluationCompositionError extends Error {
   }
 }
 
-function assertTrustedKeyIds(
-  signingKeyId: string,
-  trustedKeyIds: readonly string[],
-): void {
+function assertTrustedKeyIds(signingKeyId: string, trustedKeyIds: readonly string[]): void {
   if (
     !SAFE_KEY_ID.test(signingKeyId) ||
     trustedKeyIds.length < 1 ||
@@ -128,10 +120,7 @@ function assertTrustedKeyIds(
   }
 }
 
-function validPublicResultKey(
-  key: TrustedCloudEd25519PublicKey,
-  keyId: string,
-): boolean {
+function validPublicResultKey(key: TrustedCloudEd25519PublicKey, keyId: string): boolean {
   return (
     key.boundary === "trusted-cloud-key-material" &&
     key.algorithm === "Ed25519" &&
@@ -153,9 +142,7 @@ export interface TrustedEvaluationService {
   evaluate(request: TrustedEvaluationRequest): Promise<SignedResultEnvelope>;
 }
 
-class ComposedTrustedEvaluationService
-  implements TrustedEvaluationService
-{
+class ComposedTrustedEvaluationService implements TrustedEvaluationService {
   readonly boundary = "trusted-cloud-evaluator-service" as const;
   readonly #broker: TrustedEvaluationBroker;
 
@@ -188,23 +175,17 @@ export async function createTrustedEvaluationService(
       options.raw.decryptor.boundary !== "trusted-cloud" ||
       options.raw.decoder.boundary !== "trusted-cloud" ||
       options.policyProvider.boundary !== "trusted-cloud" ||
-      options.hiddenOutcomeSigning.privateKeys.boundary !==
-        "trusted-cloud" ||
+      options.hiddenOutcomeSigning.privateKeys.boundary !== "trusted-cloud" ||
       options.hiddenOutcomeSigning.publicKeys.boundary !== "trusted-cloud" ||
-      options.resultEnvelopeSigning.privateKeys.boundary !==
-        "trusted-cloud" ||
+      options.resultEnvelopeSigning.privateKeys.boundary !== "trusted-cloud" ||
       options.resultEnvelopeSigning.publicKeys.boundary !== "trusted-cloud" ||
       options.behavioralReleaseStore.boundary !== "trusted-cloud" ||
-      options.behavioralReleaseSigning.privateKeys.boundary !==
-        "trusted-cloud" ||
-      options.behavioralReleaseSigning.publicKeys.boundary !==
-        "trusted-cloud" ||
+      options.behavioralReleaseSigning.privateKeys.boundary !== "trusted-cloud" ||
+      options.behavioralReleaseSigning.publicKeys.boundary !== "trusted-cloud" ||
       typeof options.stores.ledger.claim !== "function" ||
       typeof options.stores.ledger.inspect !== "function" ||
-      typeof options.stores.ledger.recoverInFlight !==
-        "function" ||
-      typeof options.stores.ledger.bindDispositionAttestation !==
-        "function" ||
+      typeof options.stores.ledger.recoverInFlight !== "function" ||
+      typeof options.stores.ledger.bindDispositionAttestation !== "function" ||
       typeof options.stores.ledger.complete !== "function" ||
       typeof options.stores.ledger.consumeFailure !== "function" ||
       typeof options.stores.panels.allocateAndConsume !== "function" ||
@@ -212,46 +193,30 @@ export async function createTrustedEvaluationService(
       typeof options.stores.rawIngress.discard !== "function" ||
       typeof options.stores.custodian.destroy !== "function" ||
       typeof options.stores.hiddenOutcomeSink.commit !== "function" ||
-      options.stores.onlineErrorAuthority.boundary !==
-        "trusted-cloud-online-error-authority" ||
-      options.stores.behavioralPreparations.boundary !==
-        "trusted-cloud" ||
+      options.stores.onlineErrorAuthority.boundary !== "trusted-cloud-online-error-authority" ||
+      options.stores.behavioralPreparations.boundary !== "trusted-cloud" ||
       typeof options.stores.onlineErrorAuthority.reserve !== "function" ||
-      typeof options.stores.onlineErrorAuthority.reconcile !==
-        "function" ||
-      typeof options.stores.behavioralPreparations.prepare !==
-        "function" ||
-      typeof options.stores.behavioralPreparations.resolve !==
-        "function" ||
-      typeof options.stores.behavioralPreparations.finalize !==
-        "function" ||
-      typeof options.stores.behavioralPreparations.abandon !==
-        "function" ||
-      typeof options.stores.behavioralPreparations.consume !==
-        "function" ||
+      typeof options.stores.onlineErrorAuthority.reconcile !== "function" ||
+      typeof options.stores.behavioralPreparations.prepare !== "function" ||
+      typeof options.stores.behavioralPreparations.resolve !== "function" ||
+      typeof options.stores.behavioralPreparations.finalize !== "function" ||
+      typeof options.stores.behavioralPreparations.abandon !== "function" ||
+      typeof options.stores.behavioralPreparations.consume !== "function" ||
       typeof options.raw.source.read !== "function" ||
       typeof options.raw.decryptor.decrypt !== "function" ||
       typeof options.raw.decoder.decode !== "function" ||
       typeof options.policyProvider.load !== "function" ||
-      typeof options.hiddenOutcomeSigning.privateKeys.resolve !==
-        "function" ||
-      typeof options.hiddenOutcomeSigning.publicKeys.resolve !==
-        "function" ||
-      typeof options.resultEnvelopeSigning.privateKeys.resolve !==
-        "function" ||
-      typeof options.resultEnvelopeSigning.publicKeys.resolve !==
-        "function" ||
+      typeof options.hiddenOutcomeSigning.privateKeys.resolve !== "function" ||
+      typeof options.hiddenOutcomeSigning.publicKeys.resolve !== "function" ||
+      typeof options.resultEnvelopeSigning.privateKeys.resolve !== "function" ||
+      typeof options.resultEnvelopeSigning.publicKeys.resolve !== "function" ||
       typeof options.behavioralReleaseStore.load !== "function" ||
-      typeof options.behavioralReleaseStore.resolveByContentHash !==
-        "function" ||
-      typeof options.behavioralReleaseStore.inspectCommit !==
-        "function" ||
+      typeof options.behavioralReleaseStore.resolveByContentHash !== "function" ||
+      typeof options.behavioralReleaseStore.inspectCommit !== "function" ||
       typeof options.behavioralReleaseStore.commit !== "function" ||
       typeof options.behavioralReleaseStore.orphan !== "function" ||
-      typeof options.behavioralReleaseSigning.privateKeys.resolve !==
-        "function" ||
-      typeof options.behavioralReleaseSigning.publicKeys.resolve !==
-        "function" ||
+      typeof options.behavioralReleaseSigning.privateKeys.resolve !== "function" ||
+      typeof options.behavioralReleaseSigning.publicKeys.resolve !== "function" ||
       typeof options.runner.provider.probe !== "function" ||
       typeof options.runner.provider.create !== "function" ||
       typeof options.runner.provider.execute !== "function" ||
@@ -286,56 +251,47 @@ export async function createTrustedEvaluationService(
       ...(options.raw.maximumEncryptedArtifactBytes === undefined
         ? {}
         : {
-            maximumEncryptedArtifactBytes:
-              options.raw.maximumEncryptedArtifactBytes,
+            maximumEncryptedArtifactBytes: options.raw.maximumEncryptedArtifactBytes,
           }),
       ...(options.raw.maximumPlaintextArtifactBytes === undefined
         ? {}
         : {
-            maximumPlaintextArtifactBytes:
-              options.raw.maximumPlaintextArtifactBytes,
+            maximumPlaintextArtifactBytes: options.raw.maximumPlaintextArtifactBytes,
           }),
     });
     const policies = new BoundCanonicalDerivationPolicyResolver({
       deployment: "trusted-cloud",
       provider: options.policyProvider,
     });
-    const hiddenOutcomeSigner =
-      new CloudBackedHiddenCatalogOutcomeUpdateSigner({
-        deployment: "trusted-cloud",
-        keyId: options.hiddenOutcomeSigning.keyId,
-        keys: options.hiddenOutcomeSigning.privateKeys,
-        ...(options.now === undefined ? {} : { now: options.now }),
-      });
-    const hiddenOutcomeVerifier =
-      new CloudBackedHiddenCatalogOutcomeUpdateVerifier({
-        deployment: "trusted-cloud",
-        keys: options.hiddenOutcomeSigning.publicKeys,
-        trustedKeyIds:
-          options.hiddenOutcomeSigning.trustedKeyIds,
-        ...(options.now === undefined ? {} : { now: options.now }),
-      });
+    const hiddenOutcomeSigner = new CloudBackedHiddenCatalogOutcomeUpdateSigner({
+      deployment: "trusted-cloud",
+      keyId: options.hiddenOutcomeSigning.keyId,
+      keys: options.hiddenOutcomeSigning.privateKeys,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    });
+    const hiddenOutcomeVerifier = new CloudBackedHiddenCatalogOutcomeUpdateVerifier({
+      deployment: "trusted-cloud",
+      keys: options.hiddenOutcomeSigning.publicKeys,
+      trustedKeyIds: options.hiddenOutcomeSigning.trustedKeyIds,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    });
     const deriver = new DeterministicCanonicalEvaluationDeriver({
       reader,
       policies,
       hiddenOutcomeSigner,
       hiddenOutcomeVerifier,
       hiddenOutcomeSink: options.stores.hiddenOutcomeSink,
-      behavioralPreparationStore:
-        options.stores.behavioralPreparations,
+      behavioralPreparationStore: options.stores.behavioralPreparations,
       ...(options.now === undefined ? {} : { now: options.now }),
     });
-    const behavioralReleaseProducer =
-      new DeterministicPostDestructionBehavioralReleaseProducer({
-        deployment: "trusted-cloud",
-        store: options.behavioralReleaseStore,
-        keyId: options.behavioralReleaseSigning.keyId,
-        privateKeys:
-          options.behavioralReleaseSigning.privateKeys,
-        publicKeys:
-          options.behavioralReleaseSigning.publicKeys,
-        ...(options.now === undefined ? {} : { now: options.now }),
-      });
+    const behavioralReleaseProducer = new DeterministicPostDestructionBehavioralReleaseProducer({
+      deployment: "trusted-cloud",
+      store: options.behavioralReleaseStore,
+      keyId: options.behavioralReleaseSigning.keyId,
+      privateKeys: options.behavioralReleaseSigning.privateKeys,
+      publicKeys: options.behavioralReleaseSigning.publicKeys,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    });
     const runner = new TerminalBenchCloudRunner({
       ...options.runner,
       rawIngress: options.stores.rawIngress,
@@ -343,17 +299,15 @@ export async function createTrustedEvaluationService(
       destructionReceiptVerifier: options.destructionReceiptVerifier,
     });
 
-    const resultPrivateKey =
-      await options.resultEnvelopeSigning.privateKeys.resolve({
-        purpose: "result-envelope",
-        keyId: options.resultEnvelopeSigning.keyId,
-      });
+    const resultPrivateKey = await options.resultEnvelopeSigning.privateKeys.resolve({
+      purpose: "result-envelope",
+      keyId: options.resultEnvelopeSigning.keyId,
+    });
     if (
       resultPrivateKey.boundary !== "trusted-cloud-key-material" ||
       resultPrivateKey.algorithm !== "Ed25519" ||
       resultPrivateKey.purpose !== "result-envelope" ||
-      resultPrivateKey.keyId !==
-        options.resultEnvelopeSigning.keyId ||
+      resultPrivateKey.keyId !== options.resultEnvelopeSigning.keyId ||
       !SAFE_KEY_VERSION.test(resultPrivateKey.keyVersion) ||
       resultPrivateKey.privateKey === undefined ||
       resultPrivateKey.privateKey === null
@@ -365,20 +319,15 @@ export async function createTrustedEvaluationService(
       keyId: options.resultEnvelopeSigning.keyId,
       ...(options.now === undefined ? {} : { now: options.now }),
     });
-    const trustedResultKeyIds = new Set(
-      options.resultEnvelopeSigning.trustedKeyIds,
-    );
+    const trustedResultKeyIds = new Set(options.resultEnvelopeSigning.trustedKeyIds);
     const verifier = new Ed25519ResultEnvelopeVerifier({
       getVerificationKey: async (keyId) => {
         if (!trustedResultKeyIds.has(keyId)) return undefined;
-        const key =
-          await options.resultEnvelopeSigning.publicKeys.resolve({
-            purpose: "result-envelope",
-            keyId,
-          });
-        return key !== undefined && validPublicResultKey(key, keyId)
-          ? key.publicKey
-          : undefined;
+        const key = await options.resultEnvelopeSigning.publicKeys.resolve({
+          purpose: "result-envelope",
+          keyId,
+        });
+        return key !== undefined && validPublicResultKey(key, keyId) ? key.publicKey : undefined;
       },
     });
     return new ComposedTrustedEvaluationService(
@@ -387,18 +336,15 @@ export async function createTrustedEvaluationService(
         panels: options.stores.panels,
         runner,
         deriver,
-        behavioralPreparationStore:
-          options.stores.behavioralPreparations,
+        behavioralPreparationStore: options.stores.behavioralPreparations,
         behavioralReleaseProducer,
         custodian: options.stores.custodian,
-        onlineErrorAuthority:
-          options.stores.onlineErrorAuthority,
+        onlineErrorAuthority: options.stores.onlineErrorAuthority,
         issuer,
         verifier,
         agent: options.agent,
         retentionPolicy: options.retentionPolicy,
-        destructionReceiptVerifier:
-          options.destructionReceiptVerifier,
+        destructionReceiptVerifier: options.destructionReceiptVerifier,
       }),
     );
   } catch (error) {

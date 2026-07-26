@@ -22,7 +22,9 @@ function walkStrings(value: unknown, path: string): void {
     return;
   }
   if (Array.isArray(value)) {
-    value.forEach((item, index) => walkStrings(item, `${path}[${index}]`));
+    value.forEach((item, index) => {
+      walkStrings(item, `${path}[${index}]`);
+    });
     return;
   }
   if (typeof value === "object" && value !== null) {
@@ -80,9 +82,9 @@ function diffValues(
       output.push({ path, before, after });
       return;
     }
-    before.forEach((item, index) =>
-      diffValues(item, after[index], `${path}[${index}]`, output),
-    );
+    before.forEach((item, index) => {
+      diffValues(item, after[index], `${path}[${index}]`, output);
+    });
     return;
   }
   if (isPlainRecord(before) && isPlainRecord(after)) {
@@ -104,9 +106,6 @@ export function diffProtocolInputs(
   return output;
 }
 
-export function requiresNewBaselineLineage(
-  before: ProtocolInputs,
-  after: ProtocolInputs,
-): boolean {
+export function requiresNewBaselineLineage(before: ProtocolInputs, after: ProtocolInputs): boolean {
   return computeProtocolHash(before) !== computeProtocolHash(after);
 }

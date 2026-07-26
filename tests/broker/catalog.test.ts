@@ -2,12 +2,17 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   DurableTrustedHiddenCatalog,
+  type LinearizableHiddenCatalogCasStore,
   TRUSTED_HIDDEN_SELECTION_POLICY_HASH,
   TrustedHiddenCatalogError,
-  type LinearizableHiddenCatalogCasStore,
   type TrustedHiddenCatalogState,
   type TrustedHiddenTaskSeed,
 } from "../../src/broker/catalog.js";
+import {
+  allocateValidationQuotas,
+  initialValidationQuotaCarry,
+} from "../../src/evaluation/selection.js";
+import type { HiddenTaskEstimates, SelectionBucket } from "../../src/evaluation/types.js";
 import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
@@ -17,14 +22,6 @@ import {
   hashTrustedHiddenCatalogSourceBinding,
   type TrustedSignedHiddenCatalogOutcomeUpdate,
 } from "../../src/evaluator/deriver.js";
-import {
-  allocateValidationQuotas,
-  initialValidationQuotaCarry,
-} from "../../src/evaluation/selection.js";
-import type {
-  HiddenTaskEstimates,
-  SelectionBucket,
-} from "../../src/evaluation/types.js";
 import { canonicalHash, canonicalJson } from "../../src/schemas/canonical.js";
 import type { TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 
@@ -32,14 +29,8 @@ const HASH = "a".repeat(64);
 const SECOND_HASH = "b".repeat(64);
 const WEIGHTING_POLICY_HASH = TRUSTED_HIDDEN_SELECTION_POLICY_HASH;
 const TASK_ID_SECRET = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
-const SECOND_TASK_ID_SECRET = Uint8Array.from(
-  { length: 32 },
-  (_, index) => 64 + index,
-);
-const DISPOSITION_SECRET = Uint8Array.from(
-  { length: 32 },
-  (_, index) => 128 + index,
-);
+const SECOND_TASK_ID_SECRET = Uint8Array.from({ length: 32 }, (_, index) => 64 + index);
+const DISPOSITION_SECRET = Uint8Array.from({ length: 32 }, (_, index) => 128 + index);
 
 const pin: TerminalBench21Pin = {
   benchmark: "terminal-bench-2.1",
@@ -73,9 +64,7 @@ class AtomicMemoryCatalogStore implements LinearizableHiddenCatalogCasStore {
   throwAfterNextCommit = false;
 
   async transact<Result>(
-    operation: (
-      state: TrustedHiddenCatalogState | null,
-    ) => {
+    operation: (state: TrustedHiddenCatalogState | null) => {
       readonly next: TrustedHiddenCatalogState;
       readonly result: Result;
     },
@@ -167,8 +156,7 @@ function catalog(
   return new DurableTrustedHiddenCatalog({
     store,
     datasetPin,
-    expectedDatasetPinHash:
-      overrides.expectedDatasetPinHash ?? canonicalHash(datasetPin),
+    expectedDatasetPinHash: overrides.expectedDatasetPinHash ?? canonicalHash(datasetPin),
     taskSeeds: overrides.seeds ?? taskSeeds(),
     taskIdKey: {
       keyId: overrides.taskIdKeyId ?? "hidden-task-key-1",
@@ -179,8 +167,7 @@ function catalog(
       keyId: overrides.dispositionKeyId ?? "panel-disposition-key-1",
       secret: overrides.dispositionSecret ?? DISPOSITION_SECRET,
     },
-    expectedDispositionKeyId:
-      overrides.dispositionKeyId ?? "panel-disposition-key-1",
+    expectedDispositionKeyId: overrides.dispositionKeyId ?? "panel-disposition-key-1",
     outcomeVerifier: overrides.outcomeVerifier ?? {
       verify: async () => true,
     },
@@ -191,12 +178,11 @@ function catalog(
 }
 
 function artifact(index: number) {
-  const digit = ((index % 9) + 1).toString();
   return {
     uri: `trusted://harness/artifact-${index}` as const,
-    commitSha: digit.repeat(40),
-    treeSha: digit.repeat(40),
-    archiveSha256: index.toString(16).padStart(64, digit),
+    commitSha: createHash("sha256").update(`artifact:${index}:commit`).digest("hex").slice(0, 40),
+    treeSha: createHash("sha256").update(`artifact:${index}:tree`).digest("hex").slice(0, 40),
+    archiveSha256: createHash("sha256").update(`artifact:${index}:archive`).digest("hex"),
   };
 }
 
@@ -218,9 +204,7 @@ function request(
     stage === "repair"
       ? ({
           kind: "repair-reuse",
-          sourceExperimentId:
-            options.sourceExperimentId ??
-            `${Math.max(0, index - 1)}-catalog`,
+          sourceExperimentId: options.sourceExperimentId ?? `${Math.max(0, index - 1)}-catalog`,
           taskCount: 5,
           attemptsPerTask: 1,
           candidateAttempt: options.candidateAttempt ?? 1,
@@ -277,10 +261,7 @@ function request(
   };
 }
 
-function allocation(
-  store: AtomicMemoryCatalogStore,
-  requestHash: string,
-) {
+function allocation(store: AtomicMemoryCatalogStore, requestHash: string) {
   const record = store.state?.allocations[requestHash];
   if (record === undefined) {
     throw new Error("Synthetic trusted allocation fixture is absent");
@@ -288,9 +269,7 @@ function allocation(
   return record;
 }
 
-function requiredState(
-  store: AtomicMemoryCatalogStore,
-): TrustedHiddenCatalogState {
+function requiredState(store: AtomicMemoryCatalogStore): TrustedHiddenCatalogState {
   if (store.state === null) {
     throw new Error("Synthetic trusted catalog state is absent");
   }
@@ -319,9 +298,7 @@ function outcomeUpdate(
       outputTokens: 500,
       modelUsd: 0.1,
       sandboxUsd: 0.02,
-      finalAttemptDigest: createHash("sha256")
-        .update(`${suffix}:${index}:${offset}`)
-        .digest("hex"),
+      finalAttemptDigest: createHash("sha256").update(`${suffix}:${index}:${offset}`).digest("hex"),
     });
     return {
       taskId: cell.taskId,
@@ -329,10 +306,7 @@ function outcomeUpdate(
       capabilityStratum: cell.capabilityStratum,
       order: cell.order,
       candidate: arm(candidatePass, 1),
-      champion:
-        record.panel.stage === "repair"
-          ? null
-          : arm(championPass, 2),
+      champion: record.panel.stage === "repair" ? null : arm(championPass, 2),
     };
   });
   const updateSetHash = hashTrustedHiddenCatalogOutcomeSet(outcomes);
@@ -340,8 +314,7 @@ function outcomeUpdate(
     requestHash: record.requestHash,
     protocolHash: record.protocolHash,
     stage: record.panel.stage,
-    dispositionAttestationHash:
-      record.panel.dispositionAttestationHash,
+    dispositionAttestationHash: record.panel.dispositionAttestationHash,
     rawManifestHash: suffix.repeat(64),
     jobSha256: "2".repeat(64),
     runtimeAttestationHash: "3".repeat(64),
@@ -349,8 +322,7 @@ function outcomeUpdate(
     environmentFingerprintHash: "5".repeat(64),
     updateSetHash,
   } as const;
-  const sourceBindingHash =
-    hashTrustedHiddenCatalogSourceBinding(source);
+  const sourceBindingHash = hashTrustedHiddenCatalogSourceBinding(source);
   return {
     sensitivity: "trusted-hidden-catalog-outcome-update",
     schemaVersion: 1,
@@ -378,7 +350,11 @@ async function committedValidationSource(
   readonly requestHash: string;
   readonly record: ReturnType<typeof allocation>;
 }> {
-  const sourceRequest = request("validation", experimentIndex);
+  const sourceRequest = request("validation", experimentIndex, {
+    hypothesisHash: createHash("sha256")
+      .update(`validation-source:${experimentIndex}:${sourceSuffix}`)
+      .digest("hex"),
+  });
   const sourceHash = hashEvaluationRequest(sourceRequest);
   await brokerCatalog.allocateAndConsume(
     sourceRequest,
@@ -386,9 +362,7 @@ async function committedValidationSource(
     `claim-source-${experimentIndex}`,
   );
   const record = allocation(store, sourceHash);
-  await brokerCatalog.commit(
-    outcomeUpdate(record, { sourceSuffix }),
-  );
+  await brokerCatalog.commit(outcomeUpdate(record, { sourceSuffix }));
   return { request: sourceRequest, requestHash: sourceHash, record };
 }
 
@@ -417,26 +391,17 @@ describe("durable trusted hidden-task catalog", () => {
     expect(first.size).toBe(12);
     expect(second.size).toBe(12);
     expect([...first].some((taskId) => second.has(taskId))).toBe(false);
-    expect(
-      state.taskOrder.filter(
-        (taskId) => state.tasks[taskId]?.shadowReserved,
-      ),
-    ).toHaveLength(24);
+    expect(state.taskOrder.filter((taskId) => state.tasks[taskId]?.shadowReserved)).toHaveLength(
+      24,
+    );
     expect(
       state.taskOrder.every((taskId) => {
         const task = state.tasks[taskId];
-        return (
-          task?.datasetPinHash === canonicalHash(pin) &&
-          task.registryRevision === 6
-        );
+        return task?.datasetPinHash === canonicalHash(pin) && task.registryRevision === 6;
       }),
     ).toBe(true);
-    const afterFirstShadow = allocateValidationQuotas(
-      initialValidationQuotaCarry(),
-    ).nextCarry;
-    expect(state.validationCarry).toEqual(
-      allocateValidationQuotas(afterFirstShadow).nextCarry,
-    );
+    const afterFirstShadow = allocateValidationQuotas(initialValidationQuotaCarry()).nextCarry;
+    expect(state.validationCarry).toEqual(allocateValidationQuotas(afterFirstShadow).nextCarry);
   });
 
   it("rejects non-89 imports, duplicate revisions, pin drift, and key-ID drift", () => {
@@ -555,12 +520,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const firstSource = await committedValidationSource(
-      brokerCatalog,
-      store,
-      9,
-      "a",
-    );
+    const firstSource = await committedValidationSource(brokerCatalog, store, 9, "a");
 
     const firstRequest = request("repair", 10, {
       sourceExperimentId: firstSource.request.experimentId,
@@ -572,12 +532,8 @@ describe("durable trusted hidden-task catalog", () => {
       "claim-repair-10",
     );
     expect(JSON.stringify(firstPanel)).not.toContain("terminal-bench/task-");
-    const firstSourceIds = new Set(
-      firstSource.record.panel.cells.map((cell) => cell.taskId),
-    );
-    expect(
-      firstPanel.cells.every((cell) => firstSourceIds.has(cell.taskId)),
-    ).toBe(true);
+    const firstSourceIds = new Set(firstSource.record.panel.cells.map((cell) => cell.taskId));
+    expect(firstPanel.cells.every((cell) => firstSourceIds.has(cell.taskId))).toBe(true);
     expect(allocation(store, firstHash).selectedBuckets).toEqual([
       "hard",
       "hard",
@@ -589,25 +545,14 @@ describe("durable trusted hidden-task catalog", () => {
       datasetPinHash: canonicalHash(pin),
       registryRevision: 6,
     });
-    expect(JSON.stringify(allocation(store, firstHash))).not.toContain(
-      "terminal-bench/task-",
-    );
+    expect(JSON.stringify(allocation(store, firstHash))).not.toContain("terminal-bench/task-");
 
-    const secondSource = await committedValidationSource(
-      brokerCatalog,
-      store,
-      11,
-      "b",
-    );
+    const secondSource = await committedValidationSource(brokerCatalog, store, 11, "b");
     const secondRequest = request("repair", 12, {
       sourceExperimentId: secondSource.request.experimentId,
     });
     const secondHash = hashEvaluationRequest(secondRequest);
-    await brokerCatalog.allocateAndConsume(
-      secondRequest,
-      secondHash,
-      "claim-repair-11",
-    );
+    await brokerCatalog.allocateAndConsume(secondRequest, secondHash, "claim-repair-11");
     expect(allocation(store, secondHash).selectedBuckets).toEqual([
       "hard",
       "hard",
@@ -621,12 +566,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      13,
-      "8",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 13, "8");
     const firstRequest = request("repair", 14, {
       sourceExperimentId: source.request.experimentId,
       candidate: artifact(6),
@@ -679,19 +619,13 @@ describe("durable trusted hidden-task catalog", () => {
       frozenHypothesisDigest: "b".repeat(64),
     });
 
-    const nextSource = await committedValidationSource(
-      brokerCatalog,
-      store,
-      16,
-      "a",
-    );
+    const nextSource = await committedValidationSource(brokerCatalog, store, 16, "a");
     const nextFirstRequest = request("repair", 17, {
       sourceExperimentId: nextSource.request.experimentId,
       candidate: artifact(8),
       candidateAttempt: 1,
     });
-    const nextFirstHash =
-      hashEvaluationRequest(nextFirstRequest);
+    const nextFirstHash = hashEvaluationRequest(nextFirstRequest);
     await brokerCatalog.allocateAndConsume(
       nextFirstRequest,
       nextFirstHash,
@@ -724,8 +658,7 @@ describe("durable trusted hidden-task catalog", () => {
     const uncommittedCatalog = catalog(uncommittedStore);
     await uncommittedCatalog.initialize();
     const uncommittedSource = request("validation", 16);
-    const uncommittedSourceHash =
-      hashEvaluationRequest(uncommittedSource);
+    const uncommittedSourceHash = hashEvaluationRequest(uncommittedSource);
     await uncommittedCatalog.allocateAndConsume(
       uncommittedSource,
       uncommittedSourceHash,
@@ -745,12 +678,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      16,
-      "7",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 16, "7");
     const protocolMismatchBase = request("repair", 17, {
       sourceExperimentId: source.request.experimentId,
     });
@@ -788,12 +716,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      18,
-      "8",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 18, "8");
     const first = request("repair", 19, {
       sourceExperimentId: source.request.experimentId,
       candidate: artifact(4),
@@ -822,12 +745,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      19,
-      "c",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 19, "c");
     const candidate = artifact(2);
     const repairRequest = request("repair", 20, {
       candidate,
@@ -855,25 +773,19 @@ describe("durable trusted hidden-task catalog", () => {
     );
 
     expect(validationPanel.cells).toHaveLength(12);
-    expect(
-      validationPanel.cells.filter((cell) => cell.order === "AB"),
-    ).toHaveLength(6);
-    expect(
-      validationPanel.cells.filter((cell) => cell.order === "BA"),
-    ).toHaveLength(6);
+    expect(validationPanel.cells.filter((cell) => cell.order === "AB")).toHaveLength(6);
+    expect(validationPanel.cells.filter((cell) => cell.order === "BA")).toHaveLength(6);
     const repairIds = new Set(repairPanel.cells.map((cell) => cell.taskId));
-    expect(
-      validationPanel.cells.some((cell) => repairIds.has(cell.taskId)),
-    ).toBe(false);
+    expect(validationPanel.cells.some((cell) => repairIds.has(cell.taskId))).toBe(false);
     for (const cell of validationPanel.cells) {
       expect(store.state?.tasks[cell.taskId]?.exposure).toMatchObject({
         feedbackReleased: true,
         positiveValidationConsumed: true,
       });
     }
-    expect(
-      allocation(store, repairHash).panel.dispositionAttestationHash,
-    ).toMatch(/^[a-f0-9]{64}$/u);
+    expect(allocation(store, repairHash).panel.dispositionAttestationHash).toMatch(
+      /^[a-f0-9]{64}$/u,
+    );
     expect(requiredState(store).validationCarry).toEqual(
       allocateValidationQuotas(carryBeforeValidation).nextCarry,
     );
@@ -883,12 +795,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      21,
-      "9",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 21, "9");
     const candidate = artifact(3);
     const repairRequest = request("repair", 22, {
       candidate,
@@ -960,12 +867,7 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      29,
-      "d",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 29, "d");
     const evaluationRequest = request("repair", 30, {
       sourceExperimentId: source.request.experimentId,
     });
@@ -985,11 +887,7 @@ describe("durable trusted hidden-task catalog", () => {
     expect(store.state?.revision).toBe(revision);
 
     await expect(
-      brokerCatalog.allocateAndConsume(
-        evaluationRequest,
-        requestHash,
-        "claim-different",
-      ),
+      brokerCatalog.allocateAndConsume(evaluationRequest, requestHash, "claim-different"),
     ).rejects.toMatchObject({ code: "allocation-conflict" });
 
     const otherRequest = request("repair", 31);
@@ -1006,23 +904,14 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      39,
-      "e",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 39, "e");
     const evaluationRequest = request("repair", 40, {
       sourceExperimentId: source.request.experimentId,
     });
     const requestHash = hashEvaluationRequest(evaluationRequest);
     store.throwAfterNextCommit = true;
     await expect(
-      brokerCatalog.allocateAndConsume(
-        evaluationRequest,
-        requestHash,
-        "claim-ambiguous-commit",
-      ),
+      brokerCatalog.allocateAndConsume(evaluationRequest, requestHash, "claim-ambiguous-commit"),
     ).rejects.toMatchObject({ code: "store-failed" });
     const committed = allocation(store, requestHash).panel;
     const totalsAfterCommit = committed.cells.map(
@@ -1037,11 +926,9 @@ describe("durable trusted hidden-task catalog", () => {
     );
     expect(recovered).toEqual(committed);
     expect(store.state?.revision).toBe(revisionAfterCommit);
-    expect(
-      recovered.cells.map(
-        (cell) => store.state?.tasks[cell.taskId]?.exposure.total,
-      ),
-    ).toEqual(totalsAfterCommit);
+    expect(recovered.cells.map((cell) => store.state?.tasks[cell.taskId]?.exposure.total)).toEqual(
+      totalsAfterCommit,
+    );
   });
 
   it("consumes each pre-reserved shadow slice once and keeps the slices disjoint", async () => {
@@ -1066,10 +953,7 @@ describe("durable trusted hidden-task catalog", () => {
     expect(second.cells.some((cell) => firstIds.has(cell.taskId))).toBe(false);
     expect(first.cells.filter((cell) => cell.order === "AB")).toHaveLength(6);
     expect(second.cells.filter((cell) => cell.order === "BA")).toHaveLength(6);
-    expect(
-      (await brokerCatalog.releaseSafeHealthAttestation())
-        .shadowRemainingSliceCount,
-    ).toBe(0);
+    expect((await brokerCatalog.releaseSafeHealthAttestation()).shadowRemainingSliceCount).toBe(0);
 
     const exhausted = request("shadow", 52, { shadowSlice: 1 });
     await expect(
@@ -1088,21 +972,9 @@ describe("durable trusted hidden-task catalog", () => {
     const secondCatalog = catalog(secondStore, { nonce: nonceFactory(100) });
     await firstCatalog.initialize();
     await secondCatalog.initialize();
-    const firstSource = await committedValidationSource(
-      firstCatalog,
-      firstStore,
-      59,
-      "a",
-    );
-    const secondSource = await committedValidationSource(
-      secondCatalog,
-      secondStore,
-      59,
-      "a",
-    );
-    expect(secondSource.request.experimentId).toBe(
-      firstSource.request.experimentId,
-    );
+    const firstSource = await committedValidationSource(firstCatalog, firstStore, 59, "a");
+    const secondSource = await committedValidationSource(secondCatalog, secondStore, 59, "a");
+    expect(secondSource.request.experimentId).toBe(firstSource.request.experimentId);
     const evaluationRequest = request("repair", 60, {
       sourceExperimentId: firstSource.request.experimentId,
     });
@@ -1118,9 +990,7 @@ describe("durable trusted hidden-task catalog", () => {
       "claim-same",
     );
     expect(first.cells).toEqual(second.cells);
-    expect(first.dispositionAttestationHash).not.toBe(
-      second.dispositionAttestationHash,
-    );
+    expect(first.dispositionAttestationHash).not.toBe(second.dispositionAttestationHash);
     expect(first.leaseId).not.toBe(second.leaseId);
   });
 
@@ -1162,30 +1032,19 @@ describe("durable trusted hidden-task catalog", () => {
       const task = requiredState(store).tasks[prior.taskId];
       expect(task?.outcomeStats.candidateFailureCount).toBe(1);
       expect(task?.outcomeStats.championFailureCount).toBe(1);
-      expect(task?.estimates.championFailureProbability).toBeGreaterThan(
-        prior.champion,
-      );
-      expect(task?.estimates.recentFailureProbability).toBeGreaterThan(
-        prior.recent,
-      );
+      expect(task?.estimates.championFailureProbability).toBeGreaterThan(prior.champion);
+      expect(task?.estimates.recentFailureProbability).toBeGreaterThan(prior.recent);
     }
-    expect(
-      JSON.stringify(
-        await brokerCatalog.releaseSafeHealthAttestation(),
-      ),
-    ).not.toContain(record.panel.cells[0]?.taskId);
+    expect(JSON.stringify(await brokerCatalog.releaseSafeHealthAttestation())).not.toContain(
+      record.panel.cells[0]?.taskId,
+    );
   });
 
   it("makes outcome ingestion idempotent and rejects conflicting, detached, or unsigned updates", async () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const source = await committedValidationSource(
-      brokerCatalog,
-      store,
-      70,
-      "6",
-    );
+    const source = await committedValidationSource(brokerCatalog, store, 70, "6");
     const evaluationRequest = request("repair", 71, {
       sourceExperimentId: source.request.experimentId,
     });
@@ -1246,15 +1105,9 @@ describe("durable trusted hidden-task catalog", () => {
       sourceExperimentId: rejectedSource.request.experimentId,
     });
     const rejectedHash = hashEvaluationRequest(rejectedRequest);
-    await rejectingCatalog.allocateAndConsume(
-      rejectedRequest,
-      rejectedHash,
-      "claim-bad-signature",
-    );
+    await rejectingCatalog.allocateAndConsume(rejectedRequest, rejectedHash, "claim-bad-signature");
     await expect(
-      rejectingCatalog.commit(
-        outcomeUpdate(allocation(rejectedStore, rejectedHash)),
-      ),
+      rejectingCatalog.commit(outcomeUpdate(allocation(rejectedStore, rejectedHash))),
     ).rejects.toMatchObject({ code: "outcome-invalid" });
   });
 
@@ -1276,10 +1129,7 @@ describe("durable trusted hidden-task catalog", () => {
 
     let message = "";
     try {
-      await brokerCatalog.resolve(
-        "f".repeat(64) as typeof trustedTask,
-        revision,
-      );
+      await brokerCatalog.resolve("f".repeat(64) as typeof trustedTask, revision);
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }

@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type {
-  ExperimentArtifactStorePort,
-  MvpExperimentArtifacts,
-} from "./contracts.js";
+import type { ExperimentArtifactStorePort, MvpExperimentArtifacts } from "./contracts.js";
 import { validateMvpExperimentArtifacts } from "./schemas.js";
 
 const PUBLIC_FILES = {

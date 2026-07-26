@@ -6,10 +6,7 @@ import {
   type ReleaseSafeOnlineErrorBudgetAccounting,
 } from "../evaluation/statistics.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import {
-  hashEvaluationRequest,
-  type TrustedEvaluationRequest,
-} from "./contracts.js";
+import { hashEvaluationRequest, type TrustedEvaluationRequest } from "./contracts.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -36,9 +33,7 @@ export interface DurableOnlineErrorBudgetState {
   readonly campaignIdHash: string;
   readonly revision: number;
   readonly current: OnlineErrorBudgetState;
-  readonly reservations: Readonly<
-    Record<string, TrustedOnlineErrorBudgetReservation>
-  >;
+  readonly reservations: Readonly<Record<string, TrustedOnlineErrorBudgetReservation>>;
   readonly stateCommitment: string;
 }
 
@@ -96,27 +91,15 @@ export interface DurableTrustedOnlineErrorBudgetAuthorityOptions {
 
 export class TrustedOnlineErrorBudgetError extends Error {
   override readonly name = "TrustedOnlineErrorBudgetError";
-  readonly code:
-    | "invalid-input"
-    | "request-conflict"
-    | "budget-exhausted"
-    | "state-conflict";
+  readonly code: "invalid-input" | "request-conflict" | "budget-exhausted" | "state-conflict";
 
-  constructor(
-    code:
-      | "invalid-input"
-      | "request-conflict"
-      | "budget-exhausted"
-      | "state-conflict",
-  ) {
+  constructor(code: "invalid-input" | "request-conflict" | "budget-exhausted" | "state-conflict") {
     super("Trusted online error budget failed closed.");
     this.code = code;
   }
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -133,10 +116,7 @@ function assertExactKeys(
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
 }
@@ -165,9 +145,7 @@ function assertCanonicalTimestamp(value: unknown): asserts value is string {
  * domain prevents a valid identifier hash from another subsystem from being
  * replayed as an online-error campaign scope.
  */
-export function onlineErrorBudgetCampaignIdHash(
-  campaignId: string,
-): string {
+export function onlineErrorBudgetCampaignIdHash(campaignId: string): string {
   if (!SAFE_ID.test(campaignId)) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
@@ -177,9 +155,7 @@ export function onlineErrorBudgetCampaignIdHash(
   });
 }
 
-export function hashOnlineErrorBudgetState(
-  state: OnlineErrorBudgetState,
-): string {
+export function hashOnlineErrorBudgetState(state: OnlineErrorBudgetState): string {
   assertOnlineErrorBudgetState(state);
   return canonicalHash({
     domain: "dark-factory.online-error-budget-state.v1",
@@ -231,16 +207,12 @@ export function hashDurableOnlineErrorBudgetState(
 function reconciliationWithoutHash(
   value: TrustedOnlineErrorBudgetReconciliation,
 ): Omit<TrustedOnlineErrorBudgetReconciliation, "reconciliationHash"> {
-  const { reconciliationHash: _reconciliationHash, ...unsigned } =
-    value;
+  const { reconciliationHash: _reconciliationHash, ...unsigned } = value;
   return unsigned;
 }
 
 export function hashOnlineErrorBudgetReconciliation(
-  value: Omit<
-    TrustedOnlineErrorBudgetReconciliation,
-    "reconciliationHash"
-  >,
+  value: Omit<TrustedOnlineErrorBudgetReconciliation, "reconciliationHash">,
 ): string {
   return canonicalHash({
     domain: "dark-factory.online-error-budget-reconciliation.v1",
@@ -267,11 +239,9 @@ export function assertTrustedOnlineErrorBudgetReconciliation(
     "observedAt",
     "reconciliationHash",
   ]);
-  const receipt =
-    value as unknown as TrustedOnlineErrorBudgetReconciliation;
+  const receipt = value as unknown as TrustedOnlineErrorBudgetReconciliation;
   if (
-    receipt.sensitivity !==
-      "release-safe-online-error-reconciliation" ||
+    receipt.sensitivity !== "release-safe-online-error-reconciliation" ||
     receipt.schemaVersion !== 1 ||
     receipt.policyVersion !== "online-alpha-spending-v1" ||
     !Number.isSafeInteger(receipt.storeRevision) ||
@@ -287,16 +257,11 @@ export function assertTrustedOnlineErrorBudgetReconciliation(
     receipt.onlineErrorSpent > receipt.maximumOnlineError ||
     !Number.isFinite(receipt.onlineErrorRemaining) ||
     receipt.onlineErrorRemaining < 0 ||
-    receipt.onlineErrorRemaining >
-      receipt.maximumOnlineError ||
-    Math.abs(
-      receipt.onlineErrorSpent +
-        receipt.onlineErrorRemaining -
-        receipt.maximumOnlineError,
-    ) > 1e-12 ||
+    receipt.onlineErrorRemaining > receipt.maximumOnlineError ||
+    Math.abs(receipt.onlineErrorSpent + receipt.onlineErrorRemaining - receipt.maximumOnlineError) >
+      1e-12 ||
     (expectedCampaignId !== undefined &&
-      receipt.campaignIdHash !==
-        onlineErrorBudgetCampaignIdHash(expectedCampaignId))
+      receipt.campaignIdHash !== onlineErrorBudgetCampaignIdHash(expectedCampaignId))
   ) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
@@ -311,9 +276,7 @@ export function assertTrustedOnlineErrorBudgetReconciliation(
   assertCanonicalTimestamp(receipt.observedAt);
   if (
     receipt.reconciliationHash !==
-      hashOnlineErrorBudgetReconciliation(
-        reconciliationWithoutHash(receipt),
-      )
+    hashOnlineErrorBudgetReconciliation(reconciliationWithoutHash(receipt))
   ) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
@@ -369,10 +332,7 @@ function assertAllocation(
 
 function assertAccounting(
   accounting: ReleaseSafeOnlineErrorBudgetAccounting,
-  reservation: Omit<
-    TrustedOnlineErrorBudgetReservation,
-    "accounting" | "reservationHash"
-  >,
+  reservation: Omit<TrustedOnlineErrorBudgetReservation, "accounting" | "reservationHash">,
 ): void {
   assertExactKeys(accounting, [
     "policyVersion",
@@ -412,16 +372,11 @@ function assertAccounting(
     accounting.gateOrdinal !== reservation.allocation.nextState.gatesSpent ||
     accounting.alphaSpent !== reservation.allocation.alphaSpent ||
     accounting.cumulativeSpentBefore !== reservation.stateBefore.spentAlpha ||
-    accounting.cumulativeSpentAfter !==
-      reservation.allocation.nextState.spentAlpha ||
-    accounting.cumulativeSpentBefore + accounting.alphaSpent !==
-      accounting.cumulativeSpentAfter ||
-    accounting.remainingAfter !==
-      reservation.allocation.nextState.remainingAlpha ||
-    accounting.priorStateHash !==
-      hashOnlineErrorBudgetState(reservation.stateBefore) ||
-    accounting.resultingStateHash !==
-      hashOnlineErrorBudgetState(reservation.allocation.nextState)
+    accounting.cumulativeSpentAfter !== reservation.allocation.nextState.spentAlpha ||
+    accounting.cumulativeSpentBefore + accounting.alphaSpent !== accounting.cumulativeSpentAfter ||
+    accounting.remainingAfter !== reservation.allocation.nextState.remainingAlpha ||
+    accounting.priorStateHash !== hashOnlineErrorBudgetState(reservation.stateBefore) ||
+    accounting.resultingStateHash !== hashOnlineErrorBudgetState(reservation.allocation.nextState)
   ) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
@@ -444,11 +399,9 @@ export function assertTrustedOnlineErrorBudgetReservation(
     "accounting",
     "reservationHash",
   ]);
-  const reservation =
-    value as unknown as TrustedOnlineErrorBudgetReservation;
+  const reservation = value as unknown as TrustedOnlineErrorBudgetReservation;
   if (
-    reservation.sensitivity !==
-      "trusted-online-error-budget-reservation" ||
+    reservation.sensitivity !== "trusted-online-error-budget-reservation" ||
     reservation.schemaVersion !== 1 ||
     !SAFE_ID.test(reservation.requestId) ||
     !SAFE_ID.test(reservation.experimentId)
@@ -511,54 +464,40 @@ export function assertDurableOnlineErrorBudgetState(
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
   const requestIds = new Set<string>();
-  const reservations = Object.entries(state.reservations).sort(
-    ([left], [right]) => left.localeCompare(right),
+  const reservations = Object.entries(state.reservations).sort(([left], [right]) =>
+    left.localeCompare(right),
   );
   for (const [requestHash, reservation] of reservations) {
     assertHash(requestHash);
     assertTrustedOnlineErrorBudgetReservation(reservation);
-    if (
-      reservation.requestHash !== requestHash ||
-      requestIds.has(reservation.requestId)
-    ) {
+    if (reservation.requestHash !== requestHash || requestIds.has(reservation.requestId)) {
       throw new TrustedOnlineErrorBudgetError("invalid-input");
     }
     requestIds.add(reservation.requestId);
   }
   const byGate = reservations
     .map(([, reservation]) => reservation)
-    .sort(
-      (left, right) =>
-        left.accounting.gateOrdinal -
-        right.accounting.gateOrdinal,
-    );
+    .sort((left, right) => left.accounting.gateOrdinal - right.accounting.gateOrdinal);
   for (let index = 0; index < byGate.length; index += 1) {
     const reservation = byGate[index];
     if (
       reservation === undefined ||
       reservation.accounting.gateOrdinal !== index + 1 ||
       (index > 0 &&
-        reservation.accounting.priorStateHash !==
-          byGate[index - 1]?.accounting.resultingStateHash)
+        reservation.accounting.priorStateHash !== byGate[index - 1]?.accounting.resultingStateHash)
     ) {
       throw new TrustedOnlineErrorBudgetError("invalid-input");
     }
   }
   const last = byGate.at(-1);
   if (
-    (last === undefined &&
-      (state.current.gatesSpent !== 0 ||
-        state.current.spentAlpha !== 0)) ||
+    (last === undefined && (state.current.gatesSpent !== 0 || state.current.spentAlpha !== 0)) ||
     (last !== undefined &&
-      last.accounting.resultingStateHash !==
-        hashOnlineErrorBudgetState(state.current))
+      last.accounting.resultingStateHash !== hashOnlineErrorBudgetState(state.current))
   ) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
-  if (
-    state.stateCommitment !==
-      hashDurableOnlineErrorBudgetState(stateWithoutCommitment(state))
-  ) {
+  if (state.stateCommitment !== hashDurableOnlineErrorBudgetState(stateWithoutCommitment(state))) {
     throw new TrustedOnlineErrorBudgetError("invalid-input");
   }
 }
@@ -595,9 +534,7 @@ export function createTrustedOnlineErrorBudgetReservation(input: {
     },
   };
   const priorStateHash = hashOnlineErrorBudgetState(input.stateBefore);
-  const resultingStateHash = hashOnlineErrorBudgetState(
-    allocation.nextState,
-  );
+  const resultingStateHash = hashOnlineErrorBudgetState(allocation.nextState);
   const accountingWithoutReservationHash = {
     policyVersion: "online-alpha-spending-v1" as const,
     maximumOnlineError: input.stateBefore.initialAlpha,
@@ -641,14 +578,11 @@ function reservationMatches(
     reservation.requestHash === input.requestHash &&
     reservation.experimentId === input.request.experimentId &&
     reservation.protocolHash === input.request.protocolHash &&
-    reservation.dispositionAttestationHash ===
-      input.dispositionAttestationHash
+    reservation.dispositionAttestationHash === input.dispositionAttestationHash
   );
 }
 
-export class DurableTrustedOnlineErrorBudgetAuthority
-  implements TrustedOnlineErrorBudgetAuthority
-{
+export class DurableTrustedOnlineErrorBudgetAuthority implements TrustedOnlineErrorBudgetAuthority {
   readonly boundary = "trusted-cloud-online-error-authority" as const;
   readonly #store: TrustedOnlineErrorBudgetCasStore;
   readonly #campaignIdHash: string;
@@ -663,8 +597,7 @@ export class DurableTrustedOnlineErrorBudgetAuthority
       options.store.boundary !== "trusted-cloud" ||
       options.initialBudget.gatesSpent !== 0 ||
       options.initialBudget.spentAlpha !== 0 ||
-      options.initialBudget.remainingAlpha !==
-        options.initialBudget.initialAlpha
+      options.initialBudget.remainingAlpha !== options.initialBudget.initialAlpha
     ) {
       throw new TrustedOnlineErrorBudgetError("invalid-input");
     }
@@ -698,18 +631,13 @@ export class DurableTrustedOnlineErrorBudgetAuthority
     assertHash(input.requestHash);
     assertHash(input.dispositionAttestationHash);
 
-    for (
-      let attempt = 0;
-      attempt < this.#maximumCasAttempts;
-      attempt += 1
-    ) {
+    for (let attempt = 0; attempt < this.#maximumCasAttempts; attempt += 1) {
       const state = await this.#store.read();
       assertDurableOnlineErrorBudgetState(state);
       if (
         state.campaignIdHash !== this.#campaignIdHash ||
         state.current.initialAlpha !== this.#initialBudget.initialAlpha ||
-        state.current.nullCalibrationId !==
-          this.#initialBudget.nullCalibrationId
+        state.current.nullCalibrationId !== this.#initialBudget.nullCalibrationId
       ) {
         throw new TrustedOnlineErrorBudgetError("invalid-input");
       }
@@ -722,8 +650,7 @@ export class DurableTrustedOnlineErrorBudgetAuthority
       }
       if (
         Object.values(state.reservations).some(
-          (reservation) =>
-            reservation.requestId === input.request.requestId,
+          (reservation) => reservation.requestId === input.request.requestId,
         )
       ) {
         throw new TrustedOnlineErrorBudgetError("request-conflict");
@@ -768,14 +695,12 @@ export class DurableTrustedOnlineErrorBudgetAuthority
     if (
       state.campaignIdHash !== this.#campaignIdHash ||
       state.current.initialAlpha !== this.#initialBudget.initialAlpha ||
-      state.current.nullCalibrationId !==
-        this.#initialBudget.nullCalibrationId
+      state.current.nullCalibrationId !== this.#initialBudget.nullCalibrationId
     ) {
       throw new TrustedOnlineErrorBudgetError("invalid-input");
     }
     const unsigned = {
-      sensitivity:
-        "release-safe-online-error-reconciliation" as const,
+      sensitivity: "release-safe-online-error-reconciliation" as const,
       schemaVersion: 1 as const,
       campaignIdHash: state.campaignIdHash,
       storeRevision: state.revision,
@@ -784,16 +709,13 @@ export class DurableTrustedOnlineErrorBudgetAuthority
       onlineErrorSpent: state.current.spentAlpha,
       onlineErrorRemaining: state.current.remainingAlpha,
       gatesSpent: state.current.gatesSpent,
-      resultingStateHash: hashOnlineErrorBudgetState(
-        state.current,
-      ),
+      resultingStateHash: hashOnlineErrorBudgetState(state.current),
       durableStateCommitment: state.stateCommitment,
       observedAt: this.#now().toISOString(),
     };
     const receipt = {
       ...unsigned,
-      reconciliationHash:
-        hashOnlineErrorBudgetReconciliation(unsigned),
+      reconciliationHash: hashOnlineErrorBudgetReconciliation(unsigned),
     };
     assertTrustedOnlineErrorBudgetReconciliation(receipt);
     return receipt;

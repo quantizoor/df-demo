@@ -112,16 +112,11 @@ export function claimShadowCertification(
   return {
     ...ledger,
     consumedSlices: ledger.consumedSlices + 1,
-    attemptedActiveCommitDigests: [
-      ...ledger.attemptedActiveCommitDigests,
-      activeCommitDigest,
-    ],
+    attemptedActiveCommitDigests: [...ledger.attemptedActiveCommitDigests, activeCommitDigest],
   };
 }
 
-export function releaseSafeShadowCapacity(
-  ledger: HiddenShadowLedger,
-): ReleaseSafeShadowCapacity {
+export function releaseSafeShadowCapacity(ledger: HiddenShadowLedger): ReleaseSafeShadowCapacity {
   validateShadowLedger(ledger);
   const remaining = ledger.reservedSlices - ledger.consumedSlices;
   if (remaining !== 0 && remaining !== 1 && remaining !== 2) {
@@ -327,9 +322,7 @@ export function applyConsumedPanelToTaskLedger(
       exposure: {
         ...task.exposure,
         total: task.exposure.total + 1,
-        consecutiveExperiments: wasConsecutive
-          ? task.exposure.consecutiveExperiments + 1
-          : 1,
+        consecutiveExperiments: wasConsecutive ? task.exposure.consecutiveExperiments + 1 : 1,
         lastExperiment: sealedExperimentOrdinal,
         feedbackReleased: true,
         positiveValidationConsumed:
@@ -337,8 +330,7 @@ export function applyConsumedPanelToTaskLedger(
           panel.stage === "validation" ||
           panel.stage === "shadow",
         repairCooldownThroughExperiment:
-          panel.repairCooldownThroughExperiment ??
-          task.exposure.repairCooldownThroughExperiment,
+          panel.repairCooldownThroughExperiment ?? task.exposure.repairCooldownThroughExperiment,
       },
     };
   });
@@ -360,10 +352,7 @@ export function linkReleasedEvidenceToHypothesis(
           exposure: {
             ...task.exposure,
             informedHypothesisDigests: [
-              ...new Set([
-                ...task.exposure.informedHypothesisDigests,
-                frozenHypothesisDigest,
-              ]),
+              ...new Set([...task.exposure.informedHypothesisDigests, frozenHypothesisDigest]),
             ],
           },
         }

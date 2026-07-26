@@ -1,13 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 const roots: string[] = [];
@@ -30,13 +25,8 @@ function tarEntry(path: string, body: Buffer, type = "0"): Buffer {
   header.write("ustar\0", 257, 6, "ascii");
   header.write("00", 263, 2, "ascii");
   const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  Buffer.from(`${checksum.toString(8).padStart(6, "0")}\0 `, "ascii").copy(
-    header,
-    148,
-  );
-  const padding = Buffer.alloc(
-    Math.ceil(body.byteLength / 512) * 512 - body.byteLength,
-  );
+  Buffer.from(`${checksum.toString(8).padStart(6, "0")}\0 `, "ascii").copy(header, 148);
+  const padding = Buffer.alloc(Math.ceil(body.byteLength / 512) * 512 - body.byteLength);
   return Buffer.concat([header, body, padding]);
 }
 
@@ -67,12 +57,10 @@ function runExtractor(tar: Buffer, includeCloudMarker = true) {
       encoding: "utf8",
       env: includeCloudMarker
         ? {
-            ...process.env,
             DF_CLOUD_EXECUTION: "1",
             DAYTONA_SANDBOX_ID: "synthetic-cloud-test",
           }
         : {
-            ...process.env,
             DF_CLOUD_EXECUTION: "0",
             DAYTONA_SANDBOX_ID: "",
           },
@@ -90,9 +78,7 @@ afterEach(() => {
 describe("cloud-only Pi source extractor", () => {
   it("extracts a digest-bound regular-file-only USTAR archive", () => {
     const packageJson = Buffer.from('{"name":"pi-monorepo"}\n', "utf8");
-    const { result, destination } = runExtractor(
-      archive([tarEntry("package.json", packageJson)]),
-    );
+    const { result, destination } = runExtractor(archive([tarEntry("package.json", packageJson)]));
     expect(result.status).toBe(0);
     expect(readFileSync(join(destination, "package.json"), "utf8")).toBe(
       packageJson.toString("utf8"),
@@ -115,10 +101,7 @@ describe("cloud-only Pi source extractor", () => {
   });
 
   it("refuses to execute without an attested cloud marker", () => {
-    const { result } = runExtractor(
-      archive([tarEntry("package.json", Buffer.from("{}"))]),
-      false,
-    );
+    const { result } = runExtractor(archive([tarEntry("package.json", Buffer.from("{}"))]), false);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/cloud-only/u);
   });

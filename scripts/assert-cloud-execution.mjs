@@ -14,4 +14,3 @@ if (!explicitCloud && !knownCloudCi) {
   );
   process.exit(78);
 }
-

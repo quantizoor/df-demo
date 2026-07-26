@@ -12,19 +12,15 @@ import {
   scanCandidate,
 } from "../integrity/candidate-scanner.js";
 import {
-  trustedCloudIntegrityScanAttestationHash,
   type AccountedCorrectnessGateReceipt,
   type CorrectnessGateOperationAccounting,
   type TrustedCloudIntegrityScanInput,
   type TrustedCloudIntegrityScanPort,
   type TrustedCloudIntegrityScanReceipt,
   type TrustedCloudIntegrityScanReceiptVerifier,
+  trustedCloudIntegrityScanAttestationHash,
 } from "../orchestrator/correctness-gate.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  computeContentHash,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson, computeContentHash } from "../schemas/canonical.js";
 import type { Signature } from "../schemas/primitives.js";
 import type { TrustedArtifactBridge } from "./artifact-bridge.js";
 import { requireCompatibleProvider } from "./probe.js";
@@ -38,12 +34,9 @@ import type {
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const EXPERIMENT_ID =
-  /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const SAFE_BUNDLE_REF =
-  /^refs\/heads\/df\/bundle\/[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const SAFE_PATH =
-  /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[\s\S]{1,4096}$/u;
+const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const SAFE_BUNDLE_REF = /^refs\/heads\/df\/bundle\/[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[\s\S]{1,4096}$/u;
 const TREE_MODE = /^[0-7]{6}$/u;
 const SAFE_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 const MAXIMUM_MANIFEST_BYTES = 8 * 1024 * 1024;
@@ -51,14 +44,10 @@ const MAXIMUM_DIFF_BYTES = 64 * 1024 * 1024;
 const MAXIMUM_FRAGMENT_HASHES = 250_000;
 const MAXIMUM_SCAN_LIFETIME_MS = 60 * 60_000;
 const WORKING_DIRECTORY = "/workspace";
-const WORKER_REMOTE_PATH =
-  "/trusted/integrity/candidate-integrity-worker.mjs";
-const BUNDLE_REMOTE_PATH =
-  "/trusted/integrity/candidate.bundle";
-const DIFF_REMOTE_PATH =
-  "/trusted/integrity/candidate-derived.diff";
-const MANIFEST_REMOTE_PATH =
-  "/trusted/integrity/candidate-evidence.json";
+const WORKER_REMOTE_PATH = "/trusted/integrity/candidate-integrity-worker.mjs";
+const BUNDLE_REMOTE_PATH = "/trusted/integrity/candidate.bundle";
+const DIFF_REMOTE_PATH = "/trusted/integrity/candidate-derived.diff";
+const MANIFEST_REMOTE_PATH = "/trusted/integrity/candidate-evidence.json";
 
 export class TrustedCandidateIntegrityError extends Error {
   override readonly name = "TrustedCandidateIntegrityError";
@@ -72,9 +61,7 @@ function fail(): never {
   throw new TrustedCandidateIntegrityError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -89,10 +76,7 @@ function assertExactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -108,10 +92,7 @@ function canonicalClone<Value>(value: Value): Value {
 function isCanonicalTimestamp(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const parsed = Date.parse(value);
-  return (
-    Number.isFinite(parsed) &&
-    new Date(parsed).toISOString() === value
-  );
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function assertArtifact(
@@ -122,9 +103,7 @@ function assertArtifact(
   assertExactKeys(value, ["uri", "sha256", "mediaType", "byteLength"]);
   const artifact = value as unknown as TrustedCloudArtifactRef;
   if (
-    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(
-      artifact.uri,
-    ) ||
+    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(artifact.uri) ||
     artifact.uri.includes("..") ||
     !SHA256.test(artifact.sha256) ||
     artifact.mediaType !== mediaType ||
@@ -142,9 +121,7 @@ function assertGitObject(value: unknown): asserts value is string {
   }
 }
 
-function scanExperimentId(
-  input: TrustedCloudIntegrityScanInput,
-): string {
+function scanExperimentId(input: TrustedCloudIntegrityScanInput): string {
   assertExactKeys(input.experiment, [
     "number",
     "slug",
@@ -158,8 +135,7 @@ function scanExperimentId(
     !Number.isSafeInteger(experiment.number) ||
     experiment.number < 1 ||
     !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(experiment.slug) ||
-    (experiment.kind !== "optimization" &&
-      experiment.kind !== "shadow") ||
+    (experiment.kind !== "optimization" && experiment.kind !== "shadow") ||
     (experiment.parentExperiment !== null &&
       (!Number.isSafeInteger(experiment.parentExperiment) ||
         experiment.parentExperiment < 0 ||
@@ -174,24 +150,14 @@ function scanExperimentId(
   return id;
 }
 
-function assertScanInput(
-  input: TrustedCloudIntegrityScanInput,
-): string {
+function assertScanInput(input: TrustedCloudIntegrityScanInput): string {
   const id = scanExperimentId(input);
   assertGitObject(input.sourceCommit);
   assertGitObject(input.sourceTree);
   assertGitObject(input.candidateCommit);
   assertGitObject(input.candidateTree);
-  assertArtifact(
-    input.candidateBundle,
-    "application/vnd.git.bundle",
-    2 * 1024 * 1024 * 1024,
-  );
-  assertArtifact(
-    input.candidateDiff,
-    "text/x-diff",
-    MAXIMUM_DIFF_BYTES,
-  );
+  assertArtifact(input.candidateBundle, "application/vnd.git.bundle", 2 * 1024 * 1024 * 1024);
+  assertArtifact(input.candidateDiff, "text/x-diff", MAXIMUM_DIFF_BYTES);
   if (
     input.sourceCommit === input.candidateCommit ||
     input.sourceTree === input.candidateTree ||
@@ -208,6 +174,7 @@ function assertScanInput(
       (path) =>
         typeof path !== "string" ||
         !SAFE_PATH.test(path) ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Trusted Git rejects control bytes and backslashes in candidate paths.
         /[\u0000-\u001f\u007f\\]/u.test(path),
     )
   ) {
@@ -266,9 +233,7 @@ export interface TrustedCandidateGitEvidenceResult {
 
 export interface TrustedCandidateGitEvidenceRunner {
   readonly boundary: "trusted-cloud-git-object-evidence";
-  derive(
-    request: TrustedCandidateGitEvidenceRequest,
-  ): Promise<TrustedCandidateGitEvidenceResult>;
+  derive(request: TrustedCandidateGitEvidenceRequest): Promise<TrustedCandidateGitEvidenceResult>;
 }
 
 export interface CloudCandidateGitEvidenceRunnerOptions {
@@ -277,9 +242,7 @@ export interface CloudCandidateGitEvidenceRunnerOptions {
   readonly workerArtifact: TrustedCloudArtifactRef;
 }
 
-function assertEvidenceRequest(
-  input: TrustedCandidateGitEvidenceRequest,
-): void {
+function assertEvidenceRequest(input: TrustedCandidateGitEvidenceRequest): void {
   assertExactKeys(input, [
     "scanId",
     "experimentId",
@@ -294,16 +257,11 @@ function assertEvidenceRequest(
   assertGitObject(input.sourceTree);
   assertGitObject(input.candidateCommit);
   assertGitObject(input.candidateTree);
-  assertArtifact(
-    input.candidateBundle,
-    "application/vnd.git.bundle",
-    2 * 1024 * 1024 * 1024,
-  );
+  assertArtifact(input.candidateBundle, "application/vnd.git.bundle", 2 * 1024 * 1024 * 1024);
   if (
     !/^scan-[a-f0-9]{48}$/u.test(input.scanId) ||
     !EXPERIMENT_ID.test(input.experimentId) ||
-    input.bundleRef !==
-      `refs/heads/df/bundle/${input.experimentId}` ||
+    input.bundleRef !== `refs/heads/df/bundle/${input.experimentId}` ||
     !SAFE_BUNDLE_REF.test(input.bundleRef) ||
     input.sourceCommit === input.candidateCommit ||
     input.sourceTree === input.candidateTree
@@ -312,9 +270,7 @@ function assertEvidenceRequest(
   }
 }
 
-function evidenceCommand(
-  request: TrustedCandidateGitEvidenceRequest,
-): RemoteCommandSpec {
+function evidenceCommand(request: TrustedCandidateGitEvidenceRequest): RemoteCommandSpec {
   return {
     executionId: `derive-${request.scanId.slice("scan-".length)}`,
     executable: "/usr/bin/node",
@@ -358,18 +314,12 @@ function evidenceCommand(
  * sandbox. It uploads an immutable candidate bundle and downloads only a
  * derived diff plus its canonical Git-object manifest.
  */
-export class CloudCandidateGitEvidenceRunner
-  implements TrustedCandidateGitEvidenceRunner
-{
+export class CloudCandidateGitEvidenceRunner implements TrustedCandidateGitEvidenceRunner {
   readonly boundary = "trusted-cloud-git-object-evidence" as const;
   readonly #options: CloudCandidateGitEvidenceRunnerOptions;
 
   constructor(options: CloudCandidateGitEvidenceRunnerOptions) {
-    assertArtifact(
-      options.workerArtifact,
-      "text/javascript",
-      4 * 1024 * 1024,
-    );
+    assertArtifact(options.workerArtifact, "text/javascript", 4 * 1024 * 1024);
     if (
       !SAFE_ID.test(options.sandbox.requestId) ||
       options.sandbox.resources.architecture !== "x86_64" ||
@@ -399,9 +349,7 @@ export class CloudCandidateGitEvidenceRunner
         requireDockerInDocker: false,
         requireGpu: false,
       });
-      let lease:
-        | Awaited<ReturnType<CloudSandboxProvider["create"]>>
-        | undefined;
+      let lease: Awaited<ReturnType<CloudSandboxProvider["create"]>> | undefined;
       let result: TrustedCandidateGitEvidenceResult | undefined;
       let failure: unknown;
       try {
@@ -414,53 +362,27 @@ export class CloudCandidateGitEvidenceRunner
           this.#options.workerArtifact,
           WORKER_REMOTE_PATH,
         );
-        await this.#options.provider.upload(
-          lease,
-          request.candidateBundle,
-          BUNDLE_REMOTE_PATH,
-        );
-        const execution = await this.#options.provider.execute(
-          lease,
-          evidenceCommand(request),
-        );
-        assertSuccessfulCloudExecution(
-          execution,
-          "Candidate Git evidence derivation",
-        );
-        if (
-          execution.provider !== lease.provider ||
-          execution.sandboxId !== lease.sandboxId
-        ) {
+        await this.#options.provider.upload(lease, request.candidateBundle, BUNDLE_REMOTE_PATH);
+        const execution = await this.#options.provider.execute(lease, evidenceCommand(request));
+        assertSuccessfulCloudExecution(execution, "Candidate Git evidence derivation");
+        if (execution.provider !== lease.provider || execution.sandboxId !== lease.sandboxId) {
           fail();
         }
         const [manifestArtifact, diffArtifact] = await Promise.all([
-          this.#options.provider.download(
-            lease,
-            MANIFEST_REMOTE_PATH,
-            {
-              mediaType: "application/json",
-              maximumByteLength: MAXIMUM_MANIFEST_BYTES,
-            },
-          ),
+          this.#options.provider.download(lease, MANIFEST_REMOTE_PATH, {
+            mediaType: "application/json",
+            maximumByteLength: MAXIMUM_MANIFEST_BYTES,
+          }),
           this.#options.provider.download(lease, DIFF_REMOTE_PATH, {
             mediaType: "text/x-diff",
             maximumByteLength: MAXIMUM_DIFF_BYTES,
           }),
         ]);
-        assertArtifact(
-          manifestArtifact,
-          "application/json",
-          MAXIMUM_MANIFEST_BYTES,
-        );
-        assertArtifact(
-          diffArtifact,
-          "text/x-diff",
-          MAXIMUM_DIFF_BYTES,
-        );
+        assertArtifact(manifestArtifact, "application/json", MAXIMUM_MANIFEST_BYTES);
+        assertArtifact(diffArtifact, "text/x-diff", MAXIMUM_DIFF_BYTES);
         result = {
           workerSha256: this.#options.workerArtifact.sha256,
-          executionReceiptHash:
-            cloudExecutionReceiptHash(execution),
+          executionReceiptHash: cloudExecutionReceiptHash(execution),
           completedAt: execution.finishedAt,
           manifestArtifact: canonicalClone(manifestArtifact),
           diffArtifact: canonicalClone(diffArtifact),
@@ -486,10 +408,7 @@ export class CloudCandidateGitEvidenceRunner
 
 export interface TrustedCandidateIntegrityArtifactReader {
   readonly boundary: "trusted-cloud-artifact-reader";
-  readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string>;
+  readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string>;
 }
 
 /**
@@ -506,10 +425,7 @@ export class VerifyingCandidateIntegrityArtifactReader
     this.#bridge = bridge;
   }
 
-  async readUtf8(
-    artifact: TrustedCloudArtifactRef,
-    maximumBytes: number,
-  ): Promise<string> {
+  async readUtf8(artifact: TrustedCloudArtifactRef, maximumBytes: number): Promise<string> {
     try {
       if (
         !Number.isSafeInteger(maximumBytes) ||
@@ -517,8 +433,7 @@ export class VerifyingCandidateIntegrityArtifactReader
         maximumBytes > MAXIMUM_DIFF_BYTES ||
         artifact.byteLength <= 0 ||
         artifact.byteLength > maximumBytes ||
-        (artifact.mediaType !== "application/json" &&
-          artifact.mediaType !== "text/x-diff")
+        (artifact.mediaType !== "application/json" && artifact.mediaType !== "text/x-diff")
       ) {
         fail();
       }
@@ -590,20 +505,16 @@ function parseEvidenceManifest(
     "fileModesHash",
     "contentHash",
   ]);
-  const manifest =
-    parsed as unknown as TrustedCandidateGitEvidenceManifest;
+  const manifest = parsed as unknown as TrustedCandidateGitEvidenceManifest;
   if (
     raw !== `${canonicalJson(manifest)}\n` ||
     manifest.contentHash !== computeContentHash(manifest) ||
     manifest.schemaVersion !== 1 ||
-    manifest.domain !==
-      "dark-factory.candidate-git-evidence.v1" ||
+    manifest.domain !== "dark-factory.candidate-git-evidence.v1" ||
     manifest.experimentId !== request.experimentId ||
     manifest.bundleRef !== request.bundleRef ||
-    manifest.candidateBundleSha256 !==
-      request.candidateBundle.sha256 ||
-    manifest.candidateBundleByteLength !==
-      request.candidateBundle.byteLength ||
+    manifest.candidateBundleSha256 !== request.candidateBundle.sha256 ||
+    manifest.candidateBundleByteLength !== request.candidateBundle.byteLength ||
     manifest.sourceCommit !== request.sourceCommit ||
     manifest.sourceTree !== request.sourceTree ||
     manifest.candidateCommit !== request.candidateCommit ||
@@ -613,16 +524,11 @@ function parseEvidenceManifest(
     !Array.isArray(manifest.changedFiles) ||
     manifest.changedFiles.length < 1 ||
     manifest.changedFiles.length > 4096 ||
-    new Set(manifest.changedFiles).size !==
-      manifest.changedFiles.length ||
+    new Set(manifest.changedFiles).size !== manifest.changedFiles.length ||
     manifest.changedFiles.some(
-      (path) =>
-        typeof path !== "string" ||
-        !SAFE_PATH.test(path) ||
-        path.includes("\0"),
+      (path) => typeof path !== "string" || !SAFE_PATH.test(path) || path.includes("\0"),
     ) ||
-    manifest.changedFilesHash !==
-      canonicalHash(manifest.changedFiles) ||
+    manifest.changedFilesHash !== canonicalHash(manifest.changedFiles) ||
     !Number.isSafeInteger(manifest.addedLines) ||
     manifest.addedLines < 0 ||
     !Number.isSafeInteger(manifest.deletedLines) ||
@@ -640,10 +546,14 @@ function parseEvidenceManifest(
   }
   for (const [index, mode] of manifest.modes.entries()) {
     assertExactKeys(mode, ["path", "beforeMode", "afterMode"]);
+    const beforeMode = mode.beforeMode;
+    const afterMode = mode.afterMode;
     if (
       mode.path !== manifest.changedFiles[index] ||
-      !TREE_MODE.test(mode.beforeMode) ||
-      !TREE_MODE.test(mode.afterMode)
+      typeof beforeMode !== "string" ||
+      typeof afterMode !== "string" ||
+      !TREE_MODE.test(beforeMode) ||
+      !TREE_MODE.test(afterMode)
     ) {
       fail();
     }
@@ -663,10 +573,7 @@ export interface TrustedTaskFragmentHashCatalog {
 }
 
 export function taskFragmentCatalogHash(
-  catalog: Omit<
-    TrustedTaskFragmentHashCatalog,
-    "fragmentCatalogHash"
-  >,
+  catalog: Omit<TrustedTaskFragmentHashCatalog, "fragmentCatalogHash">,
 ): string {
   return canonicalHash(catalog);
 }
@@ -689,21 +596,17 @@ function assertFragmentCatalog(
     "sourceAttestationHash",
     "fragmentCatalogHash",
   ]);
-  const catalog =
-    value as unknown as TrustedTaskFragmentHashCatalog;
-  const { fragmentCatalogHash: _fragmentCatalogHash, ...body } =
-    catalog;
+  const catalog = value as unknown as TrustedTaskFragmentHashCatalog;
+  const { fragmentCatalogHash: _fragmentCatalogHash, ...body } = catalog;
   if (
     catalog.schemaVersion !== 1 ||
-    catalog.sensitivity !==
-      "trusted-task-fragment-hashes" ||
+    catalog.sensitivity !== "trusted-task-fragment-hashes" ||
     catalog.protocolHash !== expected.protocolHash ||
     catalog.integrityPolicyHash !== expected.integrityPolicyHash ||
     !Array.isArray(catalog.fragmentHashes) ||
     catalog.fragmentHashes.length < 1 ||
     catalog.fragmentHashes.length > MAXIMUM_FRAGMENT_HASHES ||
-    new Set(catalog.fragmentHashes).size !==
-      catalog.fragmentHashes.length ||
+    new Set(catalog.fragmentHashes).size !== catalog.fragmentHashes.length ||
     catalog.fragmentHashes.some((hash) => !SHA256.test(hash)) ||
     catalog.fragmentHashes.some((hash, index) => {
       const previous = catalog.fragmentHashes[index - 1];
@@ -711,10 +614,8 @@ function assertFragmentCatalog(
     }) ||
     catalog.containsTaskPlaintext !== false ||
     !SHA256.test(catalog.sourceAttestationHash) ||
-    catalog.fragmentCatalogHash !==
-      taskFragmentCatalogHash(body) ||
-    catalog.fragmentCatalogHash !==
-      expected.fragmentCatalogHash
+    catalog.fragmentCatalogHash !== taskFragmentCatalogHash(body) ||
+    catalog.fragmentCatalogHash !== expected.fragmentCatalogHash
   ) {
     fail();
   }
@@ -734,9 +635,7 @@ export interface TrustedTaskFragmentHashSource {
  * deliberately exposes no lookup API: the entire sealed catalog can only be
  * consumed by the one-shot integrity port.
  */
-export class PinnedTrustedTaskFragmentHashSource
-  implements TrustedTaskFragmentHashSource
-{
+export class PinnedTrustedTaskFragmentHashSource implements TrustedTaskFragmentHashSource {
   readonly boundary = "trusted-evaluator-fragment-hashes" as const;
   readonly #catalog: TrustedTaskFragmentHashCatalog;
 
@@ -767,9 +666,7 @@ export class PinnedTrustedTaskFragmentHashSource
 export interface TrustedCandidateIntegritySigningAuthority {
   readonly boundary: "trusted-cloud-key-material";
   readonly keyId: string;
-  sign(
-    receipt: Omit<TrustedCloudIntegrityScanReceipt, "signature">,
-  ): Promise<Signature>;
+  sign(receipt: Omit<TrustedCloudIntegrityScanReceipt, "signature">): Promise<Signature>;
 }
 
 export interface TrustedCandidateIntegrityAccountingAttestation {
@@ -840,18 +737,9 @@ function assertEvidenceResult(
     "manifestArtifact",
     "diffArtifact",
   ]);
-  const evidence =
-    result as unknown as TrustedCandidateGitEvidenceResult;
-  assertArtifact(
-    evidence.manifestArtifact,
-    "application/json",
-    MAXIMUM_MANIFEST_BYTES,
-  );
-  assertArtifact(
-    evidence.diffArtifact,
-    "text/x-diff",
-    MAXIMUM_DIFF_BYTES,
-  );
+  const evidence = result as unknown as TrustedCandidateGitEvidenceResult;
+  assertArtifact(evidence.manifestArtifact, "application/json", MAXIMUM_MANIFEST_BYTES);
+  assertArtifact(evidence.diffArtifact, "text/x-diff", MAXIMUM_DIFF_BYTES);
   if (
     evidence.workerSha256 !== expectedWorkerSha256 ||
     !SHA256.test(evidence.executionReceiptHash) ||
@@ -866,17 +754,11 @@ function assertSignature(
   input: {
     readonly keyId: string;
     readonly scannedAt: string;
-    readonly receipt:
-      Omit<TrustedCloudIntegrityScanReceipt, "signature">;
+    readonly receipt: Omit<TrustedCloudIntegrityScanReceipt, "signature">;
     readonly publicKey: KeyLike;
   },
 ): asserts signature is Signature {
-  assertExactKeys(signature, [
-    "algorithm",
-    "keyId",
-    "signedAt",
-    "signature",
-  ]);
+  assertExactKeys(signature, ["algorithm", "keyId", "signedAt", "signature"]);
   const value = signature as unknown as Signature;
   const signed = {
     ...input.receipt,
@@ -888,10 +770,7 @@ function assertSignature(
     !isCanonicalTimestamp(value.signedAt) ||
     Date.parse(value.signedAt) < Date.parse(input.scannedAt) ||
     !SAFE_SIGNATURE.test(value.signature) ||
-    !verifyEd25519Signature(
-      signed as unknown as Readonly<Record<string, unknown>>,
-      input.publicKey,
-    )
+    !verifyEd25519Signature(signed as unknown as Readonly<Record<string, unknown>>, input.publicKey)
   ) {
     fail();
   }
@@ -907,8 +786,7 @@ function assertAccountingAttestation(
     "accountingAttestationHash",
     "containsTaskIdentifiers",
   ]);
-  const accounting =
-    value as unknown as TrustedCandidateIntegrityAccountingAttestation;
+  const accounting = value as unknown as TrustedCandidateIntegrityAccountingAttestation;
   if (
     !Number.isFinite(accounting.aggregateCostUsd) ||
     accounting.aggregateCostUsd < 0 ||
@@ -932,30 +810,21 @@ function assertAccountingAttestation(
  * evidence sandbox. Only sorted violation codes and content commitments leave
  * the boundary.
  */
-export class ArtifactDerivedCandidateIntegrityScanPort
-  implements TrustedCloudIntegrityScanPort
-{
+export class ArtifactDerivedCandidateIntegrityScanPort implements TrustedCloudIntegrityScanPort {
   readonly boundary = "trusted-cloud" as const;
   readonly #options: ArtifactDerivedCandidateIntegrityScanPortOptions;
   readonly #now: () => Date;
 
-  constructor(
-    options: ArtifactDerivedCandidateIntegrityScanPortOptions,
-  ) {
+  constructor(options: ArtifactDerivedCandidateIntegrityScanPortOptions) {
     if (
-      options.evidenceRunner.boundary !==
-        "trusted-cloud-git-object-evidence" ||
-      options.artifactReader.boundary !==
-        "trusted-cloud-artifact-reader" ||
-      options.fragmentSource.boundary !==
-        "trusted-evaluator-fragment-hashes" ||
+      options.evidenceRunner.boundary !== "trusted-cloud-git-object-evidence" ||
+      options.artifactReader.boundary !== "trusted-cloud-artifact-reader" ||
+      options.fragmentSource.boundary !== "trusted-evaluator-fragment-hashes" ||
       options.signer.boundary !== "trusted-cloud-key-material" ||
       options.accounting.boundary !== "trusted-cloud-accounting" ||
       !SAFE_ID.test(options.signer.keyId) ||
-      options.signer.keyId !==
-        options.receiptVerifier.trustedKeyId ||
-      options.integrityPolicyHash !==
-        DEFAULT_PI_SCAN_POLICY_HASH ||
+      options.signer.keyId !== options.receiptVerifier.trustedKeyId ||
+      options.integrityPolicyHash !== DEFAULT_PI_SCAN_POLICY_HASH ||
       !SHA256.test(options.workerSha256) ||
       !SHA256.test(options.fragmentCatalogHash)
     ) {
@@ -967,22 +836,16 @@ export class ArtifactDerivedCandidateIntegrityScanPort
 
   async scan(
     rawInput: TrustedCloudIntegrityScanInput,
-  ): Promise<
-    AccountedCorrectnessGateReceipt<TrustedCloudIntegrityScanReceipt>
-  > {
+  ): Promise<AccountedCorrectnessGateReceipt<TrustedCloudIntegrityScanReceipt>> {
     try {
       const input = canonicalClone(rawInput);
       const experimentId = assertScanInput(input);
-      if (
-        input.integrityPolicyHash !==
-        this.#options.integrityPolicyHash
-      ) {
+      if (input.integrityPolicyHash !== this.#options.integrityPolicyHash) {
         fail();
       }
       const scanId = expectedScanId(input, experimentId, {
         workerSha256: this.#options.workerSha256,
-        fragmentCatalogHash:
-          this.#options.fragmentCatalogHash,
+        fragmentCatalogHash: this.#options.fragmentCatalogHash,
       });
       const evidenceRequest: TrustedCandidateGitEvidenceRequest = {
         scanId,
@@ -995,41 +858,23 @@ export class ArtifactDerivedCandidateIntegrityScanPort
         candidateBundle: canonicalClone(input.candidateBundle),
       };
       const evidence = canonicalClone(
-        await this.#options.evidenceRunner.derive(
-          canonicalClone(evidenceRequest),
-        ),
+        await this.#options.evidenceRunner.derive(canonicalClone(evidenceRequest)),
       );
-      assertEvidenceResult(
-        evidence,
-        this.#options.workerSha256,
-      );
-      const [manifestRaw, derivedDiff, catalog] =
-        await Promise.all([
-          this.#options.artifactReader.readUtf8(
-            evidence.manifestArtifact,
-            MAXIMUM_MANIFEST_BYTES,
-          ),
-          this.#options.artifactReader.readUtf8(
-            evidence.diffArtifact,
-            MAXIMUM_DIFF_BYTES,
-          ),
-          this.#options.fragmentSource.load({
-            protocolHash: input.experiment.protocolHash,
-            integrityPolicyHash: input.integrityPolicyHash,
-            expectedFragmentCatalogHash:
-              this.#options.fragmentCatalogHash,
-          }),
-        ]);
-      const manifest = parseEvidenceManifest(
-        manifestRaw,
-        evidenceRequest,
-        evidence,
-      );
+      assertEvidenceResult(evidence, this.#options.workerSha256);
+      const [manifestRaw, derivedDiff, catalog] = await Promise.all([
+        this.#options.artifactReader.readUtf8(evidence.manifestArtifact, MAXIMUM_MANIFEST_BYTES),
+        this.#options.artifactReader.readUtf8(evidence.diffArtifact, MAXIMUM_DIFF_BYTES),
+        this.#options.fragmentSource.load({
+          protocolHash: input.experiment.protocolHash,
+          integrityPolicyHash: input.integrityPolicyHash,
+          expectedFragmentCatalogHash: this.#options.fragmentCatalogHash,
+        }),
+      ]);
+      const manifest = parseEvidenceManifest(manifestRaw, evidenceRequest, evidence);
       assertFragmentCatalog(catalog, {
         protocolHash: input.experiment.protocolHash,
         integrityPolicyHash: input.integrityPolicyHash,
-        fragmentCatalogHash:
-          this.#options.fragmentCatalogHash,
+        fragmentCatalogHash: this.#options.fragmentCatalogHash,
       });
       const scan = scanCandidate(
         {
@@ -1044,26 +889,19 @@ export class ArtifactDerivedCandidateIntegrityScanPort
       const violationCodes = new Set<IntegrityViolationCode>(
         scan.violations.map((violation) => violation.code),
       );
-      const claimedChangedFilesHash = canonicalHash(
-        input.changedFiles,
-      );
+      const claimedChangedFilesHash = canonicalHash(input.changedFiles);
       if (
         manifest.changedFilesHash !== claimedChangedFilesHash ||
         evidence.diffArtifact.sha256 !== input.candidateDiff.sha256 ||
-        evidence.diffArtifact.byteLength !==
-          input.candidateDiff.byteLength
+        evidence.diffArtifact.byteLength !== input.candidateDiff.byteLength
       ) {
         violationCodes.add("DIFF_METADATA_MISMATCH");
       }
       if (
         manifest.modes.some(
           (mode) =>
-            !new Set(["000000", "100644", "100755"]).has(
-              mode.beforeMode,
-            ) ||
-            !new Set(["000000", "100644", "100755"]).has(
-              mode.afterMode,
-            ),
+            !new Set(["000000", "100644", "100755"]).has(mode.beforeMode) ||
+            !new Set(["000000", "100644", "100755"]).has(mode.afterMode),
         )
       ) {
         violationCodes.add("OPAQUE_BINARY_CHANGE");
@@ -1078,8 +916,7 @@ export class ArtifactDerivedCandidateIntegrityScanPort
       }
       const attested = {
         schemaVersion: 2 as const,
-        sensitivity:
-          "release-safe-candidate-integrity-scan" as const,
+        sensitivity: "release-safe-candidate-integrity-scan" as const,
         scanId,
         experimentId,
         protocolHash: input.experiment.protocolHash,
@@ -1094,14 +931,12 @@ export class ArtifactDerivedCandidateIntegrityScanPort
         diffSha256: input.candidateDiff.sha256,
         changedFilesHash: claimedChangedFilesHash,
         candidateBundleSha256: input.candidateBundle.sha256,
-        evidenceManifestSha256:
-          evidence.manifestArtifact.sha256,
+        evidenceManifestSha256: evidence.manifestArtifact.sha256,
         evidenceDiffSha256: evidence.diffArtifact.sha256,
         observedChangedFilesHash: manifest.changedFilesHash,
         lineCountsHash: manifest.lineCountsHash,
         fileModesHash: manifest.fileModesHash,
-        fragmentCatalogHash:
-          this.#options.fragmentCatalogHash,
+        fragmentCatalogHash: this.#options.fragmentCatalogHash,
         workerSha256: evidence.workerSha256,
         executionReceiptHash: evidence.executionReceiptHash,
         integrityPolicyHash: input.integrityPolicyHash,
@@ -1110,17 +945,11 @@ export class ArtifactDerivedCandidateIntegrityScanPort
         containsTaskIdentifiers: false as const,
         scannedAt,
       };
-      const unsigned: Omit<
-        TrustedCloudIntegrityScanReceipt,
-        "signature"
-      > = {
+      const unsigned: Omit<TrustedCloudIntegrityScanReceipt, "signature"> = {
         ...attested,
-        scanAttestationHash:
-          trustedCloudIntegrityScanAttestationHash(attested),
+        scanAttestationHash: trustedCloudIntegrityScanAttestationHash(attested),
       };
-      const signature = canonicalClone(
-        await this.#options.signer.sign(canonicalClone(unsigned)),
-      );
+      const signature = canonicalClone(await this.#options.signer.sign(canonicalClone(unsigned)));
       assertSignature(signature, {
         keyId: this.#options.signer.keyId,
         scannedAt,
@@ -1142,16 +971,14 @@ export class ArtifactDerivedCandidateIntegrityScanPort
       assertAccountingAttestation(attestation);
       const accounting: CorrectnessGateOperationAccounting = {
         schemaVersion: 1,
-        sensitivity:
-          "release-safe-correctness-gate-accounting",
+        sensitivity: "release-safe-correctness-gate-accounting",
         operation: "integrity-scan",
         receiptHash,
         aggregateCostUsd: attestation.aggregateCostUsd,
         tokens: attestation.tokens,
         wallTimeMs: attestation.wallTimeMs,
         containsTaskIdentifiers: false,
-        accountingAttestationHash:
-          attestation.accountingAttestationHash,
+        accountingAttestationHash: attestation.accountingAttestationHash,
       };
       return canonicalClone({ receipt, accounting });
     } catch {

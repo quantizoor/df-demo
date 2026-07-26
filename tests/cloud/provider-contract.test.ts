@@ -129,10 +129,7 @@ class FakeTransport implements CloudProviderTransport {
     return Promise.resolve();
   }
 
-  destroy(
-    _configuration: ProviderConfiguration,
-    _lease: SandboxLease,
-  ): Promise<void> {
+  destroy(_configuration: ProviderConfiguration, _lease: SandboxLease): Promise<void> {
     this.calls.push("destroy");
     return Promise.resolve();
   }
@@ -189,11 +186,7 @@ function command(): RemoteCommandSpec {
 describe("cloud provider contract", () => {
   it("delegates lifecycle operations through an injected remote transport", async () => {
     const transport = new FakeTransport();
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now },
-    );
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, { now });
     await expect(requireCompatibleProvider(provider, probeRequest())).resolves.toMatchObject({
       compatible: true,
     });
@@ -229,11 +222,7 @@ describe("cloud provider contract", () => {
   it("rejects a provider that cannot enforce network denial", async () => {
     const transport = new FakeTransport();
     transport.capabilities = { ...capabilities, networkDenyAll: false };
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now },
-    );
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, { now });
     await expect(requireCompatibleProvider(provider, probeRequest())).rejects.toThrow(
       /networkDenyAll/u,
     );
@@ -242,24 +231,16 @@ describe("cloud provider contract", () => {
   it("rejects a lease attested by a different provider", async () => {
     const transport = new FakeTransport();
     transport.mismatchedLease = true;
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now },
-    );
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, { now });
     await expect(provider.create(createRequest())).rejects.toThrow(/does not belong/u);
   });
 
   it("rejects mutable image tags and remote path traversal", async () => {
     const transport = new FakeTransport();
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now },
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, { now });
+    await expect(provider.create({ ...createRequest(), imageDigest: "node:24" })).rejects.toThrow(
+      /sha256/u,
     );
-    await expect(
-      provider.create({ ...createRequest(), imageDigest: "node:24" }),
-    ).rejects.toThrow(/sha256/u);
     await expect(
       provider.create({
         ...createRequest(),
@@ -279,16 +260,14 @@ describe("cloud provider contract", () => {
   it("rejects expired, mutated, and already destroyed leases", async () => {
     let currentTime = new Date("2026-07-01T00:00:30.000Z");
     const transport = new FakeTransport();
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now: () => currentTime },
-    );
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, {
+      now: () => currentTime,
+    });
     const lease = await provider.create(createRequest());
 
-    await expect(
-      provider.execute({ ...lease, regionClass: "changed" }, command()),
-    ).rejects.toThrow(/mutated/u);
+    await expect(provider.execute({ ...lease, regionClass: "changed" }, command())).rejects.toThrow(
+      /mutated/u,
+    );
     currentTime = new Date("2026-07-01T01:00:00.001Z");
     await expect(provider.execute(lease, command())).rejects.toThrow(/expired/u);
     await provider.destroy(lease);
@@ -304,11 +283,7 @@ describe("cloud provider contract", () => {
 
   it("allows only secrets pregranted by the sandbox request", async () => {
     const transport = new FakeTransport();
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now },
-    );
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, { now });
     const lease = await provider.create({
       ...createRequest(),
       secretReferences: [
@@ -340,11 +315,7 @@ describe("cloud provider contract", () => {
 
   it("burns a sandbox request ID before remote creation", async () => {
     const transport = new FakeTransport();
-    const provider = createDaytonaProvider(
-      { DAYTONA_API_KEY: "secret" },
-      transport,
-      { now },
-    );
+    const provider = createDaytonaProvider({ DAYTONA_API_KEY: "secret" }, transport, { now });
     await provider.create(createRequest());
     await expect(provider.create(createRequest())).rejects.toThrow(/one-use/u);
     expect(transport.calls.filter((call) => call === "create")).toHaveLength(1);
@@ -378,8 +349,8 @@ describe("matched execution profile", () => {
     { protocolHash: "d".repeat(64) },
     { resources: { ...profile.resources, memoryMiB: 16_384 } },
   ])("rejects profile drift: %o", (change) => {
-    expect(() =>
-      assertMatchedExecutionProfiles({ ...profile, ...change }, profile),
-    ).toThrow(/identical/u);
+    expect(() => assertMatchedExecutionProfiles({ ...profile, ...change }, profile)).toThrow(
+      /identical/u,
+    );
   });
 });

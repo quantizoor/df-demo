@@ -1,20 +1,17 @@
 import type { BrokerFailureCode } from "../broker/ledger.js";
 import type { TrustedCanonicalAggregate } from "../broker/service.js";
-import {
-  canonicalHash,
-  canonicalJson,
-} from "../schemas/canonical.js";
+import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type { SignedResultEnvelope } from "../schemas/trusted.js";
+import {
+  hashTrustedBehavioralPreparationAbandonment,
+  hashTrustedBehavioralPreparationFinalization,
+} from "./behavioral-preparation-store.js";
 import {
   hashTrustedBehavioralReleaseOrphanFinalization,
   type TrustedBehavioralReleaseFinalization,
   type TrustedBehavioralReleaseOrphanFinalizationReceipt,
 } from "./behavioral-release-producer.js";
-import {
-  hashTrustedBehavioralPreparationAbandonment,
-  hashTrustedBehavioralPreparationFinalization,
-} from "./behavioral-preparation-store.js";
 import {
   assertSafeForLocalPersistence,
   hashTrustedRawArtifactManifest,
@@ -73,8 +70,7 @@ export type TrustedReleaseRecoveryBehavioralState =
  */
 export interface TrustedPostDestructionReleaseRecoveryRecord {
   readonly schemaVersion: 1;
-  readonly sensitivity:
-    "trusted-private-post-destruction-release-recovery";
+  readonly sensitivity: "trusted-private-post-destruction-release-recovery";
   readonly requestId: string;
   readonly requestHash: string;
   readonly protocolHash: string;
@@ -84,11 +80,7 @@ export interface TrustedPostDestructionReleaseRecoveryRecord {
   readonly destructionReceipt: TrustedRawDestructionReceipt;
   readonly aggregate: TrustedCanonicalAggregate;
   readonly behavioral: TrustedReleaseRecoveryBehavioralState;
-  readonly status:
-    | "open"
-    | "result-issued"
-    | "completed"
-    | "failed";
+  readonly status: "open" | "result-issued" | "completed" | "failed";
   readonly envelope: SignedResultEnvelope | null;
   readonly envelopeHash: string | null;
   readonly failureCode: BrokerFailureCode | null;
@@ -104,11 +96,7 @@ export interface TrustedReleaseRecoveryResolution {
 }
 
 export interface TrustedReleaseRecoveryWriteReceipt {
-  readonly status:
-    | "created"
-    | "already-created"
-    | "advanced"
-    | "already-advanced";
+  readonly status: "created" | "already-created" | "advanced" | "already-advanced";
   readonly requestHash: string;
   readonly protocolHash: string;
   readonly revision: number;
@@ -121,9 +109,7 @@ export interface TrustedReleaseRecoveryWriteReceipt {
  * boundary. There is intentionally no list, prefix, or delete method.
  */
 export interface TrustedPostDestructionReleaseRecoveryStore {
-  readonly boundary:
-    | "trusted-cloud"
-    | "test-only-in-memory";
+  readonly boundary: "trusted-cloud" | "test-only-in-memory";
 
   create(
     record: TrustedPostDestructionReleaseRecoveryRecord,
@@ -150,9 +136,7 @@ function fail(message: string): never {
   throw new TrustedReleaseRecoveryStoreError(message);
 }
 
-function isRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -167,10 +151,7 @@ function exactKeys(
   label: string,
 ): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== keys.length ||
-    actual.some((key) => !keys.includes(key))
-  ) {
+  if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
     fail(`${label} has non-canonical fields.`);
   }
 }
@@ -178,21 +159,14 @@ function exactKeys(
 function assertTimestamp(value: unknown, label: string): void {
   if (typeof value !== "string") fail(`${label} is malformed.`);
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail(`${label} is not canonical UTC.`);
   }
 }
 
 function assertSignature(value: unknown): void {
   if (!isRecord(value)) fail("Destruction signature is malformed.");
-  exactKeys(
-    value,
-    ["algorithm", "keyId", "signedAt", "signature"],
-    "Destruction signature",
-  );
+  exactKeys(value, ["algorithm", "keyId", "signedAt", "signature"], "Destruction signature");
   if (
     value.algorithm !== "ed25519" ||
     typeof value.keyId !== "string" ||
@@ -265,9 +239,7 @@ function assertRawLineage(
     if (
       artifact.kind !== kinds[index] ||
       typeof artifact.uri !== "string" ||
-      !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(
-        artifact.uri,
-      ) ||
+      !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(artifact.uri) ||
       typeof artifact.sha256 !== "string" ||
       !SHA256.test(artifact.sha256) ||
       !Number.isSafeInteger(artifact.byteLength) ||
@@ -277,11 +249,9 @@ function assertRawLineage(
       fail("Raw artifact reference is malformed.");
     }
   }
-  const typedManifest =
-    manifest as unknown as TrustedRawArtifactManifest;
+  const typedManifest = manifest as unknown as TrustedRawArtifactManifest;
   if (
-    typedManifest.artifactSetHash !==
-      hashTrustedRawArtifactSet(typedManifest.artifacts) ||
+    typedManifest.artifactSetHash !== hashTrustedRawArtifactSet(typedManifest.artifacts) ||
     typedManifest.manifestHash !==
       hashTrustedRawArtifactManifest({
         manifestId: typedManifest.manifestId,
@@ -296,8 +266,7 @@ function assertRawLineage(
     receipt.manifestHash !== typedManifest.manifestHash ||
     receipt.policyHash !== retentionPolicyHash ||
     receipt.artifactSetHash !== typedManifest.artifactSetHash ||
-    (receipt.destruction !== "delete" &&
-      receipt.destruction !== "crypto-shred") ||
+    (receipt.destruction !== "delete" && receipt.destruction !== "crypto-shred") ||
     receipt.artifactCount !== 3 ||
     typeof receipt.verifierAttestationHash !== "string" ||
     !SHA256.test(receipt.verifierAttestationHash)
@@ -369,8 +338,7 @@ function assertAggregate(
     value.releaseChecks.graderCanaryScanPassed !== true ||
     value.releaseChecks.contentFingerprintScanPassed !== true ||
     value.releaseChecks.taskIdentityScanPassed !== true ||
-    value.releaseChecks.privacyThresholdPassed !==
-      (value.behavioralAggregateHash !== null)
+    value.releaseChecks.privacyThresholdPassed !== (value.behavioralAggregateHash !== null)
   ) {
     fail("Recovery aggregate release checks are detached.");
   }
@@ -385,13 +353,7 @@ function assertFinalization(
   if (!isRecord(value)) fail("Behavioral finalization is malformed.");
   exactKeys(
     value,
-    [
-      "contentHash",
-      "sourceSetHash",
-      "privacyThresholdPassed",
-      "authorizationHash",
-      "requestHash",
-    ],
+    ["contentHash", "sourceSetHash", "privacyThresholdPassed", "authorizationHash", "requestHash"],
     "Behavioral finalization",
   );
   if (
@@ -427,8 +389,7 @@ function assertOrphan(
     "Behavioral orphan proof",
   );
   assertTimestamp(value.orphanedAt, "Behavioral orphan time");
-  const typed =
-    value as unknown as TrustedBehavioralReleaseOrphanFinalizationReceipt;
+  const typed = value as unknown as TrustedBehavioralReleaseOrphanFinalizationReceipt;
   if (
     typed.status !== "orphaned" ||
     typed.authorizationHash !== finalization.authorizationHash ||
@@ -484,11 +445,7 @@ function assertBehavioral(
     return;
   }
   if (value.status === "consumed") {
-    exactKeys(
-      value,
-      ["status", "preparationHash"],
-      "Recovery behavioral state",
-    );
+    exactKeys(value, ["status", "preparationHash"], "Recovery behavioral state");
     if (
       typeof value.preparationHash !== "string" ||
       !SHA256.test(value.preparationHash) ||
@@ -506,20 +463,11 @@ function assertBehavioral(
     "finalization",
   ];
   if (value.status === "finalized") {
-    exactKeys(
-      value,
-      finalizationKeys,
-      "Recovery behavioral state",
-    );
+    exactKeys(value, finalizationKeys, "Recovery behavioral state");
   } else if (value.status === "abandoned") {
     exactKeys(
       value,
-      [
-        ...finalizationKeys,
-        "orphanFinalizationHash",
-        "orphanFinalization",
-        "abandonmentHash",
-      ],
+      [...finalizationKeys, "orphanFinalizationHash", "orphanFinalization", "abandonmentHash"],
       "Recovery behavioral state",
     );
   } else {
@@ -534,40 +482,33 @@ function assertBehavioral(
     fail("Finalized recovery state is detached.");
   }
   assertFinalization(value.finalization, input.requestHash);
-  const finalization =
-    value.finalization as TrustedBehavioralReleaseFinalization;
-  const expectedFinalizationHash =
-    hashTrustedBehavioralPreparationFinalization({
-      requestHash: input.requestHash,
-      protocolHash: input.protocolHash,
-      preparationHash: value.preparationHash,
-      sourceResultEnvelopeHash: value.sourceResultEnvelopeHash,
-      finalization,
-    });
+  const finalization = value.finalization as TrustedBehavioralReleaseFinalization;
+  const expectedFinalizationHash = hashTrustedBehavioralPreparationFinalization({
+    requestHash: input.requestHash,
+    protocolHash: input.protocolHash,
+    preparationHash: value.preparationHash,
+    sourceResultEnvelopeHash: value.sourceResultEnvelopeHash,
+    finalization,
+  });
   if (
     value.finalizationHash !== expectedFinalizationHash ||
-    input.aggregate.behavioralAggregateHash !==
-      finalization.contentHash
+    input.aggregate.behavioralAggregateHash !== finalization.contentHash
   ) {
     fail("Finalized recovery state hash is detached.");
   }
   if (value.status === "abandoned") {
     assertOrphan(value.orphanFinalization, finalization);
-    const orphan =
-      value.orphanFinalization as TrustedBehavioralReleaseOrphanFinalizationReceipt;
+    const orphan = value.orphanFinalization as TrustedBehavioralReleaseOrphanFinalizationReceipt;
     if (
-      value.orphanFinalizationHash !==
-        orphan.orphanFinalizationHash ||
+      value.orphanFinalizationHash !== orphan.orphanFinalizationHash ||
       value.abandonmentHash !==
         hashTrustedBehavioralPreparationAbandonment({
           requestHash: input.requestHash,
           protocolHash: input.protocolHash,
           preparationHash: value.preparationHash,
-          sourceResultEnvelopeHash:
-            value.sourceResultEnvelopeHash,
+          sourceResultEnvelopeHash: value.sourceResultEnvelopeHash,
           finalizationHash: expectedFinalizationHash,
-          orphanFinalizationHash:
-            orphan.orphanFinalizationHash,
+          orphanFinalizationHash: orphan.orphanFinalizationHash,
         })
     ) {
       fail("Abandoned recovery state is detached.");
@@ -576,48 +517,34 @@ function assertBehavioral(
 }
 
 function recoveryRecordMaterial(
-  record: Omit<
-    TrustedPostDestructionReleaseRecoveryRecord,
-    "recordHash"
-  >,
+  record: Omit<TrustedPostDestructionReleaseRecoveryRecord, "recordHash">,
 ): Readonly<Record<string, unknown>> {
   return {
-    domain:
-      "dark-factory.post-destruction-release-recovery-record.v1",
+    domain: "dark-factory.post-destruction-release-recovery-record.v1",
     record,
   };
 }
 
 export function hashPostDestructionReleaseRecoveryRecord(
-  record: Omit<
-    TrustedPostDestructionReleaseRecoveryRecord,
-    "recordHash"
-  >,
+  record: Omit<TrustedPostDestructionReleaseRecoveryRecord, "recordHash">,
 ): string {
   return canonicalHash(recoveryRecordMaterial(record));
 }
 
 export function sealPostDestructionReleaseRecoveryRecord(
-  record: Omit<
-    TrustedPostDestructionReleaseRecoveryRecord,
-    "recordHash"
-  >,
+  record: Omit<TrustedPostDestructionReleaseRecoveryRecord, "recordHash">,
 ): TrustedPostDestructionReleaseRecoveryRecord {
   const sealed = {
     ...record,
-    recordHash:
-      hashPostDestructionReleaseRecoveryRecord(record),
+    recordHash: hashPostDestructionReleaseRecoveryRecord(record),
   };
   assertPostDestructionReleaseRecoveryRecord(sealed);
   return sealed;
 }
 
-export function hashResultCompletionEnvelope(
-  envelope: SignedResultEnvelope,
-): string {
+export function hashResultCompletionEnvelope(envelope: SignedResultEnvelope): string {
   return canonicalHash({
-    domain:
-      "dark-factory.one-use-result-completion-envelope.v1",
+    domain: "dark-factory.one-use-result-completion-envelope.v1",
     envelope,
   });
 }
@@ -651,8 +578,7 @@ export function assertPostDestructionReleaseRecoveryRecord(
   );
   if (
     value.schemaVersion !== 1 ||
-    value.sensitivity !==
-      "trusted-private-post-destruction-release-recovery" ||
+    value.sensitivity !== "trusted-private-post-destruction-release-recovery" ||
     typeof value.requestId !== "string" ||
     !SAFE_ID.test(value.requestId) ||
     typeof value.requestHash !== "string" ||
@@ -670,20 +596,14 @@ export function assertPostDestructionReleaseRecoveryRecord(
   ) {
     fail("Release recovery identity is malformed.");
   }
-  assertRawLineage(
-    value.rawManifest,
-    value.destructionReceipt,
-    value.retentionPolicyHash,
-  );
-  const manifest =
-    value.rawManifest as TrustedRawArtifactManifest;
+  assertRawLineage(value.rawManifest, value.destructionReceipt, value.retentionPolicyHash);
+  const manifest = value.rawManifest as TrustedRawArtifactManifest;
   assertAggregate(value.aggregate, {
     requestHash: value.requestHash,
     protocolHash: value.protocolHash,
     rawManifestId: manifest.manifestId,
   });
-  const aggregate =
-    value.aggregate as TrustedCanonicalAggregate;
+  const aggregate = value.aggregate as TrustedCanonicalAggregate;
   assertBehavioral(value.behavioral, {
     requestHash: value.requestHash,
     protocolHash: value.protocolHash,
@@ -698,30 +618,19 @@ export function assertPostDestructionReleaseRecoveryRecord(
     fail("Release recovery disposition is malformed.");
   }
   if (value.envelope !== null) {
-    assertValidDocument(
-      "signedResultEnvelope",
-      value.envelope,
-    );
-    const envelope =
-      value.envelope as SignedResultEnvelope;
+    assertValidDocument("signedResultEnvelope", value.envelope);
+    const envelope = value.envelope as SignedResultEnvelope;
     if (
-      value.envelopeHash !==
-        hashResultCompletionEnvelope(envelope) ||
+      value.envelopeHash !== hashResultCompletionEnvelope(envelope) ||
       envelope.oneUseRequest.requestId !== value.requestId ||
-      envelope.oneUseRequest.requestHash !==
-        value.requestHash ||
-      envelope.oneUseRequest.dispositionAttestationHash !==
-        value.dispositionAttestationHash ||
+      envelope.oneUseRequest.requestHash !== value.requestHash ||
+      envelope.oneUseRequest.dispositionAttestationHash !== value.dispositionAttestationHash ||
       envelope.protocolHash !== value.protocolHash ||
-      envelope.derivation.normalizedOutcomeSetHash !==
-        aggregate.normalizedOutcomeSetHash ||
-      envelope.derivation.cacheAttestationHash !==
-        aggregate.cacheAttestationHash ||
-      envelope.derivation.behavioralAggregateHash !==
-        aggregate.behavioralAggregateHash ||
+      envelope.derivation.normalizedOutcomeSetHash !== aggregate.normalizedOutcomeSetHash ||
+      envelope.derivation.cacheAttestationHash !== aggregate.cacheAttestationHash ||
+      envelope.derivation.behavioralAggregateHash !== aggregate.behavioralAggregateHash ||
       envelope.derivation.derivedAt !== aggregate.derivedAt ||
-      canonicalJson(envelope.payload) !==
-        canonicalJson(aggregate.payload)
+      canonicalJson(envelope.payload) !== canonicalJson(aggregate.payload)
     ) {
       fail("Recovery result envelope is detached.");
     }
@@ -729,32 +638,22 @@ export function assertPostDestructionReleaseRecoveryRecord(
     fail("Recovery envelope hash exists without an envelope.");
   }
   if (
-    (value.status === "open" &&
-      value.envelope !== null) ||
-    ((value.status === "result-issued" ||
-      value.status === "completed") &&
+    (value.status === "open" && value.envelope !== null) ||
+    ((value.status === "result-issued" || value.status === "completed") &&
       value.envelope === null) ||
-    (value.status === "completed" &&
-      value.behavioral.status === "abandoned") ||
+    (value.status === "completed" && value.behavioral.status === "abandoned") ||
     (value.status === "result-issued" &&
-      (value.behavioral.status === "prepared" ||
-        value.behavioral.status === "abandoned")) ||
+      (value.behavioral.status === "prepared" || value.behavioral.status === "abandoned")) ||
     (value.status === "failed" &&
-      (value.behavioral.status === "prepared" ||
-        value.behavioral.status === "finalized")) ||
-    ((value.status === "failed") !==
-      (value.failureCode !== null)) ||
-    (value.failureCode !== null &&
-      !FAILURE_CODES.has(value.failureCode as BrokerFailureCode))
+      (value.behavioral.status === "prepared" || value.behavioral.status === "finalized")) ||
+    (value.status === "failed") !== (value.failureCode !== null) ||
+    (value.failureCode !== null && !FAILURE_CODES.has(value.failureCode as BrokerFailureCode))
   ) {
     fail("Release recovery disposition fields are inconsistent.");
   }
   const { recordHash: _recordHash, ...unsigned } =
     value as unknown as TrustedPostDestructionReleaseRecoveryRecord;
-  if (
-    value.recordHash !==
-      hashPostDestructionReleaseRecoveryRecord(unsigned)
-  ) {
+  if (value.recordHash !== hashPostDestructionReleaseRecoveryRecord(unsigned)) {
     fail("Release recovery record hash is detached.");
   }
 }
@@ -776,8 +675,7 @@ function immutableProjection(
     requestId: record.requestId,
     requestHash: record.requestHash,
     protocolHash: record.protocolHash,
-    dispositionAttestationHash:
-      record.dispositionAttestationHash,
+    dispositionAttestationHash: record.dispositionAttestationHash,
     retentionPolicyHash: record.retentionPolicyHash,
     rawManifest: record.rawManifest,
     destructionReceipt: record.destructionReceipt,
@@ -792,17 +690,14 @@ function allowedBehavioralTransition(
   if (canonicalJson(prior) === canonicalJson(next)) return true;
   return (
     (prior.status === "prepared" &&
-      (next.status === "consumed" ||
-        next.status === "finalized") &&
+      (next.status === "consumed" || next.status === "finalized") &&
       prior.preparationHash === next.preparationHash) ||
     (prior.status === "finalized" &&
       next.status === "abandoned" &&
       prior.preparationHash === next.preparationHash &&
-      prior.sourceResultEnvelopeHash ===
-        next.sourceResultEnvelopeHash &&
+      prior.sourceResultEnvelopeHash === next.sourceResultEnvelopeHash &&
       prior.finalizationHash === next.finalizationHash &&
-      canonicalJson(prior.finalization) ===
-        canonicalJson(next.finalization))
+      canonicalJson(prior.finalization) === canonicalJson(next.finalization))
   );
 }
 
@@ -816,10 +711,7 @@ export function assertPostDestructionReleaseRecoveryTransition(
 ): void {
   assertPostDestructionReleaseRecoveryRecord(prior);
   assertPostDestructionReleaseRecoveryRecord(next);
-  if (
-    prior.status === "completed" ||
-    prior.status === "failed"
-  ) {
+  if (prior.status === "completed" || prior.status === "failed") {
     if (canonicalJson(prior) !== canonicalJson(next)) {
       fail("A terminal release recovery record is immutable.");
     }
@@ -827,32 +719,23 @@ export function assertPostDestructionReleaseRecoveryTransition(
   }
   if (
     next.revision !== prior.revision + 1 ||
-    canonicalJson(immutableProjection(prior)) !==
-      canonicalJson(immutableProjection(next)) ||
-    !allowedBehavioralTransition(
-      prior.behavioral,
-      next.behavioral,
-    )
+    canonicalJson(immutableProjection(prior)) !== canonicalJson(immutableProjection(next)) ||
+    !allowedBehavioralTransition(prior.behavioral, next.behavioral)
   ) {
     fail("Release recovery transition changed immutable lineage.");
   }
   const allowedStatus =
     (prior.status === "open" &&
-      (next.status === "open" ||
-        next.status === "result-issued" ||
-        next.status === "failed")) ||
+      (next.status === "open" || next.status === "result-issued" || next.status === "failed")) ||
     (prior.status === "result-issued" &&
-      (next.status === "result-issued" ||
-        next.status === "completed" ||
-        next.status === "failed"));
+      (next.status === "result-issued" || next.status === "completed" || next.status === "failed"));
   if (!allowedStatus) {
     fail("Release recovery disposition regressed.");
   }
   if (
     prior.envelope !== null &&
     (next.envelope === null ||
-      canonicalJson(prior.envelope) !==
-        canonicalJson(next.envelope) ||
+      canonicalJson(prior.envelope) !== canonicalJson(next.envelope) ||
       prior.envelopeHash !== next.envelopeHash)
   ) {
     fail("A recorded result envelope was changed or removed.");

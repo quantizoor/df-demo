@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { mvpPiBuildRuntimeDigest } from "../../src/mvp/evaluator-runtime-node.js";
 
-const digest = (value: string): string =>
-  value.repeat(64).slice(0, 64);
+const digest = (value: string): string => value.repeat(64).slice(0, 64);
 
 describe("MVP Pi build-runtime cache identity", () => {
   it("invalidates when a pinned build-runtime input changes", () => {

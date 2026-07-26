@@ -23,19 +23,12 @@ import { ExperimentRunner } from "./experiment-runner.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const OCI_DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const IMMUTABLE_IMAGE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
-const SAFE_ID =
-  /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const SAFE_KEY_ID =
-  /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$/u;
+const IMMUTABLE_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
+const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$/u;
 const BASE64URL_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 
-export type ProductionRuntimeRole =
-  | "control"
-  | "optimizer"
-  | "build"
-  | "evaluator";
+export type ProductionRuntimeRole = "control" | "optimizer" | "build" | "evaluator";
 
 const PRODUCTION_RUNTIME_PORT_ID_VALUES = [
   "control.campaign-state-store",
@@ -49,12 +42,9 @@ const PRODUCTION_RUNTIME_PORT_ID_VALUES = [
   "evaluator.blind-broker",
 ] as const;
 
-export const PRODUCTION_RUNTIME_PORT_IDS = Object.freeze(
-  PRODUCTION_RUNTIME_PORT_ID_VALUES,
-);
+export const PRODUCTION_RUNTIME_PORT_IDS = Object.freeze(PRODUCTION_RUNTIME_PORT_ID_VALUES);
 
-export type ProductionRuntimePortId =
-  (typeof PRODUCTION_RUNTIME_PORT_IDS)[number];
+export type ProductionRuntimePortId = (typeof PRODUCTION_RUNTIME_PORT_IDS)[number];
 
 export interface ProductionRuntimePortAttestationCommitment {
   readonly portId: ProductionRuntimePortId;
@@ -100,18 +90,12 @@ export interface ProductionOptimizationRuntimePortBindings {
     "control.experiment-journal",
     ExperimentJournal
   >;
-  readonly optimizer: TrustedProductionRuntimePortBinding<
-    "optimizer.adapter",
-    OptimizerAdapter
-  >;
+  readonly optimizer: TrustedProductionRuntimePortBinding<"optimizer.adapter", OptimizerAdapter>;
   readonly gates: TrustedProductionRuntimePortBinding<
     "build.correctness-gate",
     CorrectnessGateRunner
   >;
-  readonly broker: TrustedProductionRuntimePortBinding<
-    "evaluator.blind-broker",
-    BlindBroker
-  >;
+  readonly broker: TrustedProductionRuntimePortBinding<"evaluator.blind-broker", BlindBroker>;
 }
 
 export interface ProductionRuntimeComponentManifest {
@@ -126,8 +110,7 @@ export interface ProductionRuntimeComponentManifest {
 
 export interface ProductionOptimizationCompositionManifest {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-optimization-composition.v1";
+  readonly domain: "dark-factory.production-optimization-composition.v1";
   readonly manifestId: string;
   readonly campaignId: string;
   readonly lineageId: string;
@@ -139,8 +122,7 @@ export interface ProductionOptimizationCompositionManifest {
     readonly build: ProductionRuntimeComponentManifest;
     readonly evaluator: ProductionRuntimeComponentManifest;
   };
-  readonly runtimePortAttestations:
-    readonly ProductionRuntimePortAttestationCommitment[];
+  readonly runtimePortAttestations: readonly ProductionRuntimePortAttestationCommitment[];
   /**
    * Every binding is an opaque commitment. Task, panel, cell, grader-output,
    * and raw-evidence identities have no representable field in this manifest.
@@ -174,8 +156,7 @@ export interface ProductionOptimizationCompositionManifest {
 
 export interface ProductionCompositionVerification {
   readonly schemaVersion: 1;
-  readonly domain:
-    "dark-factory.production-composition-verification.v1";
+  readonly domain: "dark-factory.production-composition-verification.v1";
   readonly manifestHash: string;
   readonly signingKeyId: string;
   readonly componentBindingsHash: string;
@@ -197,8 +178,7 @@ export interface TrustedProductionCompositionAttestationVerifier {
   readonly boundary: "trusted-cloud-attestation-verifier";
   verify(
     manifest: ProductionOptimizationCompositionManifest,
-    runtimePortAttestations:
-      readonly ProductionRuntimePortAttestationCommitment[],
+    runtimePortAttestations: readonly ProductionRuntimePortAttestationCommitment[],
   ): Promise<ProductionCompositionVerification>;
 }
 
@@ -209,8 +189,7 @@ interface TrustedCloudRoleBinding {
   readonly imageDigest: `sha256:${string}`;
 }
 
-export interface TrustedCloudControlRuntime
-  extends TrustedCloudRoleBinding {
+export interface TrustedCloudControlRuntime extends TrustedCloudRoleBinding {
   readonly role: "control";
   readonly campaignStore: OptimizationCampaignStateStore;
   readonly inputFactory: TrustedOptimizationInputFactory;
@@ -220,8 +199,7 @@ export interface TrustedCloudControlRuntime
   readonly journal: ExperimentJournal;
 }
 
-export interface TrustedCloudOptimizerRuntime
-  extends TrustedCloudRoleBinding {
+export interface TrustedCloudOptimizerRuntime extends TrustedCloudRoleBinding {
   readonly role: "optimizer";
   readonly adapter: OptimizerAdapter;
 }
@@ -231,8 +209,7 @@ export interface TrustedCloudBuildRuntime extends TrustedCloudRoleBinding {
   readonly gates: CorrectnessGateRunner;
 }
 
-export interface TrustedCloudEvaluatorRuntime
-  extends TrustedCloudRoleBinding {
+export interface TrustedCloudEvaluatorRuntime extends TrustedCloudRoleBinding {
   readonly role: "evaluator";
   readonly broker: BlindBroker;
 }
@@ -271,8 +248,7 @@ export interface ComposeProductionOptimizationRuntimeOptions {
   readonly manifest: ProductionOptimizationCompositionManifest;
   readonly verifier: TrustedProductionCompositionAttestationVerifier;
   readonly components: ProductionOptimizationRuntimeComponents;
-  readonly runtimePortBindings:
-    ProductionOptimizationRuntimePortBindings;
+  readonly runtimePortBindings: ProductionOptimizationRuntimePortBindings;
   readonly now?: () => Date;
 }
 
@@ -288,9 +264,7 @@ function fail(): never {
   throw new ProductionOptimizationRuntimeError();
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -305,10 +279,7 @@ function assertExactKeys(
 ): asserts value is Readonly<Record<string, unknown>> {
   if (!isPlainRecord(value)) fail();
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     fail();
   }
 }
@@ -316,10 +287,7 @@ function assertExactKeys(
 function timestamp(value: unknown): number {
   if (typeof value !== "string") fail();
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     fail();
   }
   return parsed;
@@ -328,19 +296,12 @@ function timestamp(value: unknown): number {
 function assertRuntimePortAttestationCommitments(
   value: unknown,
 ): asserts value is readonly ProductionRuntimePortAttestationCommitment[] {
-  if (
-    !Array.isArray(value) ||
-    value.length !== PRODUCTION_RUNTIME_PORT_IDS.length
-  ) {
+  if (!Array.isArray(value) || value.length !== PRODUCTION_RUNTIME_PORT_IDS.length) {
     fail();
   }
-  for (const [index, expectedPortId] of
-    PRODUCTION_RUNTIME_PORT_IDS.entries()) {
+  for (const [index, expectedPortId] of PRODUCTION_RUNTIME_PORT_IDS.entries()) {
     const commitment = value[index];
-    assertExactKeys(commitment, [
-      "portId",
-      "attestationSha256",
-    ]);
+    assertExactKeys(commitment, ["portId", "attestationSha256"]);
     if (
       commitment["portId"] !== expectedPortId ||
       typeof commitment["attestationSha256"] !== "string" ||
@@ -352,24 +313,19 @@ function assertRuntimePortAttestationCommitments(
 }
 
 export function productionRuntimePortBindingsHash(
-  commitments:
-    readonly ProductionRuntimePortAttestationCommitment[],
+  commitments: readonly ProductionRuntimePortAttestationCommitment[],
 ): string {
   assertRuntimePortAttestationCommitments(commitments);
   return canonicalHash({
     schemaVersion: 1,
-    domain:
-      "dark-factory.production-runtime-port-bindings.v1",
+    domain: "dark-factory.production-runtime-port-bindings.v1",
     commitments,
   });
 }
 
 function unsignedManifest(
   manifest: ProductionOptimizationCompositionManifest,
-): Omit<
-  ProductionOptimizationCompositionManifest,
-  "manifestHash" | "signature"
-> {
+): Omit<ProductionOptimizationCompositionManifest, "manifestHash" | "signature"> {
   return {
     schemaVersion: manifest.schemaVersion,
     domain: manifest.domain,
@@ -379,12 +335,10 @@ function unsignedManifest(
     protocolHash: manifest.protocolHash,
     deployment: manifest.deployment,
     components: manifest.components,
-    runtimePortAttestations:
-      manifest.runtimePortAttestations,
+    runtimePortAttestations: manifest.runtimePortAttestations,
     bindings: manifest.bindings,
     informationBoundary: manifest.informationBoundary,
-    maximumExperimentsPerInvocation:
-      manifest.maximumExperimentsPerInvocation,
+    maximumExperimentsPerInvocation: manifest.maximumExperimentsPerInvocation,
     issuedAt: manifest.issuedAt,
     expiresAt: manifest.expiresAt,
   };
@@ -403,8 +357,7 @@ function assertComponentManifest(
     "sourceArtifactHash",
     "configurationHash",
   ]);
-  const component =
-    value as unknown as ProductionRuntimeComponentManifest;
+  const component = value as unknown as ProductionRuntimeComponentManifest;
   if (
     component.role !== expectedRole ||
     component.boundary !== "trusted-cloud" ||
@@ -446,21 +399,13 @@ export function assertProductionOptimizationCompositionManifest(
     "manifestHash",
     "signature",
   ]);
-  const document =
-    value as unknown as ProductionOptimizationCompositionManifest;
-  assertExactKeys(document.components, [
-    "control",
-    "optimizer",
-    "build",
-    "evaluator",
-  ]);
+  const document = value as unknown as ProductionOptimizationCompositionManifest;
+  assertExactKeys(document.components, ["control", "optimizer", "build", "evaluator"]);
   assertComponentManifest(document.components.control, "control");
   assertComponentManifest(document.components.optimizer, "optimizer");
   assertComponentManifest(document.components.build, "build");
   assertComponentManifest(document.components.evaluator, "evaluator");
-  assertRuntimePortAttestationCommitments(
-    document.runtimePortAttestations,
-  );
+  assertRuntimePortAttestationCommitments(document.runtimePortAttestations);
   assertExactKeys(document.bindings, [
     "harnessRegistrationHash",
     "campaignGenesisHash",
@@ -481,20 +426,14 @@ export function assertProductionOptimizationCompositionManifest(
     "optimizerHasBenchmarkCredentials",
     "optimizerCanReachEvaluator",
   ]);
-  assertExactKeys(document.signature, [
-    "algorithm",
-    "keyId",
-    "signedAt",
-    "signature",
-  ]);
+  assertExactKeys(document.signature, ["algorithm", "keyId", "signedAt", "signature"]);
   const issuedAt = timestamp(document.issuedAt);
   const expiresAt = timestamp(document.expiresAt);
   const signedAt = timestamp(document.signature.signedAt);
   const current = now.getTime();
   if (
     document.schemaVersion !== 1 ||
-    document.domain !==
-      "dark-factory.production-optimization-composition.v1" ||
+    document.domain !== "dark-factory.production-optimization-composition.v1" ||
     typeof document.manifestId !== "string" ||
     !SAFE_ID.test(document.manifestId) ||
     typeof document.campaignId !== "string" ||
@@ -527,11 +466,8 @@ export function assertProductionOptimizationCompositionManifest(
     Object.values(document.bindings).some(
       (item) => typeof item !== "string" || !SHA256.test(item),
     ) ||
-    Object.values(document.informationBoundary).some(
-      (item) => item !== false,
-    ) ||
-    document.manifestHash !==
-      canonicalHash(unsignedManifest(document))
+    Object.values(document.informationBoundary).some((item) => item !== false) ||
+    document.manifestHash !== canonicalHash(unsignedManifest(document))
   ) {
     fail();
   }
@@ -540,8 +476,7 @@ export function assertProductionOptimizationCompositionManifest(
 function assertVerification(
   verification: ProductionCompositionVerification,
   manifest: ProductionOptimizationCompositionManifest,
-  runtimePortAttestations:
-    readonly ProductionRuntimePortAttestationCommitment[],
+  runtimePortAttestations: readonly ProductionRuntimePortAttestationCommitment[],
 ): void {
   assertExactKeys(verification, [
     "schemaVersion",
@@ -556,20 +491,14 @@ function assertVerification(
   ]);
   if (
     verification.schemaVersion !== 1 ||
-    verification.domain !==
-      "dark-factory.production-composition-verification.v1" ||
+    verification.domain !== "dark-factory.production-composition-verification.v1" ||
     verification.manifestHash !== manifest.manifestHash ||
     verification.signingKeyId !== manifest.signature.keyId ||
-    verification.componentBindingsHash !==
-      canonicalHash(manifest.components) ||
-    verification.operationalBindingsHash !==
-      canonicalHash(manifest.bindings) ||
-    canonicalJson(runtimePortAttestations) !==
-      canonicalJson(manifest.runtimePortAttestations) ||
+    verification.componentBindingsHash !== canonicalHash(manifest.components) ||
+    verification.operationalBindingsHash !== canonicalHash(manifest.bindings) ||
+    canonicalJson(runtimePortAttestations) !== canonicalJson(manifest.runtimePortAttestations) ||
     verification.runtimePortBindingsHash !==
-      productionRuntimePortBindingsHash(
-        runtimePortAttestations,
-      ) ||
+      productionRuntimePortBindingsHash(runtimePortAttestations) ||
     !SHA256.test(verification.verifierAttestationHash) ||
     verification.verified !== true
   ) {
@@ -582,8 +511,7 @@ function bindTrustedMethod<Arguments extends unknown[], Result>(
   method: (...arguments_: Arguments) => Result,
 ): (...arguments_: Arguments) => Result {
   if (typeof method !== "function") fail();
-  return (...arguments_: Arguments): Result =>
-    method.apply(owner, arguments_);
+  return (...arguments_: Arguments): Result => method.apply(owner, arguments_);
 }
 
 function assertRoleBinding(
@@ -605,22 +533,12 @@ function assertRuntimePortBinding(
   expectedPortId: ProductionRuntimePortId,
   expectedAttestationSha256: string,
   expectedImplementation: object,
-): asserts value is TrustedProductionRuntimePortBinding<
-  ProductionRuntimePortId,
-  object
-> {
-  assertExactKeys(value, [
-    "boundary",
-    "portId",
-    "attestationSha256",
-    "implementation",
-  ]);
+): asserts value is TrustedProductionRuntimePortBinding<ProductionRuntimePortId, object> {
+  assertExactKeys(value, ["boundary", "portId", "attestationSha256", "implementation"]);
   if (
-    value["boundary"] !==
-      "trusted-cloud-runtime-port-binding" ||
+    value["boundary"] !== "trusted-cloud-runtime-port-binding" ||
     value["portId"] !== expectedPortId ||
-    value["attestationSha256"] !==
-      expectedAttestationSha256 ||
+    value["attestationSha256"] !== expectedAttestationSha256 ||
     value["implementation"] !== expectedImplementation
   ) {
     fail();
@@ -692,10 +610,7 @@ function assertRuntimePortBindings(
   ] as const;
   for (const [index, entry] of ordered.entries()) {
     const commitment = manifest.runtimePortAttestations[index];
-    if (
-      commitment === undefined ||
-      commitment.portId !== entry.portId
-    ) {
+    if (commitment === undefined || commitment.portId !== entry.portId) {
       fail();
     }
     assertRuntimePortBinding(
@@ -705,19 +620,14 @@ function assertRuntimePortBindings(
       entry.implementation,
     );
   }
-  const commitments =
-    ordered.map(
-      (entry): ProductionRuntimePortAttestationCommitment => ({
-        portId: entry.portId,
-        attestationSha256:
-          entry.binding.attestationSha256,
-      }),
-    );
+  const commitments = ordered.map(
+    (entry): ProductionRuntimePortAttestationCommitment => ({
+      portId: entry.portId,
+      attestationSha256: entry.binding.attestationSha256,
+    }),
+  );
   assertRuntimePortAttestationCommitments(commitments);
-  if (
-    canonicalJson(commitments) !==
-    canonicalJson(manifest.runtimePortAttestations)
-  ) {
+  if (canonicalJson(commitments) !== canonicalJson(manifest.runtimePortAttestations)) {
     fail();
   }
   return JSON.parse(
@@ -736,8 +646,7 @@ function assertComponents(
   if (
     components.control.inputFactory.boundary !== "trusted-cloud" ||
     components.control.resumeVerifier.boundary !== "trusted-cloud" ||
-    components.control.completionMaterial.boundary !==
-      "trusted-cloud" ||
+    components.control.completionMaterial.boundary !== "trusted-cloud" ||
     components.control.interruption.boundary !== "trusted-cloud"
   ) {
     fail();
@@ -757,21 +666,17 @@ function assertSnapshotIdentity(
   }
 }
 
-class VerifiedProductionOptimizationRuntime
-  implements ProductionOptimizationRuntime
-{
+class VerifiedProductionOptimizationRuntime implements ProductionOptimizationRuntime {
   readonly #manifest: ProductionOptimizationCompositionManifest;
   readonly #verifier: TrustedProductionCompositionAttestationVerifier;
-  readonly #runtimePortAttestations:
-    readonly ProductionRuntimePortAttestationCommitment[];
+  readonly #runtimePortAttestations: readonly ProductionRuntimePortAttestationCommitment[];
   readonly #coordinator: CampaignStateOptimizationCoordinator;
   readonly #loop: AutonomousOptimizationLoop;
   readonly #now: () => Date;
 
   public constructor(
     options: ComposeProductionOptimizationRuntimeOptions,
-    runtimePortAttestations:
-      readonly ProductionRuntimePortAttestationCommitment[],
+    runtimePortAttestations: readonly ProductionRuntimePortAttestationCommitment[],
     coordinator: CampaignStateOptimizationCoordinator,
     loop: AutonomousOptimizationLoop,
   ) {
@@ -784,17 +689,10 @@ class VerifiedProductionOptimizationRuntime
   }
 
   async #verify(): Promise<ProductionCompositionVerification> {
-    assertProductionOptimizationCompositionManifest(
-      this.#manifest,
-      this.#now(),
-    );
+    assertProductionOptimizationCompositionManifest(this.#manifest, this.#now());
     const serialized = canonicalJson(this.#manifest);
-    const verificationInput = JSON.parse(
-      serialized,
-    ) as ProductionOptimizationCompositionManifest;
-    const serializedRuntimePortAttestations = canonicalJson(
-      this.#runtimePortAttestations,
-    );
+    const verificationInput = JSON.parse(serialized) as ProductionOptimizationCompositionManifest;
+    const serializedRuntimePortAttestations = canonicalJson(this.#runtimePortAttestations);
     const runtimePortAttestationInput = JSON.parse(
       serializedRuntimePortAttestations,
     ) as readonly ProductionRuntimePortAttestationCommitment[];
@@ -804,16 +702,11 @@ class VerifiedProductionOptimizationRuntime
     );
     if (
       canonicalJson(verificationInput) !== serialized ||
-      canonicalJson(runtimePortAttestationInput) !==
-        serializedRuntimePortAttestations
+      canonicalJson(runtimePortAttestationInput) !== serializedRuntimePortAttestations
     ) {
       fail();
     }
-    assertVerification(
-      verification,
-      this.#manifest,
-      this.#runtimePortAttestations,
-    );
+    assertVerification(verification, this.#manifest, this.#runtimePortAttestations);
     return verification;
   }
 
@@ -823,12 +716,10 @@ class VerifiedProductionOptimizationRuntime
     assertSnapshotIdentity(snapshot, this.#manifest);
     return {
       schemaVersion: 1,
-      domain:
-        "dark-factory.production-optimization-runtime-status.v1",
+      domain: "dark-factory.production-optimization-runtime-status.v1",
       manifestId: this.#manifest.manifestId,
       manifestHash: this.#manifest.manifestHash,
-      verifierAttestationHash:
-        verification.verifierAttestationHash,
+      verifierAttestationHash: verification.verifierAttestationHash,
       snapshot,
     };
   }
@@ -848,8 +739,7 @@ class VerifiedProductionOptimizationRuntime
       domain: "dark-factory.production-optimization-runtime-run.v1",
       manifestId: this.#manifest.manifestId,
       manifestHash: this.#manifest.manifestHash,
-      verifierAttestationHash:
-        verification.verifierAttestationHash,
+      verifierAttestationHash: verification.verifierAttestationHash,
       loop,
     };
   }
@@ -863,14 +753,8 @@ export async function composeProductionOptimizationRuntime(
   options: ComposeProductionOptimizationRuntimeOptions,
 ): Promise<ProductionOptimizationRuntime> {
   const now = options.now ?? (() => new Date());
-  assertProductionOptimizationCompositionManifest(
-    options.manifest,
-    now(),
-  );
-  if (
-    options.verifier.boundary !==
-    "trusted-cloud-attestation-verifier"
-  ) {
+  assertProductionOptimizationCompositionManifest(options.manifest, now());
+  if (options.verifier.boundary !== "trusted-cloud-attestation-verifier") {
     fail();
   }
   assertComponents(options.components, options.manifest);
@@ -886,9 +770,7 @@ export async function composeProductionOptimizationRuntime(
   const verificationInput = JSON.parse(
     serializedManifest,
   ) as ProductionOptimizationCompositionManifest;
-  const serializedRuntimePortAttestations = canonicalJson(
-    runtimePortAttestations,
-  );
+  const serializedRuntimePortAttestations = canonicalJson(runtimePortAttestations);
   const runtimePortAttestationInput = JSON.parse(
     serializedRuntimePortAttestations,
   ) as readonly ProductionRuntimePortAttestationCommitment[];
@@ -900,140 +782,66 @@ export async function composeProductionOptimizationRuntime(
    */
   const sourceStore = options.components.control.campaignStore;
   const campaignStore: OptimizationCampaignStateStore = {
-    reconstruct: bindTrustedMethod(
-      sourceStore,
-      sourceStore.reconstruct,
-    ),
-    allocateExperiment: bindTrustedMethod(
-      sourceStore,
-      sourceStore.allocateExperiment,
-    ),
-    recordBudgetUsage: bindTrustedMethod(
-      sourceStore,
-      sourceStore.recordBudgetUsage,
-    ),
-    sealExperiment: bindTrustedMethod(
-      sourceStore,
-      sourceStore.sealExperiment,
-    ),
+    reconstruct: bindTrustedMethod(sourceStore, sourceStore.reconstruct),
+    allocateExperiment: bindTrustedMethod(sourceStore, sourceStore.allocateExperiment),
+    recordBudgetUsage: bindTrustedMethod(sourceStore, sourceStore.recordBudgetUsage),
+    sealExperiment: bindTrustedMethod(sourceStore, sourceStore.sealExperiment),
     archiveInterruptedExperiment: bindTrustedMethod(
       sourceStore,
       sourceStore.archiveInterruptedExperiment,
     ),
     pause: bindTrustedMethod(sourceStore, sourceStore.pause),
-    requestStop: bindTrustedMethod(
-      sourceStore,
-      sourceStore.requestStop,
-    ),
-    acknowledgeStopped: bindTrustedMethod(
-      sourceStore,
-      sourceStore.acknowledgeStopped,
-    ),
+    requestStop: bindTrustedMethod(sourceStore, sourceStore.requestStop),
+    acknowledgeStopped: bindTrustedMethod(sourceStore, sourceStore.acknowledgeStopped),
   };
   const sourceInputFactory = options.components.control.inputFactory;
   const inputFactory: TrustedOptimizationInputFactory = {
     boundary: "trusted-cloud",
-    prepareOrResume: bindTrustedMethod(
-      sourceInputFactory,
-      sourceInputFactory.prepareOrResume,
-    ),
-    bindClaim: bindTrustedMethod(
-      sourceInputFactory,
-      sourceInputFactory.bindClaim,
-    ),
+    prepareOrResume: bindTrustedMethod(sourceInputFactory, sourceInputFactory.prepareOrResume),
+    bindClaim: bindTrustedMethod(sourceInputFactory, sourceInputFactory.bindClaim),
   };
-  const sourceResumeVerifier =
-    options.components.control.resumeVerifier;
+  const sourceResumeVerifier = options.components.control.resumeVerifier;
   const resumeVerifier: TrustedOptimizationResumeVerifier = {
     boundary: "trusted-cloud",
-    verify: bindTrustedMethod(
-      sourceResumeVerifier,
-      sourceResumeVerifier.verify,
-    ),
+    verify: bindTrustedMethod(sourceResumeVerifier, sourceResumeVerifier.verify),
   };
-  const sourceCompletion =
-    options.components.control.completionMaterial;
-  const completionMaterial: TrustedOptimizationCompletionMaterialPort =
-    {
-      boundary: "trusted-cloud",
-      createBudgetAccountingAttestation: bindTrustedMethod(
-        sourceCompletion,
-        sourceCompletion.createBudgetAccountingAttestation,
-      ),
-      createInterruptedBudgetAccountingAttestation:
-        bindTrustedMethod(
-          sourceCompletion,
-          sourceCompletion.createInterruptedBudgetAccountingAttestation,
-        ),
-      createSealMaterial: bindTrustedMethod(
-        sourceCompletion,
-        sourceCompletion.createSealMaterial,
-      ),
-    };
-  const sourceInterruption =
-    options.components.control.interruption;
+  const sourceCompletion = options.components.control.completionMaterial;
+  const completionMaterial: TrustedOptimizationCompletionMaterialPort = {
+    boundary: "trusted-cloud",
+    createBudgetAccountingAttestation: bindTrustedMethod(
+      sourceCompletion,
+      sourceCompletion.createBudgetAccountingAttestation,
+    ),
+    createInterruptedBudgetAccountingAttestation: bindTrustedMethod(
+      sourceCompletion,
+      sourceCompletion.createInterruptedBudgetAccountingAttestation,
+    ),
+    createSealMaterial: bindTrustedMethod(sourceCompletion, sourceCompletion.createSealMaterial),
+  };
+  const sourceInterruption = options.components.control.interruption;
   const interruption: TrustedOptimizationInterruptionPort = {
     boundary: "trusted-cloud",
-    begin: bindTrustedMethod(
-      sourceInterruption,
-      sourceInterruption.begin,
-    ),
-    findPending: bindTrustedMethod(
-      sourceInterruption,
-      sourceInterruption.findPending,
-    ),
-    prepareControl: bindTrustedMethod(
-      sourceInterruption,
-      sourceInterruption.prepareControl,
-    ),
-    markApplied: bindTrustedMethod(
-      sourceInterruption,
-      sourceInterruption.markApplied,
-    ),
+    begin: bindTrustedMethod(sourceInterruption, sourceInterruption.begin),
+    findPending: bindTrustedMethod(sourceInterruption, sourceInterruption.findPending),
+    prepareControl: bindTrustedMethod(sourceInterruption, sourceInterruption.prepareControl),
+    markApplied: bindTrustedMethod(sourceInterruption, sourceInterruption.markApplied),
   };
   const sourceJournal = options.components.control.journal;
   const journal: ExperimentJournal = {
     create: bindTrustedMethod(sourceJournal, sourceJournal.create),
-    freezeProposal: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.freezeProposal,
-    ),
-    recordGates: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.recordGates,
-    ),
-    recordRepair: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.recordRepair,
-    ),
-    recordValidation: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.recordValidation,
-    ),
-    recordAnalysis: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.recordAnalysis,
-    ),
-    updateBudget: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.updateBudget,
-    ),
+    freezeProposal: bindTrustedMethod(sourceJournal, sourceJournal.freezeProposal),
+    recordGates: bindTrustedMethod(sourceJournal, sourceJournal.recordGates),
+    recordRepair: bindTrustedMethod(sourceJournal, sourceJournal.recordRepair),
+    recordValidation: bindTrustedMethod(sourceJournal, sourceJournal.recordValidation),
+    recordAnalysis: bindTrustedMethod(sourceJournal, sourceJournal.recordAnalysis),
+    updateBudget: bindTrustedMethod(sourceJournal, sourceJournal.updateBudget),
     seal: bindTrustedMethod(sourceJournal, sourceJournal.seal),
-    interrupt: bindTrustedMethod(
-      sourceJournal,
-      sourceJournal.interrupt,
-    ),
+    interrupt: bindTrustedMethod(sourceJournal, sourceJournal.interrupt),
   };
   const sourceOptimizer = options.components.optimizer.adapter;
   const optimizer: OptimizerAdapter = {
-    propose: bindTrustedMethod(
-      sourceOptimizer,
-      sourceOptimizer.propose,
-    ),
-    analyze: bindTrustedMethod(
-      sourceOptimizer,
-      sourceOptimizer.analyze,
-    ),
+    propose: bindTrustedMethod(sourceOptimizer, sourceOptimizer.propose),
+    analyze: bindTrustedMethod(sourceOptimizer, sourceOptimizer.analyze),
   };
   const sourceGates = options.components.build.gates;
   const gates: CorrectnessGateRunner = {
@@ -1041,55 +849,26 @@ export async function composeProductionOptimizationRuntime(
   };
   const sourceBroker = options.components.evaluator.broker;
   const broker: BlindBroker = {
-    prepareRepair: bindTrustedMethod(
-      sourceBroker,
-      sourceBroker.prepareRepair,
-    ),
-    runRepair: bindTrustedMethod(
-      sourceBroker,
-      sourceBroker.runRepair,
-    ),
-    prepareValidation: bindTrustedMethod(
-      sourceBroker,
-      sourceBroker.prepareValidation,
-    ),
-    runValidation: bindTrustedMethod(
-      sourceBroker,
-      sourceBroker.runValidation,
-    ),
-    consumeOrQuarantine: bindTrustedMethod(
-      sourceBroker,
-      sourceBroker.consumeOrQuarantine,
-    ),
-    releaseDiagnosticBrief: bindTrustedMethod(
-      sourceBroker,
-      sourceBroker.releaseDiagnosticBrief,
-    ),
+    prepareRepair: bindTrustedMethod(sourceBroker, sourceBroker.prepareRepair),
+    runRepair: bindTrustedMethod(sourceBroker, sourceBroker.runRepair),
+    prepareValidation: bindTrustedMethod(sourceBroker, sourceBroker.prepareValidation),
+    runValidation: bindTrustedMethod(sourceBroker, sourceBroker.runValidation),
+    consumeOrQuarantine: bindTrustedMethod(sourceBroker, sourceBroker.consumeOrQuarantine),
+    releaseDiagnosticBrief: bindTrustedMethod(sourceBroker, sourceBroker.releaseDiagnosticBrief),
   };
   const sourceManifestVerifier = options.verifier;
   const verifier: TrustedProductionCompositionAttestationVerifier = {
     boundary: "trusted-cloud-attestation-verifier",
-    verify: bindTrustedMethod(
-      sourceManifestVerifier,
-      sourceManifestVerifier.verify,
-    ),
+    verify: bindTrustedMethod(sourceManifestVerifier, sourceManifestVerifier.verify),
   };
-  const verification = await verifier.verify(
-    verificationInput,
-    runtimePortAttestationInput,
-  );
+  const verification = await verifier.verify(verificationInput, runtimePortAttestationInput);
   if (
     canonicalJson(verificationInput) !== serializedManifest ||
-    canonicalJson(runtimePortAttestationInput) !==
-      serializedRuntimePortAttestations
+    canonicalJson(runtimePortAttestationInput) !== serializedRuntimePortAttestations
   ) {
     fail();
   }
-  assertVerification(
-    verification,
-    canonicalManifest,
-    runtimePortAttestations,
-  );
+  assertVerification(verification, canonicalManifest, runtimePortAttestations);
   const runner = new ExperimentRunner({
     optimizer,
     gates,
@@ -1107,8 +886,7 @@ export async function composeProductionOptimizationRuntime(
   const loop = new AutonomousOptimizationLoop({
     runner,
     coordinator,
-    maximumExperimentsPerInvocation:
-      canonicalManifest.maximumExperimentsPerInvocation,
+    maximumExperimentsPerInvocation: canonicalManifest.maximumExperimentsPerInvocation,
     now,
   });
   return new VerifiedProductionOptimizationRuntime(

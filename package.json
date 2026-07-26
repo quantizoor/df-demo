@@ -30,7 +30,7 @@
     "build:plugin": "pnpm guard:cloud && node ./scripts/build-plugin.mjs",
     "typecheck": "pnpm guard:cloud && tsc --noEmit -p tsconfig.json",
     "lint": "pnpm guard:cloud && biome ci .",
-    "format": "pnpm guard:cloud && biome check --write .",
+    "format": "pnpm guard:cloud && pnpm exec biome check --write --formatter-enabled=true --linter-enabled=false --assist-enabled=true .",
     "test": "pnpm guard:cloud && vitest run",
     "test:coverage": "pnpm guard:cloud && vitest run --coverage",
     "check": "pnpm lint && pnpm typecheck && pnpm test:coverage",

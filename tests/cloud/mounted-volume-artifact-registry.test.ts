@@ -1,9 +1,5 @@
 import { createHash, generateKeyPairSync } from "node:crypto";
-import {
-  mkdtemp,
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +11,7 @@ import {
   VerifyingTrustedArtifactBridge,
 } from "../../src/cloud/artifact-bridge.js";
 import {
+  type EvaluationReleaseRegistryPublication,
   MountedVolumeCampaignAttestationArtifactSource,
   MountedVolumeEvaluationReleaseArtifactSource,
   MountedVolumeOptimizerReleasedEvidenceMetadataSource,
@@ -23,7 +20,6 @@ import {
   MountedVolumeTrustedArtifactJsonReader,
   MountedVolumeTrustedArtifactRegistry,
   MountedVolumeTrustedArtifactRegistryError,
-  type EvaluationReleaseRegistryPublication,
   type ProductionOptimizeCampaignGenesisQuery,
 } from "../../src/cloud/mounted-volume-artifact-registry.js";
 import { MountedVolumeTrustedArtifactBackend } from "../../src/cloud/mounted-volume-backend.js";
@@ -35,9 +31,7 @@ import type {
   ProductionCompositionAttestationArtifactSet,
   ProductionCompositionAttestationQuery,
 } from "../../src/cloud/production-composition-attestation-verifier.js";
-import type {
-  SignedProductionOptimizeCampaignGenesis,
-} from "../../src/cloud/production-optimize-bootstrap-or-reconstruct.js";
+import type { SignedProductionOptimizeCampaignGenesis } from "../../src/cloud/production-optimize-bootstrap-or-reconstruct.js";
 import {
   createUnsignedTrustedCampaignAttestationEvidence,
   type SignedTrustedCampaignAttestationEvidence,
@@ -55,13 +49,8 @@ import type {
   DiagnosticBrief,
   FailureCards,
 } from "../../src/schemas/artifacts.js";
-import {
-  canonicalHash,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
-import type {
-  SignedBehavioralRelease,
-} from "../../src/schemas/trusted.js";
+import { canonicalHash, withContentHash } from "../../src/schemas/canonical.js";
+import type { SignedBehavioralRelease } from "../../src/schemas/trusted.js";
 
 const NOW = "2026-07-26T10:00:00.000Z";
 const LATER = "2026-07-26T11:00:00.000Z";
@@ -130,9 +119,7 @@ function infrastructure(
   };
 }
 
-function cacheAttestation(
-  derivationHash = HASH_A,
-): CacheAttestation {
+function cacheAttestation(derivationHash = HASH_A): CacheAttestation {
   return withContentHash({
     schemaVersion: "1.0.0",
     createdAt: NOW,
@@ -162,13 +149,10 @@ function cacheAttestation(
   }) as CacheAttestation;
 }
 
-function evaluationPublication(
-  document: CacheAttestation,
-): EvaluationReleaseRegistryPublication {
+function evaluationPublication(document: CacheAttestation): EvaluationReleaseRegistryPublication {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.evaluation-release-artifact-query.v1" as const,
+    domain: "dark-factory.evaluation-release-artifact-query.v1" as const,
     purpose: "cache-attestation" as const,
     contentHash: document.contentHash,
   };
@@ -269,8 +253,7 @@ function behavioralPublications(): readonly EvaluationReleaseRegistryPublication
   return documents.map(([purpose, document]) => {
     const unsigned = {
       schemaVersion: 1 as const,
-      domain:
-        "dark-factory.evaluation-release-artifact-query.v1" as const,
+      domain: "dark-factory.evaluation-release-artifact-query.v1" as const,
       purpose,
       contentHash: document.contentHash,
     };
@@ -287,8 +270,7 @@ function optimizerFixture(): {
 } {
   const queryUnsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.optimizer-proposal-evidence-query.v1" as const,
+    domain: "dark-factory.optimizer-proposal-evidence-query.v1" as const,
     purpose: "proposal-diagnostic" as const,
     campaignId: "campaign-001",
     experimentId: "001-registry-test",
@@ -302,8 +284,7 @@ function optimizerFixture(): {
   };
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.optimizer-proposal-diagnostic-evidence.v1" as const,
+    domain: "dark-factory.optimizer-proposal-diagnostic-evidence.v1" as const,
     purpose: "proposal-diagnostic" as const,
     artifact: {
       uri: "trusted://released-evidence/proposal-001" as const,
@@ -342,8 +323,7 @@ function compositionFixture(): {
 } {
   const unsigned = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-composition-attestation-query.v1" as const,
+    domain: "dark-factory.production-composition-attestation-query.v1" as const,
     campaignId: "campaign-001",
     manifestId: "manifest-001",
     manifestHash: HASH_A,
@@ -357,8 +337,7 @@ function compositionFixture(): {
   };
   const document = withContentHash({
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-composition-attestation-artifact-set.v1" as const,
+    domain: "dark-factory.production-composition-attestation-artifact-set.v1" as const,
     sensitivity: "release-safe-control" as const,
     deployment: "trusted-cloud" as const,
     campaignId: query.campaignId,
@@ -429,8 +408,7 @@ function campaignGenesisFixture(): {
 } {
   const draft = {
     schemaVersion: 1 as const,
-    domain:
-      "dark-factory.production-optimize-campaign-genesis.v1" as const,
+    domain: "dark-factory.production-optimize-campaign-genesis.v1" as const,
     sensitivity: "release-safe-control" as const,
     deployment: "trusted-cloud" as const,
     campaignId: "campaign-001",
@@ -443,9 +421,7 @@ function campaignGenesisFixture(): {
     expiresAt: LATER,
     signature: SIGNATURE,
   };
-  const document = withContentHash(
-    draft,
-  ) as unknown as SignedProductionOptimizeCampaignGenesis;
+  const document = withContentHash(draft) as unknown as SignedProductionOptimizeCampaignGenesis;
   return {
     query: {
       purpose: "production-optimize-campaign-genesis",
@@ -464,24 +440,18 @@ describe("mounted-volume trusted artifact registry", () => {
     const root = await mkdtemp(join(tmpdir(), "df-artifact-registry-"));
     const { registry, reader } = infrastructure(root);
     const publication = evaluationPublication(cacheAttestation());
-    const [published] =
-      await registry.publishEvaluationReleaseArtifacts([publication]);
-    const [replayed] =
-      await registry.publishEvaluationReleaseArtifacts([publication]);
+    const [published] = await registry.publishEvaluationReleaseArtifacts([publication]);
+    const [replayed] = await registry.publishEvaluationReleaseArtifacts([publication]);
     expect(published?.status).toBe("published");
     expect(replayed).toEqual({
       ...published,
       status: "already-published",
     });
 
-    const source = new MountedVolumeEvaluationReleaseArtifactSource(
-      registry,
-    );
+    const source = new MountedVolumeEvaluationReleaseArtifactSource(registry);
     const artifact = await source.locate(publication.query);
     expect(artifact).toEqual(published?.artifact);
-    expect(
-      JSON.parse(await reader.readUtf8(artifact!, 1024 * 1024)),
-    ).toEqual(publication.document);
+    expect(JSON.parse(await reader.readUtf8(artifact!, 1024 * 1024))).toEqual(publication.document);
     expect("list" in registry).toBe(false);
     expect("findByPrefix" in registry).toBe(false);
     await registry.close();
@@ -494,12 +464,8 @@ describe("mounted-volume trusted artifact registry", () => {
     await registry.publishEvaluationReleaseArtifacts([first]);
     const changed = cacheAttestation(HASH_F);
     await expect(
-      registry.publishEvaluationReleaseArtifacts([
-        { query: first.query, document: changed },
-      ]),
-    ).rejects.toBeInstanceOf(
-      MountedVolumeTrustedArtifactRegistryError,
-    );
+      registry.publishEvaluationReleaseArtifacts([{ query: first.query, document: changed }]),
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
     const swappedUnsigned = {
       ...first.query,
       purpose: "behavioral-release" as const,
@@ -514,23 +480,12 @@ describe("mounted-volume trusted artifact registry", () => {
       }),
     };
     await expect(
-      registry.publishEvaluationReleaseArtifacts([
-        { query: swapped, document: first.document },
-      ]),
-    ).rejects.toBeInstanceOf(
-      MountedVolumeTrustedArtifactRegistryError,
-    );
+      registry.publishEvaluationReleaseArtifacts([{ query: swapped, document: first.document }]),
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
 
     const optimizer = optimizerFixture();
-    await registry.publishOptimizerReleasedEvidenceMetadata(
-      optimizer.query,
-      optimizer.metadata,
-    );
-    const {
-      metadataHash: _metadataHash,
-      signature,
-      ...metadataBody
-    } = optimizer.metadata;
+    await registry.publishOptimizerReleasedEvidenceMetadata(optimizer.query, optimizer.metadata);
+    const { metadataHash: _metadataHash, signature, ...metadataBody } = optimizer.metadata;
     const changedMetadataBody = {
       ...metadataBody,
       releaseSafetyAttestationHash: HASH_F,
@@ -541,26 +496,16 @@ describe("mounted-volume trusted artifact registry", () => {
       signature,
     };
     await expect(
-      registry.publishOptimizerReleasedEvidenceMetadata(
-        optimizer.query,
-        collidingMetadata,
-      ),
-    ).rejects.toBeInstanceOf(
-      MountedVolumeTrustedArtifactRegistryError,
-    );
-    const source =
-      new MountedVolumeOptimizerReleasedEvidenceMetadataSource(
-        registry,
-      );
+      registry.publishOptimizerReleasedEvidenceMetadata(optimizer.query, collidingMetadata),
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
+    const source = new MountedVolumeOptimizerReleasedEvidenceMetadataSource(registry);
     await expect(source.locate(optimizer.query)).resolves.toHaveLength(1);
     await expect(
       source.locate({
         ...optimizer.query,
         queryHash: HASH_F,
       }),
-    ).rejects.toBeInstanceOf(
-      MountedVolumeTrustedArtifactRegistryError,
-    );
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
     await registry.close();
   });
 
@@ -569,8 +514,7 @@ describe("mounted-volume trusted artifact registry", () => {
     let writes = 0;
     const { registry } = infrastructure(root, durableState(root), (base) => ({
       assertTrustedRuntime: () => base.assertTrustedRuntime(),
-      openVerified: (artifact, signal) =>
-        base.openVerified(artifact, signal),
+      openVerified: (artifact, signal) => base.openVerified(artifact, signal),
       persistVerified: async (input) => {
         writes += 1;
         if (writes === 3) throw new Error("injected storage failure");
@@ -578,14 +522,10 @@ describe("mounted-volume trusted artifact registry", () => {
       },
     }));
     const publications = behavioralPublications();
-    await expect(
-      registry.publishEvaluationReleaseArtifacts(publications),
-    ).rejects.toBeInstanceOf(
+    await expect(registry.publishEvaluationReleaseArtifacts(publications)).rejects.toBeInstanceOf(
       MountedVolumeTrustedArtifactRegistryError,
     );
-    const source = new MountedVolumeEvaluationReleaseArtifactSource(
-      registry,
-    );
+    const source = new MountedVolumeEvaluationReleaseArtifactSource(registry);
     for (const publication of publications) {
       await expect(source.locate(publication.query)).resolves.toBeUndefined();
     }
@@ -605,8 +545,7 @@ describe("mounted-volume trusted artifact registry", () => {
     });
     const { registry } = infrastructure(root, durableState(root), (base) => ({
       assertTrustedRuntime: () => base.assertTrustedRuntime(),
-      openVerified: (artifact, signal) =>
-        base.openVerified(artifact, signal),
+      openVerified: (artifact, signal) => base.openVerified(artifact, signal),
       persistVerified: async (input) => {
         startedWrite?.();
         await gate;
@@ -614,9 +553,7 @@ describe("mounted-volume trusted artifact registry", () => {
       },
     }));
     const publication = evaluationPublication(cacheAttestation());
-    const pending = registry.publishEvaluationReleaseArtifacts([
-      publication,
-    ]);
+    const pending = registry.publishEvaluationReleaseArtifacts([publication]);
     await started;
     (
       publication.document as unknown as {
@@ -624,12 +561,8 @@ describe("mounted-volume trusted artifact registry", () => {
       }
     ).signature.keyId = "mutated-key";
     releaseWrite?.();
-    await expect(pending).rejects.toBeInstanceOf(
-      MountedVolumeTrustedArtifactRegistryError,
-    );
-    const source = new MountedVolumeEvaluationReleaseArtifactSource(
-      registry,
-    );
+    await expect(pending).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
+    const source = new MountedVolumeEvaluationReleaseArtifactSource(registry);
     await expect(source.locate(publication.query)).resolves.toBeUndefined();
     await registry.close();
   });
@@ -638,43 +571,21 @@ describe("mounted-volume trusted artifact registry", () => {
     const root = await mkdtemp(join(tmpdir(), "df-artifact-registry-"));
     const { artifactRoot, registry, reader } = infrastructure(root);
     const publication = evaluationPublication(cacheAttestation());
-    const [receipt] =
-      await registry.publishEvaluationReleaseArtifacts([publication]);
+    const [receipt] = await registry.publishEvaluationReleaseArtifacts([publication]);
     const artifact = receipt!.artifact;
     await expect(
-      reader.readUtf8(
-        { ...artifact, uri: "trusted://artifact-registry/missing" },
-        1024 * 1024,
-      ),
+      reader.readUtf8({ ...artifact, uri: "trusted://artifact-registry/missing" }, 1024 * 1024),
     ).rejects.toThrow();
+    await expect(reader.readUtf8({ ...artifact, sha256: HASH_F }, 1024 * 1024)).rejects.toThrow();
     await expect(
-      reader.readUtf8(
-        { ...artifact, sha256: HASH_F },
-        1024 * 1024,
-      ),
-    ).rejects.toThrow();
-    await expect(
-      reader.readUtf8(
-        { ...artifact, byteLength: artifact.byteLength + 1 },
-        1024 * 1024,
-      ),
+      reader.readUtf8({ ...artifact, byteLength: artifact.byteLength + 1 }, 1024 * 1024),
     ).rejects.toThrow();
 
-    const objectDigest = createHash("sha256")
-      .update(artifact.uri)
-      .digest("hex");
-    const dataPath = join(
-      artifactRoot,
-      "objects",
-      objectDigest.slice(0, 2),
-      objectDigest,
-      "data",
-    );
+    const objectDigest = createHash("sha256").update(artifact.uri).digest("hex");
+    const dataPath = join(artifactRoot, "objects", objectDigest.slice(0, 2), objectDigest, "data");
     const original = await readFile(dataPath);
     await writeFile(dataPath, Buffer.from("x".repeat(original.length)));
-    await expect(
-      reader.readUtf8(artifact, 1024 * 1024),
-    ).rejects.toThrow();
+    await expect(reader.readUtf8(artifact, 1024 * 1024)).rejects.toThrow();
     await registry.close();
   });
 
@@ -683,40 +594,29 @@ describe("mounted-volume trusted artifact registry", () => {
     const { registry } = infrastructure(root);
 
     const optimizer = optimizerFixture();
-    await registry.publishOptimizerReleasedEvidenceMetadata(
-      optimizer.query,
-      optimizer.metadata,
-    );
+    await registry.publishOptimizerReleasedEvidenceMetadata(optimizer.query, optimizer.metadata);
     const composition = compositionFixture();
     await registry.publishProductionCompositionAttestationSet(
       composition.query,
       composition.document,
     );
     const campaign = campaignFixture();
-    await registry.publishCampaignAttestation(
-      campaign.query,
-      campaign.document,
-    );
+    await registry.publishCampaignAttestation(campaign.query, campaign.document);
     const genesis = campaignGenesisFixture();
-    await registry.publishCampaignGenesis(
-      genesis.query,
-      genesis.document,
-    );
+    await registry.publishCampaignGenesis(genesis.query, genesis.document);
 
     await expect(
-      new MountedVolumeProductionCompositionAttestationArtifactSource(
-        registry,
-      ).locate(composition.query),
+      new MountedVolumeProductionCompositionAttestationArtifactSource(registry).locate(
+        composition.query,
+      ),
     ).resolves.toEqual(composition.document);
     await expect(
-      new MountedVolumeCampaignAttestationArtifactSource(
-        registry,
-      ).locate(campaign.query),
+      new MountedVolumeCampaignAttestationArtifactSource(registry).locate(campaign.query),
     ).resolves.toBeDefined();
     await expect(
-      new MountedVolumeProductionOptimizePrerequisiteSource(
-        registry,
-      ).locateCampaignGenesis(genesis.query),
+      new MountedVolumeProductionOptimizePrerequisiteSource(registry).locateCampaignGenesis(
+        genesis.query,
+      ),
     ).resolves.toEqual(genesis.document);
     await registry.close();
   });
@@ -727,15 +627,12 @@ describe("mounted-volume trusted artifact registry", () => {
     const publication = evaluationPublication(cacheAttestation());
     await first.registry.publishEvaluationReleaseArtifacts([publication]);
 
-    const unauthorized = infrastructure(
-      root,
-      durableState(root, "2".repeat(64), "b".repeat(48)),
-    );
+    const unauthorized = infrastructure(root, durableState(root, "2".repeat(64), "b".repeat(48)));
     await expect(
-      new MountedVolumeEvaluationReleaseArtifactSource(
-        unauthorized.registry,
-      ).locate(publication.query),
-    ).rejects.toThrow(/recovery is required/u);
+      new MountedVolumeEvaluationReleaseArtifactSource(unauthorized.registry).locate(
+        publication.query,
+      ),
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
 
     const recoveredState = {
       ...durableState(root, "3".repeat(64), "c".repeat(48)),
@@ -752,8 +649,7 @@ describe("mounted-volume trusted artifact registry", () => {
         }) =>
           Promise.resolve({
             schemaVersion: 1 as const,
-            domain:
-              "dark-factory.mounted-volume-lock-recovery.v1" as const,
+            domain: "dark-factory.mounted-volume-lock-recovery.v1" as const,
             namespace: observedLock.namespace,
             authorizationId: "provider-destruction-registry-1",
             priorLockHash: observedLockHash,
@@ -767,25 +663,18 @@ describe("mounted-volume trusted artifact registry", () => {
     };
     const recovered = infrastructure(root, recoveredState);
     await expect(
-      new MountedVolumeEvaluationReleaseArtifactSource(
-        recovered.registry,
-      ).locate(publication.query),
+      new MountedVolumeEvaluationReleaseArtifactSource(recovered.registry).locate(
+        publication.query,
+      ),
     ).resolves.toBeDefined();
     await expect(
-      new MountedVolumeEvaluationReleaseArtifactSource(
-        first.registry,
-      ).locate(publication.query),
-    ).rejects.toThrow(/ownership|continuity/u);
+      new MountedVolumeEvaluationReleaseArtifactSource(first.registry).locate(publication.query),
+    ).rejects.toBeInstanceOf(MountedVolumeTrustedArtifactRegistryError);
     await recovered.registry.close();
 
-    const clean = infrastructure(
-      root,
-      durableState(root, "4".repeat(64), "d".repeat(48)),
-    );
+    const clean = infrastructure(root, durableState(root, "4".repeat(64), "d".repeat(48)));
     await expect(
-      new MountedVolumeEvaluationReleaseArtifactSource(
-        clean.registry,
-      ).locate(publication.query),
+      new MountedVolumeEvaluationReleaseArtifactSource(clean.registry).locate(publication.query),
     ).resolves.toBeDefined();
     await clean.registry.close();
   });

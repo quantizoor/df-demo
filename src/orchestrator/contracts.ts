@@ -1,8 +1,4 @@
-import type {
-  BudgetSnapshot,
-  ChampionPointers,
-  ExperimentIdentity,
-} from "../domain/models.js";
+import type { BudgetSnapshot, ChampionPointers, ExperimentIdentity } from "../domain/models.js";
 import type { ReleaseSafeOnlineErrorBudgetAccounting } from "../evaluation/statistics.js";
 import type { ReleaseSafeTerminalValidationAttemptAccounting } from "../evaluation/validation-attempt-ledger.js";
 

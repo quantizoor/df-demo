@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { canonicalHash } from "../schemas/canonical.js";
 import { CLOUD_PROVIDER_MARKER_NAMES } from "./runtime-marker.js";
 import type {
+  CloudDownloadExpectation,
   CloudProviderName,
   CloudProviderTransport,
-  CloudDownloadExpectation,
   CloudSandboxProvider,
   ProviderConfiguration,
-  ProviderProbeRequest,
   ProviderProbeReport,
+  ProviderProbeRequest,
   RemoteCommandSpec,
   RemoteExecutionReceipt,
   SandboxCreateRequest,
@@ -48,9 +48,7 @@ function assertLease(provider: CloudProviderName, lease: SandboxLease): void {
     lease.marker.sandboxId !== lease.sandboxId ||
     !SAFE_IMAGE_REFERENCE.test(lease.imageReference) ||
     !lease.imageReference.endsWith(`@${lease.imageDigest}`) ||
-    !CLOUD_PROVIDER_MARKER_NAMES[provider].includes(
-      lease.marker.markerEnvironmentName,
-    ) ||
+    !CLOUD_PROVIDER_MARKER_NAMES[provider].includes(lease.marker.markerEnvironmentName) ||
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(lease.sandboxId) ||
     !Number.isFinite(Date.parse(lease.createdAt)) ||
     !Number.isFinite(Date.parse(lease.expiresAt)) ||
@@ -66,9 +64,7 @@ function assertRemotePath(remotePath: string): void {
   }
 }
 
-function assertDownloadExpectation(
-  expectation: CloudDownloadExpectation,
-): void {
+function assertDownloadExpectation(expectation: CloudDownloadExpectation): void {
   if (
     !SAFE_MEDIA_TYPE.test(expectation.mediaType) ||
     !Number.isSafeInteger(expectation.maximumByteLength) ||
@@ -173,9 +169,7 @@ function assertRequest(provider: CloudProviderName, request: SandboxCreateReques
     request.lifetimeMs > MAXIMUM_SANDBOX_LIFETIME_MS ||
     !Number.isSafeInteger(request.lifetimeMs)
   ) {
-    throw new CloudProviderContractError(
-      "Sandbox lifetime must be a bounded positive integer.",
-    );
+    throw new CloudProviderContractError("Sandbox lifetime must be a bounded positive integer.");
   }
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(request.requestId) ||
@@ -238,9 +232,7 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
   async create(request: SandboxCreateRequest): Promise<SandboxLease> {
     assertRequest(this.name, request);
     if (this.#consumedRequestIds.has(request.requestId)) {
-      throw new CloudProviderContractError(
-        "A cloud sandbox request identifier is one-use.",
-      );
+      throw new CloudProviderContractError("A cloud sandbox request identifier is one-use.");
     }
     this.#consumedRequestIds.add(request.requestId);
     const lease = await this.#transport.create(this.configuration, request);
@@ -257,8 +249,7 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
         !sameResources(request.resources, lease.resources) ||
         createdAt > now + this.#maximumClockSkewMs ||
         expiresAt <= now ||
-        expiresAt >
-          createdAt + request.lifetimeMs + this.#maximumClockSkewMs ||
+        expiresAt > createdAt + request.lifetimeMs + this.#maximumClockSkewMs ||
         this.#activeLeases.has(lease.sandboxId)
       ) {
         throw new CloudProviderContractError(
@@ -276,10 +267,7 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
     return lease;
   }
 
-  async execute(
-    lease: SandboxLease,
-    command: RemoteCommandSpec,
-  ): Promise<RemoteExecutionReceipt> {
+  async execute(lease: SandboxLease, command: RemoteCommandSpec): Promise<RemoteExecutionReceipt> {
     const active = this.#requireActiveLease(lease);
     const now = this.#now().getTime();
     if (
@@ -290,17 +278,15 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
       !SAFE_EXECUTABLE.test(command.executable) ||
       command.executable.includes("/../") ||
       (command.executionId !== undefined &&
-        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(
-          command.executionId,
-        )) ||
-      command.arguments.some((argument) => /[\u0000\r\n]/u.test(argument))
+        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(command.executionId)) ||
+      command.arguments.some((argument) =>
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Remote process arguments reject NUL and line breaks at the provider boundary.
+        /[\u0000\r\n]/u.test(argument),
+      )
     ) {
       throw new CloudProviderContractError("Remote command specification is invalid.");
     }
-    if (
-      command.timeoutMs >
-      Date.parse(lease.expiresAt) - now + this.#maximumClockSkewMs
-    ) {
+    if (command.timeoutMs > Date.parse(lease.expiresAt) - now + this.#maximumClockSkewMs) {
       throw new CloudProviderContractError(
         "Remote command timeout exceeds the remaining sandbox lease.",
       );
@@ -309,10 +295,9 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
       if (
         !SAFE_ENVIRONMENT_NAME.test(name) ||
         SECRET_LIKE_NAME.test(name) ||
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Plain remote environment values reject NUL and newlines to prevent injection.
         /[\u0000\r\n]/u.test(value) ||
-        active.request.secretReferences.some(
-          (binding) => binding.targetEnvironmentName === name,
-        )
+        active.request.secretReferences.some((binding) => binding.targetEnvironmentName === name)
       ) {
         throw new CloudProviderContractError(
           "Plain remote environment is malformed or contains a secret-like field.",
@@ -322,8 +307,7 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
     assertSecretReferences(command.secretReferences);
     const allowedSecretBindings = new Set(
       active.request.secretReferences.map(
-        (binding) =>
-          `${binding.sourceEnvironmentName}\u0000${binding.targetEnvironmentName}`,
+        (binding) => `${binding.sourceEnvironmentName}\u0000${binding.targetEnvironmentName}`,
       ),
     );
     if (
@@ -338,9 +322,7 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
         "Remote command requested a secret outside its sandbox grant.",
       );
     }
-    if (
-      command.stdinArtifact !== undefined
-    ) {
+    if (command.stdinArtifact !== undefined) {
       assertArtifact(command.stdinArtifact);
     }
     const receipt = await this.#transport.execute(this.configuration, lease, command);
@@ -349,11 +331,8 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
     if (
       receipt.provider !== this.name ||
       receipt.sandboxId !== lease.sandboxId ||
-      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(
-        receipt.executionId,
-      ) ||
-      (command.executionId !== undefined &&
-        receipt.executionId !== command.executionId) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(receipt.executionId) ||
+      (command.executionId !== undefined && receipt.executionId !== command.executionId) ||
       !Number.isFinite(startedAt) ||
       !Number.isFinite(finishedAt) ||
       finishedAt < startedAt ||
@@ -431,16 +410,10 @@ export class ConfiguredCloudSandboxProvider implements CloudSandboxProvider {
     this.#destroyedLeaseHashes.add(leaseHash);
   }
 
-  #requireActiveLease(
-    lease: SandboxLease,
-    allowExpired = false,
-  ): ActiveLeaseRecord {
+  #requireActiveLease(lease: SandboxLease, allowExpired = false): ActiveLeaseRecord {
     assertLease(this.name, lease);
     const active = this.#activeLeases.get(lease.sandboxId);
-    if (
-      active === undefined ||
-      active.leaseHash !== leaseFingerprint(lease)
-    ) {
+    if (active === undefined || active.leaseHash !== leaseFingerprint(lease)) {
       throw new CloudProviderContractError(
         "Sandbox lease is unknown, mutated, or already destroyed.",
       );

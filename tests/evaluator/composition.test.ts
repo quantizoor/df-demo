@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import type { CloudSandboxProvider } from "../../src/cloud/types.js";
 import {
-  TrustedEvaluationCompositionError,
   createTrustedEvaluationService,
+  TrustedEvaluationCompositionError,
   type TrustedEvaluationServiceCompositionOptions,
 } from "../../src/evaluator/composition.js";
 import type {
@@ -22,8 +22,8 @@ import type {
   TrustedRawRetentionPolicy,
 } from "../../src/evaluator/retention.js";
 import {
-  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
   createPiHarborAgentSpec,
+  DARK_FACTORY_PI_HARBOR_IMPORT_PATH,
 } from "../../src/terminal-bench/pi-agent.js";
 import type { TerminalBench21Pin } from "../../src/terminal-bench/pin.js";
 
@@ -92,9 +92,7 @@ function privateKeys(): TrustedCloudEd25519PrivateKeyProvider {
         keyId: input.keyId,
         keyVersion: "cloud-secret-v1",
         privateKey:
-          input.purpose === "result-envelope"
-            ? resultKeys.privateKey
-            : hiddenKeys.privateKey,
+          input.purpose === "result-envelope" ? resultKeys.privateKey : hiddenKeys.privateKey,
       }),
   };
 }
@@ -110,9 +108,7 @@ function publicKeys(): TrustedCloudEd25519PublicKeyProvider {
         keyId: input.keyId,
         keyVersion: "cloud-secret-v1",
         publicKey:
-          input.purpose === "result-envelope"
-            ? resultKeys.publicKey
-            : hiddenKeys.publicKey,
+          input.purpose === "result-envelope" ? resultKeys.publicKey : hiddenKeys.publicKey,
       }),
   };
 }
@@ -143,6 +139,18 @@ function options(): TrustedEvaluationServiceCompositionOptions {
     boundary: "trusted-cloud",
     load: unavailable,
   };
+  const harborSecretReferences = [
+    {
+      sourceEnvironmentName: "DF_DAYTONA_EVALUATOR_SECRET",
+      targetEnvironmentName: "DAYTONA_API_KEY",
+    },
+  ] as const;
+  const modelSecretReferences = [
+    {
+      sourceEnvironmentName: "DF_OPENAI_EVALUATED_SECRET",
+      targetEnvironmentName: "OPENAI_API_KEY",
+    },
+  ] as const;
   return {
     runner: {
       provider: provider(),
@@ -163,7 +171,7 @@ function options(): TrustedEvaluationServiceCompositionOptions {
           allowDomains: ["api.model.example.test"],
         },
         lifetimeMs: 60 * 60_000,
-        secretReferences: [],
+        secretReferences: [...harborSecretReferences, ...modelSecretReferences],
       },
       harborExecutable: "/opt/harbor/bin/harbor",
       harborWorkingDirectory: "/workspace/evaluator",
@@ -172,6 +180,8 @@ function options(): TrustedEvaluationServiceCompositionOptions {
       outputPackagerTimeoutMs: 15 * 60_000,
       remoteUploadRoot: "/trusted/uploads/",
       remoteOutputRoot: "/trusted/results/",
+      harborSecretReferences,
+      modelSecretReferences,
       jobBuilder: { build: unavailable },
       runtimeVerifier: { verify: unavailable },
     },
@@ -184,6 +194,7 @@ function options(): TrustedEvaluationServiceCompositionOptions {
       modelId: "evaluated-model",
       thinkingLevel: "high",
       enabledTools: ["read", "write", "bash"],
+      credentialEnvironmentNames: ["OPENAI_API_KEY"],
       timeoutMs: 60 * 60_000,
     }),
     stores: {

@@ -4,9 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TrustedCloudArtifactRef } from "../../src/cloud/types.js";
 import type { ExperimentIdentity } from "../../src/domain/models.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
-import type {
-  TrustedCandidateRuntimeBuildReceipt,
-} from "../../src/harness/candidate-build-runner.js";
+import type { TrustedCandidateRuntimeBuildReceipt } from "../../src/harness/candidate-build-runner.js";
 import type { TrustedGitPublicationReceipt } from "../../src/harness/git-publication.js";
 import {
   TRUSTED_GIT_SOURCE_BUNDLE_REF,
@@ -17,13 +15,13 @@ import type {
   CloudOptimizerProposalResult,
   CloudOptimizerSessionRecordStore,
 } from "../../src/optimizer/cloud-session.js";
+import type { FrozenCandidate, FrozenHypothesis } from "../../src/orchestrator/contracts.js";
 import {
-  ProductionCorrectnessGateRunner,
-  trustedCloudIntegrityScanAttestationHash,
   type AccountedCorrectnessGateReceipt,
   type CorrectnessGateOperation,
   type CorrectnessGateRecord,
   type CorrectnessGateRecordStore,
+  ProductionCorrectnessGateRunner,
   type TrustedCandidateBuildRejectionReceipt,
   type TrustedCandidateSourceIndexPort,
   type TrustedCandidateSourceIndexReceipt,
@@ -32,16 +30,9 @@ import {
   type TrustedCloudIntegrityScanPort,
   type TrustedCloudIntegrityScanReceipt,
   type TrustedNonForceGitPublicationPort,
+  trustedCloudIntegrityScanAttestationHash,
 } from "../../src/orchestrator/correctness-gate.js";
-import type {
-  FrozenCandidate,
-  FrozenHypothesis,
-} from "../../src/orchestrator/contracts.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../../src/schemas/canonical.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../../src/schemas/canonical.js";
 
 const SOURCE_COMMIT = "1".repeat(40);
 const SOURCE_TREE = "2".repeat(40);
@@ -87,9 +78,7 @@ const hypothesis: FrozenHypothesis = {
 const candidate: FrozenCandidate = {
   commit: CANDIDATE_COMMIT,
   patchHash: DIFF_SHA256,
-  changedFiles: [
-    "packages/coding-agent/src/core/system-prompt.ts",
-  ],
+  changedFiles: ["packages/coding-agent/src/core/system-prompt.ts"],
   mutationCategory: "system-prompt",
 };
 
@@ -108,28 +97,13 @@ function artifact(
 }
 
 function proposalResult(
-  overrides: {
-    readonly candidate?: FrozenCandidate;
-    readonly candidateTree?: string;
-  } = {},
+  overrides: { readonly candidate?: FrozenCandidate; readonly candidateTree?: string } = {},
 ): CloudOptimizerProposalResult {
   const frozenCandidate = overrides.candidate ?? candidate;
   const candidateTree = overrides.candidateTree ?? CANDIDATE_TREE;
-  const candidateBundle = artifact(
-    "candidate-bundle",
-    BUNDLE_SHA256,
-    "application/vnd.git.bundle",
-  );
-  const candidateDiff = artifact(
-    "candidate-diff",
-    frozenCandidate.patchHash,
-    "text/x-diff",
-  );
-  const sessionState = artifact(
-    "session-state",
-    STATE_SHA256,
-    "application/x-tar",
-  );
+  const candidateBundle = artifact("candidate-bundle", BUNDLE_SHA256, "application/vnd.git.bundle");
+  const candidateDiff = artifact("candidate-diff", frozenCandidate.patchHash, "text/x-diff");
+  const sessionState = artifact("session-state", STATE_SHA256, "application/x-tar");
   const setup = withContentHash({
     schemaVersion: 1 as const,
     domain: "dark-factory.optimizer-setup.v1" as const,
@@ -215,21 +189,9 @@ function proposalResult(
     candidateBundle,
     candidateDiff,
     sessionState,
-    setupManifestArtifact: artifact(
-      "setup-manifest",
-      "3".repeat(64),
-      "application/json",
-    ),
-    claudeManifestArtifact: artifact(
-      "claude-manifest",
-      "4".repeat(64),
-      "application/json",
-    ),
-    sealManifestArtifact: artifact(
-      "seal-manifest",
-      "5".repeat(64),
-      "application/json",
-    ),
+    setupManifestArtifact: artifact("setup-manifest", "3".repeat(64), "application/json"),
+    claudeManifestArtifact: artifact("claude-manifest", "4".repeat(64), "application/json"),
+    sealManifestArtifact: artifact("seal-manifest", "5".repeat(64), "application/json"),
     executionReceipts: {
       setup: executionReceipt("optimizer-setup"),
       claude: executionReceipt("optimizer-claude"),
@@ -245,8 +207,7 @@ function optimizerStore(
     put: async () => undefined,
     get: async () => proposal,
     putAnalysis: async () => undefined,
-    getAnalysis: async (): Promise<CloudOptimizerAnalysisResult | null> =>
-      null,
+    getAnalysis: async (): Promise<CloudOptimizerAnalysisResult | null> => null,
   };
 }
 
@@ -266,10 +227,7 @@ function scanReceipt(
   const hypothesisDocumentHash = canonicalHash(hypothesis);
   const candidateDocumentHash = canonicalHash(candidate);
   const changedFilesHash = canonicalHash(candidate.changedFiles);
-  const attested: Omit<
-    TrustedCloudIntegrityScanReceipt,
-    "scanAttestationHash" | "signature"
-  > = {
+  const attested: Omit<TrustedCloudIntegrityScanReceipt, "scanAttestationHash" | "signature"> = {
     schemaVersion: 2,
     sensitivity: "release-safe-candidate-integrity-scan",
     scanId: `scan-${canonicalHash({
@@ -318,8 +276,7 @@ function scanReceipt(
   };
   const unsigned = {
     ...attested,
-    scanAttestationHash:
-      trustedCloudIntegrityScanAttestationHash(attested),
+    scanAttestationHash: trustedCloudIntegrityScanAttestationHash(attested),
   };
   return {
     ...unsigned,
@@ -351,11 +308,7 @@ function buildReceipt(): TrustedCandidateRuntimeBuildReceipt {
     toolchainAttestationHash: "9".repeat(64),
     commandReceiptHashes: ["a".repeat(64), "b".repeat(64)],
     runtimeManifestSha256: "c".repeat(64),
-    runtimeArtifact: artifact(
-      "candidate-runtime",
-      "d".repeat(64),
-      "application/x-tar",
-    ),
+    runtimeArtifact: artifact("candidate-runtime", "d".repeat(64), "application/x-tar"),
     builtAt: "2026-07-26T10:02:00.000Z",
     passed: true,
     signature: signature("2026-07-26T10:02:01.000Z"),
@@ -428,9 +381,7 @@ function publicationReceipt(): TrustedGitPublicationReceipt {
   };
 }
 
-function snapshotReceipt(
-  publication = publicationReceipt(),
-): TrustedGitSourceSnapshotReceipt {
+function snapshotReceipt(publication = publicationReceipt()): TrustedGitSourceSnapshotReceipt {
   return {
     sensitivity: "trusted-git-source-snapshot",
     schemaVersion: 2,
@@ -457,11 +408,7 @@ function snapshotReceipt(
     workerSha256: "5".repeat(64),
     executionReceiptHash: "6".repeat(64),
     manifestArtifactSha256: "7".repeat(64),
-    sourceArtifact: artifact(
-      "candidate-source",
-      "8".repeat(64),
-      "application/x-tar",
-    ),
+    sourceArtifact: artifact("candidate-source", "8".repeat(64), "application/x-tar"),
     sourceBundleArtifact: artifact(
       "candidate-source-bundle",
       "a".repeat(64),
@@ -487,8 +434,7 @@ function indexReceipt(
       candidateTree: snapshot.treeSha,
       lockSha256: snapshot.lockSha256,
       sourceArtifactSha256: snapshot.sourceArtifact.sha256,
-      sourceBundleArtifactSha256:
-        snapshot.sourceBundleArtifact.sha256,
+      sourceBundleArtifactSha256: snapshot.sourceBundleArtifact.sha256,
       snapshotReceiptHash,
     }).slice(0, 48)}`,
     experimentId: EXPERIMENT_ID,
@@ -499,8 +445,7 @@ function indexReceipt(
     candidateTree: snapshot.treeSha,
     lockSha256: snapshot.lockSha256,
     sourceArtifactSha256: snapshot.sourceArtifact.sha256,
-    sourceBundleArtifactSha256:
-      snapshot.sourceBundleArtifact.sha256,
+    sourceBundleArtifactSha256: snapshot.sourceBundleArtifact.sha256,
     snapshotReceiptHash,
     indexedAt: "2026-07-26T10:05:00.000Z",
     containsTaskIdentifiers: false,
@@ -533,21 +478,13 @@ class MemoryGateRecordStore implements CorrectnessGateRecordStore {
   readonly boundary = "trusted-cloud-durable" as const;
   record: CorrectnessGateRecord | null = null;
   readonly put = vi.fn(async (record: CorrectnessGateRecord) => {
-    if (
-      this.record !== null &&
-      canonicalJson(this.record) !== canonicalJson(record)
-    ) {
+    if (this.record !== null && canonicalJson(this.record) !== canonicalJson(record)) {
       throw new Error("immutable collision");
     }
     this.record = JSON.parse(canonicalJson(record)) as CorrectnessGateRecord;
   });
-  readonly get = vi.fn(
-    async (_experiment: ExperimentIdentity) =>
-      this.record === null
-        ? null
-        : (JSON.parse(
-            canonicalJson(this.record),
-          ) as CorrectnessGateRecord),
+  readonly get = vi.fn(async (_experiment: ExperimentIdentity) =>
+    this.record === null ? null : (JSON.parse(canonicalJson(this.record)) as CorrectnessGateRecord),
   );
 }
 
@@ -561,20 +498,21 @@ interface GateHarness {
   readonly sourceIndex: TrustedCandidateSourceIndexPort;
 }
 
-function gateHarness(input: {
-  readonly proposal?: CloudOptimizerProposalResult | null;
-  readonly scanPassed?: boolean;
-  readonly scanMutation?: (
-    receipt: TrustedCloudIntegrityScanReceipt,
-  ) => TrustedCloudIntegrityScanReceipt;
-  readonly buildFailure?: boolean;
-  readonly publicationFailure?: boolean;
-  readonly snapshotMutation?: (
-    receipt: TrustedGitSourceSnapshotReceipt,
-  ) => TrustedGitSourceSnapshotReceipt;
-} = {}): GateHarness {
-  const proposal =
-    input.proposal === undefined ? proposalResult() : input.proposal;
+function gateHarness(
+  input: {
+    readonly proposal?: CloudOptimizerProposalResult | null;
+    readonly scanPassed?: boolean;
+    readonly scanMutation?: (
+      receipt: TrustedCloudIntegrityScanReceipt,
+    ) => TrustedCloudIntegrityScanReceipt;
+    readonly buildFailure?: boolean;
+    readonly publicationFailure?: boolean;
+    readonly snapshotMutation?: (
+      receipt: TrustedGitSourceSnapshotReceipt,
+    ) => TrustedGitSourceSnapshotReceipt;
+  } = {},
+): GateHarness {
+  const proposal = input.proposal === undefined ? proposalResult() : input.proposal;
   if (proposal === null) {
     const records = new MemoryGateRecordStore();
     const unavailable = vi.fn(async () => {
@@ -635,9 +573,7 @@ function gateHarness(input: {
   );
   const build = buildReceipt();
   const publication = publicationReceipt();
-  const snapshot = (input.snapshotMutation ?? ((value) => value))(
-    snapshotReceipt(publication),
-  );
+  const snapshot = (input.snapshotMutation ?? ((value) => value))(snapshotReceipt(publication));
   let indexedSnapshot: TrustedGitSourceSnapshotReceipt | null = null;
   const scanner: TrustedCloudIntegrityScanPort = {
     boundary: "trusted-cloud",
@@ -648,9 +584,7 @@ function gateHarness(input: {
     build: vi.fn(async () =>
       accounted(
         "candidate-build",
-        input.buildFailure === true
-          ? buildRejectionReceipt()
-          : build,
+        input.buildFailure === true ? buildRejectionReceipt() : build,
         2,
       ),
     ),
@@ -666,9 +600,7 @@ function gateHarness(input: {
   };
   const snapshotter: TrustedCandidateSourceSnapshotPort = {
     boundary: "trusted-cloud",
-    snapshot: vi.fn(async () =>
-      accounted("source-snapshot", snapshot, 4),
-    ),
+    snapshot: vi.fn(async () => accounted("source-snapshot", snapshot, 4)),
   };
   const sourceIndex: TrustedCandidateSourceIndexPort = {
     boundary: "trusted-cloud",
@@ -706,10 +638,7 @@ function gateHarness(input: {
   };
 }
 
-function run(
-  harness: GateHarness,
-  inputCandidate: FrozenCandidate = candidate,
-) {
+function run(harness: GateHarness, inputCandidate: FrozenCandidate = candidate) {
   return harness.runner.run({
     experiment,
     hypothesis,
@@ -731,9 +660,7 @@ describe("production correctness gate", () => {
       failureCode: null,
     });
     expect(result.checksHash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(harness.records.record?.contentHash).toMatch(
-      /^[a-f0-9]{64}$/u,
-    );
+    expect(harness.records.record?.contentHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(harness.records.put).toHaveBeenCalledTimes(1);
     expect(harness.scanner.scan).toHaveBeenCalledWith(
       expect.objectContaining({

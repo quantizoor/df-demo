@@ -16,15 +16,7 @@ import {
 } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const CLOUD_MARKER_GROUPS = [
   ["DAYTONA_SANDBOX_ID", "DAYTONA_WORKSPACE_ID"],
@@ -36,8 +28,7 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u;
-const SAFE_HEAD_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_HEAD_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
 const EXACT_SEMVER =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const REGULAR_TREE_MODES = new Set(["100644", "100755"]);
@@ -50,8 +41,7 @@ const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_GITHUB_API_BYTES = 1024 * 1024;
 const MAX_SOURCE_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const MAX_BUNDLE_BYTES = 2 * 1024 * 1024 * 1024;
-const SOURCE_BUNDLE_REF =
-  "refs/heads/df/bundle/000-source-snapshot";
+const SOURCE_BUNDLE_REF = "refs/heads/df/bundle/000-source-snapshot";
 const GIT_TIMEOUT_MS = 15 * 60_000;
 
 class WorkerPolicyError extends Error {
@@ -66,11 +56,7 @@ function reject(message) {
 }
 
 function canonicalJson(value) {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
@@ -80,10 +66,7 @@ function canonicalJson(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
   }
-  if (
-    typeof value !== "object" ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
     reject("Canonical JSON accepts only plain JSON values.");
   }
   return `{${Object.keys(value)
@@ -95,9 +78,7 @@ function canonicalJson(value) {
 function withContentHash(document) {
   return {
     ...document,
-    contentHash: createHash("sha256")
-      .update(canonicalJson(document))
-      .digest("hex"),
+    contentHash: createHash("sha256").update(canonicalJson(document)).digest("hex"),
   };
 }
 
@@ -140,10 +121,7 @@ function assertCloudRuntime() {
   const values = activeGroups[0]
     .map((name) => process.env[name])
     .filter((value) => value !== undefined);
-  if (
-    values.length === 0 ||
-    values.some((value) => !SAFE_MARKER.test(value))
-  ) {
+  if (values.length === 0 || values.some((value) => !SAFE_MARKER.test(value))) {
     reject("Trusted Git worker cloud marker is malformed.");
   }
 }
@@ -160,9 +138,7 @@ function assertRef(ref, expected) {
     ref.endsWith(".lock") ||
     components.some(
       (component) =>
-        component.startsWith(".") ||
-        component.endsWith(".") ||
-        component.endsWith(".lock"),
+        component.startsWith(".") || component.endsWith(".") || component.endsWith(".lock"),
     ) ||
     (expected !== undefined && ref !== expected)
   ) {
@@ -201,9 +177,7 @@ function parseRemoteIdentity(value) {
     name: match[2],
     repository,
     normalizedUrl: `https://github.com/${repository}.git`,
-    repositorySha256: createHash("sha256")
-      .update(`github.com/${repository}`)
-      .digest("hex"),
+    repositorySha256: createHash("sha256").update(`github.com/${repository}`).digest("hex"),
   };
 }
 
@@ -263,12 +237,7 @@ function runGit(context, arguments_, options = {}) {
   }
   const result = spawnSync("/usr/bin/git", arguments_, {
     cwd: context.repository,
-    env: gitEnvironment(
-      context.home,
-      context.askpass,
-      context.token,
-      options.environment,
-    ),
+    env: gitEnvironment(context.home, context.askpass, context.token, options.environment),
     encoding: null,
     input: options.input,
     maxBuffer: MAX_GIT_OUTPUT_BYTES,
@@ -397,6 +366,7 @@ async function createContext() {
     typeof token !== "string" ||
     token.length < 20 ||
     token.length > 2_048 ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Credential material must reject NUL and line breaks before reaching Git.
     /[\u0000\r\n]/u.test(token)
   ) {
     reject("Trusted Git credential grant is absent or malformed.");
@@ -413,8 +383,8 @@ async function createContext() {
       "#!/usr/bin/env node",
       'const prompt = process.argv[2] ?? "";',
       'if (prompt.includes("Username")) process.stdout.write("x-access-token\\n");',
-      "else if (prompt.includes(\"Password\"))",
-      "  process.stdout.write(`${process.env.DF_GITHUB_TOKEN ?? \"\"}\\n`);",
+      'else if (prompt.includes("Password"))',
+      '  process.stdout.write(`${process.env.DF_GITHUB_TOKEN ?? ""}\\n`);',
       "else process.exit(1);",
       "",
     ].join("\n"),
@@ -426,10 +396,7 @@ async function createContext() {
     flag: "wx",
     mode: 0o600,
   });
-  await Promise.all([
-    mkdir(home, { mode: 0o700 }),
-    mkdir(repository, { mode: 0o700 }),
-  ]);
+  await Promise.all([mkdir(home, { mode: 0o700 }), mkdir(repository, { mode: 0o700 })]);
   const context = { root, home, repository, askpass, token };
   runGit(context, ["init", "--quiet"]);
   for (const [name, value] of [
@@ -446,11 +413,7 @@ async function createContext() {
   return context;
 }
 
-function readGitHubRepositoryAuthorization(
-  context,
-  identity,
-  expectedBranch,
-) {
+function readGitHubRepositoryAuthorization(context, identity, expectedBranch) {
   return new Promise((resolveAuthorization, rejectAuthorization) => {
     const request = httpsRequest(
       {
@@ -473,18 +436,13 @@ function readGitHubRepositoryAuthorization(
         if (
           response.statusCode !== 200 ||
           typeof contentType !== "string" ||
-          !/^application\/(?:json|vnd\.github\+json)(?:;|$)/u.test(
-            contentType,
-          ) ||
+          !/^application\/(?:json|vnd\.github\+json)(?:;|$)/u.test(contentType) ||
           (Number.isFinite(contentLength) &&
-            (contentLength <= 0 ||
-              contentLength > MAX_GITHUB_API_BYTES))
+            (contentLength <= 0 || contentLength > MAX_GITHUB_API_BYTES))
         ) {
           response.resume();
           rejectAuthorization(
-            new WorkerPolicyError(
-              "GitHub repository authorization could not be verified.",
-            ),
+            new WorkerPolicyError("GitHub repository authorization could not be verified."),
           );
           return;
         }
@@ -492,33 +450,25 @@ function readGitHubRepositoryAuthorization(
         let byteLength = 0;
         response.on("aborted", () => {
           rejectAuthorization(
-            new WorkerPolicyError(
-              "GitHub repository authorization response was interrupted.",
-            ),
+            new WorkerPolicyError("GitHub repository authorization response was interrupted."),
           );
         });
         response.on("error", () => {
           rejectAuthorization(
-            new WorkerPolicyError(
-              "GitHub repository authorization response failed.",
-            ),
+            new WorkerPolicyError("GitHub repository authorization response failed."),
           );
         });
         response.on("data", (chunk) => {
           if (!Buffer.isBuffer(chunk)) {
             request.destroy(
-              new WorkerPolicyError(
-                "GitHub repository authorization response is malformed.",
-              ),
+              new WorkerPolicyError("GitHub repository authorization response is malformed."),
             );
             return;
           }
           byteLength += chunk.length;
           if (byteLength > MAX_GITHUB_API_BYTES) {
             request.destroy(
-              new WorkerPolicyError(
-                "GitHub repository authorization response is too large.",
-              ),
+              new WorkerPolicyError("GitHub repository authorization response is too large."),
             );
             return;
           }
@@ -527,14 +477,10 @@ function readGitHubRepositoryAuthorization(
         response.on("end", () => {
           let document;
           try {
-            document = JSON.parse(
-              Buffer.concat(chunks, byteLength).toString("utf8"),
-            );
+            document = JSON.parse(Buffer.concat(chunks, byteLength).toString("utf8"));
           } catch {
             rejectAuthorization(
-              new WorkerPolicyError(
-                "GitHub repository authorization response is invalid.",
-              ),
+              new WorkerPolicyError("GitHub repository authorization response is invalid."),
             );
             return;
           }
@@ -552,11 +498,9 @@ function readGitHubRepositoryAuthorization(
             typeof document.name !== "string" ||
             document.name.toLowerCase() !== identity.name.toLowerCase() ||
             typeof document.full_name !== "string" ||
-            document.full_name.toLowerCase() !==
-              identity.repository.toLowerCase() ||
+            document.full_name.toLowerCase() !== identity.repository.toLowerCase() ||
             typeof document.clone_url !== "string" ||
-            document.clone_url.toLowerCase() !==
-              identity.normalizedUrl.toLowerCase() ||
+            document.clone_url.toLowerCase() !== identity.normalizedUrl.toLowerCase() ||
             document.private !== true ||
             document.visibility !== "private" ||
             document.archived !== false ||
@@ -584,8 +528,7 @@ function readGitHubRepositoryAuthorization(
             provider: "github",
             repositoryId: document.id,
             repositoryNodeId: document.node_id,
-            ownerNodeId:
-              typeof owner.node_id === "string" ? owner.node_id : null,
+            ownerNodeId: typeof owner.node_id === "string" ? owner.node_id : null,
             private: true,
             visibility: "private",
             pull: true,
@@ -604,19 +547,13 @@ function readGitHubRepositoryAuthorization(
       },
     );
     request.setTimeout(30_000, () => {
-      request.destroy(
-        new WorkerPolicyError(
-          "GitHub repository authorization request timed out.",
-        ),
-      );
+      request.destroy(new WorkerPolicyError("GitHub repository authorization request timed out."));
     });
     request.on("error", (error) => {
       rejectAuthorization(
         error instanceof WorkerPolicyError
           ? error
-          : new WorkerPolicyError(
-              "GitHub repository authorization request failed.",
-            ),
+          : new WorkerPolicyError("GitHub repository authorization request failed."),
       );
     });
     request.end();
@@ -644,29 +581,18 @@ function parseSingleRemoteRef(output, expectedRef) {
 }
 
 function readRemoteRef(context, remote, ref, allowMissing = false) {
-  const result = runGit(
-    context,
-    ["ls-remote", "--refs", remote, ref],
-    { allowedStatuses: [0] },
-  );
+  const result = runGit(context, ["ls-remote", "--refs", remote, ref], { allowedStatuses: [0] });
   if (text(result.stdout).length === 0 && allowMissing) return null;
   return parseSingleRemoteRef(result.stdout, ref);
 }
 
 function readRemoteHead(context, remote) {
-  return parseSingleRemoteRef(
-    runGit(context, ["ls-remote", remote, "HEAD"]).stdout,
-    "HEAD",
-  );
+  return parseSingleRemoteRef(runGit(context, ["ls-remote", remote, "HEAD"]).stdout, "HEAD");
 }
 
 function verifyCommit(context, input, localRef) {
-  const commit = text(
-    runGit(context, ["rev-parse", "--verify", `${localRef}^{commit}`]).stdout,
-  );
-  const tree = text(
-    runGit(context, ["rev-parse", "--verify", `${commit}^{tree}`]).stdout,
-  );
+  const commit = text(runGit(context, ["rev-parse", "--verify", `${localRef}^{commit}`]).stdout);
+  const tree = text(runGit(context, ["rev-parse", "--verify", `${commit}^{tree}`]).stdout);
   if (
     commit !== input.commit ||
     tree !== input.tree ||
@@ -675,23 +601,16 @@ function verifyCommit(context, input, localRef) {
   ) {
     reject("Trusted Git commit or tree does not match authorization.");
   }
-  const lock = runGit(context, [
-    "show",
-    `${commit}:package-lock.json`,
-  ]).stdout;
-  if (
-    createHash("sha256").update(lock).digest("hex") !==
-    input["lock-sha256"]
-  ) {
+  const lock = runGit(context, ["show", `${commit}:package-lock.json`]).stdout;
+  if (createHash("sha256").update(lock).digest("hex") !== input["lock-sha256"]) {
     reject("Trusted Git package lock does not match authorization.");
   }
   let packageMetadata;
   try {
     packageMetadata = JSON.parse(
-      runGit(context, [
-        "show",
-        `${commit}:packages/coding-agent/package.json`,
-      ]).stdout.toString("utf8"),
+      runGit(context, ["show", `${commit}:packages/coding-agent/package.json`]).stdout.toString(
+        "utf8",
+      ),
     );
   } catch {
     reject("Trusted Git Pi package metadata is invalid.");
@@ -699,24 +618,22 @@ function verifyCommit(context, input, localRef) {
   if (packageMetadata?.name !== "@earendil-works/pi-coding-agent") {
     reject("Trusted Git commit is not the registered Pi harness.");
   }
-  const treeEntries = text(
-    runGit(context, ["ls-tree", "-r", input.commit]).stdout,
-  )
+  const treeEntries = text(runGit(context, ["ls-tree", "-r", input.commit]).stdout)
     .split("\n")
     .filter((line) => line.length > 0);
   if (treeEntries.length === 0 || treeEntries.length > 200_000) {
     reject("Trusted Git tree entry count is outside policy.");
   }
   for (const entry of treeEntries) {
-    const match =
-      /^([0-7]{6}) (?:blob|tree|commit) [a-f0-9]{40}(?:[a-f0-9]{24})?\t(.+)$/u.exec(
-        entry,
-      );
+    const match = /^([0-7]{6}) (?:blob|tree|commit) [a-f0-9]{40}(?:[a-f0-9]{24})?\t(.+)$/u.exec(
+      entry,
+    );
     if (
       match?.[1] === undefined ||
       match[2] === undefined ||
       match[2].includes("\u0000") ||
       match[2].includes("\\") ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Git tree paths are untrusted and must reject every ASCII control byte.
       /[\u0000-\u001f\u007f]/u.test(match[2]) ||
       match[2].split("/").some((part) => part === "" || part === "." || part === "..") ||
       !REGULAR_TREE_MODES.has(match[1])
@@ -724,10 +641,9 @@ function verifyCommit(context, input, localRef) {
       reject("Trusted Git tree contains an unsafe path, link, or gitlink.");
     }
     if (basename(match[2]) === ".gitattributes") {
-      const attributes = runGit(context, [
-        "show",
-        `${input.commit}:${match[2]}`,
-      ]).stdout.toString("utf8");
+      const attributes = runGit(context, ["show", `${input.commit}:${match[2]}`]).stdout.toString(
+        "utf8",
+      );
       if (/\bexport-(?:ignore|subst)\b/u.test(attributes)) {
         reject("Trusted Git archive attributes can alter exported source.");
       }
@@ -741,10 +657,7 @@ function verifyRegistrationPackageMetadata(context, input) {
     "show",
     `${input.commit}:packages/coding-agent/package.json`,
   ]).stdout;
-  const lockBytes = runGit(context, [
-    "show",
-    `${input.commit}:package-lock.json`,
-  ]).stdout;
+  const lockBytes = runGit(context, ["show", `${input.commit}:package-lock.json`]).stdout;
   let packageMetadata;
   let lockMetadata;
   try {
@@ -761,36 +674,19 @@ function verifyRegistrationPackageMetadata(context, input) {
     lockedPackage?.name !== input["package-name"] ||
     lockedPackage?.version !== input["package-version"]
   ) {
-    reject(
-      "Trusted Git Pi package metadata does not match its authorization.",
-    );
+    reject("Trusted Git Pi package metadata does not match its authorization.");
   }
   return createHash("sha256").update(packageBytes).digest("hex");
 }
 
 function verifyLineage(context, input, candidateRef) {
-  for (const objectId of [
-    input.baseline,
-    input["upstream-head"],
-    input["upstream-base"],
-  ]) {
+  for (const objectId of [input.baseline, input["upstream-head"], input["upstream-base"]]) {
     if (!OBJECT_ID.test(objectId)) {
       reject("Trusted Git lineage object identifier is malformed.");
     }
   }
-  runGit(context, [
-    "merge-base",
-    "--is-ancestor",
-    input.baseline,
-    candidateRef,
-  ]);
-  const mergeBase = text(
-    runGit(context, [
-      "merge-base",
-      candidateRef,
-      "refs/df/upstream",
-    ]).stdout,
-  );
+  runGit(context, ["merge-base", "--is-ancestor", input.baseline, candidateRef]);
+  const mergeBase = text(runGit(context, ["merge-base", candidateRef, "refs/df/upstream"]).stdout);
   if (mergeBase !== input["upstream-base"]) {
     reject("Trusted Git upstream lineage changed.");
   }
@@ -798,12 +694,7 @@ function verifyLineage(context, input, candidateRef) {
 
 function addVerifiedRemotes(context, input, identities) {
   runGit(context, ["remote", "add", "origin", identities.origin.normalizedUrl]);
-  runGit(context, [
-    "remote",
-    "add",
-    "upstream",
-    identities.upstream.normalizedUrl,
-  ]);
+  runGit(context, ["remote", "add", "upstream", identities.upstream.normalizedUrl]);
   const upstreamHead = readRemoteHead(context, "upstream");
   if (upstreamHead !== input["upstream-head"]) {
     reject("Trusted Git upstream HEAD changed after registration.");
@@ -817,11 +708,7 @@ function addVerifiedRemotes(context, input, identities) {
     "HEAD:refs/df/upstream",
   ]);
   const fetchedUpstream = text(
-    runGit(context, [
-      "rev-parse",
-      "--verify",
-      "refs/df/upstream^{commit}",
-    ]).stdout,
+    runGit(context, ["rev-parse", "--verify", "refs/df/upstream^{commit}"]).stdout,
   );
   if (fetchedUpstream !== input["upstream-head"]) {
     reject("Trusted Git fetched an unexpected upstream object.");
@@ -842,8 +729,7 @@ async function register(input) {
     !SHA256.test(input["lock-sha256"]) ||
     input["package-name"] !== PI_CODING_AGENT_PACKAGE ||
     !EXACT_SEMVER.test(input["package-version"]) ||
-    input["harness-registration-schema-version"] !==
-      HARNESS_REGISTRATION_SCHEMA_VERSION ||
+    input["harness-registration-schema-version"] !== HARNESS_REGISTRATION_SCHEMA_VERSION ||
     input["adapter-id"] !== PI_ADAPTER_ID ||
     input["adapter-execution-mode"] !== PI_ADAPTER_EXECUTION_MODE ||
     input["sessions-disabled"] !== "true" ||
@@ -862,32 +748,19 @@ async function register(input) {
   const resultOutput = await assertNewOutput(input.result, ".json");
   const context = await createContext();
   try {
-    const initialProviderAuthorization =
-      await readGitHubRepositoryAuthorization(
-        context,
-        identities.origin,
-        expectedBranch,
-      );
-    runGit(context, [
-      "remote",
-      "add",
-      "origin",
-      identities.origin.normalizedUrl,
-    ]);
-    runGit(context, [
-      "remote",
-      "add",
-      "upstream",
-      identities.upstream.normalizedUrl,
-    ]);
+    const initialProviderAuthorization = await readGitHubRepositoryAuthorization(
+      context,
+      identities.origin,
+      expectedBranch,
+    );
+    runGit(context, ["remote", "add", "origin", identities.origin.normalizedUrl]);
+    runGit(context, ["remote", "add", "upstream", identities.upstream.normalizedUrl]);
     const upstreamHead = readRemoteHead(context, "upstream");
     if (!OBJECT_ID.test(upstreamHead)) {
       reject("Trusted Git canonical upstream HEAD is malformed.");
     }
     if (readRemoteRef(context, "origin", input.ref) !== input.commit) {
-      reject(
-        "Trusted Git registered branch does not resolve to its authorized commit.",
-      );
+      reject("Trusted Git registered branch does not resolve to its authorized commit.");
     }
     runGit(context, [
       "fetch",
@@ -905,63 +778,41 @@ async function register(input) {
       "HEAD:refs/df/upstream",
     ]);
     const fetchedUpstream = text(
-      runGit(context, [
-        "rev-parse",
-        "--verify",
-        "refs/df/upstream^{commit}",
-      ]).stdout,
+      runGit(context, ["rev-parse", "--verify", "refs/df/upstream^{commit}"]).stdout,
     );
     if (fetchedUpstream !== upstreamHead) {
       reject("Trusted Git fetched an unexpected canonical upstream object.");
     }
     verifyCommit(context, input, "refs/df/baseline");
-    const packageJsonSha256 = verifyRegistrationPackageMetadata(
-      context,
-      input,
-    );
+    const packageJsonSha256 = verifyRegistrationPackageMetadata(context, input);
     const upstreamBase = text(
-      runGit(context, [
-        "merge-base",
-        "refs/df/baseline",
-        "refs/df/upstream",
-      ]).stdout,
+      runGit(context, ["merge-base", "refs/df/baseline", "refs/df/upstream"]).stdout,
     );
     if (!OBJECT_ID.test(upstreamBase)) {
-      reject(
-        "Trusted Git private origin has no canonical upstream merge base.",
-      );
+      reject("Trusted Git private origin has no canonical upstream merge base.");
     }
-    runGit(context, [
-      "merge-base",
-      "--is-ancestor",
-      upstreamBase,
-      "refs/df/baseline",
-    ]);
+    runGit(context, ["merge-base", "--is-ancestor", upstreamBase, "refs/df/baseline"]);
     runGit(context, ["fsck", "--full", "--strict", "--no-reflogs"]);
     if (readRemoteRef(context, "origin", input.ref) !== input.commit) {
       reject("Trusted Git registered branch moved during verification.");
     }
     assertUpstreamStable(context, upstreamHead);
-    const finalProviderAuthorization =
-      await readGitHubRepositoryAuthorization(
-        context,
-        identities.origin,
-        expectedBranch,
-      );
+    const finalProviderAuthorization = await readGitHubRepositoryAuthorization(
+      context,
+      identities.origin,
+      expectedBranch,
+    );
     if (
       finalProviderAuthorization.repositoryAttestationHash !==
       initialProviderAuthorization.repositoryAttestationHash
     ) {
-      reject(
-        "GitHub repository authorization changed during registration.",
-      );
+      reject("GitHub repository authorization changed during registration.");
     }
     if (Date.now() >= Date.parse(input["authorization-expires-at"])) {
       reject("Trusted Git registration authorization expired during use.");
     }
     const originRepositoryHash = input["origin-repository-sha256"];
-    const upstreamRepositoryHash =
-      input["upstream-repository-sha256"];
+    const upstreamRepositoryHash = input["upstream-repository-sha256"];
     const registrationId = createHash("sha256")
       .update(`${input.commit}:${originRepositoryHash}:${upstreamBase}`)
       .digest("hex");
@@ -989,8 +840,7 @@ async function register(input) {
       lockSha256: input["lock-sha256"],
       packageName: input["package-name"],
       packageVersion: input["package-version"],
-      harnessRegistrationSchemaVersion:
-        input["harness-registration-schema-version"],
+      harnessRegistrationSchemaVersion: input["harness-registration-schema-version"],
       adapterId: input["adapter-id"],
       adapterExecutionMode: input["adapter-execution-mode"],
       sessionsDisabled: true,
@@ -1006,16 +856,15 @@ async function register(input) {
       fetchEvidence: "authenticated-ls-remote-and-fetch",
       writeEvidence: "github-rest-permissions-push",
       lineageEvidence: "canonical-upstream-fetched-merge-base",
-      providerRepositoryAttestationHash:
-        finalProviderAuthorization.repositoryAttestationHash,
+      providerRepositoryAttestationHash: finalProviderAuthorization.repositoryAttestationHash,
       lineageAttestationHash,
       providerVerifiedAt: finalProviderAuthorization.verifiedAt,
     });
-    await writeFile(
-      resultOutput.resolved,
-      `${canonicalJson(result)}\n`,
-      { encoding: "utf8", flag: "wx", mode: 0o600 },
-    );
+    await writeFile(resultOutput.resolved, `${canonicalJson(result)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
   } catch (error) {
     await unlink(resultOutput.resolved).catch(() => undefined);
     throw error;
@@ -1041,11 +890,7 @@ async function snapshot(input) {
   const bundleOutput = await assertNewOutput(input.bundle, ".bundle");
   const manifestOutput = await assertNewOutput(input.manifest, ".json");
   if (
-    new Set([
-      archiveOutput.resolved,
-      bundleOutput.resolved,
-      manifestOutput.resolved,
-    ]).size !== 3
+    new Set([archiveOutput.resolved, bundleOutput.resolved, manifestOutput.resolved]).size !== 3
   ) {
     reject("Trusted Git source outputs overlap.");
   }
@@ -1075,46 +920,22 @@ async function snapshot(input) {
     verifyLineage(context, input, "refs/df/target");
     runGit(context, ["fsck", "--full", "--strict", "--no-reflogs"]);
 
-    const outputStaging = await mkdtemp(
-      join(archiveOutput.parent, ".df-source-"),
-    );
+    const outputStaging = await mkdtemp(join(archiveOutput.parent, ".df-source-"));
     await chmod(outputStaging, 0o700);
     const stagedArchive = join(outputStaging, "source.tar");
     const stagedBundle = join(outputStaging, "source.bundle");
     try {
-      runGit(
-        context,
-        [
-          "archive",
-          "--format=tar",
-          `--output=${stagedArchive}`,
-          input.commit,
-        ],
-        { timeoutMs: GIT_TIMEOUT_MS },
-      );
-      const archive = await sha256File(
-        stagedArchive,
-        MAX_SOURCE_ARCHIVE_BYTES,
-      );
+      runGit(context, ["archive", "--format=tar", `--output=${stagedArchive}`, input.commit], {
+        timeoutMs: GIT_TIMEOUT_MS,
+      });
+      const archive = await sha256File(stagedArchive, MAX_SOURCE_ARCHIVE_BYTES);
       if (archive.byteLength % 512 !== 0) {
         reject("Trusted Git source archive is not an uncompressed tar stream.");
       }
-      runGit(context, [
-        "update-ref",
-        SOURCE_BUNDLE_REF,
-        input.commit,
-      ]);
-      runGit(
-        context,
-        [
-          "bundle",
-          "create",
-          "--version=2",
-          stagedBundle,
-          SOURCE_BUNDLE_REF,
-        ],
-        { timeoutMs: GIT_TIMEOUT_MS },
-      );
+      runGit(context, ["update-ref", SOURCE_BUNDLE_REF, input.commit]);
+      runGit(context, ["bundle", "create", "--version=2", stagedBundle, SOURCE_BUNDLE_REF], {
+        timeoutMs: GIT_TIMEOUT_MS,
+      });
       parseBundleHeads(
         runGit(context, ["bundle", "list-heads", stagedBundle]).stdout,
         SOURCE_BUNDLE_REF,
@@ -1123,10 +944,7 @@ async function snapshot(input) {
       runGit(context, ["bundle", "verify", stagedBundle], {
         timeoutMs: GIT_TIMEOUT_MS,
       });
-      const bundle = await sha256File(
-        stagedBundle,
-        MAX_BUNDLE_BYTES,
-      );
+      const bundle = await sha256File(stagedBundle, MAX_BUNDLE_BYTES);
       if (readRemoteRef(context, "origin", input.ref) !== input.commit) {
         reject("Trusted Git source ref moved during archiving.");
       }
@@ -1135,20 +953,14 @@ async function snapshot(input) {
       archivePublished = true;
       await link(stagedBundle, bundleOutput.resolved);
       bundlePublished = true;
-      const publishedArchive = await sha256File(
-        archiveOutput.resolved,
-        MAX_SOURCE_ARCHIVE_BYTES,
-      );
+      const publishedArchive = await sha256File(archiveOutput.resolved, MAX_SOURCE_ARCHIVE_BYTES);
       if (
         publishedArchive.sha256 !== archive.sha256 ||
         publishedArchive.byteLength !== archive.byteLength
       ) {
         reject("Trusted Git source archive changed while it was published.");
       }
-      const publishedBundle = await sha256File(
-        bundleOutput.resolved,
-        MAX_BUNDLE_BYTES,
-      );
+      const publishedBundle = await sha256File(bundleOutput.resolved, MAX_BUNDLE_BYTES);
       if (
         publishedBundle.sha256 !== bundle.sha256 ||
         publishedBundle.byteLength !== bundle.byteLength
@@ -1176,11 +988,11 @@ async function snapshot(input) {
         bundleSha256: bundle.sha256,
         bundleByteLength: bundle.byteLength,
       });
-      await writeFile(
-        manifestOutput.resolved,
-        `${canonicalJson(manifest)}\n`,
-        { encoding: "utf8", flag: "wx", mode: 0o600 },
-      );
+      await writeFile(manifestOutput.resolved, `${canonicalJson(manifest)}\n`, {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600,
+      });
     } finally {
       await rm(outputStaging, { recursive: true, force: true });
     }
@@ -1207,11 +1019,7 @@ function parseBundleHeads(output, expectedRef, expectedCommit) {
     reject("Git bundle must expose exactly one authorized head.");
   }
   const parts = lines[0].split(/\s+/u);
-  if (
-    parts.length !== 2 ||
-    parts[0] !== expectedCommit ||
-    parts[1] !== expectedRef
-  ) {
+  if (parts.length !== 2 || parts[0] !== expectedCommit || parts[1] !== expectedRef) {
     reject("Git bundle head does not match authorization.");
   }
 }
@@ -1242,8 +1050,7 @@ function assertPublishedRefs(context, input, tagObject) {
 
 async function publish(input) {
   const expectedBranch = `refs/heads/df/experiment/${input.experiment}`;
-  const expectedTag =
-    `refs/tags/df/experiment/${input.experiment}/candidate`;
+  const expectedTag = `refs/tags/df/experiment/${input.experiment}/candidate`;
   if (
     !EXPERIMENT_ID.test(input.experiment) ||
     Number.parseInt(input.experiment.split("-", 1)[0] ?? "", 10) < 1 ||
@@ -1273,11 +1080,7 @@ async function publish(input) {
   const tagAsHead = input["tag-ref"].replace(/^refs\/tags\//u, "refs/heads/");
   assertRef(tagAsHead, tagAsHead);
   const identities = assertIdentities(input);
-  const bundle = await assertInputFile(
-    input.bundle,
-    ".bundle",
-    MAX_BUNDLE_BYTES,
-  );
+  const bundle = await assertInputFile(input.bundle, ".bundle", MAX_BUNDLE_BYTES);
   if (bundle.sha256 !== input["bundle-sha256"]) {
     reject("Candidate bundle digest changed before publication.");
   }
@@ -1300,12 +1103,7 @@ async function publish(input) {
       `${bundleRef}:refs/df/candidate`,
     ]);
     verifyCommit(context, input, "refs/df/candidate");
-    runGit(context, [
-      "merge-base",
-      "--is-ancestor",
-      input.base,
-      "refs/df/candidate",
-    ]);
+    runGit(context, ["merge-base", "--is-ancestor", input.base, "refs/df/candidate"]);
     verifyLineage(context, input, "refs/df/candidate");
     runGit(context, ["fsck", "--full", "--strict", "--no-reflogs"]);
 
@@ -1331,38 +1129,25 @@ async function publish(input) {
       },
     );
     const tagObject = text(
-      runGit(context, [
-        "rev-parse",
-        "--verify",
-        `${input["tag-ref"]}^{tag}`,
-      ]).stdout,
+      runGit(context, ["rev-parse", "--verify", `${input["tag-ref"]}^{tag}`]).stdout,
     );
     if (!OBJECT_ID.test(tagObject)) {
       reject("Trusted Git deterministic tag object is invalid.");
     }
 
-    const existingBranch = readRemoteRef(
-      context,
-      "origin",
-      input["branch-ref"],
-      true,
-    );
+    const existingBranch = readRemoteRef(context, "origin", input["branch-ref"], true);
     const existingTag = existingTagState(context, input["tag-ref"]);
     if (
       (existingBranch !== null && existingBranch !== input.commit) ||
       (existingTag !== null &&
-        (existingTag.tagObject !== tagObject ||
-          existingTag.peeled !== input.commit))
+        (existingTag.tagObject !== tagObject || existingTag.peeled !== input.commit))
     ) {
       reject("Trusted Git publication ref already has conflicting content.");
     }
     if (Date.now() >= Date.parse(input["authorization-expires-at"])) {
       reject("Trusted Git publication authorization expired before push.");
     }
-    const bundleBeforePush = await sha256File(
-      input.bundle,
-      MAX_BUNDLE_BYTES,
-    );
+    const bundleBeforePush = await sha256File(input.bundle, MAX_BUNDLE_BYTES);
     if (
       bundleBeforePush.sha256 !== bundle.sha256 ||
       bundleBeforePush.byteLength !== bundle.byteLength
@@ -1411,11 +1196,11 @@ async function publish(input) {
       publicationMode: "atomic-non-force",
       disposition,
     });
-    await writeFile(
-      resultOutput.resolved,
-      `${canonicalJson(result)}\n`,
-      { encoding: "utf8", flag: "wx", mode: 0o600 },
-    );
+    await writeFile(resultOutput.resolved, `${canonicalJson(result)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
   } catch (error) {
     await unlink(resultOutput.resolved).catch(() => undefined);
     throw error;

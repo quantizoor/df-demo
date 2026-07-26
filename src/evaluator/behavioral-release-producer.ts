@@ -1,42 +1,26 @@
 import {
-  createEd25519Signature,
-  verifyEd25519Signature,
-} from "../evidence/signatures.js";
-import {
   assertReleaseContainsNoLiterals,
-  releaseBehaviorCards,
   type HiddenPrivacyBudgetState,
   type ReleaseSafeBehaviorCard,
+  releaseBehaviorCards,
 } from "../evaluation/privacy.js";
-import type {
-  BehavioralEvidence,
-  DiagnosticBrief,
-  FailureCards,
-} from "../schemas/artifacts.js";
-import {
-  canonicalHash,
-  canonicalJson,
-  withContentHash,
-} from "../schemas/canonical.js";
-import type {
-  PrivacySupport,
-  Signature,
-} from "../schemas/primitives.js";
+import { createEd25519Signature, verifyEd25519Signature } from "../evidence/signatures.js";
+import type { BehavioralEvidence, DiagnosticBrief, FailureCards } from "../schemas/artifacts.js";
+import { canonicalHash, canonicalJson, withContentHash } from "../schemas/canonical.js";
+import type { PrivacySupport, Signature } from "../schemas/primitives.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type { SignedBehavioralRelease } from "../schemas/trusted.js";
+import type { TrustedPrivateBehavioralPreparation } from "./deriver.js";
 import {
   type TrustedCloudEd25519PrivateKeyProvider,
   type TrustedCloudEd25519PublicKeyProvider,
 } from "./hidden-update-signature.js";
-import type { TrustedPrivateBehavioralPreparation } from "./deriver.js";
 import type { TrustedRawDestructionReceipt } from "./retention.js";
 import { assertSafeForLocalPersistence } from "./retention.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const SAFE_KEY_ID =
-  /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
-const SAFE_KEY_VERSION =
-  /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
+const SAFE_KEY_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
+const SAFE_KEY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u;
 
 export type BehavioralReleaseArtifact =
   | {
@@ -212,9 +196,7 @@ export class TrustedBehavioralReleaseProducerError extends Error {
   }
 }
 
-export function hashHiddenPrivacyBudgetState(
-  state: HiddenPrivacyBudgetState,
-): string {
+export function hashHiddenPrivacyBudgetState(state: HiddenPrivacyBudgetState): string {
   return canonicalHash({
     domain: "dark-factory.hidden-privacy-budget-state.v1",
     state,
@@ -228,8 +210,7 @@ export function hashTrustedBehavioralReleaseOrphanFinalization(
   >,
 ): string {
   return canonicalHash({
-    domain:
-      "dark-factory.behavioral-release-orphan-finalization.v1",
+    domain: "dark-factory.behavioral-release-orphan-finalization.v1",
     ...input,
   });
 }
@@ -254,9 +235,7 @@ function deepFreezeJson<Value>(value: Value): Value {
   return value;
 }
 
-function artifactSetHash(
-  artifacts: readonly BehavioralReleaseArtifact[],
-): string {
+function artifactSetHash(artifacts: readonly BehavioralReleaseArtifact[]): string {
   return canonicalHash({
     domain: "dark-factory.behavioral-release-artifact-set.v1",
     artifacts: artifacts
@@ -264,9 +243,7 @@ function artifactSetHash(
         purpose,
         contentHash: document.contentHash,
       }))
-      .sort((left, right) =>
-        left.purpose.localeCompare(right.purpose),
-      ),
+      .sort((left, right) => left.purpose.localeCompare(right.purpose)),
   });
 }
 
@@ -286,12 +263,7 @@ function artifactReferences(
     contentHash: document.contentHash,
   }));
   const [first, second, third, fourth] = references;
-  if (
-    first === undefined ||
-    second === undefined ||
-    third === undefined ||
-    fourth === undefined
-  ) {
+  if (first === undefined || second === undefined || third === undefined || fourth === undefined) {
     throw new Error("Behavioral release artifact set is incomplete.");
   }
   return [first, second, third, fourth];
@@ -312,13 +284,10 @@ function assertRecoveredCommit(
     inspection.orphanedAt !== null ||
     (inspection.receipt.status !== "committed" &&
       inspection.receipt.status !== "already-committed") ||
-    inspection.receipt.authorizationHash !==
-      input.authorizationHash ||
+    inspection.receipt.authorizationHash !== input.authorizationHash ||
     inspection.receipt.bindingHash !== input.bindingHash ||
-    inspection.receipt.privacyStateHash !==
-      input.privacyStateHash ||
-    inspection.receipt.artifactSetHash !==
-      input.artifactSetHash ||
+    inspection.receipt.privacyStateHash !== input.privacyStateHash ||
+    inspection.receipt.artifactSetHash !== input.artifactSetHash ||
     canonicalJson(
       [...inspection.artifactReferences].sort((left, right) =>
         left.purpose.localeCompare(right.purpose),
@@ -336,10 +305,7 @@ function assertRecoveredCommit(
 
 function canonicalTimestamp(value: string): number {
   const parsed = Date.parse(value);
-  if (
-    !Number.isFinite(parsed) ||
-    new Date(parsed).toISOString() !== value
-  ) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     throw new Error("Timestamp is not canonical UTC.");
   }
   return parsed;
@@ -349,18 +315,12 @@ function supportBandForTasks(count: number): "5-9" | "10-19" | "20+" {
   return count < 10 ? "5-9" : count < 20 ? "10-19" : "20+";
 }
 
-function supportBandForTrajectories(
-  count: number,
-): "20-39" | "40-79" | "80+" {
+function supportBandForTrajectories(count: number): "20-39" | "40-79" | "80+" {
   return count < 40 ? "20-39" : count < 80 ? "40-79" : "80+";
 }
 
-function privacySupport(
-  preparation: TrustedPrivateBehavioralPreparation,
-): PrivacySupport {
-  const tasks = new Set(
-    preparation.observations.map((observation) => observation.taskId),
-  );
+function privacySupport(preparation: TrustedPrivateBehavioralPreparation): PrivacySupport {
+  const tasks = new Set(preparation.observations.map((observation) => observation.taskId));
   const candidates = preparation.observations.filter(
     (observation) => observation.arm === "candidate",
   );
@@ -369,9 +329,7 @@ function privacySupport(
   );
   return {
     distinctTaskCountBand: supportBandForTasks(tasks.size),
-    trajectoryCountBand: supportBandForTrajectories(
-      preparation.observations.length,
-    ),
+    trajectoryCountBand: supportBandForTrajectories(preparation.observations.length),
     minimumComparedGroupSizeBand: supportBandForTasks(
       Math.min(candidates.length, champions.length),
     ),
@@ -392,14 +350,12 @@ function metricFeature(
     verification: "verification-action",
     "premature-termination": "premature-termination",
     compaction: "compaction-event",
-    "plan-before-execution": "plan-before-execution",
+    "plan-before-execution": "planning-action-ratio",
   } as const;
   return mapping[feature];
 }
 
-function affectedComponent(
-  feature: ReleaseSafeBehaviorCard["feature"],
-): string {
+function affectedComponent(feature: ReleaseSafeBehaviorCard["feature"]): string {
   const mapping = {
     "invalid-tool-invocation": "tool-policy",
     "nonzero-without-inspection": "recovery-policy",
@@ -414,15 +370,11 @@ function affectedComponent(
   return mapping[feature];
 }
 
-function genericTitle(
-  feature: ReleaseSafeBehaviorCard["feature"],
-): string {
+function genericTitle(feature: ReleaseSafeBehaviorCard["feature"]): string {
   return `Aggregate ${feature.replaceAll("-", " ")} association`;
 }
 
-function genericRecommendation(
-  feature: ReleaseSafeBehaviorCard["feature"],
-): string {
+function genericRecommendation(feature: ReleaseSafeBehaviorCard["feature"]): string {
   const component = affectedComponent(feature).replaceAll("-", " ");
   return `Review generic ${component} behavior without conditioning on benchmark identity.`;
 }
@@ -437,15 +389,7 @@ function suppressedFindingCountBand(
   releasedCardCount: number,
 ): BehavioralEvidence["suppressedFindingCountBand"] {
   const count = Math.max(0, 9 - releasedCardCount);
-  return count === 0
-    ? "0"
-    : count < 5
-      ? "1-4"
-      : count < 10
-        ? "5-9"
-        : count < 20
-          ? "10-19"
-          : "20+";
+  return count === 0 ? "0" : count < 5 ? "1-4" : count < 10 ? "5-9" : count < 20 ? "10-19" : "20+";
 }
 
 function makeArtifacts(input: {
@@ -454,9 +398,7 @@ function makeArtifacts(input: {
   readonly cards: readonly ReleaseSafeBehaviorCard[];
   readonly support: PrivacySupport;
   readonly createdAt: string;
-  readonly signature: (
-    unsigned: Readonly<Record<string, unknown>>,
-  ) => Promise<Signature>;
+  readonly signature: (unsigned: Readonly<Record<string, unknown>>) => Promise<Signature>;
 }): Promise<{
   readonly evidence: BehavioralEvidence;
   readonly cards: FailureCards;
@@ -464,35 +406,29 @@ function makeArtifacts(input: {
   readonly release: SignedBehavioralRelease;
 }> {
   return (async () => {
-    const suppressedBand = suppressedFindingCountBand(
-      input.cards.length,
-    );
-    const metrics: BehavioralEvidence["metrics"] = input.cards.map(
-      (card) => {
-        const [prevalence, comparisonPrevalence] = prevalencePair(
-          card.effectEstimate,
-        );
-        return {
-          metricId: `metric-${card.cardId.slice(5)}`,
-          feature: metricFeature(card.feature),
-          cohort: "candidate",
-          support: input.support,
-          prevalence,
-          comparisonPrevalence,
-          effectSize: card.effectEstimate,
-          uncertainty: {
-            lower: card.interval95[0],
-            upper: card.interval95[1],
-          },
-          direction:
-            card.effectEstimate > 0
-              ? "higher"
-              : card.effectEstimate < 0
-                ? "lower"
-                : "no-clear-difference",
-        };
-      },
-    );
+    const suppressedBand = suppressedFindingCountBand(input.cards.length);
+    const metrics: BehavioralEvidence["metrics"] = input.cards.map((card) => {
+      const [prevalence, comparisonPrevalence] = prevalencePair(card.effectEstimate);
+      return {
+        metricId: `metric-${card.cardId.slice(5)}`,
+        feature: metricFeature(card.feature),
+        cohort: "candidate",
+        support: input.support,
+        prevalence,
+        comparisonPrevalence,
+        effectSize: card.effectEstimate,
+        uncertainty: {
+          lower: card.interval95[0],
+          upper: card.interval95[1],
+        },
+        direction:
+          card.effectEstimate > 0
+            ? "higher"
+            : card.effectEstimate < 0
+              ? "lower"
+              : "no-clear-difference",
+      };
+    });
     const evidence = withContentHash({
       schemaVersion: "1.0.0" as const,
       createdAt: input.createdAt,
@@ -515,24 +451,22 @@ function makeArtifacts(input: {
         cards: input.cards,
       }),
     }) as BehavioralEvidence;
-    const failureCardValues: FailureCards["cards"] = input.cards.map(
-      (card, index) => ({
-        cardId: card.cardId,
-        title: genericTitle(card.feature),
-        failurePattern: card.statement,
-        causalInterpretation:
-          "This privacy-thresholded association is generic and does not establish causality.",
-        affectedHarnessComponent: affectedComponent(card.feature),
-        metricIds: [metrics[index]?.metricId ?? `metric-${index + 1}`],
-        support: input.support,
-        effectSize: card.effectEstimate,
-        uncertainty: {
-          lower: card.interval95[0],
-          upper: card.interval95[1],
-        },
-        recommendation: genericRecommendation(card.feature),
-      }),
-    );
+    const failureCardValues: FailureCards["cards"] = input.cards.map((card, index) => ({
+      cardId: card.cardId,
+      title: genericTitle(card.feature),
+      failurePattern: card.statement,
+      causalInterpretation:
+        "This privacy-thresholded association is generic and does not establish causality.",
+      affectedHarnessComponent: affectedComponent(card.feature),
+      metricIds: [metrics[index]?.metricId ?? `metric-${index + 1}`],
+      support: input.support,
+      effectSize: card.effectEstimate,
+      uncertainty: {
+        lower: card.interval95[0],
+        upper: card.interval95[1],
+      },
+      recommendation: genericRecommendation(card.feature),
+    }));
     const cards = withContentHash({
       schemaVersion: "1.0.0" as const,
       createdAt: input.createdAt,
@@ -543,8 +477,7 @@ function makeArtifacts(input: {
       suppressionApplied: true,
       policyVersions: input.preparation.policy.policyVersions,
     }) as FailureCards;
-    const releaseId =
-      `diagnostic-${input.preparation.requestHash.slice(0, 24)}`;
+    const releaseId = `diagnostic-${input.preparation.requestHash.slice(0, 24)}`;
     const brief = withContentHash({
       schemaVersion: "1.0.0" as const,
       createdAt: input.createdAt,
@@ -566,8 +499,7 @@ function makeArtifacts(input: {
       ],
       oneUse: true as const,
       expiresAt: new Date(
-        canonicalTimestamp(input.createdAt) +
-          input.preparation.policy.diagnosticTtlMs,
+        canonicalTimestamp(input.createdAt) + input.preparation.policy.diagnosticTtlMs,
       ).toISOString(),
     }) as DiagnosticBrief;
     const unsigned = {
@@ -625,12 +557,8 @@ function assertNoForbiddenFingerprint(
 ): void {
   const output = new Set(allStringValues(value).map(fingerprint));
   if (
-    preparation.forbiddenContentFingerprints.some((item) =>
-      output.has(item),
-    ) ||
-    preparation.graderCanaryFingerprints.some((item) =>
-      output.has(item),
-    )
+    preparation.forbiddenContentFingerprints.some((item) => output.has(item)) ||
+    preparation.graderCanaryFingerprints.some((item) => output.has(item))
   ) {
     throw new Error("Behavioral release matched a forbidden fingerprint.");
   }
@@ -643,14 +571,10 @@ function assertNoForbiddenLiteral(
   const serialized = JSON.stringify(value).toLocaleLowerCase("en-US");
   if (
     preparation.observations.some((observation) =>
-      serialized.includes(
-        observation.taskId.toLocaleLowerCase("en-US"),
-      ),
+      serialized.includes(observation.taskId.toLocaleLowerCase("en-US")),
     ) ||
     preparation.forbiddenReleaseLiterals.some((literal) =>
-      serialized.includes(
-        literal.trim().toLocaleLowerCase("en-US"),
-      ),
+      serialized.includes(literal.trim().toLocaleLowerCase("en-US")),
     )
   ) {
     throw new Error("Behavioral release matched a forbidden literal.");
@@ -674,9 +598,7 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
 
   constructor(options: DeterministicBehavioralReleaseProducerOptions) {
     const boundary =
-      options.deployment === "trusted-cloud"
-        ? "trusted-cloud"
-        : "test-only-in-memory";
+      options.deployment === "trusted-cloud" ? "trusted-cloud" : "test-only-in-memory";
     if (
       options.store.boundary !== boundary ||
       options.privateKeys.boundary !== boundary ||
@@ -693,32 +615,24 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
   }
 
   async finalize(
-    originalInput: Parameters<
-      TrustedPostDestructionBehavioralReleaseProducer["finalize"]
-    >[0],
+    originalInput: Parameters<TrustedPostDestructionBehavioralReleaseProducer["finalize"]>[0],
   ): Promise<TrustedBehavioralReleaseFinalization | null> {
     try {
       const input = canonicalClone(originalInput);
       if (
-        input.preparation.sensitivity !==
-          "trusted-private-behavioral-preparation" ||
+        input.preparation.sensitivity !== "trusted-private-behavioral-preparation" ||
         !SHA256.test(input.preparation.requestHash) ||
         !SHA256.test(input.preparation.protocolHash) ||
         !SHA256.test(input.preparation.behaviorSourceSetHash) ||
         !SHA256.test(input.sourceResultEnvelopeHash) ||
-        !SHA256.test(
-          input.destructionReceipt.verifierAttestationHash,
-        ) ||
-        input.preparation.policy.comparison !==
-          "candidate-vs-champion" ||
+        !SHA256.test(input.destructionReceipt.verifierAttestationHash) ||
+        input.preparation.policy.comparison !== "candidate-vs-champion" ||
         !input.preparation.policy.diagnosticsEnabled
       ) {
         throw new Error("Behavioral preparation is malformed.");
       }
       const taskIds = new Set(
-        input.preparation.observations.map(
-          (observation) => observation.taskId,
-        ),
+        input.preparation.observations.map((observation) => observation.taskId),
       );
       if (
         input.preparation.experimentNumber < 1 ||
@@ -728,26 +642,17 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
           (taskId) =>
             !SHA256.test(taskId) ||
             input.preparation.observations.filter(
-              (observation) =>
-                observation.taskId === taskId &&
-                observation.arm === "candidate",
+              (observation) => observation.taskId === taskId && observation.arm === "candidate",
             ).length !== 1 ||
             input.preparation.observations.filter(
-              (observation) =>
-                observation.taskId === taskId &&
-                observation.arm === "champion",
+              (observation) => observation.taskId === taskId && observation.arm === "champion",
             ).length !== 1,
         )
       ) {
         throw new Error("Behavioral preparation is not a matched panel.");
       }
-      const destroyedAt = canonicalTimestamp(
-        input.destructionReceipt.destroyedAt,
-      );
-      if (
-        destroyedAt <
-        canonicalTimestamp(input.preparation.analysisWindow.closedAt)
-      ) {
+      const destroyedAt = canonicalTimestamp(input.destructionReceipt.destroyedAt);
+      if (destroyedAt < canonicalTimestamp(input.preparation.analysisWindow.closedAt)) {
         throw new Error("Behavioral release preceded raw destruction.");
       }
       const now = this.#now();
@@ -760,10 +665,8 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
       }
       const snapshot = canonicalClone(await this.#store.load());
       if (
-        snapshot.privacyStateHash !==
-          hashHiddenPrivacyBudgetState(snapshot.privacyState) ||
-        snapshot.privacyState.maximumReleases !==
-          input.preparation.policy.maximumPrivacyReleases
+        snapshot.privacyStateHash !== hashHiddenPrivacyBudgetState(snapshot.privacyState) ||
+        snapshot.privacyState.maximumReleases !== input.preparation.policy.maximumPrivacyReleases
       ) {
         throw new Error("Privacy budget snapshot is detached.");
       }
@@ -773,8 +676,7 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
       });
       const analysisWindowDigest = canonicalHash({
         domain: "dark-factory.behavioral-release-window.v1",
-        behaviorSourceSetHash:
-          input.preparation.behaviorSourceSetHash,
+        behaviorSourceSetHash: input.preparation.behaviorSourceSetHash,
         analysisWindow: input.preparation.analysisWindow,
       });
       const decision = releaseBehaviorCards({
@@ -783,18 +685,12 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
         experimentDigest,
         analysisWindowDigest,
         privacyState: snapshot.privacyState,
-        forbiddenLiterals:
-          input.preparation.forbiddenReleaseLiterals,
+        forbiddenLiterals: input.preparation.forbiddenReleaseLiterals,
       });
-      if (
-        decision.nextPrivacyState === snapshot.privacyState
-      ) {
+      if (decision.nextPrivacyState === snapshot.privacyState) {
         return null;
       }
-      assertReleaseContainsNoLiterals(
-        decision.release,
-        input.preparation.forbiddenReleaseLiterals,
-      );
+      assertReleaseContainsNoLiterals(decision.release, input.preparation.forbiddenReleaseLiterals);
       const createdAt = now.toISOString();
       const support = privacySupport(input.preparation);
       const privateKey = await this.#privateKeys.resolve({
@@ -814,19 +710,13 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
       }
       const bundle = await makeArtifacts({
         preparation: input.preparation,
-        sourceResultEnvelopeHash:
-          input.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
         cards: decision.release.cards,
         support,
         createdAt,
         signature: (unsigned) =>
           Promise.resolve(
-            createEd25519Signature(
-              unsigned,
-              privateKey.privateKey,
-              this.#keyId,
-              createdAt,
-            ),
+            createEd25519Signature(unsigned, privateKey.privateKey, this.#keyId, createdAt),
           ),
       });
       for (const [kind, document] of [
@@ -851,9 +741,7 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
         publicKey.publicKey === undefined ||
         publicKey.publicKey === null ||
         !verifyEd25519Signature(
-          bundle.release as unknown as Readonly<
-            Record<string, unknown>
-          >,
+          bundle.release as unknown as Readonly<Record<string, unknown>>,
           publicKey.publicKey,
         )
       ) {
@@ -881,17 +769,13 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
         },
       ] as const);
       const expectedArtifactSetHash = artifactSetHash(artifacts);
-      const nextPrivacyStateHash = hashHiddenPrivacyBudgetState(
-        decision.nextPrivacyState,
-      );
+      const nextPrivacyStateHash = hashHiddenPrivacyBudgetState(decision.nextPrivacyState);
       const authorizationHash = canonicalHash({
         domain: "dark-factory.behavioral-release-authorization.v1",
         requestHash: input.preparation.requestHash,
         sourceSetHash: input.preparation.behaviorSourceSetHash,
-        sourceResultEnvelopeHash:
-          input.sourceResultEnvelopeHash,
-        destructionAttestationHash:
-          input.destructionReceipt.verifierAttestationHash,
+        sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
+        destructionAttestationHash: input.destructionReceipt.verifierAttestationHash,
         priorPrivacyStateHash: snapshot.privacyStateHash,
         nextPrivacyStateHash,
         artifactSetHash: expectedArtifactSetHash,
@@ -900,35 +784,28 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
         domain: "dark-factory.behavioral-release-one-use-binding.v1",
         authorizationHash,
         requestHash: input.preparation.requestHash,
-        sourceResultEnvelopeHash:
-          input.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
         releaseContentHash: bundle.release.contentHash,
       });
       const commitInput = {
         authorizationHash,
         requestHash: input.preparation.requestHash,
-        sourceResultEnvelopeHash:
-          input.sourceResultEnvelopeHash,
+        sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
         releaseContentHash: bundle.release.contentHash,
         priorPrivacyStateHash: snapshot.privacyStateHash,
-        nextPrivacyState: deepFreezeJson(
-          canonicalClone(decision.nextPrivacyState),
-        ),
+        nextPrivacyState: deepFreezeJson(canonicalClone(decision.nextPrivacyState)),
         artifacts,
       } as const;
       try {
         const receipt = await this.#store.commit(commitInput);
         if (
-          (receipt.status !== "committed" &&
-            receipt.status !== "already-committed") ||
+          (receipt.status !== "committed" && receipt.status !== "already-committed") ||
           receipt.authorizationHash !== authorizationHash ||
           receipt.bindingHash !== bindingHash ||
           receipt.privacyStateHash !== nextPrivacyStateHash ||
           receipt.artifactSetHash !== expectedArtifactSetHash
         ) {
-          throw new Error(
-            "Behavioral release commit receipt is detached.",
-          );
+          throw new Error("Behavioral release commit receipt is detached.");
         }
       } catch {
         let inspection: TrustedBehavioralReleaseCommitInspection;
@@ -936,25 +813,18 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
           inspection = await this.#store.inspectCommit({
             authorizationHash,
             requestHash: input.preparation.requestHash,
-            sourceResultEnvelopeHash:
-              input.sourceResultEnvelopeHash,
+            sourceResultEnvelopeHash: input.sourceResultEnvelopeHash,
             releaseContentHash: bundle.release.contentHash,
             artifactSetHash: expectedArtifactSetHash,
           });
         } catch {
-          throw new TrustedBehavioralReleaseProducerError(
-            "unsafe-to-consume",
-          );
+          throw new TrustedBehavioralReleaseProducerError("unsafe-to-consume");
         }
         if (inspection.status === "absent") {
-          throw new TrustedBehavioralReleaseProducerError(
-            "known-not-committed",
-          );
+          throw new TrustedBehavioralReleaseProducerError("known-not-committed");
         }
         if (inspection.status !== "committed") {
-          throw new TrustedBehavioralReleaseProducerError(
-            "unsafe-to-consume",
-          );
+          throw new TrustedBehavioralReleaseProducerError("unsafe-to-consume");
         }
         try {
           assertRecoveredCommit(inspection, {
@@ -965,9 +835,7 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
             artifacts,
           });
         } catch {
-          throw new TrustedBehavioralReleaseProducerError(
-            "unsafe-to-consume",
-          );
+          throw new TrustedBehavioralReleaseProducerError("unsafe-to-consume");
         }
       }
       return {
@@ -1000,10 +868,7 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
         throw new Error("Behavioral finalization handle is malformed.");
       }
       const now = this.#now();
-      if (
-        !(now instanceof Date) ||
-        !Number.isFinite(now.getTime())
-      ) {
+      if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
         throw new Error("Behavioral orphan clock is invalid.");
       }
       const requestedOrphanedAt = now.toISOString();
@@ -1015,14 +880,11 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
         orphanedAt: requestedOrphanedAt,
       });
       if (
-        (receipt.status !== "orphaned" &&
-          receipt.status !== "already-orphaned") ||
-        receipt.authorizationHash !==
-          finalization.authorizationHash ||
+        (receipt.status !== "orphaned" && receipt.status !== "already-orphaned") ||
+        receipt.authorizationHash !== finalization.authorizationHash ||
         receipt.requestHash !== finalization.requestHash ||
         receipt.releaseContentHash !== finalization.contentHash ||
-        canonicalTimestamp(receipt.orphanedAt) >
-          canonicalTimestamp(requestedOrphanedAt)
+        canonicalTimestamp(receipt.orphanedAt) > canonicalTimestamp(requestedOrphanedAt)
       ) {
         throw new Error("Behavioral orphan receipt is detached.");
       }
@@ -1036,13 +898,10 @@ export class DeterministicPostDestructionBehavioralReleaseProducer
       return deepFreezeJson({
         status: "orphaned" as const,
         ...stable,
-        orphanFinalizationHash:
-          hashTrustedBehavioralReleaseOrphanFinalization(stable),
+        orphanFinalizationHash: hashTrustedBehavioralReleaseOrphanFinalization(stable),
       });
     } catch {
-      throw new TrustedBehavioralReleaseProducerError(
-        "unsafe-to-consume",
-      );
+      throw new TrustedBehavioralReleaseProducerError("unsafe-to-consume");
     }
   }
 }

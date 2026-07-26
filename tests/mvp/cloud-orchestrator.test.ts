@@ -1,17 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  type MvpCloudConfiguration,
   inspectMvpCloudEnvironment,
+  type MvpCloudConfiguration,
 } from "../../src/mvp/cloud-config.js";
-import {
-  launchMvpCloudShell,
-  roleSpecification,
-} from "../../src/mvp/cloud-orchestrator.js";
-import {
-  MVP_SCHEMA_VERSION,
-  type OptimizerInput,
-} from "../../src/mvp/contracts.js";
+import { launchMvpCloudShell, roleSpecification } from "../../src/mvp/cloud-orchestrator.js";
+import { MVP_SCHEMA_VERSION, type OptimizerInput } from "../../src/mvp/contracts.js";
 import type {
   MvpCloudRuntime,
   MvpControllerBundle,
@@ -40,8 +34,7 @@ function configuration(): MvpCloudConfiguration {
     DF_DAYTONA_VOLUME_ID: "df-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "campaigns/mvp-001",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DAYTONA_NESTED",
-    DF_FOUNDRY_BASE_URL:
-      "https://existing-resource.services.ai.azure.com/anthropic",
+    DF_FOUNDRY_BASE_URL: "https://existing-resource.services.ai.azure.com/anthropic",
     DF_OPTIMIZER_DEPLOYMENT: "optimizer-existing",
     DF_EVALUATED_DEPLOYMENT: "evaluated-existing",
     DF_OPTIMIZER_SECRET_SOURCE: "FOUNDRY_OPTIMIZER",
@@ -111,9 +104,7 @@ class FakeRuntime implements MvpCloudRuntime {
   readonly operations: string[] = [];
   readonly destroyed: string[] = [];
 
-  async create(
-    specification: MvpRoleSandboxSpec,
-  ): Promise<MvpRoleSandboxLease> {
+  async create(specification: MvpRoleSandboxSpec): Promise<MvpRoleSandboxLease> {
     this.specifications.push(specification);
     return {
       role: specification.role,
@@ -158,9 +149,7 @@ class FakeRuntime implements MvpCloudRuntime {
     } else {
       const proposal = JSON.parse(
         Buffer.from(
-          command.environment[
-            "DF_MVP_CANDIDATE_PROPOSAL_BASE64"
-          ] ?? "",
+          command.environment["DF_MVP_CANDIDATE_PROPOSAL_BASE64"] ?? "",
           "base64url",
         ).toString("utf8"),
       ) as { candidateRevision?: string };
@@ -227,16 +216,12 @@ describe("MVP cloud orchestration", () => {
       "evaluate",
     ]);
     expect(runtime.destroyed).toEqual(["evaluator", "optimizer"]);
-    expect(
-      roleSpecification(configuration(), "optimizer").resources,
-    ).toEqual({
+    expect(roleSpecification(configuration(), "optimizer").resources).toEqual({
       cpu: 4,
       memoryGiB: 8,
       diskGiB: 10,
     });
-    expect(
-      roleSpecification(configuration(), "evaluator").resources,
-    ).toEqual({
+    expect(roleSpecification(configuration(), "evaluator").resources).toEqual({
       cpu: 4,
       memoryGiB: 8,
       diskGiB: 10,
@@ -244,18 +229,14 @@ describe("MVP cloud orchestration", () => {
     expect(runtime.specifications[0]?.volume.subpath).not.toBe(
       runtime.specifications[1]?.volume.subpath,
     );
-    expect(
-      roleSpecification(configuration(), "optimizer").secretReferences,
-    ).toEqual(
+    expect(roleSpecification(configuration(), "optimizer").secretReferences).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           targetEnvironmentName: "DF_GITHUB_BASIC_AUTH",
         }),
       ]),
     );
-    expect(
-      roleSpecification(configuration(), "evaluator").secretReferences,
-    ).toEqual(
+    expect(roleSpecification(configuration(), "evaluator").secretReferences).toEqual(
       expect.arrayContaining([
         {
           sourceEnvironmentName: "DAYTONA_NESTED",
@@ -263,16 +244,14 @@ describe("MVP cloud orchestration", () => {
         },
       ]),
     );
-    expect(
-      roleSpecification(configuration(), "evaluator").environment,
-    ).toMatchObject({
+    expect(roleSpecification(configuration(), "evaluator").environment).toMatchObject({
       DAYTONA_API_URL: "https://app.daytona.io/api",
       DAYTONA_TARGET: "eu",
       DF_EVALUATED_SECRET_SOURCE: "FOUNDRY_EVALUATOR",
     });
-    expect(
-      roleSpecification(configuration(), "optimizer").environment,
-    ).not.toHaveProperty("DF_EVALUATED_SECRET_SOURCE");
+    expect(roleSpecification(configuration(), "optimizer").environment).not.toHaveProperty(
+      "DF_EVALUATED_SECRET_SOURCE",
+    );
     const serialized = JSON.stringify(receipt);
     expect(serialized).not.toContain("campaigns/mvp-001");
     expect(serialized).not.toContain("PI_GITHUB_BASIC_AUTH");

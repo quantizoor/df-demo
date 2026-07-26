@@ -28,10 +28,7 @@ export function reproduceFreshValidationDisposition(
   input: FreshValidationDecisionInputs,
 ): FreshValidationDisposition {
   unitInterval(input.probabilityPositive, "probabilityPositive");
-  unitInterval(
-    input.requiredPosteriorProbability,
-    "requiredPosteriorProbability",
-  );
+  unitInterval(input.requiredPosteriorProbability, "requiredPosteriorProbability");
   if (
     !Number.isFinite(input.medianAccuracyDelta) ||
     input.medianAccuracyDelta < -1 ||
@@ -44,10 +41,7 @@ export function reproduceFreshValidationDisposition(
     (input.costWithinGuardrail && input.latencyWithinGuardrail) ||
     input.accuracyTradeoffPredeclared;
   const hardVeto =
-    input.integrityVeto ||
-    input.correctnessVeto ||
-    input.capabilityVeto ||
-    !costAndLatencyAllowed;
+    input.integrityVeto || input.correctnessVeto || input.capabilityVeto || !costAndLatencyAllowed;
   if (hardVeto) {
     return "reject";
   }
@@ -60,10 +54,7 @@ export function reproduceFreshValidationDisposition(
   if (input.onlineGateAuthorized && statisticallyPromotable) {
     return "promote";
   }
-  if (
-    input.probabilityPositive <= 0.2 ||
-    input.medianAccuracyDelta <= -0.05
-  ) {
+  if (input.probabilityPositive <= 0.2 || input.medianAccuracyDelta <= -0.05) {
     return "reject";
   }
   return "inconclusive";

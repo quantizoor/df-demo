@@ -127,8 +127,7 @@ describe("bootstrap environment", () => {
   it("rejects an endpoint in place of a resource and any model drift", () => {
     const readiness = inspectBootstrapEnvironment({
       ...completeEnvironment(),
-      DF_FOUNDRY_RESOURCE_NAME:
-        "https://df-eu-prod.services.ai.azure.com",
+      DF_FOUNDRY_RESOURCE_NAME: "https://df-eu-prod.services.ai.azure.com",
       DF_OPTIMIZER_MODEL: "claude-opus-4-8",
       DF_EVALUATED_REASONING: "xhigh",
     });
@@ -162,10 +161,7 @@ describe("bootstrap environment", () => {
     });
     expect(readiness.ready).toBe(false);
     expect(readiness.invalid).toEqual(
-      expect.arrayContaining([
-        "DF_EVALUATOR_IMAGE_REFERENCE",
-        "DF_SECRET_TARGET_PLAN",
-      ]),
+      expect.arrayContaining(["DF_EVALUATOR_IMAGE_REFERENCE", "DF_SECRET_TARGET_PLAN"]),
     );
   });
 });

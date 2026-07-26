@@ -5,10 +5,7 @@ import type {
 } from "../cloud/types.js";
 import { canonicalHash } from "../schemas/canonical.js";
 import { hashTerminalBench21Pin, type TerminalBench21Pin } from "./pin.js";
-import type {
-  MatchedArmKind,
-  TrustedEvaluationStage,
-} from "./trusted.js";
+import type { MatchedArmKind, TrustedEvaluationStage } from "./trusted.js";
 
 export const HARBOR_AGENT_ISOLATION_POLICY = {
   policyVersion: "harbor-agent-isolation-v2",
@@ -107,8 +104,7 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_EXECUTION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 const SAFE_PATH_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const TRUSTED_URI =
-  /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const TRUSTED_URI = /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024;
 
 export class HarborSpecificationError extends Error {
@@ -149,12 +145,7 @@ function assertCloudArtifact(
 
 function expectedRoles(stage: TrustedEvaluationStage): readonly TrustedHarborUploadRole[] {
   return stage === "repair"
-    ? [
-        "config-repair",
-        "output-packager",
-        "pi-adapter",
-        "candidate-runtime",
-      ]
+    ? ["config-repair", "output-packager", "pi-adapter", "candidate-runtime"]
     : [
         "config-ab",
         "config-ba",
@@ -171,16 +162,12 @@ function expectedInvocationOrders(
   return stage === "repair" ? ["repair"] : ["AB", "BA"];
 }
 
-function expectedAgentOrder(
-  order: TrustedHarborInvocation["order"],
-): readonly MatchedArmKind[] {
+function expectedAgentOrder(order: TrustedHarborInvocation["order"]): readonly MatchedArmKind[] {
   if (order === "repair") return ["candidate"];
   return order === "AB" ? ["candidate", "champion"] : ["champion", "candidate"];
 }
 
-function configRoleForOrder(
-  order: TrustedHarborInvocation["order"],
-): TrustedHarborUploadRole {
+function configRoleForOrder(order: TrustedHarborInvocation["order"]): TrustedHarborUploadRole {
   if (order === "repair") return "config-repair";
   return order === "AB" ? "config-ab" : "config-ba";
 }
@@ -234,18 +221,15 @@ export function assertTrustedHarborJobArtifact(
     assertCloudArtifact(upload, uploadPaths, uploadUris);
     if (
       upload.role.startsWith("config-") &&
-      (upload.artifact.mediaType !== "application/json" ||
-        !upload.remotePath.endsWith(".json"))
+      (upload.artifact.mediaType !== "application/json" || !upload.remotePath.endsWith(".json"))
     ) {
       throw new HarborSpecificationError("Harbor configuration artifacts must be JSON.");
     }
     if (
       upload.role === "output-packager" &&
-      (!new Set([
-        "application/javascript",
-        "text/javascript",
-        "text/plain",
-      ]).has(upload.artifact.mediaType) ||
+      (!new Set(["application/javascript", "text/javascript", "text/plain"]).has(
+        upload.artifact.mediaType,
+      ) ||
         !upload.remotePath.endsWith(".mjs"))
     ) {
       throw new HarborSpecificationError(
@@ -260,9 +244,7 @@ export function assertTrustedHarborJobArtifact(
     }
     if (
       upload.role.endsWith("-runtime") &&
-      !new Set(["application/gzip", "application/x-tar"]).has(
-        upload.artifact.mediaType,
-      )
+      !new Set(["application/gzip", "application/x-tar"]).has(upload.artifact.mediaType)
     ) {
       throw new HarborSpecificationError("Pi runtimes must be immutable archive artifacts.");
     }
@@ -295,8 +277,7 @@ export function assertTrustedHarborJobArtifact(
     const requiredArms = invocation.order === "repair" ? 5 : 12;
     if (
       !SAFE_PATH_ID.test(invocation.invocationId) ||
-      invocation.invocationId !==
-        `${job.requestId}-${invocation.order.toLowerCase()}` ||
+      invocation.invocationId !== `${job.requestId}-${invocation.order.toLowerCase()}` ||
       config === undefined ||
       config.remotePath !== invocation.remoteConfigPath ||
       config.artifact.sha256 !== invocation.configSha256 ||
@@ -310,11 +291,8 @@ export function assertTrustedHarborJobArtifact(
         (arm, index) => arm !== expectedAgentOrder(invocation.order)[index],
       ) ||
       invocation.remoteHarborJobPath.endsWith(".tar") ||
-      !invocation.remoteHarborJobPath.endsWith(
-        `/${invocation.invocationId}`,
-      ) ||
-      invocation.remoteOutputPath !==
-        `${invocation.remoteHarborJobPath}.harbor-output.tar` ||
+      !invocation.remoteHarborJobPath.endsWith(`/${invocation.invocationId}`) ||
+      invocation.remoteOutputPath !== `${invocation.remoteHarborJobPath}.harbor-output.tar` ||
       uploadPaths.has(invocation.remoteHarborJobPath) ||
       uploadPaths.has(invocation.remoteOutputPath) ||
       harborJobPaths.has(invocation.remoteHarborJobPath) ||
@@ -345,9 +323,7 @@ export function assertTrustedHarborJobArtifact(
  * artifact contains hidden selection material and is uploaded directly to the
  * cloud sandbox; only its fixed remote path reaches Harbor's argument vector.
  */
-export function createHarborInvocationSpec(
-  options: HarborInvocationOptions,
-): RemoteCommandSpec {
+export function createHarborInvocationSpec(options: HarborInvocationOptions): RemoteCommandSpec {
   assertAbsolutePath(options.harborExecutable, "Harbor executable");
   assertAbsolutePath(options.workingDirectory, "Harbor working directory");
   const pinHash = hashTerminalBench21Pin(options.pin);
@@ -368,22 +344,13 @@ export function createHarborInvocationSpec(
   ) {
     throw new HarborSpecificationError("Harbor timeout is outside the allowed range.");
   }
-  const adapterUpload = options.job.uploads.find(
-    (upload) => upload.role === "pi-adapter",
-  );
+  const adapterUpload = options.job.uploads.find((upload) => upload.role === "pi-adapter");
   if (adapterUpload === undefined) {
-    throw new HarborSpecificationError(
-      "The sealed Harbor job has no trusted Pi adapter.",
-    );
+    throw new HarborSpecificationError("The sealed Harbor job has no trusted Pi adapter.");
   }
-  const importRoot = adapterUpload.remotePath.slice(
-    0,
-    adapterUpload.remotePath.lastIndexOf("/"),
-  );
+  const importRoot = adapterUpload.remotePath.slice(0, adapterUpload.remotePath.lastIndexOf("/"));
   if (importRoot.length === 0) {
-    throw new HarborSpecificationError(
-      "The trusted Pi adapter import root is invalid.",
-    );
+    throw new HarborSpecificationError("The trusted Pi adapter import root is invalid.");
   }
   return {
     executable: options.harborExecutable,
@@ -416,9 +383,7 @@ export function createHarborOutputPackageSpec(
   const sealedInvocation = options.job.invocations.find(
     (invocation) => invocation.invocationId === options.invocation.invocationId,
   );
-  const packager = options.job.uploads.find(
-    (upload) => upload.role === "output-packager",
-  );
+  const packager = options.job.uploads.find((upload) => upload.role === "output-packager");
   if (
     sealedInvocation === undefined ||
     canonicalHash(sealedInvocation) !== canonicalHash(options.invocation) ||

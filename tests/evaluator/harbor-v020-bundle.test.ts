@@ -1,28 +1,21 @@
 import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-
-import { canonicalHash, canonicalJson } from "../../src/schemas/canonical.js";
 import {
   parseHarbor020Json,
   parseHarbor020OutputBundle,
 } from "../../src/evaluator/harbor-v020-bundle.js";
+import { canonicalHash, canonicalJson } from "../../src/schemas/canonical.js";
 import type {
   TrustedHarborInvocation,
   TrustedHarborJobArtifact,
 } from "../../src/terminal-bench/harbor.js";
 
 const BLOCK = 512;
-const sha256 = (value: Uint8Array): string =>
-  createHash("sha256").update(value).digest("hex");
+const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
 const encode = (value: string): Uint8Array => new TextEncoder().encode(value);
 
-function writeOctal(
-  header: Uint8Array,
-  offset: number,
-  length: number,
-  value: number,
-) {
+function writeOctal(header: Uint8Array, offset: number, length: number, value: number) {
   const text = value.toString(8).padStart(length - 1, "0");
   header.set(encode(text), offset);
   header[offset + length - 1] = 0;
@@ -64,16 +57,12 @@ function pax(path: string): Uint8Array {
 }
 
 function entry(path: string, body: Uint8Array, type: "0" | "x" = "0") {
-  const padding = new Uint8Array(
-    (BLOCK - (body.byteLength % BLOCK)) % BLOCK,
-  );
+  const padding = new Uint8Array((BLOCK - (body.byteLength % BLOCK)) % BLOCK);
   return [header(path, body.byteLength, type), body, padding];
 }
 
 function concat(chunks: readonly Uint8Array[]): Uint8Array {
-  const result = new Uint8Array(
-    chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0),
-  );
+  const result = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
   let offset = 0;
   for (const chunk of chunks) {
     result.set(chunk, offset);
@@ -120,9 +109,7 @@ function fixture(
   manifestText?: (canonical: string) => string,
 ) {
   const files = Object.entries(paths)
-    .sort(([left], [right]) =>
-      Buffer.compare(Buffer.from(left), Buffer.from(right)),
-    )
+    .sort(([left], [right]) => Buffer.compare(Buffer.from(left), Buffer.from(right)))
     .map(([path, text]) => {
       const bytes = encode(text);
       return {
@@ -144,10 +131,7 @@ function fixture(
     executionId: "execution-1",
     expectedTrialCount: 1,
     fileCount: files.length,
-    totalByteLength: files.reduce(
-      (sum, file) => sum + file.byteLength,
-      0,
-    ),
+    totalByteLength: files.reduce((sum, file) => sum + file.byteLength, 0),
     payloadSha256: canonicalHash({
       domain: "dark-factory.harbor-output-payload.v1",
       files: files.map(({ path, byteLength, sha256 }) => ({
@@ -163,18 +147,12 @@ function fixture(
     })),
   };
   const canonicalManifest = canonicalJson(manifest);
-  const manifestBytes = encode(
-    `${manifestText?.(canonicalManifest) ?? canonicalManifest}\n`,
-  );
+  const manifestBytes = encode(`${manifestText?.(canonicalManifest) ?? canonicalManifest}\n`);
   const chunks = [...entry("manifest.json", manifestBytes)];
   for (const [index, file] of files.entries()) {
     const ordinal = String(index).padStart(6, "0");
     chunks.push(
-      ...entry(
-        `.pax/${ordinal}`,
-        pax(`payload/${file.path}`),
-        "x",
-      ),
+      ...entry(`.pax/${ordinal}`, pax(`payload/${file.path}`), "x"),
       ...entry(`.files/${ordinal}`, file.bytes),
     );
   }
@@ -255,19 +233,14 @@ describe("parseHarbor020OutputBundle", () => {
   });
 
   it("rejects duplicate JSON keys before normalization", () => {
-    expect(() =>
-      parseHarbor020Json(encode('{"task":"one","task":"two"}')),
-    ).toThrow();
+    expect(() => parseHarbor020Json(encode('{"task":"one","task":"two"}'))).toThrow();
   });
 
   it("rejects a duplicate-key manifest even with a matching tar header", () => {
     expect(() =>
       parse(
         fixture(undefined, (canonical) =>
-          canonical.replace(
-            '"schemaVersion":1',
-            '"schemaVersion":1,"schemaVersion":1',
-          ),
+          canonical.replace('"schemaVersion":1', '"schemaVersion":1,"schemaVersion":1'),
         ),
       ),
     ).toThrow();

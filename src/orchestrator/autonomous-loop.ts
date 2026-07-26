@@ -1,24 +1,14 @@
 import { remainingBudget, validateBudgetSnapshot } from "../core/budget.js";
-import type {
-  BudgetSnapshot,
-  ChampionPointers,
-} from "../domain/models.js";
+import type { BudgetSnapshot, ChampionPointers } from "../domain/models.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import type {
-  ExperimentRunInput,
-  ExperimentRunResult,
-} from "./contracts.js";
+import type { ExperimentRunInput, ExperimentRunResult } from "./contracts.js";
 import type { ExperimentRunner } from "./experiment-runner.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
 const SAFE_RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
-export type OptimizationLoopStatus =
-  | "running"
-  | "stop-requested"
-  | "stopped"
-  | "paused";
+export type OptimizationLoopStatus = "running" | "stop-requested" | "stopped" | "paused";
 
 export type OptimizationLoopTerminalReason =
   | "stop-requested"
@@ -69,22 +59,15 @@ export interface ClaimedOptimizationExperiment {
 
 export interface TerminalOptimizationClaim {
   readonly kind: "terminal";
-  readonly reason: Exclude<
-    OptimizationLoopTerminalReason,
-    "invocation-limit"
-  >;
+  readonly reason: Exclude<OptimizationLoopTerminalReason, "invocation-limit">;
   readonly snapshot: OptimizationLoopSnapshot;
 }
 
-export type OptimizationClaim =
-  | ClaimedOptimizationExperiment
-  | TerminalOptimizationClaim;
+export type OptimizationClaim = ClaimedOptimizationExperiment | TerminalOptimizationClaim;
 
 export interface ProductionOptimizationCoordinator {
   load(): Promise<OptimizationLoopSnapshot>;
-  claimNext(
-    expectedStateHash: string,
-  ): Promise<OptimizationClaim>;
+  claimNext(expectedStateHash: string): Promise<OptimizationClaim>;
   complete(input: {
     readonly claimHash: string;
     readonly currentStateHash: string;
@@ -93,11 +76,7 @@ export interface ProductionOptimizationCoordinator {
   interrupt(input: {
     readonly claimHash: string;
     readonly currentStateHash: string;
-    readonly failureClass:
-      | "integrity"
-      | "infrastructure"
-      | "budget"
-      | "operator-stop";
+    readonly failureClass: "integrity" | "infrastructure" | "budget" | "operator-stop";
   }): Promise<OptimizationLoopSnapshot>;
 }
 
@@ -144,22 +123,16 @@ function assertChampion(pointer: ChampionPointers): void {
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(pointer.baselineCommit) ||
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(pointer.activeCommit) ||
     (pointer.certifiedCommit !== null &&
-      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(
-        pointer.certifiedCommit,
-      )) ||
+      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(pointer.certifiedCommit)) ||
     !Number.isSafeInteger(pointer.activeExperiment) ||
     pointer.activeExperiment < 0 ||
     (pointer.certifiedExperiment !== null &&
-      (!Number.isSafeInteger(pointer.certifiedExperiment) ||
-        pointer.certifiedExperiment < 0)) ||
-    (pointer.certifiedExperiment === null) !==
-      (pointer.certifiedCommit === null) ||
+      (!Number.isSafeInteger(pointer.certifiedExperiment) || pointer.certifiedExperiment < 0)) ||
+    (pointer.certifiedExperiment === null) !== (pointer.certifiedCommit === null) ||
     !Number.isFinite(Date.parse(pointer.updatedAt)) ||
     !SHA256.test(pointer.sourceSealHash)
   ) {
-    throw new AutonomousOptimizationLoopError(
-      "Campaign champion pointers are malformed.",
-    );
+    throw new AutonomousOptimizationLoopError("Campaign champion pointers are malformed.");
   }
 }
 
@@ -183,12 +156,9 @@ function assertBudget(snapshot: BudgetSnapshot): void {
     snapshot.usage.tokens > snapshot.limits.maximumTokens ||
     snapshot.usage.wallTimeMs > snapshot.limits.maximumWallTimeMs ||
     snapshot.usage.attempts > snapshot.limits.maximumAttempts ||
-    snapshot.usage.privacyReleases >
-      snapshot.limits.maximumPrivacyReleases ||
-    snapshot.usage.promotionLooks >
-      snapshot.limits.maximumPromotionLooks ||
-    snapshot.usage.onlineErrorSpent >
-      snapshot.limits.maximumOnlineError
+    snapshot.usage.privacyReleases > snapshot.limits.maximumPrivacyReleases ||
+    snapshot.usage.promotionLooks > snapshot.limits.maximumPromotionLooks ||
+    snapshot.usage.onlineErrorSpent > snapshot.limits.maximumOnlineError
   ) {
     throw new AutonomousOptimizationLoopError(
       "Campaign budget is malformed or already exceeds its sealed limits.",
@@ -210,23 +180,15 @@ function assertSnapshot(
     !SAFE_ID.test(snapshot.lineageId) ||
     !SHA256.test(snapshot.protocolHash) ||
     !SHA256.test(snapshot.stateHash) ||
-    ![
-      "running",
-      "stop-requested",
-      "stopped",
-      "paused",
-    ].includes(snapshot.status) ||
+    !["running", "stop-requested", "stopped", "paused"].includes(snapshot.status) ||
     !Number.isSafeInteger(snapshot.nextExperimentNumber) ||
     snapshot.nextExperimentNumber < 1 ||
     (snapshot.inFlightExperimentNumber !== null &&
       (!Number.isSafeInteger(snapshot.inFlightExperimentNumber) ||
         snapshot.inFlightExperimentNumber < 1 ||
-        snapshot.inFlightExperimentNumber !==
-          snapshot.nextExperimentNumber - 1)) ||
-    (snapshot.inFlightExperimentNumber === null) !==
-      (snapshot.inFlightKind === null) ||
-    (snapshot.inFlightKind !== null &&
-      snapshot.inFlightKind !== "optimization") ||
+        snapshot.inFlightExperimentNumber !== snapshot.nextExperimentNumber - 1)) ||
+    (snapshot.inFlightExperimentNumber === null) !== (snapshot.inFlightKind === null) ||
+    (snapshot.inFlightKind !== null && snapshot.inFlightKind !== "optimization") ||
     typeof snapshot.hardBudgetExhausted !== "boolean" ||
     !Number.isSafeInteger(snapshot.freshValidationPanelsRemaining) ||
     snapshot.freshValidationPanelsRemaining < 0 ||
@@ -243,25 +205,18 @@ function assertSnapshot(
   assertBudget(snapshot.budget);
 }
 
-function assertDiagnosticBrief(
-  brief: ExperimentRunInput["diagnosticBrief"],
-): void {
+function assertDiagnosticBrief(brief: ExperimentRunInput["diagnosticBrief"]): void {
   if (
     brief !== null &&
     (!SHA256.test(brief.hash) ||
       !SAFE_RELEASE_ID.test(brief.releaseId) ||
       typeof brief.actionable !== "boolean")
   ) {
-    throw new AutonomousOptimizationLoopError(
-      "Claimed diagnostic brief reference is malformed.",
-    );
+    throw new AutonomousOptimizationLoopError("Claimed diagnostic brief reference is malformed.");
   }
 }
 
-function assertClaim(
-  claim: ClaimedOptimizationExperiment,
-  before: OptimizationLoopSnapshot,
-): void {
+function assertClaim(claim: ClaimedOptimizationExperiment, before: OptimizationLoopSnapshot): void {
   const input = claim.input;
   assertSnapshot(claim.snapshot, before);
   const resumed = before.inFlightExperimentNumber !== null;
@@ -271,19 +226,13 @@ function assertClaim(
       claim.allocationStateHash === claim.currentStateHash &&
       claim.snapshot.stateHash === claim.allocationStateHash &&
       claim.snapshot.status === before.status &&
-      claim.snapshot.nextExperimentNumber ===
-        before.nextExperimentNumber + 1 &&
-      claim.snapshot.inFlightExperimentNumber ===
-        before.nextExperimentNumber &&
+      claim.snapshot.nextExperimentNumber === before.nextExperimentNumber + 1 &&
+      claim.snapshot.inFlightExperimentNumber === before.nextExperimentNumber &&
       claim.snapshot.inFlightKind === "optimization" &&
-      canonicalJson(claim.snapshot.activeChampion) ===
-        canonicalJson(before.activeChampion) &&
-      canonicalJson(claim.snapshot.budget) ===
-        canonicalJson(before.budget) &&
-      claim.snapshot.hardBudgetExhausted ===
-        before.hardBudgetExhausted &&
-      claim.snapshot.freshValidationPanelsRemaining ===
-        before.freshValidationPanelsRemaining;
+      canonicalJson(claim.snapshot.activeChampion) === canonicalJson(before.activeChampion) &&
+      canonicalJson(claim.snapshot.budget) === canonicalJson(before.budget) &&
+      claim.snapshot.hardBudgetExhausted === before.hardBudgetExhausted &&
+      claim.snapshot.freshValidationPanelsRemaining === before.freshValidationPanelsRemaining;
   if (
     !SHA256.test(claim.claimHash) ||
     !SHA256.test(claim.priorStateHash) ||
@@ -292,21 +241,16 @@ function assertClaim(
     !allocationTransitionIsValid ||
     claim.snapshot.status !== "running" ||
     claim.snapshot.inFlightExperimentNumber === null ||
-    input.experiment.number !==
-      claim.snapshot.inFlightExperimentNumber ||
+    input.experiment.number !== claim.snapshot.inFlightExperimentNumber ||
     input.experiment.kind !== "optimization" ||
-    input.experiment.parentExperiment !==
-      claim.snapshot.activeChampion.activeExperiment ||
+    input.experiment.parentExperiment !== claim.snapshot.activeChampion.activeExperiment ||
     input.experiment.lineageId !== claim.snapshot.lineageId ||
     input.experiment.protocolHash !== claim.snapshot.protocolHash ||
-    canonicalJson(input.activeChampion) !==
-      canonicalJson(claim.snapshot.activeChampion) ||
-    canonicalJson(input.budget.limits) !==
-      canonicalJson(claim.snapshot.budget.limits) ||
+    canonicalJson(input.activeChampion) !== canonicalJson(claim.snapshot.activeChampion) ||
+    canonicalJson(input.budget.limits) !== canonicalJson(claim.snapshot.budget.limits) ||
     typeof input.stop.requested !== "boolean" ||
     (input.experiment.number === 1 &&
-      (input.diagnosticBrief !== null ||
-        input.previousDiscoveryAttestationHash !== null)) ||
+      (input.diagnosticBrief !== null || input.previousDiscoveryAttestationHash !== null)) ||
     (input.experiment.number > 1 &&
       (input.previousDiscoveryAttestationHash === null ||
         !SHA256.test(input.previousDiscoveryAttestationHash)))
@@ -324,16 +268,11 @@ function assertClaim(
     input,
   });
   if (claim.claimHash !== expectedClaimHash) {
-    throw new AutonomousOptimizationLoopError(
-      "Optimization claim commitment does not reproduce.",
-    );
+    throw new AutonomousOptimizationLoopError("Optimization claim commitment does not reproduce.");
   }
 }
 
-function assertMonotonicBudget(
-  before: BudgetSnapshot,
-  after: BudgetSnapshot,
-): void {
+function assertMonotonicBudget(before: BudgetSnapshot, after: BudgetSnapshot): void {
   assertBudget(after);
   if (
     canonicalJson(before.limits) !== canonicalJson(after.limits) ||
@@ -359,8 +298,7 @@ function assertExperimentResult(
   assertChampion(result.activeChampion);
   assertDiagnosticBrief(result.diagnosticBrief);
   const promotionLookDelta =
-    result.budget.usage.promotionLooks -
-    claim.input.budget.usage.promotionLooks;
+    result.budget.usage.promotionLooks - claim.input.budget.usage.promotionLooks;
   if (
     !SHA256.test(result.sealHash) ||
     (promotionLookDelta !== 0 && promotionLookDelta !== 1) ||
@@ -368,24 +306,17 @@ function assertExperimentResult(
       (!SHA256.test(result.diagnosticBrief.hash) ||
         !SAFE_RELEASE_ID.test(result.diagnosticBrief.releaseId))) ||
     (result.disposition === "promoted" &&
-      (result.activeChampion.activeExperiment !==
-        claim.input.experiment.number ||
-        result.activeChampion.activeCommit ===
-          claim.input.activeChampion.activeCommit ||
-        result.activeChampion.baselineCommit !==
-          claim.input.activeChampion.baselineCommit ||
+      (result.activeChampion.activeExperiment !== claim.input.experiment.number ||
+        result.activeChampion.activeCommit === claim.input.activeChampion.activeCommit ||
+        result.activeChampion.baselineCommit !== claim.input.activeChampion.baselineCommit ||
         result.activeChampion.certifiedExperiment !==
           claim.input.activeChampion.certifiedExperiment ||
-        result.activeChampion.certifiedCommit !==
-          claim.input.activeChampion.certifiedCommit ||
+        result.activeChampion.certifiedCommit !== claim.input.activeChampion.certifiedCommit ||
         promotionLookDelta !== 1)) ||
     (result.disposition !== "promoted" &&
-      canonicalJson(result.activeChampion) !==
-        canonicalJson(claim.input.activeChampion))
+      canonicalJson(result.activeChampion) !== canonicalJson(claim.input.activeChampion))
   ) {
-    throw new AutonomousOptimizationLoopError(
-      "Experiment result contradicts its sealed claim.",
-    );
+    throw new AutonomousOptimizationLoopError("Experiment result contradicts its sealed claim.");
   }
 }
 
@@ -397,22 +328,18 @@ function assertCommittedSnapshot(
   const before = claim.snapshot;
   assertSnapshot(after, before);
   const promotionLookDelta =
-    result.budget.usage.promotionLooks -
-    claim.input.budget.usage.promotionLooks;
-  const expectedPanelsRemaining =
-    before.freshValidationPanelsRemaining - promotionLookDelta;
+    result.budget.usage.promotionLooks - claim.input.budget.usage.promotionLooks;
+  const expectedPanelsRemaining = before.freshValidationPanelsRemaining - promotionLookDelta;
   if (
     after.stateHash === before.stateHash ||
     after.nextExperimentNumber !== before.nextExperimentNumber ||
     after.inFlightExperimentNumber !== null ||
     after.inFlightKind !== null ||
     canonicalJson(after.budget) !== canonicalJson(result.budget) ||
-    canonicalJson(after.activeChampion) !==
-      canonicalJson(result.activeChampion) ||
+    canonicalJson(after.activeChampion) !== canonicalJson(result.activeChampion) ||
     after.freshValidationPanelsRemaining !== expectedPanelsRemaining ||
     (result.disposition === "promoted" &&
-      after.activeChampion.activeExperiment !==
-        claim.input.experiment.number)
+      after.activeChampion.activeExperiment !== claim.input.experiment.number)
   ) {
     throw new AutonomousOptimizationLoopError(
       "Durable campaign commit does not match the completed experiment.",
@@ -431,16 +358,14 @@ function assertTerminalClaim(
   assertSnapshot(claim.snapshot, identity);
   const remaining = remainingBudget(claim.snapshot.budget);
   const statusReasonMatches =
-    (claim.reason === "stop-requested" &&
-      claim.snapshot.status === "stop-requested") ||
+    (claim.reason === "stop-requested" && claim.snapshot.status === "stop-requested") ||
     (claim.reason === "stopped" && claim.snapshot.status === "stopped") ||
     (claim.reason === "paused" && claim.snapshot.status === "paused");
   const holdoutReasonMatches =
     claim.reason === "holdout-exhausted" &&
     claim.snapshot.inFlightExperimentNumber === null &&
     claim.snapshot.freshValidationPanelsRemaining === 0;
-  const minimumAttempts =
-    claim.snapshot.nextExperimentNumber === 1 ? 28 : 37;
+  const minimumAttempts = claim.snapshot.nextExperimentNumber === 1 ? 28 : 37;
   const budgetReasonMatches =
     claim.reason === "budget-exhausted" &&
     claim.snapshot.inFlightExperimentNumber === null &&
@@ -451,32 +376,23 @@ function assertTerminalClaim(
       remaining.spentUsd <= 0 ||
       remaining.tokens <= 0 ||
       remaining.wallTimeMs <= 0);
-  if (
-    !statusReasonMatches &&
-    !holdoutReasonMatches &&
-    !budgetReasonMatches
-  ) {
+  if (!statusReasonMatches && !holdoutReasonMatches && !budgetReasonMatches) {
     throw new AutonomousOptimizationLoopError(
       "Terminal claim contradicts its durable campaign snapshot.",
     );
   }
 }
 
-function failureClass(error: unknown): Parameters<
-  ProductionOptimizationCoordinator["interrupt"]
->[0]["failureClass"] {
-  if (
-    error instanceof Error &&
-    /budget/iu.test(`${error.name} ${error.message}`)
-  ) {
+function failureClass(
+  error: unknown,
+): Parameters<ProductionOptimizationCoordinator["interrupt"]>[0]["failureClass"] {
+  if (error instanceof Error && /budget/iu.test(`${error.name} ${error.message}`)) {
     return "budget";
   }
   if (
     error instanceof AutonomousOptimizationLoopError ||
     (error instanceof Error &&
-      /integrity|schema|signature|protocol|leak/iu.test(
-        `${error.name} ${error.message}`,
-      ))
+      /integrity|schema|signature|protocol|leak/iu.test(`${error.name} ${error.message}`))
   ) {
     return "integrity";
   }
@@ -529,10 +445,7 @@ export class AutonomousOptimizationLoop {
     while (experimentsCompleted < this.#options.maximumExperimentsPerInvocation) {
       assertSnapshot(snapshot, identity);
       if (snapshot.status !== "running") {
-        terminalReason =
-          snapshot.status === "stop-requested"
-            ? "stop-requested"
-            : snapshot.status;
+        terminalReason = snapshot.status === "stop-requested" ? "stop-requested" : snapshot.status;
         break;
       }
       if (
@@ -544,10 +457,7 @@ export class AutonomousOptimizationLoop {
       }
       const remaining = remainingBudget(snapshot.budget);
       const minimumAttempts =
-        (snapshot.inFlightExperimentNumber ??
-          snapshot.nextExperimentNumber) === 1
-          ? 28
-          : 37;
+        (snapshot.inFlightExperimentNumber ?? snapshot.nextExperimentNumber) === 1 ? 28 : 37;
       if (
         snapshot.inFlightExperimentNumber === null &&
         (snapshot.hardBudgetExhausted ||
@@ -562,9 +472,7 @@ export class AutonomousOptimizationLoop {
         break;
       }
 
-      const claim = await this.#options.coordinator.claimNext(
-        snapshot.stateHash,
-      );
+      const claim = await this.#options.coordinator.claimNext(snapshot.stateHash);
       if (claim.kind === "terminal") {
         assertTerminalClaim(claim, identity);
         snapshot = claim.snapshot;
@@ -622,9 +530,7 @@ export class AutonomousOptimizationLoop {
     }
     const finishedAt = assertTimestamp(this.#now(), "Loop finish time");
     if (Date.parse(finishedAt) < Date.parse(startedAt)) {
-      throw new AutonomousOptimizationLoopError(
-        "Loop finish time precedes its start time.",
-      );
+      throw new AutonomousOptimizationLoopError("Loop finish time precedes its start time.");
     }
     return receipt({
       schemaVersion: 1,

@@ -1,8 +1,7 @@
 import { canonicalHash } from "../schemas/canonical.js";
 import type { ArmOrder, HiddenTaskId } from "./types.js";
 
-export const VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION =
-  "validation-attempt-ledger-v1" as const;
+export const VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION = "validation-attempt-ledger-v1" as const;
 export const PRESEALED_VALIDATION_PAIR_COUNT = 12 as const;
 export const PRESEALED_VALIDATION_ARM_COUNT = 24 as const;
 export const MAXIMUM_INFRASTRUCTURE_REPLACEMENTS = 4 as const;
@@ -140,10 +139,7 @@ function assertExactKeys(
   label: string,
 ): void {
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     throw new Error(`${label} must contain only its canonical fields`);
   }
 }
@@ -156,10 +152,7 @@ function assertSha256(value: string, label: string): void {
 
 function assertTimestamp(value: string, label: string): number {
   const timestamp = Date.parse(value);
-  if (
-    !Number.isFinite(timestamp) ||
-    new Date(timestamp).toISOString() !== value
-  ) {
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== value) {
     throw new Error(`${label} must be a canonical UTC RFC 3339 timestamp`);
   }
   return timestamp;
@@ -313,9 +306,7 @@ function nextClaimableCell(
     }
   }
   return (
-    ledger.cells.find(
-      (cell) => attemptsForCell(ledger.attempts, cell.ordinal).length === 0,
-    ) ?? null
+    ledger.cells.find((cell) => attemptsForCell(ledger.attempts, cell.ordinal).length === 0) ?? null
   );
 }
 
@@ -366,13 +357,7 @@ function validateCells(cells: readonly HiddenValidationCell[]): void {
 function assertReceipt(receipt: HiddenValidationAttemptReceipt): void {
   assertExactKeys(
     receipt as unknown as Readonly<Record<string, unknown>>,
-    [
-      "receiptDigest",
-      "attemptDigest",
-      "outcome",
-      "evidenceDigest",
-      "observedAt",
-    ],
+    ["receiptDigest", "attemptDigest", "outcome", "evidenceDigest", "observedAt"],
     "Validation attempt receipt",
   );
   assertSha256(receipt.attemptDigest, "attemptDigest");
@@ -438,9 +423,7 @@ function operationRevisions(
  * SQL-backed, or object-store-backed implementation equivalent as long as it
  * uses revision compare-and-swap.
  */
-export function validateValidationAttemptLedger(
-  ledger: HiddenValidationAttemptLedger,
-): void {
+export function validateValidationAttemptLedger(ledger: HiddenValidationAttemptLedger): void {
   assertExactKeys(
     ledger as unknown as Readonly<Record<string, unknown>>,
     [
@@ -475,8 +458,8 @@ export function validateValidationAttemptLedger(
     throw new Error("Validation attempt ledger seal digest does not reproduce");
   }
   if (
-    ledger.attempts.length > PRESEALED_VALIDATION_ARM_COUNT +
-      MAXIMUM_INFRASTRUCTURE_REPLACEMENTS
+    ledger.attempts.length >
+    PRESEALED_VALIDATION_ARM_COUNT + MAXIMUM_INFRASTRUCTURE_REPLACEMENTS
   ) {
     throw new Error("Validation attempt ledger exceeds its 28-attempt ceiling");
   }
@@ -568,9 +551,7 @@ export function validateValidationAttemptLedger(
       continue;
     }
 
-    const replayed = replayedAttempts.find(
-      (item) => item.attemptDigest === attempt.attemptDigest,
-    );
+    const replayed = replayedAttempts.find((item) => item.attemptDigest === attempt.attemptDigest);
     if (
       replayed === undefined ||
       replayed.receipt !== null ||
@@ -689,9 +670,7 @@ export function claimValidationAttempt(
   validateValidationAttemptLedger(ledger);
   assertSha256(input.requestId, "requestId");
   assertTimestamp(input.claimedAt, "claimedAt");
-  const existing = ledger.attempts.find(
-    (attempt) => attempt.requestId === input.requestId,
-  );
+  const existing = ledger.attempts.find((attempt) => attempt.requestId === input.requestId);
   if (existing !== undefined) {
     if (existing.claimedAt !== input.claimedAt) {
       throw new Error("An idempotent validation claim cannot change its timestamp");
@@ -714,8 +693,7 @@ export function claimValidationAttempt(
   }
   const prior = attemptsForCell(ledger.attempts, cell.ordinal);
   const attemptOrdinal = prior.length + 1;
-  const kind: ValidationAttemptKind =
-    prior.length === 0 ? "initial" : "infrastructure-replacement";
+  const kind: ValidationAttemptKind = prior.length === 0 ? "initial" : "infrastructure-replacement";
   const claimRevision = ledger.revision + 1;
   const claimed: HiddenValidationAttempt = {
     requestId: input.requestId,

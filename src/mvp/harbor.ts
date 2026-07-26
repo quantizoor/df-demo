@@ -20,8 +20,7 @@ export const MVP_HARBOR_TRIAL_COUNT = 30 as const;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const REVISION = /^[a-f0-9]{40,64}$/u;
 const SAFE_EXPERIMENT = /^(?<number>\d{3,})-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const SAFE_TASK_NAME =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}$/u;
 const SAFE_AGENT_IMPORT =
   /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -136,10 +135,7 @@ export interface MvpHarborConfiguration {
   readonly verifier: {
     readonly disable: false;
   };
-  readonly agents: readonly [
-    MvpHarborAgentConfiguration,
-    MvpHarborAgentConfiguration,
-  ];
+  readonly agents: readonly [MvpHarborAgentConfiguration, MvpHarborAgentConfiguration];
   readonly datasets: readonly [
     {
       readonly name: string;
@@ -312,10 +308,7 @@ function isPlainRecord(value: unknown): value is PlainRecord {
 function exactRecord(value: unknown, keys: readonly string[], label: string): PlainRecord {
   if (!isPlainRecord(value)) fail(`${label} must be a plain object.`);
   const actualKeys = Object.keys(value);
-  if (
-    actualKeys.length !== keys.length ||
-    actualKeys.some((key) => !keys.includes(key))
-  ) {
+  if (actualKeys.length !== keys.length || actualKeys.some((key) => !keys.includes(key))) {
     fail(`${label} contains missing or unexpected fields.`);
   }
   return value;
@@ -334,11 +327,7 @@ function assertRevision(value: unknown, label: string): asserts value is string 
 }
 
 function assertSafeAbsolutePath(value: unknown, label: string): asserts value is string {
-  if (
-    typeof value !== "string" ||
-    !SAFE_ABSOLUTE_PATH.test(value) ||
-    value.includes("/../")
-  ) {
+  if (typeof value !== "string" || !SAFE_ABSOLUTE_PATH.test(value) || value.includes("/../")) {
     fail(`${label} must be an absolute traversal-free path.`);
   }
 }
@@ -348,11 +337,7 @@ function assertArtifact(
   label: string,
   allowedMediaTypes: ReadonlySet<string>,
 ): asserts value is TrustedCloudArtifactRef {
-  const artifact = exactRecord(
-    value,
-    ["uri", "sha256", "mediaType", "byteLength"],
-    label,
-  );
+  const artifact = exactRecord(value, ["uri", "sha256", "mediaType", "byteLength"], label);
   if (
     typeof artifact["uri"] !== "string" ||
     !TRUSTED_URI.test(artifact["uri"]) ||
@@ -395,21 +380,14 @@ function assertRuntime(
 }
 
 function assertAdapter(value: unknown): asserts value is MvpHarborAdapterBinding {
-  const adapter = exactRecord(
-    value,
-    ["artifact", "remotePath", "importPath"],
-    "Harbor adapter",
-  );
+  const adapter = exactRecord(value, ["artifact", "remotePath", "importPath"], "Harbor adapter");
   assertArtifact(
     adapter["artifact"],
     "Harbor adapter artifact",
     new Set(["text/x-python", "text/plain"]),
   );
   assertSafeAbsolutePath(adapter["remotePath"], "Harbor adapter path");
-  if (
-    typeof adapter["importPath"] !== "string" ||
-    !SAFE_AGENT_IMPORT.test(adapter["importPath"])
-  ) {
+  if (typeof adapter["importPath"] !== "string" || !SAFE_AGENT_IMPORT.test(adapter["importPath"])) {
     fail("Harbor adapter import path is malformed.");
   }
 }
@@ -444,13 +422,7 @@ function assertModel(value: unknown): asserts value is MvpHarborModelBinding {
 function assertTaskBinding(value: unknown): asserts value is TrustedMvpHarborTaskBinding {
   const task = exactRecord(
     value,
-    [
-      "sensitivity",
-      "hiddenTaskId",
-      "taskRevisionDigest",
-      "harborTaskName",
-      "cellIds",
-    ],
+    ["sensitivity", "hiddenTaskId", "taskRevisionDigest", "harborTaskName", "cellIds"],
     "Hidden task binding",
   );
   if (task["sensitivity"] !== "trusted-hidden-mvp-task") {
@@ -458,10 +430,7 @@ function assertTaskBinding(value: unknown): asserts value is TrustedMvpHarborTas
   }
   assertDigest(task["hiddenTaskId"], "Hidden task ID");
   assertDigest(task["taskRevisionDigest"], "Hidden task revision");
-  if (
-    typeof task["harborTaskName"] !== "string" ||
-    !SAFE_TASK_NAME.test(task["harborTaskName"])
-  ) {
+  if (typeof task["harborTaskName"] !== "string" || !SAFE_TASK_NAME.test(task["harborTaskName"])) {
     fail("Trusted Harbor task name is malformed.");
   }
   if (!Array.isArray(task["cellIds"]) || task["cellIds"].length !== 3) {
@@ -503,8 +472,7 @@ function assertBuildInput(input: MvpHarborBuildInput): void {
   if (
     new Set(input.tasks.map((task) => task.hiddenTaskId)).size !== MVP_TASK_COUNT ||
     new Set(input.tasks.map((task) => task.harborTaskName)).size !== MVP_TASK_COUNT ||
-    new Set(input.tasks.flatMap((task) => task.cellIds)).size !==
-      MVP_HARBOR_CELLS_PER_ARM
+    new Set(input.tasks.flatMap((task) => task.cellIds)).size !== MVP_HARBOR_CELLS_PER_ARM
   ) {
     fail("Hidden task, Harbor name, and cell bindings must be unique.");
   }
@@ -567,8 +535,7 @@ function agentConfiguration(
     | "timeoutSeconds"
   >,
 ): MvpHarborAgentConfiguration {
-  const runtime =
-    arm === "candidate" ? input.candidateRuntime : input.championRuntime;
+  const runtime = arm === "candidate" ? input.candidateRuntime : input.championRuntime;
   return {
     name: arm === "candidate" ? "dark-factory-candidate" : "dark-factory-champion",
     import_path: input.adapter.importPath,
@@ -630,18 +597,14 @@ function configuration(
       force_build: false,
       kwargs: {
         secrets: {
-          ANTHROPIC_FOUNDRY_API_KEY:
-            input.evaluatedSecretSourceName,
+          ANTHROPIC_FOUNDRY_API_KEY: input.evaluatedSecretSourceName,
         },
       },
     },
     verifier: {
       disable: false,
     },
-    agents: [
-      agentConfiguration(agentOrder[0], input),
-      agentConfiguration(agentOrder[1], input),
-    ],
+    agents: [agentConfiguration(agentOrder[0], input), agentConfiguration(agentOrder[1], input)],
     datasets: [
       {
         name: input.datasetName,
@@ -664,9 +627,7 @@ function planHashMaterial(
   };
 }
 
-export function hashTrustedMvpHarborPlan(
-  plan: Omit<TrustedMvpHarborPlan, "planHash">,
-): string {
+export function hashTrustedMvpHarborPlan(plan: Omit<TrustedMvpHarborPlan, "planHash">): string {
   return canonicalHash(planHashMaterial(plan));
 }
 
@@ -676,22 +637,18 @@ export function hashTrustedMvpHarborPlan(
  * the same task to the same arm order forever, then split into three AB tasks
  * and two BA tasks. Harbor's three attempts are the three replicate ordinals.
  */
-export function buildTrustedMvpHarborPlan(
-  input: MvpHarborBuildInput,
-): TrustedMvpHarborPlan {
+export function buildTrustedMvpHarborPlan(input: MvpHarborBuildInput): TrustedMvpHarborPlan {
   assertBuildInput(input);
   const sorted = [...input.tasks].sort((left, right) =>
     left.hiddenTaskId.localeCompare(right.hiddenTaskId),
   );
   const offset = (input.experimentNumber - 1) % MVP_TASK_COUNT;
   const rotated = [...sorted.slice(offset), ...sorted.slice(0, offset)];
-  const tasks: readonly TrustedMvpHarborScheduledTask[] = rotated.map(
-    (task, scheduleOrdinal) => ({
-      ...task,
-      scheduleOrdinal,
-      order: scheduleOrdinal < 3 ? "AB" : "BA",
-    }),
-  );
+  const tasks: readonly TrustedMvpHarborScheduledTask[] = rotated.map((task, scheduleOrdinal) => ({
+    ...task,
+    scheduleOrdinal,
+    order: scheduleOrdinal < 3 ? "AB" : "BA",
+  }));
 
   const planWithoutConfigs = {
     sensitivity: "trusted-hidden-mvp-harbor-plan" as const,
@@ -752,9 +709,7 @@ export function buildTrustedMvpHarborPlan(
   return plan;
 }
 
-function assertScheduledTask(
-  value: unknown,
-): asserts value is TrustedMvpHarborScheduledTask {
+function assertScheduledTask(value: unknown): asserts value is TrustedMvpHarborScheduledTask {
   const task = exactRecord(
     value,
     [
@@ -793,14 +748,7 @@ function assertConfigEnvelope(
 ): asserts value is TrustedMvpHarborConfig {
   const envelope = exactRecord(
     value,
-    [
-      "sensitivity",
-      "order",
-      "taskCount",
-      "expectedTrialCount",
-      "configHash",
-      "config",
-    ],
+    ["sensitivity", "order", "taskCount", "expectedTrialCount", "configHash", "config"],
     "Trusted Harbor config",
   );
   const expectedTaskCount = expectedOrder === "AB" ? 3 : 2;
@@ -828,9 +776,7 @@ function assertConfigEnvelope(
   }
 }
 
-export function assertTrustedMvpHarborPlan(
-  value: unknown,
-): asserts value is TrustedMvpHarborPlan {
+export function assertTrustedMvpHarborPlan(value: unknown): asserts value is TrustedMvpHarborPlan {
   const plan = exactRecord(
     value,
     [
@@ -892,8 +838,7 @@ export function assertTrustedMvpHarborPlan(
     datasetRef: plan["datasetRef"] as string,
     jobsDirectory: plan["jobsDirectory"] as string,
     environmentType: plan["environmentType"] as "daytona",
-    evaluatedSecretSourceName:
-      plan["evaluatedSecretSourceName"] as string,
+    evaluatedSecretSourceName: plan["evaluatedSecretSourceName"] as string,
     tasks: scheduledInputTasks,
     candidateRuntime: plan["candidateRuntime"] as MvpHarborRuntimeArchive,
     championRuntime: plan["championRuntime"] as MvpHarborRuntimeArchive,
@@ -914,8 +859,7 @@ export function assertTrustedMvpHarborPlan(
   const deterministicallySorted = [...scheduledInputTasks].sort((left, right) =>
     left.hiddenTaskId.localeCompare(right.hiddenTaskId),
   );
-  const deterministicOffset =
-    (buildInput.experimentNumber - 1) % MVP_TASK_COUNT;
+  const deterministicOffset = (buildInput.experimentNumber - 1) % MVP_TASK_COUNT;
   const deterministicOrder = [
     ...deterministicallySorted.slice(deterministicOffset),
     ...deterministicallySorted.slice(0, deterministicOffset),
@@ -944,14 +888,8 @@ export function assertTrustedMvpHarborPlan(
   assertConfigEnvelope(plan["configs"][0], "AB", typedPlan);
   assertConfigEnvelope(plan["configs"][1], "BA", typedPlan);
   assertDigest(plan["planHash"], "Trusted MVP Harbor plan hash");
-  const unsigned = { ...typedPlan } as Partial<TrustedMvpHarborPlan>;
-  delete unsigned.planHash;
-  if (
-    plan["planHash"] !==
-    hashTrustedMvpHarborPlan(
-      unsigned as Omit<TrustedMvpHarborPlan, "planHash">,
-    )
-  ) {
+  const { planHash, ...unsigned } = typedPlan;
+  if (planHash !== hashTrustedMvpHarborPlan(unsigned)) {
     fail("Trusted MVP Harbor plan hash is inconsistent.");
   }
 }
@@ -967,9 +905,7 @@ function parseDiagnostics(value: unknown): readonly PrivateRawDiagnostic[] {
       "Trusted raw diagnostic",
     );
     if (
-      !new Set(["agent", "tool", "grader", "infrastructure"]).has(
-        diagnostic["kind"] as string,
-      ) ||
+      !new Set(["agent", "tool", "grader", "infrastructure"]).has(diagnostic["kind"] as string) ||
       typeof diagnostic["code"] !== "string" ||
       !SAFE_CODE.test(diagnostic["code"]) ||
       (diagnostic["toolName"] !== null &&
@@ -982,9 +918,7 @@ function parseDiagnostics(value: unknown): readonly PrivateRawDiagnostic[] {
       diagnostic["evidenceRefs"].length > MAXIMUM_REFERENCES ||
       diagnostic["evidenceRefs"].some(
         (reference) =>
-          typeof reference !== "string" ||
-          reference.length < 1 ||
-          reference.length > 2_048,
+          typeof reference !== "string" || reference.length < 1 || reference.length > 2_048,
       )
     ) {
       fail("Trusted raw diagnostic is malformed.");
@@ -1052,9 +986,7 @@ function parseRawTrial(value: unknown): TrustedMvpHarborRawTrial {
     trial["traceArtifactRefs"].length > MAXIMUM_REFERENCES ||
     trial["traceArtifactRefs"].some(
       (reference) =>
-        typeof reference !== "string" ||
-        !TRUSTED_URI.test(reference) ||
-        reference.includes(".."),
+        typeof reference !== "string" || !TRUSTED_URI.test(reference) || reference.includes(".."),
     )
   ) {
     fail("Trusted Harbor trial evidence is malformed.");
@@ -1121,6 +1053,20 @@ function identity(
   return `${hiddenTaskId}|${arm}|${replicateOrdinal}`;
 }
 
+function cellIdForReplicate(
+  task: TrustedMvpHarborTaskBinding,
+  replicateOrdinal: 1 | 2 | 3,
+): string {
+  switch (replicateOrdinal) {
+    case 1:
+      return task.cellIds[0];
+    case 2:
+      return task.cellIds[1];
+    case 3:
+      return task.cellIds[2];
+  }
+}
+
 function mean(values: readonly number[]): number {
   if (values.length === 0) fail("Cannot aggregate an empty Harbor arm.");
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -1147,18 +1093,12 @@ export function decodeTrustedMvpHarborOutput(
     fail("Trusted Harbor output belongs to a different experiment.");
   }
 
-  const tasksByName = new Map(
-    plan.tasks.map((task) => [task.harborTaskName, task]),
-  );
+  const tasksByName = new Map(plan.tasks.map((task) => [task.harborTaskName, task]));
   const expectedIdentities = new Set<string>();
   for (const task of plan.tasks) {
     for (const replicateOrdinal of [1, 2, 3] as const) {
-      expectedIdentities.add(
-        identity(task.hiddenTaskId, "candidate", replicateOrdinal),
-      );
-      expectedIdentities.add(
-        identity(task.hiddenTaskId, "champion", replicateOrdinal),
-      );
+      expectedIdentities.add(identity(task.hiddenTaskId, "candidate", replicateOrdinal));
+      expectedIdentities.add(identity(task.hiddenTaskId, "champion", replicateOrdinal));
     }
   }
 
@@ -1172,8 +1112,7 @@ export function decodeTrustedMvpHarborOutput(
     }
     const arm: EvaluationArm =
       trial.agentName === "dark-factory-candidate" ? "candidate" : "champion";
-    const runtime =
-      arm === "candidate" ? plan.candidateRuntime : plan.championRuntime;
+    const runtime = arm === "candidate" ? plan.candidateRuntime : plan.championRuntime;
     if (
       trial.runtimeArchiveSha256 !== runtime.artifact.sha256 ||
       trial.adapterSha256 !== plan.adapter.artifact.sha256 ||
@@ -1183,11 +1122,7 @@ export function decodeTrustedMvpHarborOutput(
     ) {
       fail("Harbor trial execution bindings do not match the sealed plan.");
     }
-    const trialIdentity = identity(
-      task.hiddenTaskId,
-      arm,
-      trial.attemptOrdinal,
-    );
+    const trialIdentity = identity(task.hiddenTaskId, arm, trial.attemptOrdinal);
     if (
       !expectedIdentities.has(trialIdentity) ||
       seenIdentities.has(trialIdentity) ||
@@ -1201,7 +1136,7 @@ export function decodeTrustedMvpHarborOutput(
       hiddenTaskId: task.hiddenTaskId,
       taskRevisionDigest: task.taskRevisionDigest,
       harborTaskName: task.harborTaskName,
-      cellId: task.cellIds[trial.attemptOrdinal - 1],
+      cellId: cellIdForReplicate(task, trial.attemptOrdinal),
       arm,
       replicateOrdinal: trial.attemptOrdinal,
       order: task.order,
@@ -1223,9 +1158,7 @@ export function decodeTrustedMvpHarborOutput(
     fail("Harbor output is not a complete 15/15 matched result matrix.");
   }
 
-  const taskOrdinal = new Map(
-    plan.tasks.map((task) => [task.hiddenTaskId, task.scheduleOrdinal]),
-  );
+  const taskOrdinal = new Map(plan.tasks.map((task) => [task.hiddenTaskId, task.scheduleOrdinal]));
   const compareDecoded = (
     left: TrustedMvpHarborDecodedTrial,
     right: TrustedMvpHarborDecodedTrial,
@@ -1233,12 +1166,8 @@ export function decodeTrustedMvpHarborOutput(
     (taskOrdinal.get(left.hiddenTaskId) ?? Number.MAX_SAFE_INTEGER) -
       (taskOrdinal.get(right.hiddenTaskId) ?? Number.MAX_SAFE_INTEGER) ||
     left.replicateOrdinal - right.replicateOrdinal;
-  const candidate = decoded
-    .filter((trial) => trial.arm === "candidate")
-    .sort(compareDecoded);
-  const champion = decoded
-    .filter((trial) => trial.arm === "champion")
-    .sort(compareDecoded);
+  const candidate = decoded.filter((trial) => trial.arm === "candidate").sort(compareDecoded);
+  const champion = decoded.filter((trial) => trial.arm === "champion").sort(compareDecoded);
   if (
     candidate.length !== MVP_HARBOR_CELLS_PER_ARM ||
     champion.length !== MVP_HARBOR_CELLS_PER_ARM
@@ -1272,9 +1201,7 @@ export function decodeTrustedMvpHarborOutput(
       candidateTrialCount: MVP_HARBOR_CELLS_PER_ARM,
       championTrialCount: MVP_HARBOR_CELLS_PER_ARM,
       totalTrialCount: MVP_HARBOR_TRIAL_COUNT,
-      infrastructureValidTrialCount: decoded.filter(
-        (trial) => trial.infrastructureValid,
-      ).length,
+      infrastructureValidTrialCount: decoded.filter((trial) => trial.infrastructureValid).length,
       candidatePassCount: candidate.filter((trial) => trial.passed).length,
       championPassCount: champion.filter((trial) => trial.passed).length,
       candidateMeanReward: rounded(mean(candidate.map((trial) => trial.reward))),
@@ -1312,10 +1239,7 @@ export interface TrustedMvpHarborExpectedTrial extends MvpHarborRequestedCell {
   readonly harborAttemptOrdinal: 1 | 2 | 3;
 }
 
-export type MvpHarborRequestedArmMode =
-  | "paired"
-  | "candidate-only"
-  | "champion-only";
+export type MvpHarborRequestedArmMode = "paired" | "candidate-only" | "champion-only";
 
 export interface MvpHarborRequestedConfiguration {
   readonly job_name: string;
@@ -1457,14 +1381,9 @@ function normalizeExecutionRequest(
   basePlan: TrustedMvpHarborPlan,
   requestValue: unknown,
 ): MvpHarborExecutionRequest {
-  const request = exactRecord(
-    requestValue,
-    ["purpose", "cells"],
-    "MVP Harbor execution request",
-  );
+  const request = exactRecord(requestValue, ["purpose", "cells"], "MVP Harbor execution request");
   if (
-    (request["purpose"] !== "screen" &&
-      request["purpose"] !== "promotion-refresh") ||
+    (request["purpose"] !== "screen" && request["purpose"] !== "promotion-refresh") ||
     !Array.isArray(request["cells"]) ||
     request["cells"].length < 1 ||
     request["cells"].length > MVP_HARBOR_TRIAL_COUNT
@@ -1472,7 +1391,7 @@ function normalizeExecutionRequest(
     fail("MVP Harbor execution request has an invalid purpose or size.");
   }
   const knownTaskIds = new Set(basePlan.tasks.map((task) => task.hiddenTaskId));
-  const cells = request["cells"].map((value) => {
+  const cells: MvpHarborRequestedCell[] = request["cells"].map((value): MvpHarborRequestedCell => {
     const cell = exactRecord(
       value,
       ["hiddenTaskId", "arm", "replicateOrdinal"],
@@ -1494,10 +1413,7 @@ function normalizeExecutionRequest(
       replicateOrdinal: cell["replicateOrdinal"],
     };
   });
-  if (
-    new Set(cells.map((cell) => requestedCellIdentity(cell))).size !==
-    cells.length
-  ) {
+  if (new Set(cells.map((cell) => requestedCellIdentity(cell))).size !== cells.length) {
     fail("Requested Harbor cells must have unique task-arm-replicate identities.");
   }
 
@@ -1509,16 +1425,12 @@ function normalizeExecutionRequest(
   const requested = new Set(cells.map((cell) => requestedCellIdentity(cell)));
   if (
     request["purpose"] === "screen" &&
-    (cells.filter((cell) => cell.arm === "candidate").length !==
-      MVP_HARBOR_CELLS_PER_ARM ||
+    (cells.filter((cell) => cell.arm === "candidate").length !== MVP_HARBOR_CELLS_PER_ARM ||
       allCandidateCells.some((cell) => !requested.has(cell)))
   ) {
     fail("A cache-aware screen must execute all fifteen candidate cells.");
   }
-  if (
-    request["purpose"] === "promotion-refresh" &&
-    cells.some((cell) => cell.arm !== "champion")
-  ) {
+  if (request["purpose"] === "promotion-refresh" && cells.some((cell) => cell.arm !== "champion")) {
     fail("A promotion refresh may execute only champion cache cells.");
   }
 
@@ -1553,17 +1465,13 @@ function requestedInvocationGroups(
   basePlan: TrustedMvpHarborPlan,
   request: MvpHarborExecutionRequest,
 ): readonly RequestedInvocationGroup[] {
-  const requested = new Set(
-    request.cells.map((cell) => requestedCellIdentity(cell)),
-  );
+  const requested = new Set(request.cells.map((cell) => requestedCellIdentity(cell)));
   const groups: RequestedInvocationGroup[] = [];
   for (const order of ["AB", "BA"] as const) {
     const orderedTasks = basePlan.tasks.filter((task) => task.order === order);
     const paired =
       request.purpose === "screen"
-        ? orderedTasks.filter((task) =>
-            hasAllRequestedReplicates(requested, task, "champion"),
-          )
+        ? orderedTasks.filter((task) => hasAllRequestedReplicates(requested, task, "champion"))
         : [];
     if (paired.length > 0) {
       groups.push({
@@ -1575,9 +1483,7 @@ function requestedInvocationGroups(
     }
 
     if (request.purpose === "screen") {
-      const candidateOnly = orderedTasks.filter(
-        (task) => !paired.includes(task),
-      );
+      const candidateOnly = orderedTasks.filter((task) => !paired.includes(task));
       if (candidateOnly.length > 0) {
         groups.push({
           order,
@@ -1590,9 +1496,7 @@ function requestedInvocationGroups(
 
     const championAll =
       request.purpose === "promotion-refresh"
-        ? orderedTasks.filter((task) =>
-            hasAllRequestedReplicates(requested, task, "champion"),
-          )
+        ? orderedTasks.filter((task) => hasAllRequestedReplicates(requested, task, "champion"))
         : [];
     if (championAll.length > 0) {
       groups.push({
@@ -1610,9 +1514,7 @@ function requestedInvocationGroups(
       const partialChampion = orderedTasks.filter(
         (task) =>
           !fullyCoveredChampion.has(task.hiddenTaskId) &&
-          requested.has(
-            identity(task.hiddenTaskId, "champion", replicateOrdinal),
-          ),
+          requested.has(identity(task.hiddenTaskId, "champion", replicateOrdinal)),
       );
       if (partialChampion.length > 0) {
         groups.push({
@@ -1630,9 +1532,7 @@ function requestedInvocationGroups(
 function groupArms(group: RequestedInvocationGroup): readonly EvaluationArm[] {
   if (group.armMode === "candidate-only") return ["candidate"];
   if (group.armMode === "champion-only") return ["champion"];
-  return group.order === "AB"
-    ? ["candidate", "champion"]
-    : ["champion", "candidate"];
+  return group.order === "AB" ? ["candidate", "champion"] : ["champion", "candidate"];
 }
 
 function requestedConfiguration(
@@ -1656,8 +1556,7 @@ function requestedConfiguration(
       force_build: false,
       kwargs: {
         secrets: {
-          ANTHROPIC_FOUNDRY_API_KEY:
-            basePlan.evaluatedSecretSourceName,
+          ANTHROPIC_FOUNDRY_API_KEY: basePlan.evaluatedSecretSourceName,
         },
       },
     },
@@ -1693,9 +1592,10 @@ function expectedTrialsForGroup(
         harborTaskName: task.harborTaskName,
         arm,
         replicateOrdinal,
-        harborAttemptOrdinal: (
-          group.targetReplicateOrdinal === null ? attemptIndex + 1 : 1
-        ) as 1 | 2 | 3,
+        harborAttemptOrdinal: (group.targetReplicateOrdinal === null ? attemptIndex + 1 : 1) as
+          | 1
+          | 2
+          | 3,
       })),
     ),
   );
@@ -1728,9 +1628,7 @@ function createRequestedExecutionPlan(
       config,
     };
   });
-  const candidateTrialCount = request.cells.filter(
-    (cell) => cell.arm === "candidate",
-  ).length;
+  const candidateTrialCount = request.cells.filter((cell) => cell.arm === "candidate").length;
   const championTrialCount = request.cells.length - candidateTrialCount;
   const unsigned = {
     sensitivity: "trusted-hidden-mvp-harbor-execution-plan" as const,
@@ -1836,9 +1734,7 @@ export function assertTrustedMvpHarborExecutionPlan(
   }
 }
 
-function parseRequestedRawTrial(
-  value: unknown,
-): TrustedMvpHarborRequestedRawTrial {
+function parseRequestedRawTrial(value: unknown): TrustedMvpHarborRequestedRawTrial {
   const trial = exactRecord(
     value,
     [
@@ -1862,10 +1758,7 @@ function parseRequestedRawTrial(
     ],
     "Trusted requested Harbor trial",
   );
-  if (
-    typeof trial["invocationId"] !== "string" ||
-    !SAFE_CODE.test(trial["invocationId"])
-  ) {
+  if (typeof trial["invocationId"] !== "string" || !SAFE_CODE.test(trial["invocationId"])) {
     fail("Trusted requested Harbor trial invocation is malformed.");
   }
   const baseTrial: Record<string, unknown> = { ...trial };
@@ -1916,9 +1809,7 @@ function parseRequestedRawOutput(
 }
 
 function nullableMean(trials: readonly TrustedMvpHarborDecodedTrial[]): number | null {
-  return trials.length === 0
-    ? null
-    : rounded(mean(trials.map((trial) => trial.reward)));
+  return trials.length === 0 ? null : rounded(mean(trials.map((trial) => trial.reward)));
 }
 
 /**
@@ -1933,10 +1824,7 @@ export function decodeTrustedMvpHarborRequestedOutput(
 ): DecodedMvpHarborRequestedEvaluation {
   assertTrustedMvpHarborExecutionPlan(executionPlanValue);
   const plan = executionPlanValue;
-  const output = parseRequestedRawOutput(
-    rawOutputValue,
-    plan.totalTrialCount,
-  );
+  const output = parseRequestedRawOutput(rawOutputValue, plan.totalTrialCount);
   if (
     output.experimentId !== plan.basePlan.experimentId ||
     output.executionPlanHash !== plan.executionPlanHash
@@ -1945,13 +1833,9 @@ export function decodeTrustedMvpHarborRequestedOutput(
   }
 
   const expectedByRawIdentity = new Map<string, TrustedMvpHarborExpectedTrial>();
-  for (const expected of plan.invocations.flatMap(
-    (invocation) => invocation.expectedTrials,
-  )) {
+  for (const expected of plan.invocations.flatMap((invocation) => invocation.expectedTrials)) {
     const agentName =
-      expected.arm === "candidate"
-        ? "dark-factory-candidate"
-        : "dark-factory-champion";
+      expected.arm === "candidate" ? "dark-factory-candidate" : "dark-factory-champion";
     const rawIdentity =
       `${expected.invocationId}|${expected.harborTaskName}|` +
       `${agentName}|${expected.harborAttemptOrdinal}`;
@@ -1964,9 +1848,7 @@ export function decodeTrustedMvpHarborRequestedOutput(
     fail("Requested Harbor plan does not cover its exact declared trial set.");
   }
 
-  const taskById = new Map(
-    plan.basePlan.tasks.map((task) => [task.hiddenTaskId, task]),
-  );
+  const taskById = new Map(plan.basePlan.tasks.map((task) => [task.hiddenTaskId, task]));
   const seenRawIdentities = new Set<string>();
   const seenLogicalIdentities = new Set<string>();
   const seenTrialIds = new Set<string>();
@@ -1992,9 +1874,7 @@ export function decodeTrustedMvpHarborRequestedOutput(
       fail("Requested Harbor output escaped the sealed hidden panel.");
     }
     const runtime =
-      expected.arm === "candidate"
-        ? plan.basePlan.candidateRuntime
-        : plan.basePlan.championRuntime;
+      expected.arm === "candidate" ? plan.basePlan.candidateRuntime : plan.basePlan.championRuntime;
     if (
       trial.runtimeArchiveSha256 !== runtime.artifact.sha256 ||
       trial.adapterSha256 !== plan.basePlan.adapter.artifact.sha256 ||
@@ -2011,7 +1891,7 @@ export function decodeTrustedMvpHarborRequestedOutput(
       hiddenTaskId: task.hiddenTaskId,
       taskRevisionDigest: task.taskRevisionDigest,
       harborTaskName: task.harborTaskName,
-      cellId: task.cellIds[expected.replicateOrdinal - 1],
+      cellId: cellIdForReplicate(task, expected.replicateOrdinal),
       arm: expected.arm,
       replicateOrdinal: expected.replicateOrdinal,
       order: task.order,
@@ -2028,9 +1908,7 @@ export function decodeTrustedMvpHarborRequestedOutput(
   }
   if (
     seenLogicalIdentities.size !== plan.totalTrialCount ||
-    [...expectedByRawIdentity.keys()].some(
-      (rawIdentity) => !seenRawIdentities.has(rawIdentity),
-    )
+    [...expectedByRawIdentity.keys()].some((rawIdentity) => !seenRawIdentities.has(rawIdentity))
   ) {
     fail("Requested Harbor output is incomplete.");
   }
@@ -2045,12 +1923,8 @@ export function decodeTrustedMvpHarborRequestedOutput(
     (taskOrdinal.get(left.hiddenTaskId) ?? Number.MAX_SAFE_INTEGER) -
       (taskOrdinal.get(right.hiddenTaskId) ?? Number.MAX_SAFE_INTEGER) ||
     left.replicateOrdinal - right.replicateOrdinal;
-  const candidate = decoded
-    .filter((trial) => trial.arm === "candidate")
-    .sort(sortTrials);
-  const champion = decoded
-    .filter((trial) => trial.arm === "champion")
-    .sort(sortTrials);
+  const candidate = decoded.filter((trial) => trial.arm === "candidate").sort(sortTrials);
+  const champion = decoded.filter((trial) => trial.arm === "champion").sort(sortTrials);
   if (
     candidate.length !== plan.candidateTrialCount ||
     champion.length !== plan.championTrialCount
@@ -2083,17 +1957,13 @@ export function decodeTrustedMvpHarborRequestedOutput(
       candidateTrialCount: candidate.length,
       championTrialCount: champion.length,
       totalTrialCount: decoded.length,
-      infrastructureValidTrialCount: decoded.filter(
-        (trial) => trial.infrastructureValid,
-      ).length,
+      infrastructureValidTrialCount: decoded.filter((trial) => trial.infrastructureValid).length,
       candidatePassCount: candidate.filter((trial) => trial.passed).length,
       championPassCount: champion.filter((trial) => trial.passed).length,
       candidateMeanReward: nullableMean(candidate),
       championMeanReward: nullableMean(champion),
-      candidateRuntimeArchiveSha256:
-        plan.basePlan.candidateRuntime.artifact.sha256,
-      championRuntimeArchiveSha256:
-        plan.basePlan.championRuntime.artifact.sha256,
+      candidateRuntimeArchiveSha256: plan.basePlan.candidateRuntime.artifact.sha256,
+      championRuntimeArchiveSha256: plan.basePlan.championRuntime.artifact.sha256,
       adapterSha256: plan.basePlan.adapter.artifact.sha256,
       modelProvider: plan.basePlan.model.provider,
       modelDeployment: plan.basePlan.model.deployment,

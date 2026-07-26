@@ -4,16 +4,16 @@ import {
   applyConsumedPanelToTaskLedger,
   claimRepairRevision,
   claimShadowCertification,
-  createHiddenShadowLedger,
   contributingRepairTasksClearCooldown,
   createHiddenPanelLedgerEntry,
+  createHiddenShadowLedger,
   decidePanel,
+  linkReleasedEvidenceToHypothesis,
   makeReleaseSafePanelLedgerAttestation,
   markPanelArmStarted,
-  linkReleasedEvidenceToHypothesis,
   recordRepairAttempt,
-  repairPanelCanBeClaimed,
   releaseSafeShadowCapacity,
+  repairPanelCanBeClaimed,
 } from "../../src/evaluation/index.js";
 import { makeTask, panelId, taskId } from "./fixtures.js";
 
@@ -112,15 +112,11 @@ describe("hidden panel consumption and cooldown ledger", () => {
   });
 
   it("updates only broker-private task exposure and links evidence to the next hypothesis", () => {
-    const tasks = Array.from({ length: 14 }, (_, index) =>
-      makeTask(index + 1, ["hard"]),
-    );
+    const tasks = Array.from({ length: 14 }, (_, index) => makeTask(index + 1, ["hard"]));
     const decided = decidePanel(markPanelArmStarted(panel("validation")), "reject");
     const consumed = applyConsumedPanelToTaskLedger(tasks, decided, 7);
     expect(consumed.filter((task) => task.exposure.feedbackReleased)).toHaveLength(12);
-    expect(
-      consumed.filter((task) => task.exposure.positiveValidationConsumed),
-    ).toHaveLength(12);
+    expect(consumed.filter((task) => task.exposure.positiveValidationConsumed)).toHaveLength(12);
     const linked = linkReleasedEvidenceToHypothesis(
       consumed,
       decided.taskIds,
@@ -136,17 +132,13 @@ describe("hidden panel consumption and cooldown ledger", () => {
   it("consumes two one-shot shadow slices and never retries the same active commit", () => {
     const initial = createHiddenShadowLedger();
     const first = claimShadowCertification(initial, "a".repeat(40));
-    expect(() => claimShadowCertification(first, "a".repeat(40))).toThrow(
-      /at most one/u,
-    );
+    expect(() => claimShadowCertification(first, "a".repeat(40))).toThrow(/at most one/u);
     const second = claimShadowCertification(first, "b".repeat(40));
     const capacity = releaseSafeShadowCapacity(second);
     expect(capacity.remainingSliceCount).toBe(0);
     expect(capacity.certificationPaused).toBe(true);
     expect(JSON.stringify(capacity)).not.toContain("a".repeat(40));
-    expect(() => claimShadowCertification(second, "c".repeat(40))).toThrow(
-      /consumed/u,
-    );
+    expect(() => claimShadowCertification(second, "c".repeat(40))).toThrow(/consumed/u);
   });
 });
 
@@ -154,9 +146,7 @@ function panel(stage: "repair" | "validation") {
   return createHiddenPanelLedgerEntry({
     panelId: panelId(1),
     stage,
-    taskIds: Array.from({ length: stage === "repair" ? 5 : 12 }, (_, index) =>
-      taskId(index + 1),
-    ),
+    taskIds: Array.from({ length: stage === "repair" ? 5 : 12 }, (_, index) => taskId(index + 1)),
     frozenHypothesisDigest: "hypothesis-frozen",
     frozenCandidateDigest: "candidate-frozen",
     sealedAt: "2026-07-26T09:00:00.000Z",

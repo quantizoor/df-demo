@@ -41,9 +41,7 @@ describe("cloud-backed canonical evaluator keyring", () => {
       keyId: KEY_ID,
     });
 
-    await expect(
-      keyring.getVerificationKey("unknown-key"),
-    ).resolves.toBeUndefined();
+    await expect(keyring.getVerificationKey("unknown-key")).resolves.toBeUndefined();
     expect(keys.resolve).toHaveBeenCalledOnce();
   });
 

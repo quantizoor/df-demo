@@ -36,12 +36,9 @@ const GIT_OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_MUTATION_CATEGORY = /^[a-z0-9][a-z0-9-]{0,63}$/u;
-const SAFE_SOURCE_PATH =
-  /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
-const SAFE_HEAD_REF =
-  /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
-const SAFE_IMAGE_REFERENCE =
-  /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+const SAFE_SOURCE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_HEAD_REF = /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const SAFE_IMAGE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
 const SAFE_SIGNATURE = /^[A-Za-z0-9_-]{86,128}$/u;
 const MAXIMUM_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024;
 const MAXIMUM_COST_USD = 1_000_000;
@@ -56,8 +53,7 @@ export const CORRECTNESS_GATE_OPERATIONS = [
   "source-index",
 ] as const;
 
-export type CorrectnessGateOperation =
-  (typeof CORRECTNESS_GATE_OPERATIONS)[number];
+export type CorrectnessGateOperation = (typeof CORRECTNESS_GATE_OPERATIONS)[number];
 
 export const PRODUCTION_CORRECTNESS_GATE_ERROR_CODES = [
   "INVALID_CONFIGURATION",
@@ -178,9 +174,7 @@ export interface TrustedCloudIntegrityScanPort {
    */
   scan(
     input: TrustedCloudIntegrityScanInput,
-  ): Promise<
-    AccountedCorrectnessGateReceipt<TrustedCloudIntegrityScanReceipt>
-  >;
+  ): Promise<AccountedCorrectnessGateReceipt<TrustedCloudIntegrityScanReceipt>>;
 }
 
 export interface TrustedCloudCandidateBuildInput {
@@ -227,9 +221,7 @@ export interface TrustedCloudCandidateBuildPort {
    */
   build(
     input: TrustedCloudCandidateBuildInput,
-  ): Promise<
-    AccountedCorrectnessGateReceipt<TrustedCandidateBuildGateReceipt>
-  >;
+  ): Promise<AccountedCorrectnessGateReceipt<TrustedCandidateBuildGateReceipt>>;
 }
 
 export interface TrustedNonForceGitPublicationInput {
@@ -273,9 +265,7 @@ export interface TrustedCandidateSourceSnapshotPort {
    */
   snapshot(
     input: TrustedCandidateSourceSnapshotInput,
-  ): Promise<
-    AccountedCorrectnessGateReceipt<TrustedGitSourceSnapshotReceipt>
-  >;
+  ): Promise<AccountedCorrectnessGateReceipt<TrustedGitSourceSnapshotReceipt>>;
 }
 
 export interface TrustedCandidateSourceIndexReceipt {
@@ -308,16 +298,12 @@ export interface TrustedCandidateSourceIndexPort {
     readonly experiment: ExperimentIdentity;
     readonly snapshot: TrustedGitSourceSnapshotReceipt;
     readonly snapshotReceiptHash: string;
-  }): Promise<
-    AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt>
-  >;
+  }): Promise<AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt>>;
   /**
    * This is the same commit-keyed index consumed by the blind broker's
    * TrustedGitSourceSnapshotReceiptSource adapter.
    */
-  findByCommit(
-    candidateCommit: string,
-  ): Promise<TrustedGitSourceSnapshotReceipt | undefined>;
+  findByCommit(candidateCommit: string): Promise<TrustedGitSourceSnapshotReceipt | undefined>;
 }
 
 export interface CorrectnessGateRecord {
@@ -327,9 +313,7 @@ export interface CorrectnessGateRecord {
   readonly requestHash: string;
   readonly proposalResultHash: string;
   readonly integrityScan: AccountedCorrectnessGateReceipt<TrustedCloudIntegrityScanReceipt>;
-  readonly candidateBuild:
-    | AccountedCorrectnessGateReceipt<TrustedCandidateBuildGateReceipt>
-    | null;
+  readonly candidateBuild: AccountedCorrectnessGateReceipt<TrustedCandidateBuildGateReceipt> | null;
   readonly gitPublication: AccountedCorrectnessGateReceipt<TrustedGitPublicationReceipt> | null;
   readonly sourceSnapshot: AccountedCorrectnessGateReceipt<TrustedGitSourceSnapshotReceipt> | null;
   readonly sourceIndex: AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt> | null;
@@ -372,9 +356,7 @@ interface ProposalBinding {
   readonly changedFilesHash: string;
 }
 
-function isPlainRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -391,10 +373,7 @@ function assertExactKeys(
     throw new ProductionCorrectnessGateError("GATE_RECORD_INVALID");
   }
   const actual = Object.keys(value);
-  if (
-    actual.length !== expected.length ||
-    actual.some((key) => !expected.includes(key))
-  ) {
+  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
     throw new ProductionCorrectnessGateError("GATE_RECORD_INVALID");
   }
 }
@@ -446,9 +425,7 @@ function assertArtifact(
   assertExactKeys(artifact, ["uri", "sha256", "mediaType", "byteLength"]);
   const value = artifact as unknown as TrustedCloudArtifactRef;
   if (
-    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(
-      value.uri,
-    ) ||
+    !/^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(value.uri) ||
     value.uri.includes("..") ||
     !SHA256.test(value.sha256) ||
     value.mediaType !== mediaType ||
@@ -460,9 +437,7 @@ function assertArtifact(
   }
 }
 
-function assertFrozenHypothesis(
-  value: unknown,
-): asserts value is FrozenHypothesis {
+function assertFrozenHypothesis(value: unknown): asserts value is FrozenHypothesis {
   assertExactKeys(value, [
     "hash",
     "sourceBriefHash",
@@ -483,35 +458,23 @@ function assertFrozenHypothesis(
   ];
   if (
     !SHA256.test(hypothesis.hash) ||
-    (hypothesis.sourceBriefHash !== null &&
-      !SHA256.test(hypothesis.sourceBriefHash)) ||
+    (hypothesis.sourceBriefHash !== null && !SHA256.test(hypothesis.sourceBriefHash)) ||
     boundedText.some(
-      (item) =>
-        typeof item !== "string" ||
-        item.length < 1 ||
-        item.length > 16_384,
+      (item) => typeof item !== "string" || item.length < 1 || item.length > 16_384,
     ) ||
     !Array.isArray(hypothesis.falsificationCriteria) ||
     hypothesis.falsificationCriteria.length < 1 ||
     hypothesis.falsificationCriteria.length > 32 ||
     hypothesis.falsificationCriteria.some(
-      (item) =>
-        typeof item !== "string" || item.length < 1 || item.length > 4_096,
+      (item) => typeof item !== "string" || item.length < 1 || item.length > 4_096,
     )
   ) {
     throw new ProductionCorrectnessGateError("PROPOSAL_DETACHED");
   }
 }
 
-function assertFrozenCandidate(
-  value: unknown,
-): asserts value is FrozenCandidate {
-  assertExactKeys(value, [
-    "commit",
-    "patchHash",
-    "changedFiles",
-    "mutationCategory",
-  ]);
+function assertFrozenCandidate(value: unknown): asserts value is FrozenCandidate {
+  assertExactKeys(value, ["commit", "patchHash", "changedFiles", "mutationCategory"]);
   const candidate = value as unknown as FrozenCandidate;
   if (
     !GIT_OBJECT_ID.test(candidate.commit) ||
@@ -615,19 +578,14 @@ function assertProposalBinding(
   assertExactKeys(result.seal.bundle, ["sha256", "byteLength"]);
   assertExactKeys(result.seal.diff, ["sha256", "byteLength"]);
   assertExactKeys(result.seal.state, ["sha256", "byteLength"]);
-  assertArtifact(
-    result.candidateBundle,
-    "application/vnd.git.bundle",
-  );
+  assertArtifact(result.candidateBundle, "application/vnd.git.bundle");
   assertArtifact(result.candidateDiff, "text/x-diff");
   assertArtifact(result.sessionState, "application/x-tar");
   assertArtifact(result.setupManifestArtifact, "application/json");
   assertArtifact(result.claudeManifestArtifact, "application/json");
   assertArtifact(result.sealManifestArtifact, "application/json");
 
-  const proposalHypothesisHash = canonicalHash(
-    result.proposal.hypothesis,
-  );
+  const proposalHypothesisHash = canonicalHash(result.proposal.hypothesis);
   const proposalCandidateHash = canonicalHash(result.proposal.candidate);
   const requestHypothesisHash = canonicalHash(hypothesis);
   const requestCandidateHash = canonicalHash(candidate);
@@ -638,9 +596,7 @@ function assertProposalBinding(
     result.setup.phase !== "proposal" ||
     result.setup.campaignId !== experiment.lineageId ||
     result.setup.experimentId !== id ||
-    !["private-github", "trusted-bundle"].includes(
-      result.setup.sourceMode,
-    ) ||
+    !["private-github", "trusted-bundle"].includes(result.setup.sourceMode) ||
     !SHA256.test(result.setup.registrationId) ||
     !SHA256.test(result.setup.originRepositoryHash) ||
     !GIT_OBJECT_ID.test(result.setup.sourceCommit) ||
@@ -709,8 +665,7 @@ function assertAccounting<Receipt>(
   const accounting = value as unknown as CorrectnessGateOperationAccounting;
   if (
     accounting.schemaVersion !== 1 ||
-    accounting.sensitivity !==
-      "release-safe-correctness-gate-accounting" ||
+    accounting.sensitivity !== "release-safe-correctness-gate-accounting" ||
     accounting.operation !== operation ||
     accounting.receiptHash !== canonicalHash(receipt) ||
     !Number.isFinite(accounting.aggregateCostUsd) ||
@@ -758,14 +713,9 @@ function expectedScanId(
 export function trustedCloudIntegrityScanAttestationHash(
   receipt:
     | TrustedCloudIntegrityScanReceipt
-    | Omit<
-        TrustedCloudIntegrityScanReceipt,
-        "scanAttestationHash" | "signature"
-      >,
+    | Omit<TrustedCloudIntegrityScanReceipt, "scanAttestationHash" | "signature">,
 ): string {
-  const record = receipt as unknown as Readonly<
-    Record<string, unknown>
-  >;
+  const record = receipt as unknown as Readonly<Record<string, unknown>>;
   const attested: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
     if (key !== "scanAttestationHash" && key !== "signature") {
@@ -776,12 +726,7 @@ export function trustedCloudIntegrityScanAttestationHash(
 }
 
 function assertSignature(value: unknown): void {
-  assertExactKeys(value, [
-    "algorithm",
-    "keyId",
-    "signedAt",
-    "signature",
-  ]);
+  assertExactKeys(value, ["algorithm", "keyId", "signedAt", "signature"]);
   const signature = value as unknown as {
     readonly algorithm: unknown;
     readonly keyId: unknown;
@@ -843,13 +788,10 @@ function assertIntegrityScanReceipt(
     "signature",
   ]);
   const receipt = value as unknown as TrustedCloudIntegrityScanReceipt;
-  const violationCodes = new Set<IntegrityViolationCode>(
-    INTEGRITY_VIOLATION_CODES,
-  );
+  const violationCodes = new Set<IntegrityViolationCode>(INTEGRITY_VIOLATION_CODES);
   if (
     receipt.schemaVersion !== 2 ||
-    receipt.sensitivity !==
-      "release-safe-candidate-integrity-scan" ||
+    receipt.sensitivity !== "release-safe-candidate-integrity-scan" ||
     receipt.scanId !==
       expectedScanId(
         binding,
@@ -865,15 +807,12 @@ function assertIntegrityScanReceipt(
     receipt.candidateCommit !== binding.result.seal.candidateCommit ||
     receipt.candidateTree !== binding.result.seal.candidateTree ||
     receipt.lockSha256 !== binding.result.seal.lockSha256 ||
-    receipt.hypothesisHash !==
-      binding.result.proposal.hypothesis.hash ||
-    receipt.hypothesisDocumentHash !==
-      binding.hypothesisDocumentHash ||
+    receipt.hypothesisHash !== binding.result.proposal.hypothesis.hash ||
+    receipt.hypothesisDocumentHash !== binding.hypothesisDocumentHash ||
     receipt.candidateDocumentHash !== binding.candidateDocumentHash ||
     receipt.diffSha256 !== binding.result.candidateDiff.sha256 ||
     receipt.changedFilesHash !== binding.changedFilesHash ||
-    receipt.candidateBundleSha256 !==
-      binding.result.candidateBundle.sha256 ||
+    receipt.candidateBundleSha256 !== binding.result.candidateBundle.sha256 ||
     !SHA256.test(receipt.evidenceManifestSha256) ||
     !SHA256.test(receipt.evidenceDiffSha256) ||
     !SHA256.test(receipt.observedChangedFilesHash) ||
@@ -887,31 +826,24 @@ function assertIntegrityScanReceipt(
     !Array.isArray(receipt.violationCodes) ||
     new Set(receipt.violationCodes).size !== receipt.violationCodes.length ||
     receipt.violationCodes.some((code) => !violationCodes.has(code)) ||
-    receipt.violationCodes.some(
-      (code, index) => {
-        const previous = receipt.violationCodes[index - 1];
-        return (
-          previous !== undefined && previous.localeCompare(code) >= 0
-        );
-      },
-    ) ||
+    receipt.violationCodes.some((code, index) => {
+      const previous = receipt.violationCodes[index - 1];
+      return previous !== undefined && previous.localeCompare(code) >= 0;
+    }) ||
     receipt.passed !== (receipt.violationCodes.length === 0) ||
     (receipt.passed &&
       (receipt.evidenceDiffSha256 !== receipt.diffSha256 ||
-        receipt.observedChangedFilesHash !==
-          receipt.changedFilesHash)) ||
+        receipt.observedChangedFilesHash !== receipt.changedFilesHash)) ||
     receipt.containsTaskIdentifiers !== false ||
     !isCanonicalTimestamp(receipt.scannedAt) ||
-    receipt.scanAttestationHash !==
-      trustedCloudIntegrityScanAttestationHash(receipt)
+    receipt.scanAttestationHash !== trustedCloudIntegrityScanAttestationHash(receipt)
   ) {
     throw new ProductionCorrectnessGateError("INTEGRITY_SCAN_FAILED");
   }
   assertSignature(receipt.signature);
   if (
     receipt.signature.keyId !== verifier.trustedKeyId ||
-    Date.parse(receipt.signature.signedAt) <
-      Date.parse(receipt.scannedAt) ||
+    Date.parse(receipt.signature.signedAt) < Date.parse(receipt.scannedAt) ||
     !verifyEd25519Signature(
       receipt as unknown as Readonly<Record<string, unknown>>,
       verifier.publicKey,
@@ -976,9 +908,7 @@ function assertBuildReceipt(
     Date.parse(receipt.signature.signedAt) < Date.parse(receipt.builtAt) ||
     receipt.passed !== true
   ) {
-    throw new ProductionCorrectnessGateError(
-      "CANDIDATE_BUILD_FAILED",
-    );
+    throw new ProductionCorrectnessGateError("CANDIDATE_BUILD_FAILED");
   }
 }
 
@@ -1021,10 +951,8 @@ function assertBuildRejectionReceipt(
   const receipt = value as unknown as TrustedCandidateBuildRejectionReceipt;
   if (
     receipt.schemaVersion !== 1 ||
-    receipt.sensitivity !==
-      "release-safe-candidate-build-rejection" ||
-    receipt.rejectionId !==
-      expectedBuildRejectionId(binding, experiment, buildPolicyHash) ||
+    receipt.sensitivity !== "release-safe-candidate-build-rejection" ||
+    receipt.rejectionId !== expectedBuildRejectionId(binding, experiment, buildPolicyHash) ||
     receipt.experimentId !== binding.experimentId ||
     receipt.protocolHash !== experiment.protocolHash ||
     receipt.candidateCommit !== binding.result.seal.candidateCommit ||
@@ -1036,9 +964,7 @@ function assertBuildRejectionReceipt(
     !isCanonicalTimestamp(receipt.rejectedAt) ||
     !SHA256.test(receipt.buildAttestationHash)
   ) {
-    throw new ProductionCorrectnessGateError(
-      "CANDIDATE_BUILD_FAILED",
-    );
+    throw new ProductionCorrectnessGateError("CANDIDATE_BUILD_FAILED");
   }
 }
 
@@ -1048,17 +974,8 @@ function assertBuildGateReceipt(
   experiment: ExperimentIdentity,
   buildPolicyHash: string,
 ): asserts value is TrustedCandidateBuildGateReceipt {
-  if (
-    isPlainRecord(value) &&
-    value["sensitivity"] ===
-      "release-safe-candidate-build-rejection"
-  ) {
-    assertBuildRejectionReceipt(
-      value,
-      binding,
-      experiment,
-      buildPolicyHash,
-    );
+  if (isPlainRecord(value) && value["sensitivity"] === "release-safe-candidate-build-rejection") {
+    assertBuildRejectionReceipt(value, binding, experiment, buildPolicyHash);
     return;
   }
   assertBuildReceipt(value, binding, buildPolicyHash);
@@ -1067,10 +984,7 @@ function assertBuildGateReceipt(
 function isBuildRejection(
   receipt: TrustedCandidateBuildGateReceipt,
 ): receipt is TrustedCandidateBuildRejectionReceipt {
-  return (
-    receipt.sensitivity ===
-    "release-safe-candidate-build-rejection"
-  );
+  return receipt.sensitivity === "release-safe-candidate-build-rejection";
 }
 
 function expectedPublicationRefs(experimentIdValue: string): {
@@ -1134,8 +1048,7 @@ function assertPublicationReceipt(
     !SAFE_ID.test(receipt.publicationId) ||
     !SHA256.test(receipt.authorizationHash) ||
     receipt.registrationId !== binding.result.setup.registrationId ||
-    receipt.originRepositoryHash !==
-      binding.result.setup.originRepositoryHash ||
+    receipt.originRepositoryHash !== binding.result.setup.originRepositoryHash ||
     !SHA256.test(receipt.upstreamRepositoryHash) ||
     !GIT_OBJECT_ID.test(receipt.upstreamHeadCommit) ||
     !GIT_OBJECT_ID.test(receipt.upstreamBaseCommit) ||
@@ -1160,19 +1073,15 @@ function assertPublicationReceipt(
     receipt.tagPeeledCommit !== binding.result.seal.candidateCommit ||
     receipt.publicationMode !== "atomic-non-force" ||
     !["published", "already-published"].includes(receipt.disposition) ||
-    receipt.candidateBundleSha256 !==
-      binding.result.candidateBundle.sha256 ||
+    receipt.candidateBundleSha256 !== binding.result.candidateBundle.sha256 ||
     !SHA256.test(receipt.workerSha256) ||
     !SHA256.test(receipt.executionReceiptHash) ||
     !SHA256.test(receipt.resultArtifactSha256) ||
     !isCanonicalTimestamp(receipt.publishedAt) ||
-    Date.parse(receipt.signature.signedAt) <
-      Date.parse(receipt.publishedAt) ||
+    Date.parse(receipt.signature.signedAt) < Date.parse(receipt.publishedAt) ||
     receipt.passed !== true
   ) {
-    throw new ProductionCorrectnessGateError(
-      "GIT_PUBLICATION_FAILED",
-    );
+    throw new ProductionCorrectnessGateError("GIT_PUBLICATION_FAILED");
   }
 }
 
@@ -1215,10 +1124,7 @@ function assertSnapshotReceipt(
   ]);
   const receipt = value as unknown as TrustedGitSourceSnapshotReceipt;
   assertArtifact(receipt.sourceArtifact, "application/x-tar");
-  assertArtifact(
-    receipt.sourceBundleArtifact,
-    "application/vnd.git.bundle",
-  );
+  assertArtifact(receipt.sourceBundleArtifact, "application/vnd.git.bundle");
   assertSignature(receipt.signature);
   if (
     receipt.sensitivity !== "trusted-git-source-snapshot" ||
@@ -1249,13 +1155,10 @@ function assertSnapshotReceipt(
     !SHA256.test(receipt.manifestArtifactSha256) ||
     !isCanonicalTimestamp(receipt.createdAt) ||
     Date.parse(receipt.createdAt) < Date.parse(publication.publishedAt) ||
-    Date.parse(receipt.signature.signedAt) <
-      Date.parse(receipt.createdAt) ||
+    Date.parse(receipt.signature.signedAt) < Date.parse(receipt.createdAt) ||
     receipt.passed !== true
   ) {
-    throw new ProductionCorrectnessGateError(
-      "SOURCE_SNAPSHOT_FAILED",
-    );
+    throw new ProductionCorrectnessGateError("SOURCE_SNAPSHOT_FAILED");
   }
 }
 
@@ -1291,14 +1194,12 @@ function assertIndexReceipt(
     candidateTree: snapshot.treeSha,
     lockSha256: snapshot.lockSha256,
     sourceArtifactSha256: snapshot.sourceArtifact.sha256,
-    sourceBundleArtifactSha256:
-      snapshot.sourceBundleArtifact.sha256,
+    sourceBundleArtifactSha256: snapshot.sourceBundleArtifact.sha256,
     snapshotReceiptHash: canonicalHash(snapshot),
   }).slice(0, 48)}`;
   if (
     receipt.schemaVersion !== 2 ||
-    receipt.sensitivity !==
-      "release-safe-candidate-source-index" ||
+    receipt.sensitivity !== "release-safe-candidate-source-index" ||
     receipt.indexId !== expectedIndexId ||
     receipt.experimentId !== binding.experimentId ||
     receipt.protocolHash !== experiment.protocolHash ||
@@ -1308,8 +1209,7 @@ function assertIndexReceipt(
     receipt.candidateTree !== snapshot.treeSha ||
     receipt.lockSha256 !== snapshot.lockSha256 ||
     receipt.sourceArtifactSha256 !== snapshot.sourceArtifact.sha256 ||
-    receipt.sourceBundleArtifactSha256 !==
-      snapshot.sourceBundleArtifact.sha256 ||
+    receipt.sourceBundleArtifactSha256 !== snapshot.sourceBundleArtifact.sha256 ||
     receipt.snapshotReceiptHash !== canonicalHash(snapshot) ||
     !isCanonicalTimestamp(receipt.indexedAt) ||
     Date.parse(receipt.indexedAt) < Date.parse(snapshot.createdAt) ||
@@ -1322,14 +1222,10 @@ function assertIndexReceipt(
 
 function sumAccounting(
   operations: readonly CorrectnessGateOperationAccounting[],
-): Pick<
-  GateResult,
-  "aggregateCostUsd" | "tokens" | "wallTimeMs"
-> {
+): Pick<GateResult, "aggregateCostUsd" | "tokens" | "wallTimeMs"> {
   return operations.reduce(
     (total, item) => ({
-      aggregateCostUsd:
-        total.aggregateCostUsd + item.aggregateCostUsd,
+      aggregateCostUsd: total.aggregateCostUsd + item.aggregateCostUsd,
       tokens: total.tokens + item.tokens,
       wallTimeMs: total.wallTimeMs + item.wallTimeMs,
     }),
@@ -1345,10 +1241,7 @@ function checksHash(input: {
   readonly publication: AccountedCorrectnessGateReceipt<TrustedGitPublicationReceipt> | null;
   readonly snapshot: AccountedCorrectnessGateReceipt<TrustedGitSourceSnapshotReceipt> | null;
   readonly index: AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt> | null;
-  readonly accounting: Pick<
-    GateResult,
-    "aggregateCostUsd" | "tokens" | "wallTimeMs"
-  >;
+  readonly accounting: Pick<GateResult, "aggregateCostUsd" | "tokens" | "wallTimeMs">;
 }): string {
   return canonicalHash({
     schemaVersion: 1,
@@ -1361,40 +1254,27 @@ function checksHash(input: {
     candidateCommit: input.binding.result.seal.candidateCommit,
     candidateTree: input.binding.result.seal.candidateTree,
     lockSha256: input.binding.result.seal.lockSha256,
-    hypothesisHash:
-      input.binding.result.proposal.hypothesis.hash,
+    hypothesisHash: input.binding.result.proposal.hypothesis.hash,
     hypothesisDocumentHash: input.binding.hypothesisDocumentHash,
     candidateDocumentHash: input.binding.candidateDocumentHash,
     changedFilesHash: input.binding.changedFilesHash,
-    candidateBundleSha256:
-      input.binding.result.candidateBundle.sha256,
+    candidateBundleSha256: input.binding.result.candidateBundle.sha256,
     candidateDiffSha256: input.binding.result.candidateDiff.sha256,
     integrityScanReceiptHash: canonicalHash(input.scan.receipt),
     integrityScanAccountingHash: canonicalHash(input.scan.accounting),
-    candidateBuildReceiptHash:
-      input.build === null ? null : canonicalHash(input.build.receipt),
+    candidateBuildReceiptHash: input.build === null ? null : canonicalHash(input.build.receipt),
     candidateBuildAccountingHash:
       input.build === null ? null : canonicalHash(input.build.accounting),
     gitPublicationReceiptHash:
-      input.publication === null
-        ? null
-        : canonicalHash(input.publication.receipt),
+      input.publication === null ? null : canonicalHash(input.publication.receipt),
     gitPublicationAccountingHash:
-      input.publication === null
-        ? null
-        : canonicalHash(input.publication.accounting),
+      input.publication === null ? null : canonicalHash(input.publication.accounting),
     sourceSnapshotReceiptHash:
-      input.snapshot === null
-        ? null
-        : canonicalHash(input.snapshot.receipt),
+      input.snapshot === null ? null : canonicalHash(input.snapshot.receipt),
     sourceSnapshotAccountingHash:
-      input.snapshot === null
-        ? null
-        : canonicalHash(input.snapshot.accounting),
-    sourceIndexReceiptHash:
-      input.index === null ? null : canonicalHash(input.index.receipt),
-    sourceIndexAccountingHash:
-      input.index === null ? null : canonicalHash(input.index.accounting),
+      input.snapshot === null ? null : canonicalHash(input.snapshot.accounting),
+    sourceIndexReceiptHash: input.index === null ? null : canonicalHash(input.index.receipt),
+    sourceIndexAccountingHash: input.index === null ? null : canonicalHash(input.index.accounting),
     aggregateCostUsd: input.accounting.aggregateCostUsd,
     tokens: input.accounting.tokens,
     wallTimeMs: input.accounting.wallTimeMs,
@@ -1413,9 +1293,7 @@ function resultForRecord(input: {
   const operations = [
     input.scan.accounting,
     ...(input.build === null ? [] : [input.build.accounting]),
-    ...(input.publication === null
-      ? []
-      : [input.publication.accounting]),
+    ...(input.publication === null ? [] : [input.publication.accounting]),
     ...(input.snapshot === null ? [] : [input.snapshot.accounting]),
     ...(input.index === null ? [] : [input.index.accounting]),
   ];
@@ -1438,10 +1316,7 @@ function resultForRecord(input: {
   };
 }
 
-function assertGateResult(
-  value: unknown,
-  expected: GateResult,
-): asserts value is GateResult {
+function assertGateResult(value: unknown, expected: GateResult): asserts value is GateResult {
   assertExactKeys(value, [
     "passed",
     "integrityPassed",
@@ -1566,12 +1441,7 @@ function assertRecord(
       record.candidateBuild,
       "candidate-build",
       (receipt): asserts receipt is TrustedCandidateBuildGateReceipt =>
-        assertBuildGateReceipt(
-          receipt,
-          input.binding,
-          input.experiment,
-          input.buildPolicyHash,
-        ),
+        assertBuildGateReceipt(receipt, input.binding, input.experiment, input.buildPolicyHash),
     );
     if (isBuildRejection(record.candidateBuild.receipt)) {
       if (
@@ -1579,9 +1449,7 @@ function assertRecord(
         record.sourceSnapshot !== null ||
         record.sourceIndex !== null
       ) {
-        throw new ProductionCorrectnessGateError(
-          "GATE_RECORD_INVALID",
-        );
+        throw new ProductionCorrectnessGateError("GATE_RECORD_INVALID");
       }
       assertGateResult(
         record.result,
@@ -1617,23 +1485,14 @@ function assertRecord(
       snapshot,
       "source-snapshot",
       (receipt): asserts receipt is TrustedGitSourceSnapshotReceipt =>
-        assertSnapshotReceipt(
-          receipt,
-          input.binding,
-          typedPublication.receipt,
-        ),
+        assertSnapshotReceipt(receipt, input.binding, typedPublication.receipt),
     );
     const typedSnapshot = snapshot;
     assertAccountedReceipt(
       record.sourceIndex,
       "source-index",
       (receipt): asserts receipt is TrustedCandidateSourceIndexReceipt =>
-        assertIndexReceipt(
-          receipt,
-          input.binding,
-          input.experiment,
-          typedSnapshot.receipt,
-        ),
+        assertIndexReceipt(receipt, input.binding, input.experiment, typedSnapshot.receipt),
     );
   }
   assertGateResult(
@@ -1668,9 +1527,7 @@ async function persistAndReadBack(
   }
 }
 
-export class ProductionCorrectnessGateRunner
-  implements CorrectnessGateRunner
-{
+export class ProductionCorrectnessGateRunner implements CorrectnessGateRunner {
   readonly #options: ProductionCorrectnessGateOptions;
 
   constructor(options: ProductionCorrectnessGateOptions) {
@@ -1682,17 +1539,13 @@ export class ProductionCorrectnessGateRunner
       options.snapshotter.boundary !== "trusted-cloud" ||
       options.sourceIndex.boundary !== "trusted-cloud" ||
       options.sourceIndex.durability !== "linearizable" ||
-      !SAFE_ID.test(
-        options.integrityReceiptVerifier.trustedKeyId,
-      ) ||
+      !SAFE_ID.test(options.integrityReceiptVerifier.trustedKeyId) ||
       !SHA256.test(options.integrityPolicyHash) ||
       !SHA256.test(options.integrityWorkerSha256) ||
       !SHA256.test(options.fragmentCatalogHash) ||
       !SHA256.test(options.buildPolicyHash)
     ) {
-      throw new ProductionCorrectnessGateError(
-        "INVALID_CONFIGURATION",
-      );
+      throw new ProductionCorrectnessGateError("INVALID_CONFIGURATION");
     }
     this.#options = options;
   }
@@ -1730,11 +1583,9 @@ export class ProductionCorrectnessGateRunner
       experiment,
       binding,
       integrityPolicyHash: this.#options.integrityPolicyHash,
-      integrityWorkerSha256:
-        this.#options.integrityWorkerSha256,
+      integrityWorkerSha256: this.#options.integrityWorkerSha256,
       fragmentCatalogHash: this.#options.fragmentCatalogHash,
-      integrityReceiptVerifier:
-        this.#options.integrityReceiptVerifier,
+      integrityReceiptVerifier: this.#options.integrityReceiptVerifier,
       buildPolicyHash: this.#options.buildPolicyHash,
     };
     let existing: CorrectnessGateRecord | null;
@@ -1747,15 +1598,11 @@ export class ProductionCorrectnessGateRunner
       try {
         assertRecord(existing, validationInput);
       } catch {
-        throw new ProductionCorrectnessGateError(
-          "GATE_RECORD_INVALID",
-        );
+        throw new ProductionCorrectnessGateError("GATE_RECORD_INVALID");
       }
       if (existing.sourceSnapshot !== null) {
         if (existing.gitPublication === null) {
-          throw new ProductionCorrectnessGateError(
-            "GATE_RECORD_INVALID",
-          );
+          throw new ProductionCorrectnessGateError("GATE_RECORD_INVALID");
         }
         await this.#resolveIndexedSnapshot(
           existing.sourceSnapshot.receipt,
@@ -1806,9 +1653,7 @@ export class ProductionCorrectnessGateRunner
       ) {
         throw error;
       }
-      throw new ProductionCorrectnessGateError(
-        "INTEGRITY_SCAN_FAILED",
-      );
+      throw new ProductionCorrectnessGateError("INTEGRITY_SCAN_FAILED");
     }
     if (!scan.receipt.passed) {
       const record = createRecord({
@@ -1820,13 +1665,7 @@ export class ProductionCorrectnessGateRunner
         snapshot: null,
         index: null,
       });
-      return (
-        await persistAndReadBack(
-          this.#options.records,
-          record,
-          validationInput,
-        )
-      ).result;
+      return (await persistAndReadBack(this.#options.records, record, validationInput)).result;
     }
 
     let build: AccountedCorrectnessGateReceipt<TrustedCandidateBuildGateReceipt>;
@@ -1851,17 +1690,10 @@ export class ProductionCorrectnessGateRunner
         build,
         "candidate-build",
         (receipt): asserts receipt is TrustedCandidateBuildGateReceipt =>
-          assertBuildGateReceipt(
-            receipt,
-            binding,
-            experiment,
-            this.#options.buildPolicyHash,
-          ),
+          assertBuildGateReceipt(receipt, binding, experiment, this.#options.buildPolicyHash),
       );
     } catch {
-      throw new ProductionCorrectnessGateError(
-        "CANDIDATE_BUILD_FAILED",
-      );
+      throw new ProductionCorrectnessGateError("CANDIDATE_BUILD_FAILED");
     }
     if (isBuildRejection(build.receipt)) {
       const record = createRecord({
@@ -1873,13 +1705,7 @@ export class ProductionCorrectnessGateRunner
         snapshot: null,
         index: null,
       });
-      return (
-        await persistAndReadBack(
-          this.#options.records,
-          record,
-          validationInput,
-        )
-      ).result;
+      return (await persistAndReadBack(this.#options.records, record, validationInput)).result;
     }
 
     let publication: AccountedCorrectnessGateReceipt<TrustedGitPublicationReceipt>;
@@ -1907,9 +1733,7 @@ export class ProductionCorrectnessGateRunner
           assertPublicationReceipt(receipt, binding),
       );
     } catch {
-      throw new ProductionCorrectnessGateError(
-        "GIT_PUBLICATION_FAILED",
-      );
+      throw new ProductionCorrectnessGateError("GIT_PUBLICATION_FAILED");
     }
 
     let snapshot: AccountedCorrectnessGateReceipt<TrustedGitSourceSnapshotReceipt>;
@@ -1925,16 +1749,10 @@ export class ProductionCorrectnessGateRunner
         snapshot,
         "source-snapshot",
         (receipt): asserts receipt is TrustedGitSourceSnapshotReceipt =>
-          assertSnapshotReceipt(
-            receipt,
-            binding,
-            publication.receipt,
-          ),
+          assertSnapshotReceipt(receipt, binding, publication.receipt),
       );
     } catch {
-      throw new ProductionCorrectnessGateError(
-        "SOURCE_SNAPSHOT_FAILED",
-      );
+      throw new ProductionCorrectnessGateError("SOURCE_SNAPSHOT_FAILED");
     }
 
     let index: AccountedCorrectnessGateReceipt<TrustedCandidateSourceIndexReceipt>;
@@ -1950,18 +1768,9 @@ export class ProductionCorrectnessGateRunner
         index,
         "source-index",
         (receipt): asserts receipt is TrustedCandidateSourceIndexReceipt =>
-          assertIndexReceipt(
-            receipt,
-            binding,
-            experiment,
-            snapshot.receipt,
-          ),
+          assertIndexReceipt(receipt, binding, experiment, snapshot.receipt),
       );
-      await this.#resolveIndexedSnapshot(
-        snapshot.receipt,
-        binding,
-        publication.receipt,
-      );
+      await this.#resolveIndexedSnapshot(snapshot.receipt, binding, publication.receipt);
     } catch {
       throw new ProductionCorrectnessGateError("SOURCE_INDEX_FAILED");
     }
@@ -1975,13 +1784,7 @@ export class ProductionCorrectnessGateRunner
       snapshot,
       index,
     });
-    return (
-      await persistAndReadBack(
-        this.#options.records,
-        record,
-        validationInput,
-      )
-    ).result;
+    return (await persistAndReadBack(this.#options.records, record, validationInput)).result;
   }
 
   async #resolveIndexedSnapshot(
@@ -1994,15 +1797,11 @@ export class ProductionCorrectnessGateRunner
         binding.result.seal.candidateCommit,
       );
       if (resolved === undefined) {
-        throw new ProductionCorrectnessGateError(
-          "SOURCE_INDEX_FAILED",
-        );
+        throw new ProductionCorrectnessGateError("SOURCE_INDEX_FAILED");
       }
       assertSnapshotReceipt(resolved, binding, publication);
       if (canonicalHash(resolved) !== canonicalHash(expected)) {
-        throw new ProductionCorrectnessGateError(
-          "SOURCE_INDEX_FAILED",
-        );
+        throw new ProductionCorrectnessGateError("SOURCE_INDEX_FAILED");
       }
       return resolved;
     } catch {
