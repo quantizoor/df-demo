@@ -1,0 +1,197 @@
+name: protected-paid-optimize
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character main-branch controller commit
+        required: true
+        type: string
+      campaign_id:
+        description: Existing or new campaign identifier
+        required: true
+        type: string
+      confirmation:
+        description: Type OPTIMIZE:<campaign_id>
+        required: true
+        type: string
+      paid_authorization:
+        description: Type RUN:<campaign_id>:<control sha256 digest>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dark-factory-paid-${{ inputs.campaign_id }}
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.confirmation == format('OPTIMIZE:{0}', inputs.campaign_id)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    environment: dark-factory-paid
+    env:
+      CI: "true"
+      RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      DF_CLOUD_EXECUTION: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_WORKFLOW_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+      DF_WORKFLOW_PAID_AUTHORIZATION: ${{ inputs.paid_authorization }}
+      DF_CLOUD_PROVIDER: "daytona"
+      DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
+      DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
+      DF_CLOUD_REGION_CLASS: ${{ vars.DF_CLOUD_REGION_CLASS }}
+      DF_TRUSTED_CONTROL_PLANE: "1"
+      DF_TRUSTED_VOLUME_ROOT: "/trusted/bootstrap"
+      DF_CONTROL_IMAGE_REFERENCE: ${{ vars.DF_CONTROL_IMAGE_REFERENCE }}
+      DF_CONTROL_IMAGE_DIGEST: ${{ vars.DF_CONTROL_IMAGE_DIGEST }}
+      DF_OPTIMIZER_IMAGE_REFERENCE: ${{ vars.DF_OPTIMIZER_IMAGE_REFERENCE }}
+      DF_OPTIMIZER_IMAGE_DIGEST: ${{ vars.DF_OPTIMIZER_IMAGE_DIGEST }}
+      DF_BUILD_IMAGE_REFERENCE: ${{ vars.DF_BUILD_IMAGE_REFERENCE }}
+      DF_BUILD_IMAGE_DIGEST: ${{ vars.DF_BUILD_IMAGE_DIGEST }}
+      DF_EVALUATOR_IMAGE_REFERENCE: ${{ vars.DF_EVALUATOR_IMAGE_REFERENCE }}
+      DF_EVALUATOR_IMAGE_DIGEST: ${{ vars.DF_EVALUATOR_IMAGE_DIGEST }}
+      DF_OPTIMIZER_MODEL: ${{ vars.DF_OPTIMIZER_MODEL }}
+      DF_OPTIMIZER_EFFORT: ${{ vars.DF_OPTIMIZER_EFFORT }}
+      DF_CLAUDE_CODE_VERSION: ${{ vars.DF_CLAUDE_CODE_VERSION }}
+      DF_OPTIMIZER_SECRET_SOURCE: ${{ vars.DF_OPTIMIZER_SECRET_SOURCE }}
+      DF_OPTIMIZER_SECRET_TARGET: ${{ vars.DF_OPTIMIZER_SECRET_TARGET }}
+      DF_EVALUATED_PROVIDER: ${{ vars.DF_EVALUATED_PROVIDER }}
+      DF_EVALUATED_MODEL: ${{ vars.DF_EVALUATED_MODEL }}
+      DF_EVALUATED_REASONING: ${{ vars.DF_EVALUATED_REASONING }}
+      DF_EVALUATED_SECRET_BINDINGS_JSON: ${{ vars.DF_EVALUATED_SECRET_BINDINGS_JSON }}
+      DF_GITHUB_SECRET_SOURCE: ${{ vars.DF_GITHUB_SECRET_SOURCE }}
+      DF_PI_GITHUB_OWNER: ${{ vars.DF_PI_GITHUB_OWNER }}
+      DF_PI_GITHUB_REPOSITORY: ${{ vars.DF_PI_GITHUB_REPOSITORY }}
+      DF_PI_BRANCH: ${{ vars.DF_PI_BRANCH }}
+      DF_PI_BASELINE_COMMIT: ${{ vars.DF_PI_BASELINE_COMMIT }}
+      DF_PI_BASELINE_TREE: ${{ vars.DF_PI_BASELINE_TREE }}
+      DF_PI_PACKAGE_LOCK_SHA256: ${{ vars.DF_PI_PACKAGE_LOCK_SHA256 }}
+      DF_PI_CODING_AGENT_VERSION: ${{ vars.DF_PI_CODING_AGENT_VERSION }}
+      DF_HARBOR_SECRET_BINDINGS_JSON: ${{ vars.DF_HARBOR_SECRET_BINDINGS_JSON }}
+      DF_MODE: ${{ vars.DF_MODE }}
+      DF_LEADERBOARD_ELIGIBILITY: ${{ vars.DF_LEADERBOARD_ELIGIBILITY }}
+      DF_TRUSTED_ZONE: ${{ vars.DF_TRUSTED_ZONE }}
+      DF_SIGNING_KEY_ID: ${{ vars.DF_SIGNING_KEY_ID }}
+      DF_HARBOR_VERSION: ${{ vars.DF_HARBOR_VERSION }}
+      DF_TBENCH_REGISTRY_REVISION: ${{ vars.DF_TBENCH_REGISTRY_REVISION }}
+      DF_TBENCH_DATASET_CONTENT_SHA256: ${{ vars.DF_TBENCH_DATASET_CONTENT_SHA256 }}
+      DF_TBENCH_DATASET_MANIFEST_SHA256: ${{ vars.DF_TBENCH_DATASET_MANIFEST_SHA256 }}
+      DF_HARBOR_PACKAGE_SHA256: ${{ vars.DF_HARBOR_PACKAGE_SHA256 }}
+      DF_HARBOR_EXECUTABLE_SHA256: ${{ vars.DF_HARBOR_EXECUTABLE_SHA256 }}
+      DF_PI_HARBOR_ADAPTER_SHA256: ${{ vars.DF_PI_HARBOR_ADAPTER_SHA256 }}
+      DF_BUDGET_USD: ${{ vars.DF_BUDGET_USD }}
+      DF_BUDGET_TOKENS: ${{ vars.DF_BUDGET_TOKENS }}
+      DF_BUDGET_WALL_TIME_MINUTES: ${{ vars.DF_BUDGET_WALL_TIME_MINUTES }}
+      DF_BUDGET_ATTEMPTS: ${{ vars.DF_BUDGET_ATTEMPTS }}
+      DF_BUDGET_PRIVACY_RELEASES: ${{ vars.DF_BUDGET_PRIVACY_RELEASES }}
+      DF_BUDGET_PROMOTION_LOOKS: ${{ vars.DF_BUDGET_PROMOTION_LOOKS }}
+      DF_DAYTONA_VOLUME_ID: ${{ vars.DF_DAYTONA_VOLUME_ID }}
+      DF_DAYTONA_VOLUME_SUBPATH: ${{ vars.DF_DAYTONA_VOLUME_SUBPATH }}
+      DF_CONTROL_DAYTONA_SECRET_SOURCE: ${{ vars.DF_CONTROL_DAYTONA_SECRET_SOURCE }}
+      DF_CONTROL_SECRET_BINDINGS_JSON: ${{ vars.DF_CONTROL_SECRET_BINDINGS_JSON }}
+      DF_CONTROL_TTL_MINUTES: ${{ vars.DF_CONTROL_TTL_MINUTES }}
+      DF_CONTROL_NETWORK_ALLOW_DOMAINS: ${{ vars.DF_CONTROL_NETWORK_ALLOW_DOMAINS }}
+      DF_CONTROL_CPU: ${{ vars.DF_CONTROL_CPU }}
+      DF_CONTROL_MEMORY_GIB: ${{ vars.DF_CONTROL_MEMORY_GIB }}
+      DF_CONTROL_DISK_GIB: ${{ vars.DF_CONTROL_DISK_GIB }}
+    steps:
+      - name: Verify protected cloud invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          [[ "$DF_REQUESTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$DF_REQUESTED_SOURCE_COMMIT" = "$GITHUB_SHA"
+          [[ "$DF_WORKFLOW_CAMPAIGN_ID" =~ ^[a-z0-9]([a-z0-9._-]{0,94}[a-z0-9])?$ ]]
+          [[ "$DF_CONTROL_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$DF_CONTROL_TTL_MINUTES" =~ ^[0-9]+$ ]]
+          test "$DF_CONTROL_TTL_MINUTES" -ge 5
+          test "$DF_CONTROL_TTL_MINUTES" -le 300
+          test "$DF_WORKFLOW_PAID_AUTHORIZATION" = \
+            "RUN:$DF_WORKFLOW_CAMPAIGN_ID:$DF_CONTROL_IMAGE_DIGEST"
+
+      - name: Checkout exact protected source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Require immutable source and reviewed lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DF_REQUESTED_SOURCE_COMMIT"
+          test -s pnpm-lock.yaml
+          test "$(git status --porcelain=v1 --untracked-files=no)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Build the exact controller revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          test "$(pnpm --version)" = "11.9.0"
+          pnpm install --frozen-lockfile
+          pnpm check
+          pnpm build
+
+      - name: Verify the live provider and mounted control boundary
+        shell: bash
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DAYTONA_API_KEY"
+          node dist/cloud/control-bootstrap-cli.js \
+            probe "$DF_WORKFLOW_CAMPAIGN_ID" \
+            > control-bootstrap-probe-receipt.json
+          test -s control-bootstrap-probe-receipt.json
+
+      - name: Verify the synthetic walk-forward campaign
+        shell: bash
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DAYTONA_API_KEY"
+          node dist/cloud/control-bootstrap-cli.js \
+            synthetic "$DF_WORKFLOW_CAMPAIGN_ID" \
+            > control-bootstrap-synthetic-receipt.json
+          test -s control-bootstrap-synthetic-receipt.json
+
+      - name: Launch paid optimization in the trusted cloud control plane
+        shell: bash
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          DF_PAID_RUN_AUTHORIZATION: ${{ inputs.paid_authorization }}
+        run: |
+          set -euo pipefail
+          test -n "$DAYTONA_API_KEY"
+          node dist/cloud/control-bootstrap-cli.js \
+            optimize "$DF_WORKFLOW_CAMPAIGN_ID" \
+            > control-bootstrap-receipt.json
+          test -s control-bootstrap-receipt.json
+
+      - name: Upload release-safe bootstrap receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: control-bootstrap-${{ inputs.campaign_id }}-${{ inputs.source_commit }}
+          path: |
+            control-bootstrap-probe-receipt.json
+            control-bootstrap-synthetic-receipt.json
+            control-bootstrap-receipt.json
+          if-no-files-found: error
+          retention-days: 30

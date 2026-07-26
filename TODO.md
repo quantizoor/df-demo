@@ -29,39 +29,64 @@ Reference: [PLAN §1](./PLAN.md#1-purpose-and-success-criteria),
 Reference: [PLAN §2.2](./PLAN.md#22-dark-factory-stack) and
 [§12](./PLAN.md#12-testing-strategy).
 
-- [ ] Initialize pnpm and commit the lockfile.
-- [ ] Configure strict TypeScript ESM.
-- [ ] Configure Vitest and coverage.
-- [ ] Configure Biome.
-- [ ] Add Pino, Commander, TypeBox, and Ajv.
-- [ ] Define package/module boundaries.
-- [ ] Add typecheck, lint, format-check, test, coverage, and CI scripts.
+- [ ] Generate the first pnpm lock with the implemented commit-bound cloud
+  review-artifact workflow, review it, and commit it through a normal PR.
+- [x] Configure strict TypeScript ESM.
+- [x] Configure Vitest and coverage.
+- [x] Configure Biome.
+- [x] Add Pino, Commander, TypeBox, and Ajv.
+- [x] Define package/module boundaries.
+- [x] Add typecheck, lint, format-check, test, coverage, and cloud CI scripts.
+- [x] Pin external cloud-CI actions to immutable commits and make checkout
+  credentials non-persistent.
 - [ ] Test a minimal CLI and schema-validation path.
 - [ ] Acceptance: clean install plus all quality commands pass in cloud CI;
   implementation does not require running builds or tests on the Mac.
 
-## DF-020 — Pi fork and Git workflow
+## DF-020 — Existing private Pi fork and Git workflow
 
 Reference: [PLAN §2.1](./PLAN.md#21-harness-under-optimization) and
 [§4](./PLAN.md#4-repository-and-git-design).
 
-- [ ] Reauthenticate `gh` for `quantizoor`.
-- [ ] Fork `badlogic/pi-mono` to `quantizoor/pi-mono`.
-- [ ] Register fork and upstream remotes.
-- [ ] Pin the initial upstream commit and lock hash.
-- [ ] Implement clean clone and candidate worktree management.
+- [x] Confirm the operator-provided Pi repository exists at `../pi`.
+- [x] Confirm it is a clean Git worktree on `main`, tracking `origin`.
+- [x] Record the planning-time commit
+  `5bc1c2c0a6f07e00e8c240304182f213ab8d311f`.
+- [x] Bind the observed Pi tree, package-lock SHA-256, package name/version,
+  branch, and private GitHub repository identity into a separate fail-closed
+  cloud source configuration. Independent remote verification is still
+  pending.
+- [ ] Implement `df harness register ../pi` and `df harness doctor`.
+- [ ] Verify through the remote provider that `origin` is private and supports
+  authenticated fetch/push without logging its URL or credentials.
+- [ ] Verify the official `earendil-works/pi` upstream and merge base in an
+  isolated cloud clone without adding or fetching a local `upstream` remote.
+- [ ] Record sanitized origin/upstream fingerprints.
+- [ ] Pin the reviewed fork commit, upstream base commit, and
+  repository-native lock hash during baseline initialization.
+- [ ] Preserve Pi's native npm/package-lock workflow independently of the pnpm
+  Dark Factory control plane.
+- [ ] Implement candidate worktrees without editing, resetting, or cleaning
+  the canonical `../pi/main` worktree.
 - [ ] Implement experiment branches and champion tags.
 - [ ] Ensure Claude receives no GitHub credentials.
 - [ ] Implement pending publication and retry.
-- [ ] Test restore, offline sealing, and non-force publication.
+- [ ] Fail closed on dirty, detached, unexpected, or unpublished canonical
+  repository state.
+- [ ] Test restore, offline sealing, private-origin publication, upstream
+  refresh, and non-force publication.
 - [ ] Acceptance: any candidate and champion can be reconstructed from recorded
-  Git identifiers without mutating another experiment.
+  Git identifiers without creating a second fork or mutating `../pi/main`,
+  another experiment, or unpublished operator work.
 
 ## DF-030 — JSON schemas and evidence store
 
 Reference: [PLAN §6](./PLAN.md#6-evidence-store-and-schemas).
 
 - [ ] Define schemas for all experiment root files.
+- [ ] Include canonical harness registration, sanitized remote fingerprints,
+  commit provenance, and private-origin verification without storing remote
+  credentials or credential-bearing URLs.
 - [ ] Define strict `NormalizedGraderOutcome`, aggregate
   `behavioral-evidence.json`, `failure-cards.json`, and
   `diagnostic-brief.json` schemas.
@@ -74,7 +99,12 @@ Reference: [PLAN §6](./PLAN.md#6-evidence-store-and-schemas).
 - [ ] Implement canonical JSON and SHA-256.
 - [ ] Implement schema versioning and migrations.
 - [ ] Implement append-only amendments.
-- [ ] Implement atomic write helpers and file locks.
+- [x] Implement cloud-only canonical atomic state envelopes and non-expiring,
+  provider-destruction-attested controller locks for the one-use ledger,
+  hidden catalog CAS, and optimizer session records.
+- [ ] Run the mounted-volume semantics canary and crash/recovery suite against
+  the exact production volume class; use a managed transactional store if
+  atomic rename and durable synchronization cannot be attested.
 - [ ] Implement artifact checksum verification.
 - [ ] Implement disposable SQLite index and rebuild.
 - [ ] Add positive, negative, property, and corruption fixtures.
@@ -120,6 +150,14 @@ Reference: [PLAN §2.2](./PLAN.md#22-dark-factory-stack),
 - [ ] Pin Harbor and record its version.
 - [ ] Define the evaluator request/result protocol.
 - [ ] Implement Harbor process/remote invocation behind an interface.
+- [x] Seal every completed Harbor output directory in the evaluator sandbox
+  as a deterministic, bounded regular-file tar before provider download. Bind
+  its canonical manifest to request/job/pin/config/invocation/execution
+  identity and reject links, special files, traversal, nested archives,
+  malformed Harbor result/ATIF locations, and incomplete trial sets.
+- [ ] Run the Harbor output packager determinism, malformed-layout, symlink,
+  byte/file ceiling, and provider-download contract tests in approved cloud
+  CI; these tests are implemented but intentionally not executed on the Mac.
 - [ ] Implement ATIF parsing and validation only inside the trusted evaluator.
 - [ ] Normalize every grader adapter into `NormalizedGraderOutcome` before
   behavioral extraction.
@@ -137,18 +175,54 @@ Reference: [PLAN §2.2](./PLAN.md#22-dark-factory-stack),
 Reference: [PLAN §2.3](./PLAN.md#23-sandbox-policy) and
 [§10](./PLAN.md#10-cli-and-public-interfaces).
 
-- [ ] Define the common provider contract.
-- [ ] Implement provider capability probes.
-- [ ] Implement Daytona support.
+- [x] Define the common provider contract.
+- [x] Implement provider capability probes.
+- [x] Implement Daytona support, including the exact `@daytona/sdk` pin,
+  immutable-image provisioning, trusted streaming artifact boundary, opaque
+  organization-secret names, POSIX argv encoding, TTL/network/resource
+  attestation, sampled resource receipts, and force-stop quarantine.
 - [ ] Implement E2B support.
 - [ ] Implement Modal support.
-- [ ] Prohibit and test the absence of a local execution backend.
+- [x] Prohibit and test the absence of a local execution backend.
 - [ ] Run synthetic fixtures, candidate tests, and provider contracts in cloud
   sandboxes.
-- [ ] Enforce provider parity within candidate/champion pairs.
-- [ ] Record images, region class, resources, network, and costs.
-- [ ] Implement cancellation, timeout, cleanup, and quarantine.
+- [x] Enforce provider parity within candidate/champion pairs.
+- [x] Record immutable images, region class, resources, and network policy in
+  provider leases and execution receipts. Cost attribution remains part of
+  campaign composition.
+- [x] Implement cancellation, timeout, cleanup, and quarantine. Callers that
+  need concurrent cancellation must preseal `command.executionId`.
 - [ ] Run the shared provider contract suite.
+- [ ] Generate and commit the dependency lockfile in approved cloud CI; local
+  dependency installation remains forbidden.
+- [x] Add protected, confirmation-bound workflows for cloud quality, first
+  lockfile review, role-image publication, and paid control bootstrap.
+- [x] Add role-specific default-deny OCI builds for the control, optimizer,
+  candidate-build, and evaluator zones. Exact base digests, Claude Code
+  version, and Harbor version remain operator inputs.
+- [ ] Run the four role-image builds in protected cloud CI, inspect their SBOM
+  and provenance attestations, and record their immutable digest receipts.
+- [ ] Configure and approve the `dark-factory-paid` GitHub environment before
+  its first commit/campaign/control-digest-bound dispatch.
+- [ ] Bind a durable trusted-cloud artifact backend to the verifying bridge.
+- [ ] Bind the trusted-runtime guard to provider/deployment attestation; the
+  baseline environment-marker guard is fail-closed when markers are absent but
+  is not cryptographic proof against a process allowed to forge its own
+  environment.
+- [ ] Configure Daytona organization Secrets and their host allowlists without
+  exposing their values to the workstation or sandbox.
+- [ ] Implement and cloud-verify a GitHub-hosted-only Daytona controller bootstrap that binds an
+  immutable control image, one campaign volume subpath, organization-secret
+  names, exact runtime markers, bounded network/resources/TTL, paid-run
+  authorization, and confirmed teardown. Cloud execution is still pending.
+- [ ] Cloud-verify the implemented trusted-controller `probe` and `synthetic` entrypoints with a
+  mounted-volume integrity round trip and a disposable live provider probe.
+  Production `optimize`, status, stop, and resume remain locked until their
+  signed composition is complete.
+- [ ] Confirm the pinned Terminal-Bench image includes a working DIND runtime
+  and run the live Daytona profile/architecture/network/TTL attestation suite.
+- [ ] Keep Daytona GPU jobs unschedulable until returned metadata or an
+  independent attestor can verify the exact GPU type.
 - [ ] Acceptance: the scheduler can select a compatible provider or explain why
   a task is unschedulable without changing benchmark requirements.
 
@@ -161,14 +235,33 @@ Reference: [PLAN §3.3](./PLAN.md#33-evaluator-and-task-broker-zone) and
 - [ ] Keep raw benchmark jobs in the trusted zone.
 - [ ] Implement minimal signed result envelopes.
 - [ ] Implement strict deterministic `NormalizedGraderOutcome` extraction and
-  reject all non-allowlisted grader fields.
+  reject all non-allowlisted grader fields. The schema-backed source and
+  synthetic tests are present; cloud verification is pending.
 - [ ] Implement deterministic, versioned behavioral extraction inside the
-  trusted cloud zone.
+  trusted cloud zone. The deterministic reduction path and authenticated
+  decrypt/decode composition are present; the provider-specific Harbor/ATIF
+  decoder and cloud verification remain.
+- [x] Add a strict raw-artifact reader boundary that verifies encrypted byte
+  length and SHA-256, manifest-bound decryption AAD, cloud decryption
+  attestations, all-three-input decoder acknowledgement, and buffer
+  zeroization, with no filesystem fallback.
+- [x] Add a hash-bound canonical policy resolver covering cache evidence,
+  promotion guardrails, release-scanner registries, online error budget, and
+  privacy-qualified behavioral release lineage.
+- [x] Add cloud-key-provider-backed Ed25519 signing and verification for
+  broker-private hidden-catalog outcome updates.
+- [x] Add a production-only trusted evaluator composition factory connecting
+  `TerminalBenchCloudRunner` through deterministic derivation, mandatory raw
+  destruction, and signed broker release while rejecting test-only ports.
+- [ ] Bind the raw reader, decryption, Harbor/ATIF decoder, policy material,
+  durable stores, and Ed25519 key ports to concrete cloud services; in-memory
+  fixtures remain test-only and are rejected by production composition.
 - [ ] Strip commands/arguments, paths, filenames, contents, stdout/stderr,
   URLs, package/service names, environment variables, task IDs, stable
   pseudonyms, and grader text before aggregation.
 - [ ] Implement the authoritative statistical evidence engine and approved
-  failure taxonomy.
+  failure taxonomy. Repair, fresh-validation, and shadow gate aggregation are
+  wired into the canonical deriver; behavioral release composition remains.
 - [ ] Require at least five distinct tasks, 20 total trajectories, and five
   observations in every compared group before releasing a card.
 - [ ] Aggregate successful-versus-failed and candidate-versus-champion
@@ -178,14 +271,19 @@ Reference: [PLAN §3.3](./PLAN.md#33-evaluator-and-task-broker-zone) and
   ranking, and suppression metadata.
 - [ ] Permit an optional LLM interpreter to see only released aggregate cards;
   require every claim to cite a card and prohibit model-generated statistics.
-- [ ] Implement grader/test canary and fingerprint scans.
+- [ ] Implement grader/test canary and fingerprint scans. The canonical
+  no-literal/no-task firewall and adversarial source-fingerprint tests are
+  present, and the scanner registry is now a required signed policy binding;
+  the concrete cloud registry population and verification remain.
 - [ ] Implement complementary-count suppression, overlap/query budgets,
   adaptive task re-identification, and cohort-differencing scans.
 - [ ] Emit at most one sealed diagnostic brief per eligible experiment; do not
   expose interactive cohort narrowing or single-trial drill-down.
 - [ ] Persist attestations without matched leak content.
 - [ ] Delete raw grader/ATIF output after signed derivation.
-- [ ] Add malicious-output and leakage tests.
+- [x] Add malicious-output and leakage tests for detached ciphertext,
+  decryption AAD, decoder input sets, policy components, hidden update
+  signatures, and test-only production ports. Run them in approved cloud CI.
 - [ ] Acceptance: extraction and statistics are byte-deterministic; protected
   canaries and task-identifying literals cannot cross the boundary; every
   below-threshold or differencing-risk cohort is suppressed; no raw/sanitized
@@ -198,7 +296,9 @@ Reference: [PLAN §2.1](./PLAN.md#21-harness-under-optimization),
 [§4](./PLAN.md#4-repository-and-git-design), and
 [§13](./PLAN.md#13-implementation-phases).
 
-- [ ] Verify Pi headless JSON/RPC behavior.
+- [ ] Cloud-verify Pi's bounded `--print --mode json` lifecycle and event
+  compatibility at the exact authorized fork commit; keep RPC as a separately
+  tested future protocol change.
 - [ ] Complete or maintain the Harbor Pi adapter.
 - [ ] Convert Pi sessions to valid ATIF.
 - [ ] Pin Pi dependencies and default harness configuration.
@@ -223,6 +323,11 @@ Reference:
 - [ ] Create broker-private discovery/repair, validation,
   regression/cooldown, and shadow roles.
 - [ ] Maintain a private append-only role/exposure/feedback/cooldown ledger.
+- [ ] Ingest signed, source-bound hidden outcome updates idempotently so
+  candidate/champion pass, infrastructure validity, latency, and cost update
+  broker-private task estimates. The deriver, adaptive posterior policy, and
+  durable catalog adapter are present; cloud integration and live verification
+  remain.
 - [ ] Implement deterministic failure-weighted priority.
 - [ ] Allocate each five-task repair panel as exactly three hard, one
   uncertain/discriminating, and a fifth slot alternating easy-integrity and
@@ -303,6 +408,11 @@ References: [PLAN §7.1](./PLAN.md#71-walk-forward-repair-and-fresh-validation),
   dataset, Harbor, sandbox, network, and protocol versions.
 - [ ] Store cached outcomes as distributions with attempts, rewards, variance,
   confidence, timestamps, costs, and environment fingerprints.
+- [ ] Bind each fresh decoded outcome set to one signed hidden-catalog update
+  and reject detached signatures, conflicting update IDs, or detached commit
+  receipts. The producer, injected cloud-key Ed25519 signer/verifier,
+  production composition, and adversarial synthetic tests are present;
+  durable cloud ingestion remains.
 - [ ] Accept only signed, schema-valid observations; make cache observations
   immutable, append-only, and attempt-digest deduplicated.
 - [ ] Expose no external record write/invalidation API; encrypt records at rest
@@ -496,7 +606,7 @@ Reference: [PLAN §1](./PLAN.md#1-purpose-and-success-criteria),
 
 ## DF-160 — Human-only full evaluation
 
-Reference: [PLAN §10.1](./PLAN.md#101-full-evaluation-authorization).
+Reference: [PLAN §10.2](./PLAN.md#102-full-evaluation-authorization).
 
 - [ ] Implement readiness and protocol validation.
 - [ ] Require `submission` mode, a certified commit/protocol, a valid compliance
@@ -546,6 +656,10 @@ Reference: [PLAN §13](./PLAN.md#13-implementation-phases).
 
 - [ ] Build synthetic tasks and graders with planted canaries in a cloud-only
   test environment.
+- [ ] Cloud-verify the implemented three-experiment cloud smoke campaign covering fresh
+  promotion, repair rejection, fresh inconclusive rotation, cumulative
+  accounting, champion preservation, and release-canary absence. This does not
+  replace the synthetic task/grader campaign and has not yet run in cloud CI.
 - [ ] Run the no-feedback bootstrap.
 - [ ] Run first-repair pass, second-repair pass, repair-exhaustion, and
   no-actionable-evidence campaigns.
@@ -585,8 +699,11 @@ Reference: [PLAN §13](./PLAN.md#13-implementation-phases).
 Reference: [PLAN §14](./PLAN.md#14-operational-assumptions).
 
 - [ ] Document installation and local prerequisites.
-- [ ] Document secrets and macOS Keychain usage.
+- [ ] Document provider-managed Secrets, KMS-backed authorization, rotation,
+  and host allowlists; no runtime secret is resolved by a Mac process.
 - [ ] Document provider setup and compatibility.
+- [ ] Document registration, privacy verification, upstream synchronization,
+  and recovery for the existing `../pi` private fork.
 - [ ] Document campaign operation, stop, resume, and recovery.
 - [ ] Document evidence audit and amendments.
 - [ ] Document diagnostic-brief interpretation, privacy budgets, panel

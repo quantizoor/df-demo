@@ -1,0 +1,60 @@
+{
+  "description": "Fail-closed Dark Factory optimizer boundaries.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/hook-guard.js",
+              "pre-tool-use",
+              "--project-root",
+              "${CLAUDE_PROJECT_DIR}",
+              "--plugin-data",
+              "${DF_PLUGIN_DATA_ROOT}"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/hook-guard.js",
+              "stop",
+              "--project-root",
+              "${CLAUDE_PROJECT_DIR}",
+              "--plugin-data",
+              "${DF_PLUGIN_DATA_ROOT}"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "project_settings|local_settings|skills",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/hook-guard.js",
+              "config-change"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

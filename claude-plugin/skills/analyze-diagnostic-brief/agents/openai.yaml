@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analyze Diagnostic Brief"
+  short_description: "Interpret task-agnostic diagnostic cards"
+  default_prompt: "Use $analyze-diagnostic-brief to analyze a released aggregate brief without inferring tasks."

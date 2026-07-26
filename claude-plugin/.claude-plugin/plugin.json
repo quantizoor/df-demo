@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "dark-factory",
+  "displayName": "Dark Factory Optimizer",
+  "version": "0.1.0",
+  "description": "Blind, privacy-budgeted Pi harness optimization with controlled cloud evaluation.",
+  "license": "UNLICENSED",
+  "keywords": [
+    "agent-harness",
+    "benchmark-integrity",
+    "terminal-bench"
+  ]
+}

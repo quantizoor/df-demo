@@ -1,0 +1,21 @@
+# Default-deny the OCI build context. Role images receive only reviewed source
+# and dependency metadata; Git history, tests, docs, local state, and secrets
+# never enter BuildKit.
+**
+
+!package.json
+!pnpm-lock.yaml
+!tsconfig.json
+!tsconfig.build.json
+!vitest.config.ts
+!biome.json
+
+!src/
+!src/**
+!scripts/
+!scripts/**
+!claude-plugin/
+!claude-plugin/**
+!containers/
+!containers/**
+

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Document Decisions"
+  short_description: "Record auditable hypotheses and analyses"
+  default_prompt: "Use $document-decisions to submit a schema-valid experiment analysis with evidence citations."

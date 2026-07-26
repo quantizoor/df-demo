@@ -1,0 +1,4 @@
+interface:
+  display_name: "Modify Pi Harness"
+  short_description: "Change Pi through controlled mutation surfaces"
+  default_prompt: "Use $modify-pi-harness to implement one small general Pi harness intervention."

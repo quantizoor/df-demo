@@ -84,8 +84,29 @@ and
 
 ### 2.1 Harness under optimization
 
-Fork [`badlogic/pi-mono`](https://github.com/badlogic/pi-mono) to
-`quantizoor/pi-mono` and optimize its coding-agent package.
+Use the operator's existing private Pi fork in the sibling repository
+`../pi` and optimize its coding-agent package. Its configured origin is the
+private `parallaxai/df-pi-tbench` repository. Do not create a second fork.
+At planning time, `../pi` is a clean Git worktree on `main`, tracks `origin`,
+and points at commit `5bc1c2c0a6f07e00e8c240304182f213ab8d311f`. Treat that
+SHA as an observation, not the baseline: `df baseline init` records whatever
+reviewed commit is pinned when initialization actually occurs.
+
+The same read-only observation currently reports tree
+`73898c76210cc8b48f4ac07cc76397b6b5c00758`, package-lock SHA-256
+`472f0726dc79f3b38df58d8a8bce96bf56fbf993a134b49aabc54947b8461e59`,
+and `@earendil-works/pi-coding-agent` version `0.82.1`. These values form one
+indivisible source authorization in the protected cloud bootstrap; they are
+not accepted as evidence until the cloud Git worker independently resolves
+the private `parallaxai/df-pi-tbench` origin, the exact objects and lock bytes,
+the canonical upstream, and the merge base.
+
+The repository currently has only `origin`. Initialization must verify
+[`earendil-works/pi`](https://github.com/earendil-works/pi) as the canonical
+read-only upstream in an isolated cloud clone, verify that the
+operator-designated origin remains private and writable, and record sanitized
+remote fingerprints without persisting a credential-bearing URL. It must not
+add or fetch a remote in the canonical local checkout.
 
 Pi is the starting point because it provides:
 
@@ -97,6 +118,11 @@ Pi is the starting point because it provides:
   Cline.
 - Existing Biome and Vitest usage.
 - A pending/upstream Harbor integration path.
+
+The Dark Factory control plane uses pnpm, but the Pi fork keeps its own
+repository-native npm/package-lock workflow. Do not rewrite Pi's package
+manager or lockfile merely to match the controller stack; any such change must
+be an explicit harness hypothesis.
 
 Agentic Harness Engineering remains methodological prior art for
 evaluate/analyze/improve loops, falsifiable edits, and trace observability. Its
@@ -133,17 +159,85 @@ Implement a provider abstraction and begin with:
 
 Run a cloud compatibility probe before assigning work. A candidate/champion
 pair must use the same provider, image, region class, resources, and protocol.
-The Mac runs only the TypeScript orchestrator, Claude Code source-editing
-session, local evidence persistence, and operator UI. It never executes
-candidate code, Pi, Harbor, graders, benchmark tasks, or synthetic task
-fixtures.
+The complete executable control plane also runs in a pinned trusted cloud
+sandbox. This includes the TypeScript orchestrator, Claude Code optimizer,
+broker, evaluator, evidence writers, Git workers, quality checks, and operator
+commands. A provider-managed persistent volume holds campaign state and
+release-safe experiment JSON; raw task/grader material stays in the separately
+restricted trusted evaluator prefix and is destroyed by policy. The Mac is
+limited to source authoring, read-only inspection of the canonical Pi checkout,
+triggering an authenticated cloud entry point, and optionally receiving a
+read-only mirror of release-safe JSON/Markdown. It never runs `df optimize`,
+Claude Code, candidate code, Pi, Harbor, graders, tests, benchmark tasks,
+synthetic fixtures, or a provider SDK bootstrap process.
+
+The Daytona implementation uses the exact `@daytona/sdk` `0.200.1` package and
+must run at a trusted cloud transport edge. It has the following fail-closed
+rules:
+
+- provision only an OCI `repository@sha256:<digest>` reference, with
+  `ephemeral: true`, a whole-minute wall-clock TTL, automatic stop/pause
+  disabled, private previews, and either `networkBlockAll` or an exact domain
+  allowlist;
+- require `DAYTONA_TARGET` to equal the requested region class, require memory
+  and disk to be exactly representable in Daytona's whole-GiB API, and verify
+  returned CPU, memory, disk, region, TTL, network fields, private/ephemeral
+  lifecycle settings, cloud runtime marker, zero-GPU state, and `uname -m`
+  before issuing a lease;
+- map only opaque Daytona organization Secret names to their approved target
+  environment names. Never resolve evaluated-model secret values into a
+  sandbox request, command, label, receipt, or local log;
+- attach only the command's secret subset, serialize command execution per
+  sandbox, and detach the subset after completion;
+- translate argv to Daytona's command-string API only with a tested POSIX
+  single-quote encoder. A caller-controlled byte is never emitted unquoted;
+- stream `trusted://` uploads and downloads through a required trusted artifact
+  bridge. The bridge verifies SHA-256, byte length, EOF, and commit metadata;
+  stdout and stderr return only as trusted references;
+- require both trusted-control-plane and provider runtime markers at the
+  artifact edge, while treating those environment markers as a baseline
+  fail-closed check rather than cryptographic proof. Production deployment
+  must protect them or inject an independently attested runtime guard;
+- require a presealed execution ID when concurrent cancellation may be needed.
+  Timeout or cancellation uses a confirmed force-stop (with confirmed delete
+  fallback), quarantines the now-unusable ephemeral sandbox, and never reports
+  success if termination cannot be confirmed;
+- derive peak memory from Daytona samples and integrate sampled CPU
+  utilization into an explicitly approximate CPU-time receipt. Missing or
+  malformed metrics fail the execution instead of producing zeros.
+
+The Daytona probe is an honest capability/profile preflight, not a quota or
+account-health attestation. Live create performs the resource and policy
+checks. Exact GPU-type requests remain incompatible because the current
+returned sandbox metadata exposes GPU count but not an independently
+attestable GPU type. Docker-in-Docker is a provider capability only when the
+pinned image itself contains and starts the required DIND runtime. A trusted
+artifact backend, Daytona organization secrets with host restrictions, a
+cloud-generated pnpm lockfile, and a live provider contract run remain
+deployment prerequisites.
+
+Mutable campaign services use campaign-scoped provider-volume adapters for the
+one-use request ledger, hidden catalog CAS, and immutable optimizer-session
+records. Each store holds a non-expiring lifetime controller lock and verifies
+its durable fence around every canonical atomic state replacement. A clock or
+heartbeat can never authorize takeover. Recovery requires a trusted authority
+to bind a provider-destruction attestation to the exact old lock hash and fence
+epoch before quarantine and a higher-epoch acquisition. Production also
+requires a cloud canary to attest exclusive directory creation, same-volume
+atomic rename, file/directory synchronization, and the single-controller
+deployment policy for the exact persistent-volume class. If those semantics
+cannot be attested, use a managed transactional store rather than weakening
+the guard.
 
 Primary references:
 
 - [Harbor agent interface](https://www.harborframework.com/docs/agents)
 - [Harbor ATIF support](https://www.harborframework.com/docs/agents/trajectory-format)
-- [Pi extension API](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md)
+- [Pi extension API](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)
 - [Daytona snapshots](https://www.daytona.io/docs/snapshots/)
+- [Daytona TypeScript SDK](https://www.daytona.io/docs/en/typescript-sdk/daytona/)
+- [Daytona streamed file API](https://www.daytona.io/docs/en/typescript-sdk/file-system/)
+- [Daytona organization secrets](https://www.daytona.io/docs/en/secrets/)
 - [E2B sandbox creation and network controls](https://e2b.dev/docs/api-reference/sandboxes/create-sandbox)
 - [Modal sandboxes](https://modal.com/docs/guide/sandboxes)
 
@@ -228,6 +322,16 @@ The trusted cloud evaluator and task broker own:
   drift-anchor scheduling.
 - Sandbox credentials and lifecycle.
 - Raw benchmark job output.
+- A deterministic Harbor-output packaging boundary. Harbor writes each
+  `jobs_dir/job_name` directory only inside the evaluator sandbox; a
+  content-addressed, credential-free cloud packager then creates one regular
+  POSIX/PAX tar file. Its manifest binds the request, sealed job, benchmark
+  pin, config, invocation order, exact Harbor execution receipt, expected
+  trial count, every file digest, and an aggregate payload digest. The
+  packager rejects links, special files, path traversal/normalization
+  collisions, nested archives, unexpected result/trajectory locations,
+  incomplete trial sets, and fixed file/byte ceilings before the provider
+  artifact bridge may download anything.
 - Grader execution.
 - Deterministic grader-outcome normalization, behavioral telemetry extraction,
   aggregation, privacy checks, and grader-leak scanning.
@@ -238,9 +342,10 @@ The trusted cloud evaluator and task broker own:
 The evaluator is always remote, so task and grader files never land on the Mac.
 Raw verifier output and raw ATIF are temporary trusted-zone artifacts and are
 destroyed or retained only under the broker's audited retention policy. The
-local store contains no raw or redacted per-trial trajectory. It contains only
-signed aggregate results, normalized behavioral evidence that passes the
-release thresholds, diagnostic cards, and attestations.
+provider-volume release store, and any optional read-only workstation mirror,
+contain no raw or redacted per-trial trajectory. They contain only signed
+aggregate results, normalized behavioral evidence that passes the release
+thresholds, diagnostic cards, and attestations.
 
 The feedback firewall has four ordered layers:
 
@@ -274,22 +379,33 @@ Only the operator may:
 
 ## 4. Repository and Git design
 
-`df-demo` is the Dark Factory control plane and local evidence store. The Pi
-fork is a separate nested clone or registered submodule under a vendor area;
-candidate worktrees live outside the clean clone.
+`df-demo` is the Dark Factory control plane and local evidence store. The
+canonical Pi fork is the existing sibling Git repository `../pi`. It is not
+vendored, recloned, or converted into a submodule. Candidate branches and
+worktrees live outside that clean canonical worktree, and Dark Factory never
+edits or resets `../pi/main` directly.
 
 Implementation sequence:
 
-1. Repair the currently invalid `gh` authentication for `quantizoor`.
-2. Fork `badlogic/pi-mono` to `quantizoor/pi-mono`.
-3. Clone the fork and register the original repository as `upstream`.
-4. Pin the initial upstream commit and dependency lock hash.
+1. Register `../pi` as the canonical harness repository and verify it is the Pi
+   monorepo, clean, on the expected branch, and tracking `origin`.
+2. Verify through the remote provider that `origin` is private and that the
+   operator can fetch and push; never log its credential-bearing URL.
+3. Resolve the official `earendil-works/pi` upstream and its merge base in an
+   isolated cloud clone; do not add or fetch a local `upstream` remote.
+4. Pin the fork commit, upstream base commit, repository-native lock hash, and
+   sanitized remote fingerprints from signed cloud verification.
 5. Create an immutable baseline tag for experiment `000`.
-6. Create one local branch and worktree per candidate.
+6. Create one controller-owned branch and external worktree per candidate.
 7. Start every candidate from the active champion commit.
 8. Let Claude edit only the candidate worktree.
 9. Let the controller create commits only after required checks pass.
-10. Push sealed experiment branches and accepted champion tags without force.
+10. Push sealed experiment branches and accepted champion tags to the private
+    origin without force.
+
+If `../pi` is dirty, detached, points to an unexpected repository, or contains
+unpublished operator work, fail closed. Never clean, reset, overwrite, or move
+those changes automatically.
 
 If GitHub is unavailable, the experiment may seal locally with
 `publishStatus: "pending"`. Publication retries later and never changes the
@@ -298,6 +414,8 @@ experiment decision.
 Every experiment records:
 
 - Upstream, fork, baseline, parent, and candidate commit SHAs.
+- Canonical repository registration ID, sanitized origin/upstream fingerprints,
+  and private-origin verification status; never a credential-bearing URL.
 - Git tree SHA and dependency lock hash.
 - Canonical patch SHA-256 and changed file list.
 - Mutation category and size.
@@ -480,6 +598,16 @@ trial handle, arm, repetition, task assignment, timestamps, environment
 identity, raw ATIF, raw grader output, completion status, and artifact hashes.
 The handle cannot be correlated across experiments and is never returned to
 Dark Factory.
+
+Harbor directory outputs do not cross the provider file-transfer boundary
+directly. After every successful Harbor invocation, the evaluator runs the
+sealed `package-harbor-output.mjs` module with no secrets. The module requires
+the job-level `config.json` and `result.json`, one direct trial `result.json`
+and `agent/trajectory.json` per expected arm, and preserves all other regular
+logs under `payload/`. It emits a deterministic tar with a canonical root
+manifest. The raw ingress verifies and normalizes that archive in memory; only
+the tar file is downloaded, never a mutable directory, and neither the tar nor
+an extracted tree is written to the workstation.
 
 The evaluator derives a strict `NormalizedGraderOutcome` and allowlisted
 behavioral feature rows, signs their source hashes, aggregates them, then
@@ -1042,7 +1170,7 @@ Every run declares exactly one immutable mode:
   but cannot produce a leaderboard claim or start the official evaluation.
 - `submission` disables diagnostic generation and retrieval, repair-panel
   feedback, optimizer MCP, and all adaptive research channels. It accepts only
-  a frozen certified commit/protocol and requires the human gate in §10.1.
+  a frozen certified commit/protocol and requires the human gate in §10.2.
 
 A signed compliance manifest lists enabled data channels, plugin permissions,
 panel policy, lineage, and `leaderboardEligibility`. Mixed-mode evidence or an
@@ -1111,7 +1239,8 @@ Implement these commands:
 ```text
 df init
 df doctor
-df fork-harness
+df harness register ../pi
+df harness doctor
 df sandbox probe
 df baseline init
 df optimize
@@ -1132,7 +1261,31 @@ holdout, cost, token, or wall-time budget pauses it. `df stop` requests a
 graceful durable stop. `df resume` always reconstructs state and budgets from
 sealed JSON, not process memory or the disposable index.
 
-### 10.1 Full-evaluation authorization
+### 10.1 Cloud controller entry
+
+No command above is executed on the Mac. An authenticated GitHub-hosted
+workflow launches the exact digest-pinned controller image in Daytona, mounts
+only the selected campaign subpath of the persistent volume, and supplies only
+provider organization-Secret names. Bootstrap validates the hosted-runner
+identity, control image, target, resources, network allowlist, TTL, volume
+binding, Daytona runtime marker, and confirmed teardown. A paid `optimize`
+dispatch additionally requires the literal authorization
+`RUN:<campaign-id>:<control-image-digest>` in a protected GitHub environment.
+
+Before any paid model or benchmark call, the controller supports:
+
+1. `probe`, which round-trips a content-addressed receipt through the mounted
+   volume and creates/destroys a no-secret child sandbox using the pinned build
+   image; and
+2. `synthetic`, which runs a deterministic three-experiment smoke campaign
+   covering fresh promotion, repair rejection, fresh inconclusive rotation,
+   cumulative accounting, champion preservation, and canary non-release.
+
+These smoke operations do not certify the real evaluator. `optimize`, mutable
+status/stop/resume, and baseline initialization stay locked until their signed
+durable production composition and cloud quality suite are complete.
+
+### 10.2 Full-evaluation authorization
 
 The full run is a separate execution path:
 
@@ -1140,8 +1293,8 @@ The full run is a separate execution path:
    scope, expected cost, pinned protocol, and a random challenge without
    revealing the task list.
 2. The user runs `df full-eval authorize <challenge>` from an interactive TTY.
-3. The short-lived authorization is stored outside Claude's filesystem scope,
-   preferably in macOS Keychain.
+3. The short-lived authorization is stored outside Claude's filesystem scope
+   in a provider-managed secret/KMS-backed authorization store.
 4. `df full-eval run` consumes the authorization once and runs the official
    protocol.
 
@@ -1200,9 +1353,32 @@ an ADR. Sealed decisions are superseded, never edited away.
 
 ## 12. Testing strategy
 
-All test commands, builds, fixtures, candidate execution, and evaluator
-processes run in cloud CI or a cloud sandbox. The Mac may author files and
-orchestrate requests, but it is not a test or workload execution target.
+All executable commands—including orchestration and provider bootstrap—run in
+cloud CI or a cloud sandbox. The Mac may author files, inspect the canonical Pi
+checkout read-only, trigger the authenticated cloud entry point, and display
+released artifacts; it is not an application, test, control-plane, or workload
+execution target.
+
+### 12.0 Cloud delivery gates
+
+Use four separate, explicit cloud delivery paths:
+
+1. a one-time, read-only, main-commit-bound workflow that generates an
+   uncommitted `pnpm-lock.yaml` review artifact without lifecycle scripts;
+2. read-only automated and manually confirmed cloud quality gates that require
+   the reviewed lockfile;
+3. a manually confirmed and protected GHCR publication workflow that first
+   passes quality, accepts only digest-qualified role bases, installs exact
+   operator-selected Claude Code and Harbor versions, and emits immutable
+   control/optimizer/build/evaluator digest receipts with attached SBOM and
+   provenance; and
+4. a main-commit-bound, protected-environment paid workflow whose typed
+   authorization binds campaign and control-image digest before it exposes the
+   Daytona bootstrap credential to the single controller-launch step.
+
+No delivery workflow selects a model, provider credential, benchmark pin,
+budget, or mutable image tag on the operator's behalf. Image publication never
+starts a paid run. See `CLOUD_DELIVERY.md` and ADR-0044.
 
 ### 12.1 Unit tests
 
@@ -1328,10 +1504,12 @@ Docker or local execution adapter.
 - Create schema and ADR conventions.
 - Define acceptance criteria and forbidden behaviors.
 
-### Phase 1: Workspace and fork
+### Phase 1: Workspace and existing private fork
 
 - Create the TypeScript workspace and quality tooling.
-- Repair GitHub authentication and fork Pi.
+- Register and validate the existing private Pi fork at `../pi`.
+- Verify private-origin authentication and add the missing read-only official
+  `upstream` remote.
 - Pin the baseline and implement worktree isolation.
 
 ### Phase 2: Schemas and durable store
@@ -1410,16 +1588,21 @@ Docker or local execution adapter.
 
 ## 14. Operational assumptions
 
-- The GitHub owner remains `quantizoor`; `gh` authentication is currently
-  invalid and must be repaired before the fork step.
+- The operator-designated private Pi fork already exists at `../pi`, with
+  private origin `parallaxai/df-pi-tbench`. At planning time it is clean on
+  `main`, tracks `origin`, has no `upstream` remote, and is at
+  `5bc1c2c0a6f07e00e8c240304182f213ab8d311f`.
+- Remote privacy and fetch/push authorization must still be verified without
+  exposing or persisting credential-bearing remote URLs.
 - Exact Pi, Claude Code, model, Harbor, dataset, and sandbox versions are chosen
   and pinned during initialization.
 - Changing the evaluated model or measurement semantics creates a new baseline
   lineage.
-- All builds, tests, synthetic fixtures, Pi executions, Harbor processes,
-  graders, and benchmark tasks run in cloud sandboxes. Only orchestration,
-  source editing, aggregate released evidence, and operator controls run on the
-  Mac.
+- All builds, tests, synthetic fixtures, controller services, Claude optimizer
+  sessions, Pi executions, Harbor processes, graders, benchmark tasks, and
+  operator commands run in cloud sandboxes or cloud CI. The Mac is limited to
+  source editing, read-only Pi inspection, cloud triggering, and display of an
+  optional read-only release-safe evidence mirror.
 - Only privacy-thresholded aggregate results and attestations are retained
   locally; no raw or sanitized ATIF or grader payload is local evidence.
 - Research experiments may continue indefinitely, but positive promotion and

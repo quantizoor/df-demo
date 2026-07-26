@@ -1,0 +1,4 @@
+interface:
+  display_name: "Query Experiment Evidence"
+  short_description: "Retrieve only bounded aggregate evidence"
+  default_prompt: "Use $query-experiment-evidence to request the minimum safe experiment context needed."

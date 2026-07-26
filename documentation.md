@@ -37,9 +37,9 @@ Every future ADR uses this structure:
 ## ADR-0001 — Use Pi as the harness under optimization
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0029
 - Related plan: `PLAN.md` §2.1
 
 ### Context
@@ -640,9 +640,9 @@ synthetic fixtures cover normal CI.
 ## ADR-0018 — Run every executable workload in cloud sandboxes
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: ADR-0014
-- Superseded by: none
+- Superseded by: ADR-0039
 - Related plan: `PLAN.md` §2.3, §12
 
 ### Context
@@ -1438,3 +1438,1448 @@ privacy, or holdout policy may require a new baseline lineage.
 - User requirement that the demo be efficient and avoid expensive full runs
 - Cloud-only execution creates direct external cost
 - Repeated-testing, privacy-differencing, and finite-holdout risks
+
+## ADR-0029 — Use the existing sibling private Pi fork
+
+- Date: 2026-07-26
+- Status: superseded
+- Supersedes: ADR-0001
+- Superseded by: ADR-0034
+- Related plan: `PLAN.md` §2.1, §4, §10, §13–14
+
+### Context
+
+The operator has already forked Pi into a private Git repository and placed its
+working copy in the `pi` folder beside `df-demo` under the ParallaxAI
+directory. Creating a new fork, nested clone, or submodule would duplicate the
+source of truth and could cause candidate branches or restore operations to
+target the wrong repository.
+
+Read-only inspection on 2026-07-26 confirmed that `../pi` is the Pi monorepo, is
+clean on `main`, tracks a configured `origin`, and is at
+`5bc1c2c0a6f07e00e8c240304182f213ab8d311f`. Only `origin` is configured; the
+official upstream remote is absent. Repository privacy and push authorization
+were supplied by the operator but have not yet been independently verified
+through the remote provider.
+
+### Decision
+
+Continue using Pi as the harness under optimization, but make the existing
+`../pi` repository the canonical private fork. Do not create a second fork,
+reclone it into `df-demo`, or convert it into a submodule.
+
+Initialization must:
+
+1. Register and validate `../pi` without changing it.
+2. Verify that the operator-designated origin is private and supports
+   authenticated fetch/push, without logging or persisting a
+   credential-bearing URL.
+3. Add `badlogic/pi-mono` as a read-only `upstream` remote because it is
+   currently missing.
+4. Pin the reviewed fork commit, upstream base, Git tree, and
+   repository-native lock hash when experiment `000` is created. The observed
+   planning-time SHA is not automatically the baseline.
+5. Create controller-owned candidate branches and external worktrees while
+   never editing, cleaning, resetting, or force-pushing the canonical
+   `../pi/main` worktree.
+
+The Dark Factory controller continues to use pnpm. The Pi repository retains
+its native npm/package-lock commands unless changing that workflow is itself a
+frozen, tested harness hypothesis. Claude receives neither GitHub credentials
+nor direct commit/push authority.
+
+### Alternatives
+
+- Create another private fork under a fixed GitHub owner.
+- Reclone the existing origin under `df-demo`.
+- Convert `../pi` into a submodule.
+- Let candidates modify the canonical `main` worktree directly.
+- Rewrite the Pi repository to pnpm during setup.
+
+### Consequences
+
+The existing private repository becomes the sole Git source of truth for Pi.
+Setup work is smaller, but the controller needs registration and repository
+identity checks instead of fork creation. The missing upstream remote and
+remote privacy/push authorization remain explicit prerequisites. Dirty,
+detached, unexpected, or unpublished canonical state fails closed so Dark
+Factory cannot overwrite operator work.
+
+### Evidence
+
+- Operator statement that Pi was already forked privately into `ParallaxAI/pi`
+- Local Git inspection: clean `main`, tracking `origin`, no `upstream`
+- Local package metadata identifying the repository as `pi-monorepo`
+- Planning-time commit
+  `5bc1c2c0a6f07e00e8c240304182f213ab8d311f`
+
+## ADR-0030 — Make executable project checks cloud-only by construction
+
+- Date: 2026-07-26
+- Status: superseded
+- Supersedes: none
+- Superseded by: ADR-0039
+- Related plan: `PLAN.md` §2.3, §12, §13
+
+### Context
+
+The operator requires builds, tests, synthetic fixtures, candidate processes,
+Harbor, graders, and benchmark tasks to run on cloud infrastructure rather
+than the Mac. A written convention alone is too easy to violate accidentally,
+especially when standard package scripts normally execute wherever invoked.
+
+### Decision
+
+Every executable quality script first runs a fail-closed cloud guard. The
+guard accepts an explicit sandbox marker or a recognized cloud-CI marker and
+otherwise exits before invoking TypeScript, Biome, Vitest, or build tooling.
+The repository includes a cloud CI workflow, and there is deliberately no
+local provider adapter. Source editing, read-only inspection, orchestration,
+and persistence of release-safe aggregates remain local control-plane
+activities.
+
+Dependency versions are exact in `package.json`; the lockfile must be
+generated and verified by the first approved cloud install rather than by
+executing an install on the Mac.
+
+### Alternatives
+
+- Rely only on operator discipline.
+- Permit fast unit tests locally while reserving benchmark work for the cloud.
+- Run candidate code through local Docker.
+
+### Consequences
+
+Accidental local execution fails early and visibly. Initial validation cannot
+finish until cloud credentials or authenticated cloud CI are available. The
+guard itself and provider-marker recognition require adversarial tests in the
+cloud.
+
+### Evidence
+
+- `scripts/assert-cloud-execution.mjs`
+- Cloud-prefixed package quality scripts
+- `.github/workflows/ci.yml`
+
+## ADR-0031 — Keep the Terminal-Bench adapter external to Pi and use RPC
+
+- Date: 2026-07-26
+- Status: superseded
+- Supersedes: none
+- Superseded by: ADR-0046
+- Related plan: `PLAN.md` §2.1, §3, §8, §13
+
+### Context
+
+Read-only inspection of the private Pi fork found that its existing eval
+package disables tools and is not a Terminal-Bench harness. Pi's coding-agent
+runtime exposes JSON and RPC modes; RPC provides explicit abort, settlement,
+events, and session statistics. Its raw RPC stream contains task instructions,
+commands, tool arguments, paths, results, and model messages.
+
+### Decision
+
+Build each immutable Pi candidate once in a cloud builder, then launch a fresh
+Pi process per task from an external trusted evaluator adapter. Use RPC mode
+with no session persistence, no context files, no auto-discovered extensions,
+skills, or prompt templates, and only an explicitly pinned Dark Factory
+extension when the frozen experiment requires it. Enforce timeout and teardown
+outside Pi.
+
+Raw RPC traffic and ATIF remain in the trusted evaluator zone and never reach
+the local experiment store or Claude Code. The task sandbox receives a built
+artifact and short-lived inference access, not GitHub credentials.
+
+### Alternatives
+
+- Modify Pi's current eval package into the benchmark adapter.
+- Embed Dark Factory control code in the Pi process.
+- Use print-mode JSON as the only execution contract.
+- Persist Pi sessions for later local analysis.
+
+### Consequences
+
+The adapter is independently testable and candidate mutations remain focused
+on harness behavior. RPC lifecycle handling is more work than print mode, but
+it allows reliable cancellation and structured trusted-zone extraction.
+
+### Evidence
+
+- Read-only Pi architecture and CLI/RPC audit on 2026-07-26
+- Pi paths under `packages/coding-agent/src/modes/rpc/`
+- No Harbor or Terminal-Bench adapter in the inspected fork
+
+## ADR-0032 — Implement security and decision rules as deterministic pure cores
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §5–9, §12
+
+### Context
+
+Task selection, cache eligibility, privacy release, lifecycle transitions,
+promotion, integrity checks, and full-evaluation authorization are security
+and scientific-validity boundaries. If hidden inside provider code or an LLM
+prompt, they are difficult to replay and may change with infrastructure.
+
+### Decision
+
+Implement these boundaries as deterministic, typed, side-effect-free cores
+where possible. Provider, storage, signing, clock, process, and authorization
+systems sit behind explicit interfaces. Persisted decisions bind policy
+versions and inputs. Tests use fakes but execute only in approved cloud
+environments.
+
+An LLM may interpret already released aggregate cards but cannot sanitize raw
+data, compute authoritative statistics, select tasks, or decide promotion.
+
+### Alternatives
+
+- Put policy directly into the orchestration loop.
+- Ask the diagnostic LLM to sanitize and score traces.
+- Make provider implementations own selection and promotion behavior.
+
+### Consequences
+
+The system is easier to replay, property-test, and audit across providers.
+More explicit contracts and fixtures are required, but infrastructure changes
+cannot silently change scientific decisions.
+
+### Evidence
+
+- Initial `src/core`, `src/integrity`, `src/evaluation`, and schema module
+  boundaries
+- Frozen policy requirements in `PLAN.md`
+
+## ADR-0033 — Fail closed until cloud, model, budget, and trust-zone bindings are explicit
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §1, §2.3, §3, §5.1, §14
+
+### Context
+
+No Daytona, E2B, or Modal credential is currently configured; GitHub CLI
+authentication is invalid; the exact Claude optimizer model and evaluated Pi
+model are unset; and no rolling campaign spend limit has been supplied.
+Guessing any of these would change cost, reproducibility, or a security
+boundary.
+
+### Decision
+
+Continue only provider-neutral source implementation and synthetic fixtures.
+Do not initialize the baseline, create remote resources, publish Git state,
+run paid models, or launch benchmark work until the operator supplies and
+confirms:
+
+1. Cloud sandbox provider and credentials.
+2. Exact optimizer and evaluated model identifiers/settings.
+3. Rolling monetary, token, and wall-time limits.
+4. Trusted broker/evaluator/storage/signing placement.
+5. GitHub authentication and research-only eligibility posture.
+
+All unresolved fields are required configuration values, never silent
+defaults.
+
+### Alternatives
+
+- Choose inexpensive model and provider defaults automatically.
+- Develop and test with a local execution backend.
+- Start benchmark work with unbounded cost and record the values afterward.
+
+### Consequences
+
+Provider-neutral implementation can progress safely, but end-to-end validation
+and real improvement evidence remain blocked on explicit operator input.
+
+### Evidence
+
+- Environment and CLI prerequisite audit on 2026-07-26
+- Invalid GitHub CLI authentication status
+- Missing sandbox-provider credential names
+- Unset exact model and rolling-budget values
+
+## ADR-0034 — Anchor candidate lineage to the private Pi fork without mutating it
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: ADR-0029
+- Superseded by: none
+- Related plan: `PLAN.md` §2.1, §4, §10, §14
+
+### Context
+
+Later package metadata and remote inspection corrected two details recorded in
+ADR-0001 and ADR-0029. The operator's canonical private origin is
+`parallaxai/df-pi-tbench`, and the maintained public upstream is
+`earendil-works/pi`. Adding or fetching an `upstream` remote in the local
+canonical checkout would also violate the cloud-only and non-mutation
+boundaries.
+
+### Decision
+
+Treat `/ParallaxAI/pi` as a read-only canonical reference and persist only the
+workspace-relative registration path `pi`. Verify the private origin,
+canonical public upstream, upstream head, and merge base through an isolated
+cloud clone. Never add a remote, fetch, create a branch, build, test, or execute
+candidate code in the local canonical checkout.
+
+Claude Code edits a disposable candidate worktree whose changes are published
+to the private origin under controller-owned non-force branches. Trusted cloud
+snapshot and build services consume exact private-origin commits, produce
+content-addressed source and runtime archives, and bind commit, tree, lockfile,
+build policy, validation level, and toolchain attestations. Only a
+release-validated runtime may enter matched Terminal-Bench evaluation.
+
+### Alternatives
+
+- Add the public upstream remote and fetch it in the local checkout.
+- Continue referring to the historical `badlogic/pi-mono` location.
+- Copy or vendor the private fork into `df-demo`.
+- Build an archive from the local working tree.
+
+### Consequences
+
+The local Pi folder remains recoverable and free of automation side effects.
+GitHub authentication and the cloud snapshot service become explicit runtime
+prerequisites. Historical ADR text remains intact, while this amendment is the
+authoritative source-lineage decision.
+
+### Evidence
+
+- Local origin: `git@github.com:parallaxai/df-pi-tbench.git`
+- Local clean commit:
+  `5bc1c2c0a6f07e00e8c240304182f213ab8d311f`
+- Package repository metadata: `https://github.com/earendil-works/pi`
+- Implemented repository registration and cloud-build contracts
+
+## ADR-0035 — Derive release-safe evidence and hidden weighting updates fail-closed
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §6.5, §7.2, §8.1
+
+### Context
+
+The trusted evaluator must solve two requirements that cannot share a storage
+boundary. Dark Factory needs a task-agnostic aggregate for promotion and
+feedback, while the blind broker needs task-correlated outcomes so prior
+failures receive more selection weight. Releasing task-correlated rows,
+stable task handles, or raw grader/ATIF material to the controller would break
+benchmark blindness. Omitting the private update would leave the documented
+failure-weighted selector disconnected from real outcomes.
+
+The codebase also had two incompatible meanings of
+`NormalizedGraderOutcome`: the runtime normalizer used different field names
+and enum values from the strict stored schema.
+
+### Decision
+
+Use one schema-backed `NormalizedGraderOutcome` representation. The trusted
+normalizer accepts only scalar allowlisted grader fields plus separately
+supplied raw-manifest provenance. It rejects grader prose and unknown fields,
+buckets timing/resources, computes a derivation hash and content hash, and
+validates the result against the strict schema before further use.
+
+Reduce decoded Harbor, ATIF, and grader records through one deterministic
+trusted deriver:
+
+1. Correlate each attempt to an opaque presealed schedule arm and immutable
+   harness archive.
+2. Require contiguous, sequential infrastructure replacements followed by
+   exactly one valid final outcome per arm.
+3. Verify protocol, environment, panel window, balanced matched order, attempt
+   ceiling, stratum weights, cache commitment, and behavioral-release source
+   binding.
+4. Compute repair, fresh validation, or feedback-dark shadow results using the
+   frozen deterministic statistical gates.
+5. Emit only a nonce-bound aggregate hash, signed-envelope payload fields, and
+   boolean release checks. No task row, task ID, arm ID, command, output,
+   grader prose, path, URL, or raw/sanitized ATIF may enter this aggregate.
+
+Before returning that aggregate, publish a separate trusted-cloud-only catalog
+update as a required fail-closed step. Its deterministic update ID and signed
+source binding commit the request, protocol, panel disposition nonce, raw
+manifest, Harbor job, runtime attestation, normalized outcome set,
+environment, and task-correlated update-set hash. Each hidden task row contains
+candidate and, when freshly run, champion pass/reward, infrastructure
+replacement count, latency, token cost, sandbox/model cost, task revision, and
+final attempt digest. Repair has no new champion row because its champion
+control is historical/cache evidence.
+
+The catalog sink performs durable compare-and-swap by update ID. An identical
+source binding is idempotent; the same ID with a different binding fails
+closed. The deriver verifies the signature and the sink receipt before any
+release-safe aggregate can be signed. The hidden update is never attached to
+the aggregate and is not locally persistable.
+
+### Alternatives
+
+- Add hidden task rows to the signed result envelope.
+- Update task weights from release-safe aggregate scores.
+- Let the catalog query raw Harbor artifacts independently.
+- Maintain separate runtime and schema normalized-outcome models.
+- Publish an unsigned best-effort catalog update after releasing the result.
+
+### Consequences
+
+Failure-weighted selection can learn from prior task outcomes without teaching
+Dark Factory or Claude which tasks failed. Catalog ingestion becomes a required
+trusted dependency: signature failure, source detachment, or a conflicting
+idempotency receipt fails the evaluation rather than silently losing learning
+history. The cloud composition must provide the hidden-update signing key,
+verification key, and durable catalog adapter.
+
+Source and adversarial synthetic tests cover deterministic hashes, repair,
+validation, shadow, infrastructure replacements, raw literal suppression,
+hidden-identity suppression, detached source signatures, detached commit
+receipts, and idempotent replay. These tests remain unverified until the
+cloud-only quality suite is run.
+
+### Evidence
+
+- `src/evaluation/behavior.ts`
+- `src/evaluator/deriver.ts`
+- `tests/evaluation/behavior.test.ts`
+- `tests/evaluator/deriver.test.ts`
+
+## ADR-0036 — Implement Daytona through a verifying trusted-cloud transport edge
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §2.3, §10, §12
+
+### Context
+
+The common provider contract previously stopped at an injected transport. A
+real Daytona adapter must preserve the no-local-execution rule, immutable
+images, exact matched resources, network denial, hard lifecycle bounds,
+secret isolation, artifact integrity, cancellation, and resource reporting.
+The current Daytona TypeScript API accepts a shell command string rather than
+an argv array, represents memory and disk in whole GiB, represents TTL in
+whole minutes, and exposes sampled CPU utilization rather than cumulative CPU
+time. It maps sandbox environment variables to names of existing organization
+Secrets; those names are not secret values.
+
+The public SDK also has meaningful attestation limits. Region is selected by
+the client target. Architecture is not a create parameter. Returned metadata
+contains GPU count but is not sufficient to independently attest the exact GPU
+type. A capability probe cannot prove account quota or image contents, and a
+dynamic image build does not provide a signed provider receipt for the
+original source digest.
+
+### Decision
+
+Pin `@daytona/sdk` exactly to `0.200.1` and load it only at the trusted
+transport edge. Continue to resolve `DAYTONA_API_KEY` just in time for the SDK
+client; never copy it into a sandbox. Pass the already validated immutable OCI
+digest reference directly as the Daytona image.
+
+Require the Daytona transport itself to call a mandatory trusted-runtime guard
+before probe, create, execute, transfer, cancel, or destroy. There is no
+permissive local artifact implementation. Put storage behind
+`TrustedArtifactBackend` and wrap it with
+`VerifyingTrustedArtifactBridge`. On reads, verify every byte, EOF, SHA-256,
+and byte length. On writes, hash and count while streaming, then require the
+backend's committed URI, media type, digest, and length to match. Partial
+consumption is an integrity error.
+
+Create only private ephemeral sandboxes with automatic stop and pause disabled
+and a bounded whole-minute TTL. Use `networkBlockAll` when no egress is needed;
+otherwise use the exact normalized domain allowlist. Require the configured
+Daytona target to equal the requested region and refuse resource rounding.
+After create, refresh provider data and verify target, CPU, memory, disk,
+zero-GPU state, TTL deadline, network fields, private visibility, zero
+auto-stop/pause/delete intervals, and the cloud runtime marker. Set that marker
+to the returned sandbox ID and verify architecture with a fixed `uname -m`
+command before issuing a lease.
+
+Treat `SecretReference.sourceEnvironmentName` as the preconfigured Daytona
+organization Secret name at this transport boundary. Daytona receives only a
+target-environment-name to organization-Secret-name map. Execute one command
+at a time per sandbox, attach only that command's approved subset, and detach
+it after completion. Provider credentials and evaluated-model secret values
+never enter command strings, labels, receipts, artifacts, or local logs.
+
+Encode command argv with a dedicated POSIX single-quote function. Quote the
+working directory, executable, every argument, and every plain environment
+assignment. Reject NUL and malformed fields. The shell sees only the fixed
+`cd`, `exec`, and `/usr/bin/env` structure; caller-controlled content remains
+inside quoted argv elements.
+
+Use Daytona background sessions for execution. Add an optional presealed
+`RemoteCommandSpec.executionId`; when present, a caller can cancel while
+`execute()` is pending. On cancellation or hard timeout, capture only bounded
+trusted logs, request force-stop, fall back to confirmed deletion, and
+quarantine the ephemeral sandbox. Do not emit a timeout/cancellation receipt
+unless termination is confirmed. Persist stdout and stderr through the
+trusted bridge and expose only their references.
+
+Collect a metric before execution and while polling, then merge historical
+samples on normal completion. Peak sampled memory is exact to Daytona's
+sample. CPU time is an estimate obtained by trapezoidal integration of
+`cpuUsedPct × allocated cores`; missing or malformed samples fail closed.
+
+### Alternatives
+
+- Execute Daytona command strings by joining unquoted argv.
+- Resolve model credentials locally and pass their plaintext as `envVars`.
+- Buffer or write `trusted://` artifacts in the workstation filesystem.
+- Round MiB to Daytona GiB units or claim a requested architecture without
+  checking the running sandbox.
+- Treat session deletion alone as hard cancellation.
+- Report zero resource usage when the metrics service fails.
+- Claim GPU compatibility from GPU count without exact type attestation.
+
+### Consequences
+
+Daytona CPU sandboxes now have an executable production composition with
+defense-in-depth checks and adversarial pure/contract tests. Cancellation is
+scientifically explicit: callers must preseal an execution ID if they need to
+address a pending command, and a cancelled/timed-out ephemeral sandbox cannot
+be reused.
+
+Several deployment gates remain open and are intentionally visible in
+`TODO.md`: bind a durable trusted artifact backend; create host-restricted
+Daytona organization Secrets; generate the pnpm lockfile and run typecheck,
+lint, unit, adversarial, and live provider tests in approved cloud
+infrastructure; verify the pinned benchmark image's DIND behavior; and keep
+GPU jobs unschedulable until exact type attestation exists. The capability
+probe is profile preflight. Successful create is the live resource/policy
+check, while independent provider-signed image provenance is not exposed by
+the current SDK and remains a residual provider limitation.
+
+`CloudMarkerTrustedArtifactRuntimeGuard` is a fail-closed baseline, not
+cryptographic runtime attestation. It requires both
+`DF_TRUSTED_CONTROL_PLANE=1` and the provider runtime marker, but a process
+whose deployment policy lets it forge its own environment could imitate both.
+Production must protect those variables at the platform boundary or inject a
+`TrustedArtifactRuntimeGuard` backed by independent provider/deployment
+attestation. Until then, the source-level local-execution denial is present but
+the claim that an actively malicious local process cannot impersonate the
+trusted controller remains an explicit deployment gate.
+
+### Evidence
+
+- `src/cloud/artifact-bridge.ts`
+- `src/cloud/adapters/daytona-transport.ts`
+- `src/cloud/adapters/daytona.ts`
+- `src/cloud/provider.ts`
+- `tests/cloud/artifact-bridge.test.ts`
+- `tests/cloud/daytona-transport.test.ts`
+
+- Daytona TypeScript SDK v0.200 documentation for sandbox create, streaming
+  files, sessions, metrics, network policy, TTL, and organization Secrets
+
+## ADR-0037 — Compose the trusted evaluator from authenticated, sealed ports
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §6.5, §7.2, §8.1, §13
+
+### Context
+
+The broker lifecycle and canonical deriver existed, but four production edges
+were still represented only by broad injected interfaces:
+
+1. A decoded evaluation could be returned without proving which encrypted
+   Harbor, ATIF, and grader artifacts were read or how they were decrypted.
+2. A canonical derivation policy could be supplied without a single seal
+   binding its cache controls, guardrails, leak-scanner registry, repeated-test
+   budget, and behavioral-release lineage.
+3. Hidden task-correlated catalog updates had signer/verifier interfaces but no
+   cloud-key-backed Ed25519 implementation.
+4. The runner, reader, resolver, deriver, destruction custodian, envelope
+   issuer, and one-use broker could be instantiated independently, leaving
+   room for an incomplete application composition.
+
+These gaps did not release data by themselves, but they made a future cloud
+deployment vulnerable to accidental misbinding. In particular, an in-memory
+fixture or a decoder that ignored one input could appear structurally similar
+to a real trusted service.
+
+### Decision
+
+Add an authenticated raw-reader boundary. The reader accepts only the three
+canonically ordered encrypted manifest artifacts. For each artifact it:
+
+1. Fetches bytes through an injected `trusted://` cloud-storage port.
+2. Enforces the manifest byte length and SHA-256 before decryption.
+3. Computes AAD over request, immutable benchmark pin, Harbor job, runtime
+   attestation, manifest, artifact set, and exact artifact reference.
+4. Requires the decryptor to return a cloud-decryption attestation binding the
+   ciphertext, plaintext digest, AAD, versioned key, and canonical time.
+5. Commits the hashes of all three plaintexts into one decoder-input binding.
+6. Requires the Harbor/ATIF decoder to acknowledge exactly that binding and to
+   return a top-level evaluation correlated to the raw run.
+7. Zeros owned ciphertext and plaintext buffers on success or failure.
+
+There is no local file reader, plaintext persistence, permissive decoder, or
+provider-specific crypto implementation in the core. Storage, decryption, and
+Harbor format parsing remain fail-closed cloud ports. Test-only in-memory
+fixtures carry the literal boundary marker `test-only-in-memory`; production
+constructors reject that marker.
+
+Add a bound canonical-policy resolver. A cloud material provider returns one
+record tied to request hash, protocol, one-use disposition nonce, raw manifest,
+raw artifact set, Harbor job, and runtime attestation. Five independently
+hashed components cover:
+
+- exact repair cache evidence and cache attestation;
+- correctness, integrity, capability, accuracy-tradeoff, cost, latency, and
+  compliance guardrails;
+- forbidden literals, content fingerprints, grader canaries, and scanner
+  version;
+- the pre-existing online alpha-spending state;
+- the optional privacy-qualified behavioral aggregate and its normalized ATIF
+  source-set hash.
+
+The final policy attestation commits those five component hashes plus frozen
+environment, candidate time, stratum weights, deterministic integration
+resolution, infrastructure replacement ceiling, and policy seal time. Raw
+run identifiers correlate the provider lookup but are intentionally excluded
+from this pre-outcome attestation because they do not yet exist when policy is
+sealed. The resolver requires the candidate to be frozen before panel sealing
+and the policy to be sealed after panel selection but before the first Harbor
+execution (or, for a run without receipts, before raw-manifest creation). It
+recomputes every hash and rejects any changed component. It does not infer a
+guardrail or threshold from observed candidate outcomes.
+
+Implement hidden-catalog update signing and verification with injected,
+versioned cloud Ed25519 key providers. The private-key provider is restricted
+to the `hidden-catalog-outcome-update` purpose. The verifier accepts only a
+predeclared rotation keyring, validates the complete update and signature
+timestamp, resolves the matching public key, and verifies the canonical
+document. Provider/key failures return only a generic trusted-boundary error.
+No key, task row, or signing detail enters a release envelope.
+
+Add an asynchronous production composition factory. It requires cloud-marked
+raw, policy, key, and durable-store ports, a durability attestation hash, the
+immutable Terminal-Bench runner configuration, and separate result-envelope
+and hidden-update key purposes. It constructs and retains privately:
+
+`TerminalBenchCloudRunner → StrictTrustedDecodedEvaluationReader →
+BoundCanonicalDerivationPolicyResolver →
+DeterministicCanonicalEvaluationDeriver → TrustedEvaluationBroker`.
+
+The broker then requires raw destruction before the Ed25519 result issuer may
+produce the only release-facing object. The returned service exposes only
+`evaluate(request)` and no intermediate raw, hidden, policy, or signing API.
+
+### Alternatives
+
+- Trust the provider-specific decoder to read all inputs without an input-set
+  commitment.
+- Put plaintext JSON in a local temporary directory before normalization.
+- Let each guardrail/cache/scanner dependency return an unsealed value at
+  derivation time.
+- Store an Ed25519 private key directly in application configuration.
+- Export runner, deriver, and issuer separately and rely on call-site order.
+- Ship an in-memory encrypted-artifact backend as a production fallback.
+
+### Consequences
+
+The core now has an executable production composition contract without
+pretending that a particular cloud object store, KMS, or Harbor archive format
+has been selected. Provider adapters must implement explicit ports and exact
+attestations. This is deliberate: substituting a local backend is a
+configuration error, not degraded operation.
+
+The remaining composition work is externally concrete and visible:
+
+- choose and bind a durable encrypted `trusted://` object store;
+- implement provider KMS/secret adapters and key rotation policy;
+- implement and validate the exact Harbor v0.20.0 raw bundle/ATIF decoder;
+- populate the sealed canary/fingerprint registry and behavioral aggregate
+  provider;
+- bind the durable one-use ledger, raw ingress/custodian, policy material
+  store, and hidden catalog sink;
+- run all new type, lint, unit, adversarial, and live lifecycle tests in the
+  approved cloud environment.
+
+Until those adapters are configured, production startup fails closed. Source
+tests cover ciphertext mutation, missing decoder binding, post-seal changes to
+each policy component, hidden-update signature mutation, unknown/test-only key
+providers, result keyring mismatch, and rejection of in-memory raw ports.
+They remain unverified until the cloud-only suite runs.
+
+### Evidence
+
+- `src/evaluator/raw-reader.ts`
+- `src/evaluator/policy-resolver.ts`
+- `src/evaluator/hidden-update-signature.ts`
+- `src/evaluator/composition.ts`
+- `tests/evaluator/raw-reader.test.ts`
+- `tests/evaluator/policy-resolver.test.ts`
+- `tests/evaluator/hidden-update-signature.test.ts`
+- `tests/evaluator/composition.test.ts`
+
+## ADR-0038 — Seal Claude optimizer sessions in disposable cloud sandboxes
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §5, §6, §8, §13
+
+### Context
+
+The Claude launch specification constrained tools, evidence, cost, turns, and
+credentials, but it did not execute the optimizer or freeze its edits. A
+production composition also needs to clone the private Pi source without
+touching the canonical Mac checkout, prevent the GitHub credential from
+reaching Claude, require exactly one MCP hypothesis/candidate handoff, and
+produce deterministic Git objects that the separate trusted publication
+boundary can publish without force.
+
+A proposal sandbox cannot be assumed to survive evaluation. Analysis may run
+hours later, after the proposal lease has expired. Retaining a live sandbox
+would make correctness depend on provider longevity and would enlarge the
+credential and data-retention boundary.
+
+### Decision
+
+Add a cloud-only optimizer session with no subprocess or local fallback. Each
+proposal provisions one bounded immutable x86_64 sandbox through
+`CloudSandboxProvider`. The sandbox receives content-addressed worker, plugin,
+released-evidence, and optional Git-bundle/state artifacts. A trusted setup
+command either fetches an exact registered private GitHub ref or imports an
+exact trusted candidate bundle, verifies commit/tree/lock identities, then
+removes every remote and credential helper.
+
+The sandbox is granted the union of required secret references because the
+provider needs an up-front grant, but each command receives a disjoint subset:
+
+1. Setup receives only the private-origin credential.
+2. The Claude wrapper receives only an Anthropic API or Claude OAuth binding.
+3. Candidate and analysis sealing receive no secret.
+
+The Daytona transport replaces organization-secret bindings before each
+command and clears them afterward. The worker additionally refuses to launch
+Claude if `DF_GITHUB_TOKEN` is visible. It constructs the actual Claude child
+from `createClaudeCodeLaunchSpec`, supplies a minimal environment, parses
+stream JSON in bounded memory, retains only operational summary fields, and
+never writes the full model stream.
+
+Proposal sealing requires one hypothesis envelope, one candidate envelope,
+their exact receipt lineage, an uncontaminated MCP session state, a non-empty
+small diff in approved Pi source roots, regular Git tree entries, and a
+generic leakage/reward-hacking scan. It creates a deterministic commit whose
+parent is the frozen source, writes
+`refs/heads/df/bundle/<experiment>`, and emits a Git bundle compatible with
+the existing signed non-force publication protocol. Bundle, diff, session
+state, and canonical worker result are downloaded only as content-addressed
+trusted artifacts.
+
+The session archive includes only MCP session state, immutable submission
+envelopes, and the optimizer audit directory. A later analysis uses a new
+disposable sandbox, rehydrates those records at the same absolute project
+path, checks out the exact candidate bundle, overlays the newly released
+task-agnostic result, runs the read-only Claude analysis phase, and seals one
+bound analysis. Both phases invalidate all outputs if confirmed sandbox
+teardown fails.
+
+### Consequences
+
+The canonical Pi checkout is never fetched, built, or mutated. A long-running
+evaluation does not require a long-lived optimizer sandbox, and neither Git
+nor benchmark credentials are available to Claude. Candidate identity is
+deterministic and publication remains a distinct authorized operation.
+
+The generic scan in the optimizer sandbox deliberately has no protected task
+fragment set: putting benchmark-derived fragment hashes beside Claude would
+unnecessarily enlarge the optimizer trust zone. The later trusted integrity
+gate must therefore repeat the scan with its hidden fragment registry before
+evaluation. Production still requires a concrete verifying artifact reader,
+immutable optimizer image digest, built plugin tar, provider organization
+Secrets, durable optimizer-session record store, and cloud execution of the
+unit/adversarial/live tests.
+
+### Evidence
+
+- `src/optimizer/cloud-session.ts`
+- `scripts/optimizer-session-worker.mjs`
+- `tests/optimizer/cloud-session.test.ts`
+
+## ADR-0039 — Run the complete control plane in the cloud
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: ADR-0018, ADR-0030
+- Superseded by: none
+- Related plan: `PLAN.md` §2.3, §3, §6, §10, §12–14
+
+### Context
+
+The operator clarified that nothing executable should run on the Mac. Earlier
+decisions moved candidate code, tests, Harbor, graders, and benchmark tasks to
+cloud sandboxes but still allowed the TypeScript orchestrator, Claude Code,
+evidence writers, and operator commands to run locally. That leaves local
+processes handling provider credentials and mutable campaign state, and it
+does not satisfy the stronger boundary.
+
+Campaign continuity also needs storage that outlives any disposable controller
+or evaluator sandbox. Raw Harbor output cannot share the optimizer-visible
+store, and the canonical `../pi` checkout must remain a read-only source
+reference rather than becoming a runtime dependency.
+
+### Decision
+
+Run the complete executable Dark Factory deployment in a pinned trusted cloud
+control-plane sandbox. The TypeScript orchestrator, Claude Code optimizer,
+broker, evaluator, Git workers, evidence writers, campaign controls, and all
+quality commands execute there or in its child cloud sandboxes. A Mac process
+may only:
+
+1. author source files;
+2. inspect the canonical Pi checkout with the fixed read-only Git allowlist;
+3. trigger an authenticated cloud entry point without resolving workload
+   secrets; and
+4. display an optional read-only mirror of release-safe JSON and generated
+   Markdown.
+
+The Mac does not run the Daytona SDK, `df optimize`, Claude Code, dependency
+installation, builds, lint, tests, Pi, Harbor, graders, or synthetic/benchmark
+workloads.
+
+Use a provider-managed persistent volume mounted only into the trusted control
+plane for mutable campaign state and content-addressed artifacts. Map every
+`trusted://` URI to a one-way SHA-256 directory, stream and verify all bytes,
+write through a same-volume staging directory, reject symbolic links and
+special files, and make a URI idempotent only for identical bytes. Daytona's
+S3-backed volume and per-campaign `subpath` are the initial implementation
+target. Optimizer sandboxes do not receive this mount. Evaluator raw material
+uses a separate restricted prefix and encryption/retention policy; only signed
+release-safe evidence may be copied to the campaign prefix or an optional
+workstation mirror.
+
+Bootstrap originates from authenticated cloud CI or a provider-owned UI/job,
+which starts the trusted controller with an immutable image, exact volume
+mount/subpath, organization Secret references, TTL, network policy, and one
+active-writer campaign lease. A local API bootstrap is not a fallback. Human
+full-evaluation authorization is performed through an interactive
+provider-owned session and persisted in a provider-managed KMS/secret-backed
+one-use store, not macOS Keychain.
+
+Environment markers remain only a fail-closed baseline. Production startup
+must additionally verify the immutable image, provider sandbox identity,
+volume mount/subpath, controller lease, and key/storage attestations before it
+accepts mutable state. Failure to prove any binding prevents initialization.
+
+### Alternatives
+
+- Keep the orchestrator and release-safe state on the Mac.
+- Run only workload processes remotely while resolving Daytona and GitHub
+  credentials locally.
+- Store all raw and released evidence in one mounted volume.
+- Mount campaign state into Claude or evaluated-agent sandboxes.
+- Treat a user-set environment marker as sufficient production attestation.
+
+### Consequences
+
+There is no immediate local CLI execution path for campaign mutation. Cloud
+availability is required even for synthetic validation and operator stop/resume
+commands. The deployment needs a cloud bootstrap workflow, a persistent volume
+identifier/subpath, single-writer fencing, immutable control image, and
+provider-managed Secrets before any live campaign can start.
+
+Release-safe evidence can still appear under `df-demo/experiments` as a
+read-only synchronized mirror, satisfying the auditability goal without
+turning the Mac into a trusted runtime. Raw task names, grader output, ATIF, and
+per-task rows never enter that mirror.
+
+### Evidence
+
+- Operator clarification that nothing should execute on the Mac
+- `src/cloud/artifact-bridge.ts`
+- `src/cloud/mounted-volume-backend.ts`
+- `src/cloud/runtime-marker.ts`
+- `tests/cloud/mounted-volume-backend.test.ts`
+- [Daytona volumes](https://www.daytona.io/docs/en/volumes/)
+
+## ADR-0041 — Package Harbor directories before trusted artifact transfer
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §6.5, §8.1
+
+### Context
+
+Harbor 0.20 writes a job as a directory under `jobs_dir/job_name`. The cloud
+provider transfer contract downloads regular files, not directories. Treating
+that directory as a downloadable artifact would also leave traversal,
+symbolic-link, archive-bomb, partial-output, and time-of-check/time-of-use
+semantics undefined. Raw Harbor material is task-sensitive and cannot be
+staged on the workstation to solve the mismatch.
+
+The trusted raw normalizer needs the job-level config/result, every direct
+trial result, and Pi's ATIF trajectory. It must also prove that those bytes came
+from the exact sealed invocation and successful Harbor execution being
+evaluated.
+
+### Decision
+
+Upload a content-addressed `package-harbor-output.mjs` module with every sealed
+Harbor job. The job artifact hashes the module reference and distinguishes two
+paths per invocation:
+
+1. `remoteHarborJobPath` is Harbor's mutable sandbox-local output directory.
+2. `remoteOutputPath` is a new
+   `<invocation>.harbor-output.tar` regular file.
+
+After all Harbor invocations succeed, the runner invokes the packager once per
+directory with no secret references. It passes only sealed paths and
+identifiers: request ID, job hash, Terminal-Bench pin hash, invocation ID and
+order, config hash, expected trial count, and the corresponding successful
+Harbor execution ID. A packaging failure, timeout, cancellation, malformed
+artifact type, or oversized artifact invalidates the whole run before raw
+ingress.
+
+The packager runs only with the cloud marker and provider sandbox identity. It
+uses no shell and no external archiver. It recursively admits directories and
+regular files only, uses no-follow file descriptors, checks stable
+device/inode/size/mtime metadata, hashes bytes before manifest construction,
+and rehashes while streaming them. It rejects:
+
+- symbolic links and all special files;
+- absolute, traversal, control-character, backslash, non-NFC, duplicate, or
+  prefix-conflicting paths;
+- nested archives and fixed file/path/expanded-byte ceiling violations;
+- missing root `config.json` or `result.json`;
+- any `result.json` outside the root or a direct trial directory;
+- any `trajectory.json` outside `<trial>/agent/trajectory.json`; and
+- a missing, extra, or unpaired direct trial result/trajectory set.
+
+It writes a deterministic POSIX/PAX tar ordered by UTF-8 path bytes. The first
+entry is canonical `manifest.json`; each source file follows under
+`payload/<relative-path>`, with normalized ownership, modes, timestamps, and
+two terminal zero blocks. The manifest records schema/domain, all invocation
+bindings, file/byte/trial counts, every file SHA-256, and a canonical aggregate
+payload SHA-256. The provider download call requires
+`application/x-tar` and a 2.25 GiB maximum before streaming begins. The trusted
+raw ingress must validate the tar and manifest in memory before deriving the
+three encrypted raw evidence documents; no extracted directory or tar reaches
+the optimizer, campaign volume, or Mac.
+
+### Alternatives
+
+- Download the Harbor output directory through provider-specific recursion.
+- Invoke system `tar` after a best-effort directory scan.
+- Encode every file as base64 in one JSON document.
+- Retain a live evaluator sandbox and let the later decoder read its
+  filesystem.
+- Copy raw output to the workstation for packaging.
+
+### Consequences
+
+The artifact edge now transfers one bounded immutable file and has an exact
+source/invocation commitment. Custom tar production and parsing are
+security-critical and need cloud fixture, adversarial, truncation, PAX, and
+live Harbor validation. The packager intentionally performs two payload read
+passes—one for the manifest and one while writing—to detect mutation while
+keeping file content streaming and metadata memory bounded by the fixed
+file/path ceilings. A missing ATIF trajectory fails the invocation closed
+instead of silently manufacturing behavioral evidence.
+
+The packager source digest still has to be resolved into a trusted artifact by
+production composition, and the exact Harbor 0.20 directory layout must be
+confirmed in the pinned evaluator image. Until the cloud suite and live
+fixture pass, this boundary is implemented but not operationally verified.
+
+### Evidence
+
+- `scripts/package-harbor-output.mjs`
+- `src/terminal-bench/harbor.ts`
+- `src/terminal-bench/job-builder.ts`
+- `src/terminal-bench/runner.ts`
+- `tests/terminal-bench/harbor-output-packager.test.ts`
+- `tests/terminal-bench/pin-harbor.test.ts`
+- `tests/terminal-bench/job-builder.test.ts`
+- `tests/terminal-bench/cloud-runner.test.ts`
+
+## ADR-0042 — Fence mutable state with a non-expiring cloud-controller lock
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §2.3, §5, §6, §7, §12–14
+
+### Context
+
+The one-use request ledger, hidden task catalog, and optimizer session record
+store must survive disposable controller sandboxes while remaining
+linearizable. Process memory is not durable, and a permissive local filesystem
+implementation would violate the cloud-only boundary. A conventional
+time-to-live lock is also unsafe: a paused controller can resume after another
+writer has decided that its lease expired.
+
+Daytona volumes are provider-managed and persistent, but their S3-backed FUSE
+implementation must not be assumed to provide every POSIX durability and
+rename guarantee without a live canary for the exact deployed volume class.
+Automatic stale-lock deletion based on workstation or sandbox clocks is
+therefore not an acceptable recovery mechanism.
+
+### Decision
+
+Use campaign-scoped mounted-volume adapters in the trusted cloud controller
+for `AtomicOneUseLedgerStore`, `LinearizableHiddenCatalogCasStore`, and
+`CloudOptimizerSessionRecordStore`. Each adapter requires both:
+
+1. the trusted cloud runtime guard; and
+2. a storage-semantics guard issued only after the deployment has attested
+   exclusive directory creation, same-volume atomic rename, durable file
+   synchronization, and single-controller policy for that volume.
+
+The adapter acquires one lifetime lock per store namespace. Lock metadata
+contains a random 192-bit nonce, controller-instance commitment, monotonically
+increasing fence epoch, acquisition time, and canonical content hash. Every
+transaction is serialized inside that owner, verifies the active lock and
+durable fence before reading, before committing, and after committing, and
+invokes the domain callback exactly once.
+
+There is no lock expiry. Recovery requires an injected trusted authority to
+return an authorization bound to the exact prior lock hash and fence epoch
+after it has verified provider evidence that the old controller sandbox was
+irreversibly destroyed. The authorization is durably recorded before the old
+lock is quarantined. A successor then acquires a higher epoch; any resumed or
+stale owner fails its next ownership check. Clean shutdown moves the lock into
+an immutable released-lock record instead of silently deleting its history.
+
+State is stored as bounded canonical JSON in a content-hashed envelope that
+binds its domain, generation, preceding-envelope hash, writer fence, commit
+time, state hash, and payload. Writes use a no-follow exclusive staging file,
+file synchronization, atomic replacement, parent-directory synchronization,
+ownership rechecks, and exact read-back. The independent fence record also
+retains the last committed generation and envelope hash, so replacing the
+state file with an older internally valid envelope fails closed. A crash after
+state replacement but before fence advancement can adopt exactly one
+hash-linked successor only from the current writer or an earlier fence with
+provider-destruction authorization. Roots, control directories, state files,
+and lock files reject symbolic links and unexpected file types.
+
+The ledger adapter validates record/status consistency, unique claims and
+one-use attestation indexes, and complete signed result envelopes. The hidden
+catalog adapter validates the full storage shape, all 89 opaque task records,
+shadow slices, allocations, outcome commitments, and revision accounting;
+`DurableTrustedHiddenCatalog` still verifies its secret-keyed commitments
+inside the transaction. The optimizer store retains only strict manifests,
+receipts, and trusted artifact references, and accepts repeated writes only
+when their canonical content is identical.
+
+### Alternatives
+
+- Keep mutable stores in controller memory and reconstruct after crashes.
+- Use an expiring lock or heartbeat and steal it after a wall-clock timeout.
+- Recover a stale lock automatically when its owner marker is absent.
+- Rely on untested S3/FUSE rename behavior.
+- Put task-sensitive catalog state or optimizer session state on the Mac.
+- Operate multiple writers and approximate compare-and-set with retries.
+
+### Consequences
+
+Normal operation has one durable writer and straightforward linearization.
+Crash recovery intentionally stops until provider destruction is attested; an
+availability delay is preferable to split-brain campaign state. The
+authorization callback is a trust boundary and must verify the provider
+signature or KMS-backed recovery decision rather than accepting operator text.
+
+The mounted-volume semantics canary, provider recovery authority, and cloud
+failure-injection suite are deployment prerequisites. If Daytona cannot attest
+atomic rename and durable sync for its volume implementation, production must
+replace this adapter with a managed transactional database or object-store
+conditional-write service; configuration must not weaken the guard.
+
+### Evidence
+
+- `src/cloud/mounted-volume-state.ts`
+- `tests/cloud/mounted-volume-state.test.ts`
+
+## ADR-0043 — Preseal cloud download type and size
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §6.5, §8.1, §12.5–12.6
+
+### Context
+
+Daytona's filesystem download API returns a byte stream without authoritative
+content-type metadata. The original transport persisted every download as
+`application/octet-stream`. Consumers correctly required more specific types,
+such as `application/x-tar` for candidate runtimes and Harbor bundles,
+`application/vnd.git.bundle` for Git bundles, and `application/json` for
+worker manifests. Consequently, a real artifact would be rejected even when
+its bytes and digest were correct.
+
+Relabeling after download would fix compatibility but would leave the storage
+boundary open to unbounded remote output. A compromised worker could fill the
+trusted volume before a later consumer applied its byte limit.
+
+### Decision
+
+Every cloud-provider download now requires a caller-sealed expectation with:
+
+1. an exact safe media type; and
+2. a positive hard maximum byte length, capped globally at 16 GiB.
+
+The configured provider validates the expectation before transfer and rejects
+a returned reference whose media type differs or whose committed length
+exceeds the limit. The Daytona transport independently validates the same
+contract, counts every streamed byte, aborts before trusted-artifact commit
+when the maximum is crossed, and persists the artifact using the declared
+type. Existing post-download schema, digest, exact-length, and semantic checks
+remain mandatory.
+
+Production callers declare narrow types and role-appropriate ceilings:
+manifests and results use canonical JSON limits, Git source and runtime
+archives use tar limits, candidate publication uses the Git bundle type, and
+optimizer state/diff artifacts use their exact types. Harbor bundles use the
+packager's 2.25 GiB ceiling.
+
+### Alternatives
+
+- Continue persisting all remote files as generic binary.
+- Infer type from a filename extension.
+- Trust provider-supplied or worker-supplied MIME metadata.
+- Download first and reject oversized artifacts only after commit.
+- Allow consumers to relabel an already persisted artifact.
+
+### Consequences
+
+Artifact type is now a protocol assertion made before untrusted bytes cross the
+storage boundary, not mutable metadata inferred later. Every new download
+callsite must choose an explicit type and size budget, which is intentional:
+an omitted budget is a compile-time error. A media-type declaration does not
+prove file semantics, so the appropriate parser and signed-manifest checks
+must still reject malformed content.
+
+### Evidence
+
+- `src/cloud/types.ts`
+- `src/cloud/provider.ts`
+- `src/cloud/adapters/daytona-transport.ts`
+- `tests/cloud/provider-contract.test.ts`
+- `tests/cloud/daytona-transport.test.ts`
+
+## ADR-0044 — Deliver lock, quality, role images, and paid control from protected cloud workflows
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §2.3, §3, §12–14
+
+### Context
+
+ADR-0039 forbids dependency installation, quality commands, image builds,
+provider SDK bootstrap, controllers, and workloads on the Mac. The repository
+did not yet have a safe way to create its first pnpm lock, build distinct trust
+zone images, publish immutable identities, or launch the paid controller. A
+single privileged workflow would expose the Daytona credential to build and
+third-party action steps, and an automatically opened lockfile PR would grant a
+bootstrap job unnecessary write authority.
+
+Claude Code and Harbor versions are material protocol inputs, but the operator
+has not yet selected the production optimizer model, evaluated Pi model,
+credentials, budgets, or base images. Delivery must not manufacture those
+choices. Image publication must also be incapable of accidentally starting a
+paid benchmark run.
+
+### Decision
+
+Create four independent GitHub-hosted delivery paths:
+
+1. A manual, exact-main-commit-bound lock bootstrap resolves
+   `pnpm-lock.yaml` with lifecycle scripts disabled. It has read-only repository
+   permission, refuses to run when a lock already exists, admits no other
+   working-tree change, and uploads the lock plus SHA-256 as a review artifact.
+   A human adds the reviewed file through a normal PR.
+2. Pull request, main, and explicitly confirmed manual quality jobs use a fixed
+   Ubuntu image, exact Node and pnpm versions, a frozen committed lock, and
+   immutable-SHA external actions. They receive no operational secret.
+3. A protected, manually confirmed, source-commit-bound workflow reruns the
+   complete quality suite, then builds four Linux/amd64 roles from
+   operator-supplied digest-qualified bases using an exact Buildx release and
+   digest-qualified BuildKit driver. The optimizer installs the exact supplied
+   Claude Code version; the evaluator installs the exact supplied Harbor
+   version. BuildKit publishes each private GHCR image with attached SPDX SBOM
+   and max-mode provenance and emits a review artifact containing its immutable
+   reference and digest. This workflow never invokes Daytona,
+   Claude Code, Pi, Harbor, Terminal-Bench, or a paid model.
+4. A separate `dark-factory-paid` protected environment launches only from an
+   exact main commit after typed campaign confirmation and an independent
+   `RUN:<campaign>:<control-digest>` authorization. It builds the reviewed
+   controller and calls `dist/cloud/control-bootstrap-cli.js optimize`. The
+   plaintext Daytona bootstrap key is scoped only to that final step; all other
+   credentials are opaque Daytona organization-Secret names. Its controller
+   TTL is capped so the GitHub-hosted job can observe confirmed teardown.
+
+All checkouts disable credential persistence. OCI build context is
+default-deny. Final roles use numeric non-root UID/GID 65532. There is no base
+tag fallback and no model, budget, credential, benchmark hash, or runtime image
+default. Runtime configuration consumes only the digest references returned by
+the publication receipts.
+
+### Alternatives
+
+- Generate or install the first dependency lock on the Mac.
+- Let the lock bootstrap push directly to `main` or open a privileged PR.
+- Use one all-purpose image for controller, optimizer, build, and evaluator.
+- Publish images from every push with mutable tags.
+- Put the Daytona key in job-wide environment state.
+- Combine image publication and paid optimization in one workflow.
+- Choose provisional Claude, Pi, base-image, or budget values in CI.
+
+### Consequences
+
+Initial delivery requires deliberate human steps: review the generated lock,
+configure two protected GitHub environments, approve four digest-qualified
+base images, select exact Claude Code and Harbor versions, inspect four
+attestation sets, and configure the paid variables and one bootstrap secret.
+This friction is intentional at the authority and spend boundaries.
+
+Exact top-level package versions plus SBOM/provenance do not make Python or npm
+transitive resolution independently reproducible. The trusted live probe must
+still verify Harbor package/executable hashes, Claude Code identity, Pi adapter
+hash, image/runtime architecture, provider profile, and benchmark pins. Numeric
+non-root execution also requires compatible ownership semantics from each
+reviewed base and the Daytona volume. The first cloud build and synthetic probe
+remain deployment gates; authored workflow files are not execution evidence.
+
+### Evidence
+
+- `.github/workflows/bootstrap-lockfile.yml`
+- `.github/workflows/ci.yml`
+- `.github/workflows/publish-role-images.yml`
+- `.github/workflows/paid-optimize.yml`
+- `.dockerignore`
+- `containers/control.Containerfile`
+- `containers/optimizer.Containerfile`
+- `containers/build.Containerfile`
+- `containers/evaluator.Containerfile`
+- `CLOUD_DELIVERY.md`
+
+## ADR-0040 — Normalize Harbor evidence once inside the trusted evaluator
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §6.5, §8, §12.5–12.6
+
+### Context
+
+Harbor 0.20 output is a task-sensitive directory projection containing job
+and trial results, verifier rewards, agent messages, tool arguments/results,
+and ATIF trajectories. Passing those files directly to the optimizer would
+reveal benchmark identity and grader material. Accepting general tar or native
+`JSON.parse` would also admit alternate archive semantics and duplicate-key
+parser differentials. The evaluator still needs exact task/arm correlation,
+per-trial costs, generic behavioral evidence, and auditable raw destruction.
+
+### Decision
+
+Use a one-way trusted-cloud normalization boundary pinned to the exact
+`harbor-0.20.0-py3-none-any.whl` digest. It accepts only the byte-for-byte
+deterministic POSIX/PAX layout from ADR-0041, reconstructs every header,
+validates the canonical manifest and all file/aggregate hashes, rejects
+duplicate JSON keys, and retains only the sealed input config, job result,
+direct trial results, and paired ATIF files in memory.
+
+The normalizer joins original content-addressed task-name order to the hidden
+panel and matched schedule, then independently joins each trial through task
+name, configured candidate/champion agent, trial UUID, invocation, execution,
+and archive manifest. Provider-specific metering must allocate a positive
+sandbox cost to every trial; CPU and RSS may be null when honest per-trial
+telemetry does not exist. The resulting decoding plan remains trusted-only.
+
+Exactly three canonical JSON documents are emitted: Harbor results, scalar
+grader/resource records, and ATIF. They are encrypted immediately with
+acyclic AEAD binding material, streamed through the verifying trusted artifact
+bridge, and zeroed. The original unencrypted Harbor bundles are then deleted
+through an idempotent backend lifecycle boundary before the decoding plan is
+committed. Final deletion or crypto-shredding requires a backend attestation
+and an Ed25519-verifiable destruction receipt. No raw file is extracted to a
+directory or persisted on the workstation.
+
+The strict decoder authenticates and consumes all three documents together.
+It accepts only the official successful Harbor 0.20/ATIF-v1.7 projection,
+requires one exact record per presealed schedule arm, and discards task names,
+instructions, messages, reasoning, tool arguments/results, paths, and grader
+prose. Its only output is opaque task digests, scalar correctness/integrity and
+cost values, timestamps, and generic hashed behavioral events.
+
+### Consequences
+
+The optimizer can learn generic failure and behavior patterns without seeing
+which benchmark task produced them. Unknown fields, missing/duplicated/swapped
+arms, archive variants, task metadata in release fields, noncanonical JSON,
+or unavailable billing fail the evaluation closed. Production composition
+must supply trusted normalization context, billing, KMS encryption, durable
+plan storage, object lifecycle, and receipt-signing adapters; no permissive
+local fallback exists.
+
+### Evidence
+
+- `src/evaluator/harbor-v020-bundle.ts`
+- `src/evaluator/harbor-v020-normalizer.ts`
+- `src/evaluator/harbor-v020-decoder.ts`
+- `src/evaluator/raw-ingress.ts`
+- `src/evaluator/raw-reader.ts`
+- `src/terminal-bench/assets/dark_factory_pi.py`
+- `tests/evaluator/harbor-v020-bundle.test.ts`
+- `tests/evaluator/harbor-v020-decoder.test.ts`
+
+## ADR-0045 — Bind cloud execution to the exact private Pi fork snapshot
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Related plan: `PLAN.md` §2.1, §2.3, §4, §13–14
+
+### Context
+
+The operator already owns the private Pi fork at
+`parallaxai/df-pi-tbench`; its canonical Mac checkout is the sibling `../pi`
+directory. Read-only inspection observed branch `main`, commit
+`5bc1c2c0a6f07e00e8c240304182f213ab8d311f`, tree
+`73898c76210cc8b48f4ac07cc76397b6b5c00758`, package-lock SHA-256
+`472f0726dc79f3b38df58d8a8bce96bf56fbf993a134b49aabc54947b8461e59`,
+and coding-agent package version `0.82.1`. A path or commit alone would not
+prove that the cloud run used the authorized repository contents, and
+fetching or building the canonical Mac checkout would violate the cloud-only
+execution policy.
+
+The protected delivery workflows also need a trustworthy way to distinguish a
+GitHub-hosted runner from a self-hosted runner. GitHub's `runner.environment`
+context is authoritative workflow input; it is not automatically available as
+an environment variable.
+
+### Decision
+
+Treat the repository owner, repository name, branch, commit, tree,
+package-lock digest, package name/version, canonical upstream URL, and opaque
+cloud credential-secret name as one indivisible source authorization. Parse
+and validate it before a production optimize command can start. A trusted
+cloud Git worker must independently clone the private origin, resolve the
+authorized objects and lock bytes, verify the canonical upstream and merge
+base, and create content-addressed source/runtime artifacts. It must not add a
+remote to, fetch, build, test, or modify `../pi`.
+
+The observed values are authorization inputs, not proof. Production remains
+locked until the cloud worker returns a signed verification receipt and the
+private origin's privacy and non-force fetch/push capabilities are attested.
+Claude receives only a disposable candidate checkout and never receives the
+private-repository credential.
+
+Protected workflows explicitly export
+`RUNNER_ENVIRONMENT: ${{ runner.environment }}` and require the value
+`github-hosted`. The paid path runs a mounted-volume/provider probe and a
+deterministic synthetic campaign before attempting the real optimizer. All
+three steps emit separate release-safe receipts.
+
+### Alternatives
+
+- Trust the local path or the configured remote URL.
+- Pin only the commit SHA.
+- Fetch and package the canonical Mac checkout.
+- Let Claude clone or publish with the GitHub credential.
+- Infer the runner class from an ambient variable that GitHub does not define.
+
+### Consequences
+
+Changing any authorized source field requires a new reviewed authorization.
+The first live run additionally needs an authenticated private cloud clone,
+source-verification signer, reviewed role-image digests, and production
+optimizer composition. Until those exist, the paid workflow is expected to
+fail closed at `optimize` after its safe preflights rather than run an
+unverified harness.
+
+### Evidence
+
+- `src/config/harness-source.ts`
+- `src/cloud/control-bootstrap.ts`
+- `src/cloud/control-plane.ts`
+- `scripts/trusted-git-worker.mjs`
+- `.github/workflows/paid-optimize.yml`
+- `.env.example`
+- `tests/config/harness-source.test.ts`
+- `tests/harness/trusted-git-worker.test.ts`
+
+## ADR-0046 — Use bounded Pi print-mode JSON for the initial Harbor adapter
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: ADR-0031
+- Superseded by: none
+- Related plan: `PLAN.md` §2.1, §3.3, §8, §12–13
+
+### Context
+
+ADR-0031 selected Pi RPC because it offers explicit control and structured
+events. Further read-only inspection found that Pi's RPC process exits when
+its standard input reaches EOF. A correct RPC driver therefore needs a
+long-lived bidirectional controller, protocol-state validation, backpressure,
+abort acknowledgement, and adversarial lifecycle tests. A simple one-shot
+pipe would race or terminate an active agent and would be less reliable than
+Pi's existing one-shot interface.
+
+The implemented Harbor adapter already launches a fresh Pi process with
+`--print --mode json`, disables sessions and ambient extensions/skills/prompt
+templates, validates every JSON event, requires a unique terminal
+`agent_settled`, derives ATIF inside the trusted evaluator, and relies on
+Harbor plus sandbox teardown for the hard timeout.
+
+### Decision
+
+For the MVP, keep the adapter external to Pi but use its bounded one-shot
+print-mode JSON contract. Launch exactly one fresh process per trial, provide
+the task instruction only inside that task sandbox, capture structured output
+only in the trusted evaluator, require a complete validated lifecycle, and
+enforce timeout, cancellation, and destruction outside Pi.
+
+Do not describe the current implementation as RPC. Retain the TypeScript RPC
+serialization and validation helpers only as a future implementation path. A
+switch to RPC is a protocol change and requires a dedicated trusted driver
+that keeps stdin open, correlates commands and events, proves abort and
+settlement behavior, and passes cloud fault-injection tests before it can
+replace print mode.
+
+### Alternatives
+
+- Keep ADR-0031 while silently running print mode.
+- Implement an untested shell pipe around RPC.
+- Patch Pi with benchmark-specific lifecycle code.
+- Persist Pi sessions or raw event streams outside the trusted evaluator.
+
+### Consequences
+
+The MVP has a smaller and more auditable wrapper, while hard cancellation
+depends on Harbor and provider teardown instead of an in-protocol abort.
+Print-mode event compatibility must be checked against the exact authorized Pi
+commit during the live cloud probe. Any incomplete, unknown, duplicated, or
+oversized event stream fails the trial as infrastructure-invalid; it cannot
+become a benchmark failure or promotion signal.
+
+### Evidence
+
+- `src/terminal-bench/assets/dark_factory_pi.py`
+- `src/terminal-bench/pi-agent.ts`
+- `src/harness/pi-rpc.ts`
+- `tests/terminal-bench/pi-agent.test.ts`
+- `tests/harness/candidate-pi-rpc.test.ts`

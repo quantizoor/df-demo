@@ -289,4 +289,7 @@ never combined in one sealed experiment or one attempt ceiling.
 
 No experiment has been run yet. The first generated entry will describe
 `000-pi-baseline`; creating these planning documents does not create or evaluate
-the harness baseline.
+the harness baseline. Discovering the existing clean private Pi working copy at
+`../pi` and its planning-time commit is repository setup evidence only; the
+baseline is created only after origin privacy/authentication, the missing
+official upstream remote, and the reviewed commit/lock provenance are sealed.

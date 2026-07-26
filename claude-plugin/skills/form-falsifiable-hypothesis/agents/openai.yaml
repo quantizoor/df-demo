@@ -1,0 +1,4 @@
+interface:
+  display_name: "Form Falsifiable Hypothesis"
+  short_description: "Create bounded causal harness hypotheses"
+  default_prompt: "Use $form-falsifiable-hypothesis to turn the current aggregate evidence into a testable Pi change."

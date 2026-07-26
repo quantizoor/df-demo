@@ -1,0 +1,4 @@
+interface:
+  display_name: "Statistical Decision Making"
+  short_description: "Reason from matched uncertainty-aware results"
+  default_prompt: "Use $statistical-decision-making to interpret matched aggregate results without comparing unmatched scores."

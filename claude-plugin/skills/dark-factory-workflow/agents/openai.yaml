@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dark Factory Workflow"
+  short_description: "Run the blind optimization lifecycle safely"
+  default_prompt: "Use $dark-factory-workflow to follow the controlled hypothesis-to-analysis lifecycle."

@@ -1,0 +1,58 @@
+{
+  "name": "dark-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A blind, cloud-only optimization control plane for terminal-agent harnesses.",
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "bin": {
+    "df": "./dist/cli.js",
+    "df-cloud-bootstrap": "./dist/cloud/control-bootstrap-cli.js",
+    "df-cloud-control": "./dist/cloud/control-plane.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "claude-plugin",
+    "scripts"
+  ],
+  "scripts": {
+    "guard:cloud": "node ./scripts/assert-cloud-execution.mjs",
+    "build": "pnpm guard:cloud && tsc -p tsconfig.build.json && pnpm build:plugin",
+    "build:plugin": "pnpm guard:cloud && node ./scripts/build-plugin.mjs",
+    "typecheck": "pnpm guard:cloud && tsc --noEmit -p tsconfig.json",
+    "lint": "pnpm guard:cloud && biome ci .",
+    "format": "pnpm guard:cloud && biome check --write .",
+    "test": "pnpm guard:cloud && vitest run",
+    "test:coverage": "pnpm guard:cloud && vitest run --coverage",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:coverage",
+    "df": "tsx ./src/cli.ts"
+  },
+  "dependencies": {
+    "@daytona/sdk": "0.200.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@sinclair/typebox": "0.34.52",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "commander": "15.0.0",
+    "pino": "10.1.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "@types/node": "24.10.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "esbuild": "0.28.1",
+    "fast-check": "4.9.0",
+    "tsx": "4.21.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

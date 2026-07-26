@@ -1,0 +1,4 @@
+interface:
+  display_name: "Benchmark Integrity"
+  short_description: "Prevent task leakage and reward hacking"
+  default_prompt: "Use $benchmark-integrity to review a candidate for leakage, overfitting, and reward hacking."
