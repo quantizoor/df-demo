@@ -36,7 +36,6 @@ jobs:
     timeout-minutes: 30
     env:
       CI: "true"
-      RUNNER_ENVIRONMENT: ${{ runner.environment }}
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
       DF_TBENCH_REGISTRY_REVISION: ${{ inputs.registry_revision }}

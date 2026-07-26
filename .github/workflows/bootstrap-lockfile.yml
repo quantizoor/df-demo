@@ -41,7 +41,6 @@ jobs:
     timeout-minutes: 15
     env:
       CI: "true"
-      RUNNER_ENVIRONMENT: ${{ runner.environment }}
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       DF_REQUESTED_SOURCE_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.source_commit }}

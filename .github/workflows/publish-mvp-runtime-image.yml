@@ -30,7 +30,6 @@ jobs:
       contents: read
     env:
       CI: "true"
-      RUNNER_ENVIRONMENT: ${{ runner.environment }}
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
@@ -252,7 +251,6 @@ jobs:
       packages: write
     env:
       CI: "true"
-      RUNNER_ENVIRONMENT: ${{ runner.environment }}
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}

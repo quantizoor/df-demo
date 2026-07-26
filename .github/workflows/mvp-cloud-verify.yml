@@ -31,7 +31,6 @@ jobs:
       CI: "true"
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      RUNNER_ENVIRONMENT: ${{ runner.environment }}
       REQUESTED_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.source_commit }}
     steps:
       - name: Verify cloud runner and immutable request

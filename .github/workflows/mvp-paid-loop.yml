@@ -33,7 +33,6 @@ jobs:
       CI: "true"
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      RUNNER_ENVIRONMENT: ${{ runner.environment }}
       DF_MVP_SOURCE_COMMIT: ${{ inputs.source_commit }}
       DF_MVP_CAMPAIGN_ID: ${{ inputs.campaign_id }}
       DF_MVP_MAX_ITERATIONS: "1"
