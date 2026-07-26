@@ -114,9 +114,9 @@ Factory application language.
 ## ADR-0003 — Use Harbor and ATIF as evaluator contracts
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0025
 - Related plan: `PLAN.md` §2.2, §3.3, §6.5
 
 ### Context
@@ -184,9 +184,9 @@ Claude receives only its worktree and audited MCP evidence tools.
 ## ADR-0005 — Persist sanitized evaluator output only
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0025
 - Related plan: `PLAN.md` §3.3, §8.1
 
 ### Context
@@ -365,9 +365,9 @@ reuse.
 ## ADR-0010 — Run campaigns indefinitely but bound each hypothesis
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0028
 - Related plan: `PLAN.md` §5.1, §7.1
 
 ### Context
@@ -779,9 +779,9 @@ weights, quotas, and tie-breaking version become part of the protocol hash.
 ## ADR-0021 — Release only task-agnostic behavioral evidence
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: ADR-0012
-- Superseded by: none
+- Superseded by: ADR-0025
 - Related plan: `PLAN.md` §3.3, §8.2, §9
 
 ### Context
@@ -818,9 +818,9 @@ re-identification tests in addition to grader-canary tests.
 ## ADR-0022 — Compile task-aware traces into cross-task failure cards
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0025
 - Related plan: `PLAN.md` §3.3, §6.6, §8.2, §9
 
 ### Context
@@ -881,9 +881,9 @@ taxonomy and compiler version become part of the protocol hash.
 ## ADR-0023 — Cache champion outcomes for screening, never promotion
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: none
-- Superseded by: none
+- Superseded by: ADR-0026
 - Related plan: `PLAN.md` §6.6, §7.1, §7.2
 
 ### Context
@@ -979,9 +979,9 @@ cache policy and schema versions become part of the protocol hash.
 ## ADR-0024 — Use a presealed, cache-aware matched race
 
 - Date: 2026-07-25
-- Status: accepted
+- Status: superseded
 - Supersedes: ADR-0009
-- Superseded by: none
+- Superseded by: ADR-0026
 - Refines: ADR-0020, ADR-0023
 - Related plan: `PLAN.md` §6.6, §7.1, §7.2, §12
 
@@ -1076,3 +1076,365 @@ promotion risk remain bounded.
 - User requirement to reduce repeated champion cost without comparing
   candidates on unequal evidence
 - Task-blindness and reward-hacking constraints
+
+## ADR-0025 — Normalize behavioral evidence before interpretation
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: ADR-0003 storage/release semantics, ADR-0005, ADR-0021, ADR-0022
+- Superseded by: none
+- Related plan: `PLAN.md` §3.3, §6.5–6.6, §8.1–8.2, §9, §12
+
+### Context
+
+Claude needs information about generic harness failures to improve Pi, but a
+"sanitized" per-trial trajectory can still reveal a task through commands,
+paths, file contents, outputs, package names, error strings, or the shape of a
+grader response. An LLM asked to strip sensitive information is probabilistic
+and cannot be the security boundary or the source of authoritative statistics.
+Repeated filtered queries can also reconstruct a hidden cohort by differencing.
+
+### Decision
+
+Keep raw graders, verifier output, task-aware ATIF, and row-level normalized
+records in the trusted cloud evaluator only. They are ephemeral and are
+destroyed or quarantined under a short, frozen retention policy after signed
+derivation. Neither raw nor sanitized per-trial ATIF is valid local evidence.
+Harbor remains the pinned evaluator contract and ATIF remains the trusted-cloud
+trajectory interchange contract; this supersedes only ADR-0003's local
+sanitized-ATIF storage/release decision.
+
+Run a deterministic `NormalizedGraderOutcome` adapter first. Its allowlist is
+limited to `pass | fail | invalid`, reward clamped to `[0,1]`, a broad
+infrastructure-invalid class or `null`, integrity status, coarse elapsed-time
+and resource buckets, protocol/environment hashes, and signed
+attempt/derivation hashes. It rejects test names and counts, assertions,
+expected/actual values, subtest structure, messages, paths, identifiers, and
+all grader prose.
+
+Run a deterministic behavioral extractor over raw ATIF inside the same trusted
+zone. It may emit only generic tool categories, invocation validity,
+exit-status classes, retries/repeated actions, output-inspection behavior,
+recovery/replan transitions, verification, planning/action/token/time buckets,
+context/compaction events, stop reason, timeout/premature completion, and
+generic read/write/execute ordering. It drops commands and arguments, paths,
+filenames, file contents, stdout/stderr, URLs, package/service names,
+environment variables, unique literals, task IDs, and stable pseudonyms before
+any local persistence.
+
+A deterministic Behavioral Evidence Engine owns all statistics and release
+decisions. A card requires:
+
+- At least five distinct contributing tasks.
+- At least 20 total trajectories in its analysis window.
+- At least five observations in every compared group.
+
+Subthreshold findings remain private or are suppressed; small counts are
+binned. Complementary-count suppression, cumulative overlap/query budgets,
+grader canaries, stable-feature scans, and re-identification/differencing tests
+run before one sealed release per eligible experiment.
+
+`diagnostic-brief.json` is the only benchmark-derived feedback package readable
+by Claude. It binds its source experiment, aggregate-evidence hash, engine and
+taxonomy versions, ranked generic cards, effect estimates, uncertainty,
+suppression status, and evidence hashes. It has no rows, task handles,
+membership, cohort joins, or literals.
+
+An optional LLM may read only already released aggregate cards. It may
+summarize or rank them, but cannot add statistics or unsupported claims; every
+statement cites a card ID. Disabling it cannot change evaluation or promotion.
+A five-task, one-run repair gate is below the release threshold and therefore
+returns only a signed gate disposition, integrity state, and aggregate cost,
+not a new diagnostic brief.
+
+### Alternatives
+
+- Give the intermediate LLM raw grader data and trust it to redact correctly.
+- Store per-trial "sanitized" ATIF locally.
+- Return only pass/fail scores with no behavioral evidence.
+- Permit interactive filtered queries into normalized rows.
+
+### Consequences
+
+Claude learns correlations such as repeated nonzero exits without inspection or
+replanning, while remaining unable to see which task, command, file, package,
+or expected result was involved. Rare failure modes take longer to become
+visible and some useful findings will be suppressed. The deterministic
+normalizer, extractor, taxonomy, statistical engine, privacy policy, and
+retention policy all become protocol-hash inputs and require adversarial tests.
+
+### Evidence
+
+- User request for useful non-sensitive feedback from grader and trace data
+- User requirement that neither Pi nor Dark Factory know the actual tasks
+- Review finding that an LLM sanitizer is not a reliable security boundary
+- Need to resist single-task inference and repeated-query differencing
+
+## ADR-0026 — Use walk-forward repair and fresh validation
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: ADR-0023 evaluation-flow semantics, ADR-0024
+- Superseded by: none
+- Refines: ADR-0019, ADR-0020, ADR-0025
+- Related plan: `PLAN.md` §5, §7–7.3, §8, §11–13
+
+### Context
+
+Comparing scores from two different hidden subsets confounds harness quality
+with subset difficulty. Conversely, repeatedly promoting on a panel after
+Claude has seen feedback derived from it converts the holdout into training
+data. The system needs to reuse hard tasks cheaply for learning while reserving
+independent matched evidence for champion decisions.
+
+### Decision
+
+Use four explicit states:
+
+- **Candidate:** edited descendant of the active champion.
+- **Challenger:** candidate that passed the old-panel repair gate.
+- **Active champion:** challenger that passed fresh matched validation and
+  becomes the next research parent.
+- **Certified champion:** active champion that separately passed feedback-dark
+  shadow and compliance gates.
+
+Experiment `001` is the bootstrap. Claude sees Pi source but no
+benchmark-derived evidence, freezes its hypothesis and candidate before task
+selection, and may proceed directly to fresh validation against experiment
+`000`.
+
+Thereafter use this walk-forward loop:
+
+1. Give Claude one signed diagnostic brief from the latest feedback-consumed
+   discovery window.
+2. Freeze the cited brief hash, causal hypothesis, predicted old-panel repair,
+   predicted fresh-panel effect, falsification rules, and candidate commit
+   before the broker selects a panel.
+3. The broker chooses exactly five old-panel repair tasks: three hard, one
+   uncertain/discriminating, and a fifth slot alternating easy-integrity and
+   underexposed-coverage by epoch.
+4. Run the candidate once per repair task. Compare with eligible exact-key
+   active-champion cache distributions, using at least 25% deterministic fresh
+   drift anchors and fresh champion arms on cache misses.
+5. Repair passes only when
+   `P(weightedAccuracyDelta >= -0.10) >= 0.80` plus either one confirmed
+   fail-to-pass or preregistered target-behavior improvement on at least three
+   of five, subject to hard integrity, capability, cost, and latency vetoes. A
+   confirmed fail-to-pass requires a fresh candidate pass and fresh champion
+   failure on a control slot presealed before outcomes; cache alone cannot
+   label a binary transition. It creates a challenger, never a champion.
+6. A discovery panel may support at most two distinct candidate commits. A
+   failed five-by-one gate releases no new narrow diagnostic evidence; after
+   two failures the hypothesis closes.
+7. The broker then seals twelve validation tasks fresh to the frozen
+   hypothesis and disjoint from its repair/evidence inputs, plus strata, six
+   AB/six BA ordering, environment window, statistics, and budgets.
+8. Run challenger and current active champion once per task. All 24 validation
+   arms are fresh, same-window, protocol-compatible, and cache-free.
+9. Only the twelve fresh paired deltas have positive promotion weight. Repair,
+   cache, baseline, and historical evidence may veto or diagnose but cannot
+   promote.
+10. After any validation disposition, mark the panel consumed because the
+    decision itself is feedback, then release only threshold-qualified
+    aggregate diagnostics and rotate it. It may become repair/regression
+    evidence, but never positive evidence for a candidate influenced by its
+    feedback.
+
+A sealed validation panel abandoned before any arm starts may return to
+eligibility after an integrity audit. Once one arm starts, an abandoned panel
+is quarantined/consumed and cannot return as positive validation.
+
+Tasks are retained in the broker catalog. A just-consumed validation panel is
+immediately eligible to supply the next five-task repair panel; that panel may
+serve one candidate and one immediate revised candidate. After the second
+attempt—or after the first candidate advances—its tasks enter a
+three-sealed-experiment repair cooldown before ordinary repair/regression
+reselection. They may later recur for repair, regression, canaries, cache
+calibration, and monitoring, but not as positive validation for an influenced
+candidate. This satisfies the desire to reuse failed tasks without treating
+them as an independent holdout.
+
+Retain ADR-0023's exact cache key, immutable distribution records,
+per-observation seven-day freshness, uncertainty limit, signed deduplication,
+and deterministic 25% drift-anchor mechanics. Supersede its smoke/challenge
+reuse flow: cache is now repair-only, and no cached or retained repair arm may
+enter fresh validation or shadow evidence.
+
+Promotion uses the frozen stratified paired Dirichlet-Jeffreys thresholds: 12
+fresh pairs, `P(weightedAccuracyDelta > 0) >= 0.95`, median delta at least
+`0.05`, and the existing stratum regression boundary. Tasks are the independent
+clusters; repetitions do not inflate sample size. A campaign-level online
+error budget, calibrated under null simulations, also controls repeated
+hypothesis testing.
+
+The experiment's typical primary work is 30–31 attempts: five candidate repair
+arms, normally one to two fresh champion drift anchors, and 24 validation
+arms. On repair cache miss, up to five champion repair arms are allowed.
+Together with at most four infrastructure replacements, the fail-closed maximum
+is 38 attempts. Baseline maintenance is asynchronous and never affects
+promotion.
+
+Fresh validation results also prepare the next repair cheaply. On promotion,
+the candidate's twelve arms seed the new active-champion cache. On rejection or
+inconclusive evidence, the incumbent's twelve fresh arms refresh its cache.
+Thus a five-task slice of the consumed panel normally has exact-key controls
+available, subject to normal freshness and drift rules.
+
+The repair panel runs once per task rather than three times per task. Three
+repetitions would consume 15 candidate arms while still yielding only five
+independent task clusters. The MVP spends that budget on broader fresh
+validation; cached distributions, drift anchors, and later regression runs
+accumulate stochastic evidence without inflating task-level sample size.
+
+Before validation allocation, permanently reserve two disjoint twelve-task
+shadow slices. Every third active promotion and before external release,
+consume one unused slice in a feedback-dark 12-pair race between the active and
+last certified champion, or experiment `000` as the initial comparison anchor.
+For an 89-task benchmark, the reservation leaves at most five full twelve-task
+fresh validation panels and five spare tasks; surface that limit before
+campaign start.
+The baseline anchor is not called a certified improvement. Shadow permits 24
+valid arms plus at most four infrastructure replacements, for a ceiling of 28.
+Claude receives only `certified | not-certified | inconclusive`, compliance
+flags, and aggregate cost—no score or diagnostics. A shadow failure leaves the
+certified pointer unchanged. After both slices are consumed, certification
+pauses.
+
+A validation task whose evidence informed the adaptive ancestry is not "fresh"
+merely because time passed, the protocol changed, or a ledger/lineage was
+renamed. Exposure is globally non-resettable across every descendant that
+inherits code or decisions from that ancestry. When fewer than twelve genuinely
+fresh validation tasks remain, pause positive promotion until truly unseen
+external/synthetic validation exists, a pre-adaptation fork inheriting none of
+the exposed code or decisions is used, or the benchmark owner approves
+explicitly different semantics. Research on exposed tasks may continue, and
+the human-only official evaluation remains separate.
+
+### Alternatives
+
+- Promote on whichever weighted subset score is highest.
+- Re-run the same five tasks for both repair and promotion.
+- Replace the incumbent score with a cached scalar.
+- Rotate only after a candidate wins and retain failed validation panels as
+  promotion tests.
+- Never reuse any task for any purpose.
+
+### Consequences
+
+Matched validation removes subset-difficulty confounding. Old failures remain
+cheap, useful repair data, but improvement on them alone cannot create a
+champion. Consuming every decided panel—and quarantining every
+started-abandoned panel—reduces adaptive holdout overfitting and winner's
+curse. The extra validation arm cost is intentional; cache savings are confined
+to repair. A finite benchmark supports only a finite amount of genuinely fresh
+adaptive promotion, which the UI and attestations must show honestly.
+
+### Evidence
+
+- User question about fairly comparing iterations evaluated on different
+  subsets
+- User proposal to run candidate and incumbent on the same subset
+- User request to cache incumbent results when tasks recur
+- User proposal to feed sanitized failures into the next improvement
+- Overfitting analysis distinguishing repair evidence from promotion evidence
+
+## ADR-0027 — Separate research optimization from submission eligibility
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: none
+- Superseded by: none
+- Refines: ADR-0015, ADR-0019, ADR-0025, ADR-0026
+- Related plan: `PLAN.md` §1.1, §8.4, §10.1, §13–14
+
+### Context
+
+The published Terminal-Bench integrity rules clearly prohibit task-specific
+information reaching an evaluated agent, but they do not explicitly approve
+an adaptive meta-optimizer trained on sanitized benchmark-derived diagnostics.
+Technical secrecy controls do not themselves establish leaderboard
+eligibility.
+
+### Decision
+
+Every run is immutably `research` or `submission`. Research mode permits
+privacy-thresholded diagnostic briefs and adaptive repair, but cannot start the
+official evaluation or produce a leaderboard/state-of-the-art claim.
+Submission mode disables diagnostic generation/retrieval, repair feedback,
+optimizer MCP, and other adaptive channels; it accepts one frozen certified
+commit and protocol behind the human authorization gate.
+
+Record `leaderboardEligibility` as `unverified`, `cleared`, or
+`strict-score-only`. The adaptive research lineage remains `unverified` until
+written benchmark-owner clearance. `strict-score-only` is a separately
+acceptable lane with no diagnostic feedback; merely switching a research
+lineage to submission mode does not erase its training history.
+
+Every official-run preparation requires a signed compliance manifest listing
+the lineage, mode, enabled data channels, plugin permissions, task-role policy,
+protocol hash, certified commit, and eligibility. Mixed-mode evidence,
+research-enabled channels, uncertified state, or unverified eligibility fails
+closed.
+
+### Alternatives
+
+- Assume aggregate diagnostics are automatically leaderboard-compliant.
+- Ban all research use of Terminal-Bench.
+- Hide the adaptive history when submitting.
+- Treat human authorization alone as sufficient policy clearance.
+
+### Consequences
+
+The MVP can explore harness engineering honestly without claiming permission it
+does not have. A leaderboard submission may require written clarification or a
+separate score-only lineage. Compliance becomes testable and reviewable rather
+than an informal operator judgment.
+
+### Evidence
+
+- Terminal-Bench leaderboard integrity policy
+- User requirement that Dark Factory and Pi never learn actual tasks
+- Ambiguity around sanitized meta-optimizer feedback under the published rules
+
+## ADR-0028 — Require rolling campaign and evidence budgets
+
+- Date: 2026-07-26
+- Status: accepted
+- Supersedes: ADR-0010
+- Superseded by: none
+- Related plan: `PLAN.md` §5.1, §7.1–7.3, §10, §14
+
+### Context
+
+An autonomous campaign with no monetary, token, time, statistical, privacy, or
+fresh-holdout limit can spend indefinitely, accumulate false-positive pressure,
+and exhaust the benchmark even though each individual hypothesis is bounded.
+
+### Decision
+
+Keep no fixed lifetime experiment count, but require operator-set rolling
+monetary, token, and wall-time budgets. Also maintain non-resettable
+campaign-level repeated-testing, privacy-query, and genuinely fresh holdout
+budgets. The controller pauses safely rather than crossing any limit and
+resumes only after a recorded, authorized budget decision or a new valid
+lineage. Status surfaces all remaining and cumulative budgets.
+
+### Alternatives
+
+- Run until a manual interrupt with no cumulative controls.
+- Impose a permanent fixed number of experiments.
+- Track costs only after they are incurred.
+- Reset statistical or privacy budgets on restart.
+
+### Consequences
+
+The loop remains operationally long-running while cost and evidence integrity
+stay bounded. Operators must choose and document rolling limits. Stop/resume
+must restore all budgets from sealed state, and changing statistical,
+privacy, or holdout policy may require a new baseline lineage.
+
+### Evidence
+
+- User requirement that the demo be efficient and avoid expensive full runs
+- Cloud-only execution creates direct external cost
+- Repeated-testing, privacy-differencing, and finite-holdout risks
