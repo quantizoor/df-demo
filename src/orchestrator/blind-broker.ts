@@ -989,7 +989,12 @@ export class ProductionBlindBroker implements BlindBroker {
           "Lease token source returned a malformed or repeated token.",
         );
       }
-      const requestId = `eval-${String(input.experiment.number)}-${input.stage}-${canonicalHash(leaseToken).slice(0, 24)}`;
+      const requestId = [
+        "eval",
+        String(input.experiment.number),
+        input.stage,
+        canonicalHash(leaseToken).slice(0, 24),
+      ].join("-");
       const leaseSealHash = canonicalHash({
         domain: "dark-factory.blind-broker.lease-seal.v1",
         preparationHash,
@@ -1461,6 +1466,12 @@ export class ProductionBlindBroker implements BlindBroker {
   public async releaseDiagnosticBrief(
     input: Parameters<BlindBroker["releaseDiagnosticBrief"]>[0],
   ): Promise<DiagnosticBriefReference | null> {
+    if (input.releaseAuthorized !== true) {
+      throw new ProductionBlindBrokerError(
+        "diagnostic-unavailable",
+        "Diagnostic release requires an explicit one-use authorization.",
+      );
+    }
     const claimed = await this.#options.store.transact((state) => {
       const found = Object.entries(state.records).find(
         ([, record]) =>
@@ -1496,7 +1507,9 @@ export class ProductionBlindBroker implements BlindBroker {
       }
       if (
         record.diagnosticStatus !== "eligible" ||
-        record.diagnosticMaterial === null
+        record.diagnosticMaterial === null ||
+        Date.parse(record.diagnosticMaterial.diagnosticBrief.expiresAt) <=
+          this.#now().getTime()
       ) {
         throw new ProductionBlindBrokerError(
           "diagnostic-unavailable",

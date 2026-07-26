@@ -371,6 +371,11 @@ References: [PLAN §7.1](./PLAN.md#71-walk-forward-repair-and-fresh-validation),
   and commit → fresh validation against Pi experiment `000`.
 - [ ] Implement discovery brief → repair → challenger → fresh validation →
   outcome-independent panel rotation.
+- [x] Implement the production-facing, identity-blind orchestrator adapter
+  that converts one-use signed evaluator releases into strict repair and
+  validation aggregates, burns or quarantines every lease, and publishes a
+  privacy-qualified diagnostic at most once. Concrete cloud ports and full
+  loop composition remain pending.
 - [ ] Run repair on exactly five old-panel tasks with one fresh candidate arm
   per task.
 - [ ] Compare repair with eligible exact-key active-champion cache evidence;
