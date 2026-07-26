@@ -7,6 +7,9 @@ import {
 import { roleSpecification, roleWorkerCommand } from "../../src/mvp/cloud-orchestrator.js";
 import {
   DaytonaMvpCloudRuntime,
+  MVP_PREFLIGHT_WORKER_PATH,
+  MVP_PROCESS_ENTRYPOINT,
+  type MvpDaytonaRuntimeConfiguration,
   type MvpDaytonaSdkClient,
   type MvpDaytonaSdkFactory,
 } from "../../src/mvp/daytona-runtime.js";
@@ -44,6 +47,80 @@ function configuration(): MvpCloudConfiguration {
   return readiness.configuration;
 }
 
+function daytonaConfiguration(
+  configuration: MvpCloudConfiguration,
+): MvpDaytonaRuntimeConfiguration {
+  return {
+    campaignId: configuration.campaignId,
+    configurationHash: configuration.configurationHash,
+    daytona: {
+      apiUrl: configuration.daytona.apiUrl,
+      target: configuration.daytona.target,
+      image: configuration.daytona.image,
+      volumeId: configuration.daytona.volumeId,
+      apiKeyEnvironmentName: configuration.daytona.apiKeyEnvironmentName,
+      outerSandboxResources: configuration.daytona.outerSandboxResources,
+    },
+  };
+}
+
+function attestingFactory(
+  options: {
+    readonly attestNetworkBlockAll?: boolean;
+    readonly commands?: string[];
+    readonly onDelete?: () => void;
+  } = {},
+): MvpDaytonaSdkFactory {
+  return {
+    createClient: async () => ({
+      create: async (parameters) => {
+        let environment: Readonly<Record<string, string>> = parameters.envVars;
+        return {
+          id: `sandbox-${parameters.labels["df-role"]}`,
+          ...(parameters.user === undefined ? {} : { user: parameters.user }),
+          target: "eu",
+          cpu: parameters.resources.cpu,
+          memory: parameters.resources.memory,
+          disk: parameters.resources.disk,
+          public: false,
+          autoDeleteInterval: 0,
+          get env() {
+            return environment;
+          },
+          labels: parameters.labels,
+          networkBlockAll: options.attestNetworkBlockAll ?? parameters.networkBlockAll,
+          ...(parameters.domainAllowList === undefined
+            ? {}
+            : { domainAllowList: parameters.domainAllowList }),
+          volumes: parameters.volumes,
+          fs: {
+            uploadFile: async () => undefined,
+          },
+          process: {
+            executeCommand: async (command) => {
+              options.commands?.push(command);
+              if (command.includes("sha256sum")) {
+                return {
+                  result: `${bundleDigest}  /tmp/df-mvp-controller.tar.gz`,
+                  exitCode: 0,
+                };
+              }
+              return { result: "{}", exitCode: 0 };
+            },
+          },
+          updateEnv: async (next) => {
+            environment = { ...environment, ...next };
+          },
+          refreshData: async () => undefined,
+          delete: async () => {
+            options.onDelete?.();
+          },
+        };
+      },
+    }),
+  };
+}
+
 describe("MVP Daytona runtime", () => {
   it("uses the official SDK shape to mount one isolated subpath and preserve the volume", async () => {
     const created: Parameters<MvpDaytonaSdkClient["create"]>[0][] = [];
@@ -73,7 +150,10 @@ describe("MVP Daytona runtime", () => {
                 return environment;
               },
               labels: parameters.labels,
-              domainAllowList: parameters.domainAllowList,
+              networkBlockAll: parameters.networkBlockAll,
+              ...(parameters.domainAllowList === undefined
+                ? {}
+                : { domainAllowList: parameters.domainAllowList }),
               volumes: parameters.volumes,
               fs: {
                 uploadFile: async (localPath, remotePath) => {
@@ -104,7 +184,7 @@ describe("MVP Daytona runtime", () => {
       },
     };
     const config = configuration();
-    const runtime = new DaytonaMvpCloudRuntime(config, {
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
       sdkFactory: factory,
       environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
       now: () => new Date("2026-07-26T10:00:00.000Z"),
@@ -132,6 +212,7 @@ describe("MVP Daytona runtime", () => {
       ephemeral: true,
       autoDeleteInterval: 0,
       public: false,
+      networkBlockAll: false,
       volumes: [
         {
           volumeId: "existing-volume",
@@ -165,7 +246,10 @@ describe("MVP Daytona runtime", () => {
             autoDeleteInterval: 0,
             env: parameters.envVars,
             labels: parameters.labels,
-            domainAllowList: parameters.domainAllowList,
+            networkBlockAll: parameters.networkBlockAll,
+            ...(parameters.domainAllowList === undefined
+              ? {}
+              : { domainAllowList: parameters.domainAllowList }),
             volumes: parameters.volumes,
             fs: {
               uploadFile: async () => undefined,
@@ -228,4 +312,149 @@ describe("MVP Daytona runtime", () => {
       ).rejects.toThrow("The Daytona role specification is invalid.");
     },
   );
+
+  it("creates and attests an exact network-block-all evaluator preflight", async () => {
+    const config = configuration();
+    const created: Parameters<MvpDaytonaSdkClient["create"]>[0][] = [];
+    const baseFactory = attestingFactory();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: {
+        createClient: async (input) => {
+          const client = await baseFactory.createClient(input);
+          return {
+            create: async (parameters, options) => {
+              created.push(parameters);
+              return client.create(parameters, options);
+            },
+          };
+        },
+      },
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const specification = {
+      ...roleSpecification(config, "evaluator"),
+      networkBlockAll: true,
+      networkAllowDomains: [],
+      secretReferences: [],
+    } as const;
+
+    await runtime.create(specification);
+
+    expect(created[0]).toMatchObject({
+      networkBlockAll: true,
+    });
+    expect(created[0]?.domainAllowList).toBeUndefined();
+  });
+
+  it.each([
+    ["blocked networking with an allow list", true, ["app.daytona.io"]],
+    ["unblocked networking without an allow list", false, []],
+  ] as const)("rejects %s", async (_case, networkBlockAll, networkAllowDomains) => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: {
+        createClient: async () => {
+          throw new Error("invalid networking reached the provider");
+        },
+      },
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+
+    await expect(
+      runtime.create({
+        ...roleSpecification(config, "evaluator"),
+        networkBlockAll,
+        networkAllowDomains,
+      }),
+    ).rejects.toThrow("The Daytona role specification is invalid.");
+  });
+
+  it("fails closed when the provider does not attest network blocking", async () => {
+    const config = configuration();
+    let deleted = false;
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({
+        attestNetworkBlockAll: false,
+        onDelete: () => {
+          deleted = true;
+        },
+      }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+
+    await expect(
+      runtime.create({
+        ...roleSpecification(config, "evaluator"),
+        networkBlockAll: true,
+        networkAllowDomains: [],
+      }),
+    ).rejects.toThrow("Daytona sandbox creation failed closed.");
+    expect(deleted).toBe(true);
+  });
+
+  it.each(["bootstrap", "synthetic", "connectivity"] as const)(
+    "permits the exact evaluator-only %s preflight command",
+    async (stage) => {
+      const config = configuration();
+      const commands: string[] = [];
+      const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+        sdkFactory: attestingFactory({ commands }),
+        environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+      });
+      const lease = await runtime.create({
+        ...roleSpecification(config, "evaluator"),
+        networkBlockAll: true,
+        networkAllowDomains: [],
+      });
+      await runtime.stage(lease, {
+        localPath: "/cloud/controller.tar.gz",
+        sha256: bundleDigest,
+      });
+
+      await runtime.execute(lease, {
+        executable: MVP_PROCESS_ENTRYPOINT,
+        arguments: ["node", MVP_PREFLIGHT_WORKER_PATH, stage],
+        timeoutMs: 60_000,
+        environment: {
+          CI: "true",
+          DF_CLOUD_EXECUTION: "1",
+          DF_MVP_ROLE: "evaluator",
+        },
+      });
+
+      expect(commands.at(-1)).toBe(
+        `'/usr/bin/env' 'node' '${MVP_PREFLIGHT_WORKER_PATH}' '${stage}'`,
+      );
+    },
+  );
+
+  it.each([
+    ["optimizer role", "optimizer", ["node", MVP_PREFLIGHT_WORKER_PATH, "bootstrap"]],
+    ["unknown stage", "evaluator", ["node", MVP_PREFLIGHT_WORKER_PATH, "paid"]],
+    ["extra argument", "evaluator", ["node", MVP_PREFLIGHT_WORKER_PATH, "bootstrap", "unexpected"]],
+  ] as const)("rejects a preflight command with an %s", async (_case, role, arguments_) => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory(),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create(roleSpecification(config, role));
+    await runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    await expect(
+      runtime.execute(lease, {
+        executable: MVP_PROCESS_ENTRYPOINT,
+        arguments: arguments_,
+        timeoutMs: 60_000,
+        environment: {
+          CI: "true",
+          DF_CLOUD_EXECUTION: "1",
+          DF_MVP_ROLE: role,
+        },
+      }),
+    ).rejects.toThrow("The Daytona role worker command is invalid.");
+  });
 });

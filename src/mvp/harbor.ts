@@ -22,6 +22,8 @@ const REVISION = /^[a-f0-9]{40,64}$/u;
 const SAFE_EXPERIMENT = /^(?<number>\d{3,})-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}$/u;
+const SAFE_DATASET_NAME =
+  /^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}(?:\/[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127})?$/u;
 const SAFE_AGENT_IMPORT =
   /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$/u;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
@@ -457,7 +459,7 @@ function assertBuildInput(input: MvpHarborBuildInput): void {
   }
   assertDigest(input.environmentDigest, "Environment digest");
   if (
-    !SAFE_IDENTIFIER.test(input.datasetName) ||
+    !SAFE_DATASET_NAME.test(input.datasetName) ||
     !SAFE_IDENTIFIER.test(input.datasetRef) ||
     input.environmentType !== "daytona" ||
     !SAFE_SECRET_NAME.test(input.evaluatedSecretSourceName)

@@ -52,7 +52,29 @@ const REVISION = /^[a-f0-9]{40}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_SECRET_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
 const SAFE_TASK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const IMMUTABLE_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$/u;
+
+export const MVP_EVALUATOR_ELIGIBILITY_POLICY = {
+  policyVersion: "mvp-direct-daytona-separate-verifier-v2",
+  datasetName: "terminal-bench/terminal-bench-2-1",
+  registryRevision: 6,
+  expectedDatasetTaskCount: 89,
+  environmentType: "daytona",
+  sandboxMode: "direct",
+  composeAllowed: false,
+  architecture: "x86_64",
+  runtimeAbi: "linux-x64-glibc",
+  minimumEligibleTasks: 5,
+  minimumNonCanaryTasks: 4,
+  minimumEasyCanaries: 1,
+  officialResourcesMayBeReduced: false,
+  harborMaxConcurrentTrials: 5,
+  maximumOverlappingChildSandboxes: 10,
+} as const;
+
+export function mvpEvaluatorEligibilityPolicyDigest(): string {
+  return createHash("sha256").update(canonicalJson(MVP_EVALUATOR_ELIGIBILITY_POLICY)).digest("hex");
+}
 
 export type MvpEvaluatorReadinessCode = (typeof MVP_EVALUATOR_READINESS_CODES)[number];
 
@@ -65,14 +87,19 @@ export class MvpEvaluatorReadinessError extends Error {
 }
 
 export interface MvpEvaluatorRuntimePin {
-  readonly schemaVersion: 1;
-  readonly domain: "dark-factory.mvp-evaluator-runtime-pin.v1";
+  readonly schemaVersion: 2;
+  readonly domain: "dark-factory.mvp-evaluator-runtime-pin.v2";
+  readonly sourceCommit: string;
+  readonly imageReference: string;
+  readonly runtimePinsSha256: string;
   readonly harborVersion: "0.20.0";
+  readonly harborPackageSha256: string;
   readonly terminalBenchVersion: string;
   readonly datasetName: string;
   readonly datasetRef: string;
   readonly datasetRevision: string;
   readonly datasetContentSha256: string;
+  readonly datasetManifestSha256: string;
   readonly graderProtocolVersion: string;
   readonly evaluatorVersion: string;
   readonly harborExecutable: string;
@@ -90,16 +117,63 @@ export interface MvpEvaluatorRuntimePin {
    * revisions eligible for this first MVP loop.
    */
   readonly directSandboxEligibleTaskRevisionDigests: readonly string[];
-  readonly hiddenTaskDefinitions: readonly TrustedHarborTaskDefinition[];
+  readonly hiddenTaskDefinitions: readonly MvpEligibleHarborTaskDefinition[];
   readonly imageDigest: string;
   readonly architecture: "x86_64";
   readonly runtimeAbi: "linux-x64-glibc";
+  readonly providerLimits: MvpDaytonaProviderLimits;
+  readonly providerLimitsDigest: string;
+  readonly eligibilityPolicyDigest: string;
+  readonly inventoryDigest: string;
   readonly resourcesDigest: string;
   readonly networkPolicyDigest: string;
   readonly samplingSettingsDigest: string;
   readonly contextSettingsDigest: string;
   readonly harnessConfigDigest: string;
   readonly extraConfigDigest: string;
+}
+
+export interface MvpSandboxResourceProfile {
+  readonly cpu: number;
+  readonly memoryMiB: number;
+  readonly storageMiB: number;
+  readonly gpus: 0;
+}
+
+export interface MvpDaytonaProviderLimits {
+  readonly perSandbox: MvpSandboxResourceProfile;
+  readonly organization: {
+    readonly cpu: number;
+    readonly memoryMiB: number;
+    readonly storageMiB: number;
+  };
+  readonly outerEvaluator: MvpSandboxResourceProfile;
+  readonly harborMaxConcurrentTrials: 5;
+  readonly maximumOverlappingChildSandboxes: 10;
+}
+
+export interface MvpTaskExecutionEligibility {
+  readonly environmentType: "daytona";
+  readonly sandboxMode: "direct";
+  readonly compose: false;
+  readonly officialResources: {
+    readonly agent: MvpSandboxResourceProfile;
+    readonly verifiers: readonly MvpSandboxResourceProfile[];
+  };
+  readonly resourceSourceDigest: string;
+  readonly providerLimitsDigest: string;
+  readonly resourceFit: true;
+  readonly runtimeCompatibility: {
+    readonly architecture: "x86_64";
+    readonly runtimeAbi: "linux-x64-glibc";
+    readonly bunExecutableSha256: string;
+    readonly smokeEvidenceDigest: string;
+    readonly compatible: true;
+  };
+}
+
+export interface MvpEligibleHarborTaskDefinition extends TrustedHarborTaskDefinition {
+  readonly executionEligibility: MvpTaskExecutionEligibility;
 }
 
 export interface MvpPiRuntimeMaterialization {
@@ -594,12 +668,17 @@ function assertRuntimePin(value: unknown): asserts value is MvpEvaluatorRuntimeP
   const expectedKeys = [
     "schemaVersion",
     "domain",
+    "sourceCommit",
+    "imageReference",
+    "runtimePinsSha256",
     "harborVersion",
+    "harborPackageSha256",
     "terminalBenchVersion",
     "datasetName",
     "datasetRef",
     "datasetRevision",
     "datasetContentSha256",
+    "datasetManifestSha256",
     "graderProtocolVersion",
     "evaluatorVersion",
     "harborExecutable",
@@ -616,6 +695,10 @@ function assertRuntimePin(value: unknown): asserts value is MvpEvaluatorRuntimeP
     "imageDigest",
     "architecture",
     "runtimeAbi",
+    "providerLimits",
+    "providerLimitsDigest",
+    "eligibilityPolicyDigest",
+    "inventoryDigest",
     "resourcesDigest",
     "networkPolicyDigest",
     "samplingSettingsDigest",
@@ -626,36 +709,33 @@ function assertRuntimePin(value: unknown): asserts value is MvpEvaluatorRuntimeP
   if (
     Object.keys(value as object).length !== expectedKeys.length ||
     Object.keys(value as object).some((key) => !expectedKeys.includes(key)) ||
-    pin.schemaVersion !== 1 ||
-    pin.domain !== "dark-factory.mvp-evaluator-runtime-pin.v1" ||
+    pin.schemaVersion !== 2 ||
+    pin.domain !== "dark-factory.mvp-evaluator-runtime-pin.v2" ||
+    !REVISION.test(pin.sourceCommit ?? "") ||
+    typeof pin.imageReference !== "string" ||
+    !IMMUTABLE_IMAGE.test(pin.imageReference) ||
+    !SHA256.test(pin.runtimePinsSha256 ?? "") ||
     pin.harborVersion !== MVP_HARBOR_VERSION ||
-    typeof pin.terminalBenchVersion !== "string" ||
-    typeof pin.datasetName !== "string" ||
+    !SHA256.test(pin.harborPackageSha256 ?? "") ||
+    pin.terminalBenchVersion !== "2.1" ||
+    pin.datasetName !== MVP_EVALUATOR_ELIGIBILITY_POLICY.datasetName ||
     typeof pin.datasetRef !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/u.test(pin.datasetRef) ||
     typeof pin.datasetRevision !== "string" ||
     !SHA256.test(pin.datasetContentSha256 ?? "") ||
-    typeof pin.graderProtocolVersion !== "string" ||
-    typeof pin.evaluatorVersion !== "string" ||
-    typeof pin.harborExecutable !== "string" ||
-    !pin.harborExecutable.startsWith("/") ||
-    pin.harborExecutable.includes("/../") ||
+    !SHA256.test(pin.datasetManifestSha256 ?? "") ||
+    pin.graderProtocolVersion !== "harbor-0.20.0-separate-verifier" ||
+    pin.evaluatorVersion !== "mvp-2" ||
+    pin.harborExecutable !== "/usr/local/bin/harbor" ||
     !SHA256.test(pin.harborExecutableSha256 ?? "") ||
-    typeof pin.bunExecutable !== "string" ||
-    !pin.bunExecutable.startsWith("/") ||
-    pin.bunExecutable.includes("/../") ||
+    pin.bunExecutable !== "/usr/local/bin/bun" ||
     !SHA256.test(pin.bunExecutableSha256 ?? "") ||
-    typeof pin.adapterPath !== "string" ||
-    !pin.adapterPath.startsWith("/") ||
-    pin.adapterPath.includes("/../") ||
+    pin.adapterPath !== "/tmp/df-mvp-controller/src/terminal-bench/assets/dark_factory_pi.py" ||
     !SHA256.test(pin.adapterSha256 ?? "") ||
-    typeof pin.piEntrypoint !== "string" ||
-    !SAFE_RELATIVE_PATH.test(pin.piEntrypoint) ||
     pin.piEntrypoint !== "packages/coding-agent/dist/pi" ||
     !Array.isArray(pin.enabledTools) ||
-    pin.enabledTools.length < 1 ||
-    pin.enabledTools.length > 32 ||
-    !Number.isSafeInteger(pin.timeoutSeconds) ||
-    (pin.timeoutSeconds ?? 0) < 60 ||
+    JSON.stringify(pin.enabledTools) !== JSON.stringify(["read", "bash", "write", "edit"]) ||
+    pin.timeoutSeconds !== 7_200 ||
     !Array.isArray(pin.directSandboxEligibleTaskRevisionDigests) ||
     pin.directSandboxEligibleTaskRevisionDigests.length < 5 ||
     pin.directSandboxEligibleTaskRevisionDigests.some((digest) => !SHA256.test(digest)) ||
@@ -671,8 +751,16 @@ function assertRuntimePin(value: unknown): asserts value is MvpEvaluatorRuntimeP
         !pin.directSandboxEligibleTaskRevisionDigests?.includes(definition.revisionDigest),
     ) ||
     !SHA256.test(pin.imageDigest ?? "") ||
+    pin.imageReference.slice(pin.imageReference.lastIndexOf("@sha256:") + 8) !== pin.imageDigest ||
     pin.architecture !== "x86_64" ||
     pin.runtimeAbi !== "linux-x64-glibc" ||
+    !isDaytonaProviderLimits(pin.providerLimits) ||
+    !SHA256.test(pin.providerLimitsDigest ?? "") ||
+    pin.providerLimitsDigest !== canonicalDigest(pin.providerLimits) ||
+    pin.eligibilityPolicyDigest !== mvpEvaluatorEligibilityPolicyDigest() ||
+    !SHA256.test(pin.inventoryDigest ?? "") ||
+    pin.inventoryDigest !== canonicalDigest(pin.hiddenTaskDefinitions) ||
+    !runtimeEligibilityIsValid(pin) ||
     [
       pin.resourcesDigest,
       pin.networkPolicyDigest,
@@ -684,6 +772,200 @@ function assertRuntimePin(value: unknown): asserts value is MvpEvaluatorRuntimeP
   ) {
     throw new Error("Runtime pin is incomplete.");
   }
+}
+
+export function assertMvpEvaluatorRuntimePin(
+  value: unknown,
+): asserts value is MvpEvaluatorRuntimePin {
+  assertRuntimePin(value);
+}
+
+function canonicalDigest(value: unknown): string {
+  return createHash("sha256").update(canonicalJson(value)).digest("hex");
+}
+
+function isResourceProfile(value: unknown): value is MvpSandboxResourceProfile {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return false;
+  }
+  const profile = value as Partial<MvpSandboxResourceProfile>;
+  return (
+    Object.keys(value as object).length === 4 &&
+    Object.keys(value as object).every((key) =>
+      ["cpu", "memoryMiB", "storageMiB", "gpus"].includes(key),
+    ) &&
+    Number.isSafeInteger(profile.cpu) &&
+    (profile.cpu ?? 0) > 0 &&
+    Number.isSafeInteger(profile.memoryMiB) &&
+    (profile.memoryMiB ?? 0) > 0 &&
+    Number.isSafeInteger(profile.storageMiB) &&
+    (profile.storageMiB ?? 0) > 0 &&
+    profile.gpus === 0
+  );
+}
+
+function isDaytonaProviderLimits(value: unknown): value is MvpDaytonaProviderLimits {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return false;
+  }
+  const limits = value as Partial<MvpDaytonaProviderLimits>;
+  const organization = limits.organization;
+  return (
+    Object.keys(value as object).length === 5 &&
+    Object.keys(value as object).every((key) =>
+      [
+        "perSandbox",
+        "organization",
+        "outerEvaluator",
+        "harborMaxConcurrentTrials",
+        "maximumOverlappingChildSandboxes",
+      ].includes(key),
+    ) &&
+    isResourceProfile(limits.perSandbox) &&
+    isResourceProfile(limits.outerEvaluator) &&
+    organization !== undefined &&
+    Object.keys(organization).length === 3 &&
+    organization.cpu === 100 &&
+    organization.memoryMiB === 200 * 1_024 &&
+    organization.storageMiB === 300 * 1_024 &&
+    limits.perSandbox.cpu === 4 &&
+    limits.perSandbox.memoryMiB === 8 * 1_024 &&
+    limits.perSandbox.storageMiB === 10 * 1_024 &&
+    limits.outerEvaluator.cpu === 4 &&
+    limits.outerEvaluator.memoryMiB === 8 * 1_024 &&
+    limits.outerEvaluator.storageMiB === 10 * 1_024 &&
+    limits.harborMaxConcurrentTrials === 5 &&
+    limits.maximumOverlappingChildSandboxes === 10
+  );
+}
+
+function fits(profile: MvpSandboxResourceProfile, ceiling: MvpSandboxResourceProfile): boolean {
+  return (
+    profile.cpu <= ceiling.cpu &&
+    profile.memoryMiB <= ceiling.memoryMiB &&
+    profile.storageMiB <= ceiling.storageMiB &&
+    profile.gpus === 0
+  );
+}
+
+function runtimeEligibilityIsValid(pin: Partial<MvpEvaluatorRuntimePin>): boolean {
+  if (
+    pin.providerLimits === undefined ||
+    pin.providerLimitsDigest === undefined ||
+    pin.bunExecutableSha256 === undefined ||
+    pin.resourcesDigest === undefined ||
+    !Array.isArray(pin.hiddenTaskDefinitions) ||
+    !Array.isArray(pin.directSandboxEligibleTaskRevisionDigests)
+  ) {
+    return false;
+  }
+  const definitions = pin.hiddenTaskDefinitions;
+  if (
+    definitions.filter((definition) => !definition.easyCanary).length < 4 ||
+    definitions.filter((definition) => definition.easyCanary && definition.difficulty === "easy")
+      .length < 1 ||
+    definitions.some((definition) => definition.easyCanary && definition.difficulty !== "easy") ||
+    definitions.some(
+      (definition) =>
+        definition.baselineProvenance.datasetRevision !== pin.datasetRevision ||
+        (definition.baselineProvenance.kind === "dataset-declared-difficulty-prior" &&
+          definition.baselineProvenance.policyDigest !== pin.eligibilityPolicyDigest),
+    )
+  ) {
+    return false;
+  }
+  const profiles: MvpSandboxResourceProfile[] = [];
+  for (const definition of definitions) {
+    const eligibility = (definition as Partial<MvpEligibleHarborTaskDefinition>)
+      .executionEligibility;
+    if (
+      eligibility === undefined ||
+      eligibility.environmentType !== "daytona" ||
+      eligibility.sandboxMode !== "direct" ||
+      eligibility.compose !== false ||
+      eligibility.resourceFit !== true ||
+      eligibility.providerLimitsDigest !== pin.providerLimitsDigest ||
+      !SHA256.test(eligibility.resourceSourceDigest) ||
+      !isResourceProfile(eligibility.officialResources.agent) ||
+      !Array.isArray(eligibility.officialResources.verifiers) ||
+      eligibility.officialResources.verifiers.length < 1 ||
+      eligibility.officialResources.verifiers.some((profile) => !isResourceProfile(profile)) ||
+      !fits(eligibility.officialResources.agent, pin.providerLimits.perSandbox) ||
+      eligibility.officialResources.verifiers.some(
+        (profile) => !fits(profile, pin.providerLimits?.perSandbox as MvpSandboxResourceProfile),
+      ) ||
+      eligibility.runtimeCompatibility.architecture !== "x86_64" ||
+      eligibility.runtimeCompatibility.runtimeAbi !== "linux-x64-glibc" ||
+      eligibility.runtimeCompatibility.bunExecutableSha256 !== pin.bunExecutableSha256 ||
+      !SHA256.test(eligibility.runtimeCompatibility.smokeEvidenceDigest) ||
+      eligibility.runtimeCompatibility.compatible !== true ||
+      eligibility.resourceSourceDigest !==
+        canonicalDigest({
+          revisionDigest: definition.revisionDigest,
+          agent: eligibility.officialResources.agent,
+          verifiers: eligibility.officialResources.verifiers,
+        }) ||
+      eligibility.runtimeCompatibility.smokeEvidenceDigest !==
+        canonicalDigest({
+          policy: "direct-daytona-bun-exec-v1",
+          revisionDigest: definition.revisionDigest,
+          bunExecutableSha256: pin.bunExecutableSha256,
+          reportedVersion: "1.3.14",
+          exitCode: 0,
+          destroyed: true,
+        })
+    ) {
+      return false;
+    }
+    profiles.push(eligibility.officialResources.agent, ...eligibility.officialResources.verifiers);
+  }
+  const maximum = {
+    cpu: Math.max(...profiles.map((profile) => profile.cpu)),
+    memoryMiB: Math.max(...profiles.map((profile) => profile.memoryMiB)),
+    storageMiB: Math.max(...profiles.map((profile) => profile.storageMiB)),
+  };
+  const overlap = pin.providerLimits.maximumOverlappingChildSandboxes;
+  if (
+    pin.providerLimits.outerEvaluator.cpu + maximum.cpu * overlap >
+      pin.providerLimits.organization.cpu ||
+    pin.providerLimits.outerEvaluator.memoryMiB + maximum.memoryMiB * overlap >
+      pin.providerLimits.organization.memoryMiB ||
+    pin.providerLimits.outerEvaluator.storageMiB + maximum.storageMiB * overlap >
+      pin.providerLimits.organization.storageMiB
+  ) {
+    return false;
+  }
+  const sortedDefinitions = [...definitions].sort((left, right) =>
+    left.revisionDigest.localeCompare(right.revisionDigest),
+  );
+  const sortedDigests = sortedDefinitions.map((definition) => definition.revisionDigest);
+  if (
+    JSON.stringify(definitions) !== JSON.stringify(sortedDefinitions) ||
+    JSON.stringify(pin.directSandboxEligibleTaskRevisionDigests) !== JSON.stringify(sortedDigests)
+  ) {
+    return false;
+  }
+  return (
+    pin.resourcesDigest ===
+    canonicalDigest({
+      providerLimits: pin.providerLimits,
+      tasks: definitions.map((definition) => ({
+        revisionDigest: definition.revisionDigest,
+        officialResources: definition.executionEligibility.officialResources,
+        resourceSourceDigest: definition.executionEligibility.resourceSourceDigest,
+      })),
+    })
+  );
 }
 
 function isSeparateVerifierAttested(definition: TrustedHarborTaskDefinition): boolean {

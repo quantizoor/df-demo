@@ -360,6 +360,7 @@ export function roleSpecification(
       ...configuration.daytona.outerSandboxResources[role],
     },
     ttlMinutes: WORKER_TTL_MINUTES,
+    networkBlockAll: false,
     networkAllowDomains: [
       ...new Set([
         configuration.foundry.apiHost,

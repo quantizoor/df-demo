@@ -28,14 +28,25 @@ const DatasetRevisionSchema = Type.String({
   maxLength: 128,
 });
 const UnitIntervalSchema = Type.Number({ minimum: 0, maximum: 1 });
-const MeasurementProvenanceSchema = Type.Object(
-  {
-    kind: Type.Literal("trusted-measurement"),
-    sourceDigest: DigestSchema,
-    datasetRevision: DatasetRevisionSchema,
-  },
-  { additionalProperties: false },
-);
+const MeasurementProvenanceSchema = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal("trusted-measurement"),
+      sourceDigest: DigestSchema,
+      datasetRevision: DatasetRevisionSchema,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal("dataset-declared-difficulty-prior"),
+      sourceDigest: DigestSchema,
+      policyDigest: DigestSchema,
+      datasetRevision: DatasetRevisionSchema,
+    },
+    { additionalProperties: false },
+  ),
+]);
 const GraderIsolationAttestationSchema = Type.Object(
   {
     verifierEnvironmentMode: Type.Literal("separate"),
@@ -135,11 +146,23 @@ export interface TrustedHarborTaskDefinition {
   readonly difficulty: "hard" | "medium" | "easy";
   readonly easyCanary: boolean;
   readonly baselineFailureRate: number;
-  readonly baselineProvenance: {
-    readonly kind: "trusted-measurement";
-    readonly sourceDigest: string;
-    readonly datasetRevision: string;
-  };
+  readonly baselineProvenance:
+    | {
+        readonly kind: "trusted-measurement";
+        readonly sourceDigest: string;
+        readonly datasetRevision: string;
+      }
+    | {
+        /**
+         * A source prior is not represented as observed benchmark evidence.
+         * It seeds the first weighted panel only from the dataset-declared
+         * difficulty until fresh campaign outcomes replace it.
+         */
+        readonly kind: "dataset-declared-difficulty-prior";
+        readonly sourceDigest: string;
+        readonly policyDigest: string;
+        readonly datasetRevision: string;
+      };
   readonly graderIsolation: {
     readonly verifierEnvironmentMode: "separate";
     readonly allStepVerifierEnvironmentModesSeparate: true;
@@ -519,9 +542,11 @@ function validateDefinition(
   }
   if (
     !/^[a-f0-9]{64}$/u.test(definition.baselineProvenance.sourceDigest) ||
-    definition.baselineProvenance.datasetRevision !== datasetRevision
+    definition.baselineProvenance.datasetRevision !== datasetRevision ||
+    (definition.baselineProvenance.kind === "dataset-declared-difficulty-prior" &&
+      !/^[a-f0-9]{64}$/u.test(definition.baselineProvenance.policyDigest))
   ) {
-    throw new Error("Baseline failure rate requires comparable trusted provenance");
+    throw new Error("Baseline failure rate requires explicit trusted provenance");
   }
   if (
     definition.graderIsolation.verifierEnvironmentMode !== "separate" ||

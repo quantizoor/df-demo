@@ -1,0 +1,519 @@
+name: mvp-preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Separately approved MVP preflight stage
+        required: true
+        type: choice
+        options:
+          - bootstrap
+          - synthetic
+          - connectivity
+      source_commit:
+        description: Exact current main-branch controller commit
+        required: true
+        type: string
+      campaign_id:
+        description: MVP campaign identifier
+        required: true
+        type: string
+      image_digest:
+        description: Exact published MVP runtime digest (sha256:...)
+        required: true
+        type: string
+      prior_receipt_sha256:
+        description: Use none for bootstrap; otherwise the prior stage receipt SHA-256
+        required: true
+        type: string
+      confirmation:
+        description: Type MVP_PREFLIGHT:<stage>:<campaign_id>:<source_commit>:<image_digest>:<prior_receipt_sha256>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dark-factory-mvp-preflight-${{ inputs.campaign_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate-request:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      DF_REQUESTED_STAGE: ${{ inputs.stage }}
+      DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_REQUESTED_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+      DF_REQUESTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+      DF_REQUESTED_PRIOR_RECEIPT_SHA256: ${{ inputs.prior_receipt_sha256 }}
+      DF_REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Validate the source-bound manual request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$DF_REQUESTED_STAGE" =~ ^(bootstrap|synthetic|connectivity)$ ]]
+          [[ "$DF_REQUESTED_SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          test "$DF_REQUESTED_SOURCE_COMMIT" = "$GITHUB_SHA"
+          [[ "$DF_REQUESTED_CAMPAIGN_ID" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]
+          [[ "$DF_REQUESTED_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+
+          expected_confirmation="MVP_PREFLIGHT:$DF_REQUESTED_STAGE:$DF_REQUESTED_CAMPAIGN_ID:$DF_REQUESTED_SOURCE_COMMIT:$DF_REQUESTED_IMAGE_DIGEST:$DF_REQUESTED_PRIOR_RECEIPT_SHA256"
+          test "$DF_REQUESTED_CONFIRMATION" = "$expected_confirmation"
+
+          case "$DF_REQUESTED_STAGE" in
+            bootstrap)
+              test "$DF_REQUESTED_PRIOR_RECEIPT_SHA256" = "none"
+              ;;
+            synthetic|connectivity)
+              [[ "$DF_REQUESTED_PRIOR_RECEIPT_SHA256" =~ ^[a-f0-9]{64}$ ]]
+              ;;
+          esac
+
+  execute:
+    needs: validate-request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: dark-factory-mvp-paid
+    env:
+      CI: "true"
+      DF_CLOUD_EXECUTION: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DF_MVP_PREFLIGHT_STAGE: ${{ inputs.stage }}
+      DF_MVP_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_MVP_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+      DF_MVP_MAX_ITERATIONS: "0"
+      DF_MVP_EXPECTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+      DF_MVP_PRIOR_RECEIPT_SHA256: ${{ inputs.prior_receipt_sha256 }}
+      DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
+      DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
+      DF_MVP_DAYTONA_IMAGE: ${{ vars.DF_MVP_DAYTONA_IMAGE }}
+      DF_DAYTONA_VOLUME_ID: ${{ vars.DF_DAYTONA_VOLUME_ID }}
+      DF_DAYTONA_VOLUME_SUBPATH: ${{ vars.DF_DAYTONA_VOLUME_SUBPATH }}
+      DF_HARBOR_DAYTONA_SECRET_SOURCE: ${{ vars.DF_HARBOR_DAYTONA_SECRET_SOURCE }}
+    steps:
+      - name: Verify the immutable non-optimizing request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$DF_MVP_SOURCE_COMMIT" = "$GITHUB_SHA"
+          test "${DAYTONA_API_URL%/}" = "https://app.daytona.io/api"
+          [[ "$DAYTONA_TARGET" =~ ^[A-Za-z0-9]([A-Za-z0-9._/@+-]{0,253}[A-Za-z0-9])?$ ]]
+          [[ "$DAYTONA_TARGET" =~ (^|[-_.])eu($|[-_.]) ]]
+          [[ "$DF_MVP_DAYTONA_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$ ]]
+          test "${DF_MVP_DAYTONA_IMAGE##*@}" = "$DF_MVP_EXPECTED_IMAGE_DIGEST"
+          test "$DF_MVP_MAX_ITERATIONS" = "0"
+
+          [[ "$DF_DAYTONA_VOLUME_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._/@+-]{0,253}[A-Za-z0-9])?$ ]]
+          [[ "$DF_DAYTONA_VOLUME_SUBPATH" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,7}$ ]]
+          [[ "$DF_HARBOR_DAYTONA_SECRET_SOURCE" =~ ^[A-Z_][A-Z0-9_]{0,127}$ ]]
+
+          test -z "${DF_PAID_RUN_AUTHORIZATION:-}"
+          test -z "${DF_MVP_PAID_AUTHORIZATION:-}"
+          test -z "${DF_MVP_OPTIMIZER_INPUT_BASE64:-}"
+          test -z "${DF_MVP_CANDIDATE_PROPOSAL_BASE64:-}"
+
+      - name: Admit connectivity-only bindings
+        if: inputs.stage == 'connectivity'
+        shell: bash
+        env:
+          DF_FOUNDRY_BASE_URL: ${{ vars.DF_FOUNDRY_BASE_URL }}
+          DF_OPTIMIZER_DEPLOYMENT: ${{ vars.DF_OPTIMIZER_DEPLOYMENT }}
+          DF_EVALUATED_DEPLOYMENT: ${{ vars.DF_EVALUATED_DEPLOYMENT }}
+          DF_OPTIMIZER_SECRET_SOURCE: ${{ vars.DF_OPTIMIZER_SECRET_SOURCE }}
+          DF_EVALUATED_SECRET_SOURCE: ${{ vars.DF_EVALUATED_SECRET_SOURCE }}
+          DF_PI_GITHUB_OWNER: ${{ vars.DF_PI_GITHUB_OWNER }}
+          DF_PI_GITHUB_REPOSITORY: ${{ vars.DF_PI_GITHUB_REPOSITORY }}
+          DF_PI_BRANCH: ${{ vars.DF_PI_BRANCH }}
+          DF_PI_BASELINE_COMMIT: ${{ vars.DF_PI_BASELINE_COMMIT }}
+          DF_PI_BASELINE_TREE: ${{ vars.DF_PI_BASELINE_TREE }}
+          DF_PI_PACKAGE_LOCK_SHA256: ${{ vars.DF_PI_PACKAGE_LOCK_SHA256 }}
+          DF_GITHUB_SECRET_SOURCE: ${{ vars.DF_GITHUB_SECRET_SOURCE }}
+        run: |
+          set -euo pipefail
+          [[ "$DF_FOUNDRY_BASE_URL" =~ ^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.services\.ai\.azure\.com/anthropic/?$ ]]
+          [[ "$DF_OPTIMIZER_DEPLOYMENT" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]
+          [[ "$DF_EVALUATED_DEPLOYMENT" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]
+          test "${#DF_OPTIMIZER_DEPLOYMENT}" -le 128
+          test "${#DF_EVALUATED_DEPLOYMENT}" -le 128
+          [[ "$DF_OPTIMIZER_SECRET_SOURCE" =~ ^[A-Z_][A-Z0-9_]{0,127}$ ]]
+          [[ "$DF_EVALUATED_SECRET_SOURCE" =~ ^[A-Z_][A-Z0-9_]{0,127}$ ]]
+          [[ "$DF_GITHUB_SECRET_SOURCE" =~ ^[A-Z_][A-Z0-9_]{0,127}$ ]]
+          test "$DF_PI_GITHUB_OWNER" = "parallaxai"
+          test "$DF_PI_GITHUB_REPOSITORY" = "df-pi-tbench"
+          test "$DF_PI_BRANCH" = "main"
+          test "$DF_PI_BASELINE_COMMIT" = "5bc1c2c0a6f07e00e8c240304182f213ab8d311f"
+          test "$DF_PI_BASELINE_TREE" = "73898c76210cc8b48f4ac07cc76397b6b5c00758"
+          test "$DF_PI_PACKAGE_LOCK_SHA256" = "472f0726dc79f3b38df58d8a8bce96bf56fbf993a134b49aabc54947b8461e59"
+
+          for name in \
+            DF_FOUNDRY_BASE_URL \
+            DF_OPTIMIZER_DEPLOYMENT \
+            DF_EVALUATED_DEPLOYMENT \
+            DF_OPTIMIZER_SECRET_SOURCE \
+            DF_EVALUATED_SECRET_SOURCE \
+            DF_PI_GITHUB_OWNER \
+            DF_PI_GITHUB_REPOSITORY \
+            DF_PI_BRANCH \
+            DF_PI_BASELINE_COMMIT \
+            DF_PI_BASELINE_TREE \
+            DF_PI_PACKAGE_LOCK_SHA256 \
+            DF_GITHUB_SECRET_SOURCE
+          do
+            echo "$name=${!name}" >> "$GITHUB_ENV"
+          done
+
+      - name: Check out the exact current main commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Require exact source and reviewed dependency lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DF_MVP_SOURCE_COMMIT"
+          test -s pnpm-lock.yaml
+          test "$(git status --porcelain=v1 --untracked-files=all)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Verify and build the exact controller source
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          test "$(pnpm --version)" = "11.9.0"
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm check
+          pnpm build
+
+      - name: Build the deterministic exact-source controller bundle
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/mvp/preflight-cli.js
+          test -s scripts/mvp-optimizer-worker.mjs
+          test -s scripts/package-pi-runtime.mjs
+          test -s dist/mvp/cloud-optimizer-worker.js
+          test -s dist/mvp/cloud-evaluator-worker.js
+          test -s dist/mvp/evaluator-runtime.js
+          test -s dist/mvp/evaluator-runtime-node.js
+          test -s claude-plugin/server/hook-guard.js
+          test -s src/terminal-bench/assets/dark_factory_pi.py
+
+          tar \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -cf "$RUNNER_TEMP/df-mvp-preflight.tar" \
+            package.json dist node_modules scripts claude-plugin \
+            src/terminal-bench/assets/dark_factory_pi.py
+          gzip -n "$RUNNER_TEMP/df-mvp-preflight.tar"
+          bundle="$RUNNER_TEMP/df-mvp-preflight.tar.gz"
+          digest="$(sha256sum "$bundle" | cut -d' ' -f1)"
+          echo "path=$bundle" >> "$GITHUB_OUTPUT"
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Run only the separately approved MVP preflight stage
+        shell: bash
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          DF_MVP_CONTROLLER_BUNDLE_PATH: ${{ steps.bundle.outputs.path }}
+          DF_MVP_CONTROLLER_BUNDLE_SHA256: ${{ steps.bundle.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          test -n "$DAYTONA_API_KEY"
+          node dist/mvp/preflight-cli.js "$DF_MVP_PREFLIGHT_STAGE" \
+            > mvp-preflight-receipt.json
+          test -s mvp-preflight-receipt.json
+
+      - name: Admit only a source-bound task-free success receipt
+        shell: bash
+        env:
+          DF_RECEIPT_PATH: mvp-preflight-receipt.json
+          DF_MVP_CONTROLLER_BUNDLE_SHA256: ${{ steps.bundle.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          test "$(wc -c < "$DF_RECEIPT_PATH")" -le 65536
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFileSync } from "node:fs";
+
+          const raw = readFileSync(process.env.DF_RECEIPT_PATH, "utf8");
+          const receipt = JSON.parse(raw);
+          const fail = () => process.exit(1);
+          if (raw !== `${JSON.stringify(receipt)}\n`) fail();
+          const SHA256 = /^[a-f0-9]{64}$/u;
+          const SHA256_WITH_PREFIX = /^sha256:[a-f0-9]{64}$/u;
+          const exactKeys = (value, expected) => {
+            const actual = Object.keys(value).sort();
+            const wanted = [...expected].sort();
+            return (
+              actual.length === wanted.length &&
+              actual.every((key, index) => key === wanted[index])
+            );
+          };
+          const canonicalize = (value) => {
+            if (Array.isArray(value)) return value.map(canonicalize);
+            if (value !== null && typeof value === "object") {
+              return Object.fromEntries(
+                Object.entries(value)
+                  .sort(([left], [right]) => left.localeCompare(right))
+                  .map(([key, item]) => [key, canonicalize(item)]),
+              );
+            }
+            return value;
+          };
+          const configurationBindingHash = createHash("sha256")
+            .update(
+              JSON.stringify(
+                canonicalize({
+                  domain: "dark-factory.mvp-preflight-configuration.v1",
+                  stage: process.env.DF_MVP_PREFLIGHT_STAGE,
+                  campaignId: process.env.DF_MVP_CAMPAIGN_ID,
+                  sourceCommit: process.env.DF_MVP_SOURCE_COMMIT,
+                  workflowRunId: process.env.GITHUB_RUN_ID,
+                  workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+                  imageReference: process.env.DF_MVP_DAYTONA_IMAGE,
+                  priorReceiptSha256:
+                    process.env.DF_MVP_PRIOR_RECEIPT_SHA256 === "none"
+                      ? null
+                      : process.env.DF_MVP_PRIOR_RECEIPT_SHA256,
+                  controllerBundleSha256:
+                    process.env.DF_MVP_CONTROLLER_BUNDLE_SHA256,
+                  daytona: {
+                    apiUrl: process.env.DAYTONA_API_URL,
+                    target: process.env.DAYTONA_TARGET,
+                    volumeId: process.env.DF_DAYTONA_VOLUME_ID,
+                    volumeSubpath: process.env.DF_DAYTONA_VOLUME_SUBPATH,
+                    nestedSecretSource:
+                      process.env.DF_HARBOR_DAYTONA_SECRET_SOURCE,
+                  },
+                  maximumIterations: 0,
+                  resources: { cpu: 4, memoryGiB: 8, diskGiB: 10 },
+                }),
+              ),
+            )
+            .digest("hex");
+          const expectedTopLevelKeys = [
+            "actualIterationsCompleted",
+            "campaignId",
+            "configurationBindingHash",
+            "containsGraderData",
+            "containsRawTraces",
+            "containsTaskIdentifiers",
+            "containsTaskLiterals",
+            "controllerBundleSha256",
+            "counters",
+            "domain",
+            "imageDigest",
+            "priorReceiptSha256",
+            "sandboxes",
+            "schemaVersion",
+            "sourceCommit",
+            "stage",
+            "stageEvidence",
+            "status",
+          ];
+          if (
+            receipt === null ||
+            typeof receipt !== "object" ||
+            Array.isArray(receipt) ||
+            !exactKeys(receipt, expectedTopLevelKeys) ||
+            receipt.schemaVersion !== 1 ||
+            receipt.domain !== "dark-factory.mvp-preflight.receipt.v1" ||
+            receipt.stage !== process.env.DF_MVP_PREFLIGHT_STAGE ||
+            receipt.status !== "passed" ||
+            receipt.campaignId !== process.env.DF_MVP_CAMPAIGN_ID ||
+            receipt.sourceCommit !== process.env.DF_MVP_SOURCE_COMMIT ||
+            receipt.imageDigest !== process.env.DF_MVP_EXPECTED_IMAGE_DIGEST ||
+            receipt.configurationBindingHash !== configurationBindingHash ||
+            receipt.controllerBundleSha256 !==
+              process.env.DF_MVP_CONTROLLER_BUNDLE_SHA256 ||
+            receipt.actualIterationsCompleted !== 0 ||
+            receipt.containsTaskIdentifiers !== false ||
+            receipt.containsTaskLiterals !== false ||
+            receipt.containsGraderData !== false ||
+            receipt.containsRawTraces !== false
+          ) {
+            fail();
+          }
+
+          const expectedPrior = process.env.DF_MVP_PRIOR_RECEIPT_SHA256;
+          if (
+            expectedPrior === "none"
+              ? receipt.priorReceiptSha256 !== null
+              : receipt.priorReceiptSha256 !== expectedPrior
+          ) {
+            fail();
+          }
+
+          if (
+            receipt.counters === null ||
+            typeof receipt.counters !== "object" ||
+            Array.isArray(receipt.counters) ||
+            !exactKeys(receipt.counters, [
+              "harborTrials",
+              "modelRequests",
+              "optimizerInvocations",
+            ]) ||
+            receipt.counters.optimizerInvocations !== 0 ||
+            receipt.counters.modelRequests !== 0 ||
+            receipt.counters.harborTrials !== 0
+          ) {
+            fail();
+          }
+
+          if (
+            receipt.sandboxes === null ||
+            typeof receipt.sandboxes !== "object" ||
+            Array.isArray(receipt.sandboxes) ||
+            !exactKeys(receipt.sandboxes, [
+              "allDestroyed",
+              "created",
+              "destroyed",
+            ]) ||
+            !Number.isSafeInteger(receipt.sandboxes.created) ||
+            receipt.sandboxes.created < 1 ||
+            receipt.sandboxes.destroyed !== receipt.sandboxes.created ||
+            receipt.sandboxes.allDestroyed !== true
+          ) {
+            fail();
+          }
+
+          if (
+            receipt.stageEvidence === null ||
+            typeof receipt.stageEvidence !== "object" ||
+            Array.isArray(receipt.stageEvidence) ||
+            Object.keys(receipt.stageEvidence).length === 0
+          ) {
+            fail();
+          }
+
+          const evidence = receipt.stageEvidence;
+          if (receipt.stage === "bootstrap") {
+            if (
+              !exactKeys(evidence, [
+                "allStepVerifierEnvironmentModesSeparate",
+                "catalogSha256",
+                "compatibleTaskCount",
+                "inventoryDigest",
+                "officialResourcesFit",
+                "runtimeCompatibilityProven",
+                "runtimePinSha256",
+                "sourceTaskCount",
+              ]) ||
+              !SHA256.test(evidence.runtimePinSha256) ||
+              !SHA256.test(evidence.catalogSha256) ||
+              !SHA256.test(evidence.inventoryDigest) ||
+              !Number.isSafeInteger(evidence.compatibleTaskCount) ||
+              evidence.compatibleTaskCount < 5 ||
+              evidence.sourceTaskCount !== 89 ||
+              evidence.allStepVerifierEnvironmentModesSeparate !== true ||
+              evidence.runtimeCompatibilityProven !== true ||
+              evidence.officialResourcesFit !== true
+            ) {
+              fail();
+            }
+          } else if (receipt.stage === "synthetic") {
+            if (
+              !exactKeys(evidence, [
+                "deterministicSelection",
+                "infrastructureInvalidWeightingIgnored",
+                "initialCacheMisses",
+                "matchedCellCount",
+                "matchedTaskCount",
+                "persistedCampaignRevision",
+                "persistedExperimentCount",
+                "promotionEvidenceFresh",
+                "promotionRefreshes",
+                "promotionSeededEntries",
+                "repetitionsPerTask",
+                "retainedPanel",
+                "retainedPanelCacheHits",
+              ]) ||
+              evidence.deterministicSelection !== true ||
+              evidence.matchedTaskCount !== 5 ||
+              evidence.repetitionsPerTask !== 3 ||
+              evidence.matchedCellCount !== 15 ||
+              evidence.retainedPanel !== true ||
+              evidence.initialCacheMisses !== 15 ||
+              evidence.retainedPanelCacheHits !== 15 ||
+              evidence.promotionRefreshes !== 15 ||
+              evidence.promotionSeededEntries !== 15 ||
+              evidence.promotionEvidenceFresh !== true ||
+              evidence.persistedExperimentCount !== 3 ||
+              evidence.persistedCampaignRevision !== 2 ||
+              evidence.infrastructureInvalidWeightingIgnored !== true
+            ) {
+              fail();
+            }
+          } else {
+            if (Object.keys(evidence).length > 32) fail();
+            for (const [key, value] of Object.entries(evidence)) {
+              if (
+                !/^[a-z][A-Za-z0-9]{0,63}(?:Available|Connected|Count|Digest|Proven|Reachable|Sha256|Succeeded|Verified)$/u.test(
+                  key,
+                ) ||
+                /(?:grader|prompt|rawTrace|secret|solution|task(?:Id|Identifier|Literal|Name)|token)/iu.test(
+                  key,
+                )
+              ) {
+                fail();
+              }
+              if (key.endsWith("Count")) {
+                if (!Number.isSafeInteger(value) || value < 0) fail();
+              } else if (key.endsWith("Digest") || key.endsWith("Sha256")) {
+                if (
+                  typeof value !== "string" ||
+                  (!SHA256.test(value) && !SHA256_WITH_PREFIX.test(value))
+                ) {
+                  fail();
+                }
+              } else if (value !== true) {
+                fail();
+              }
+            }
+          }
+
+          const forbiddenKey =
+            /^(?:apiKey|authorization|credential|grader|prompt|rawTrace|secret|solution|taskId|taskIdentifier|taskLiteral|taskName|token)$/iu;
+          const visit = (value) => {
+            if (Array.isArray(value)) {
+              for (const item of value) visit(item);
+              return;
+            }
+            if (value === null || typeof value !== "object") return;
+            for (const [key, item] of Object.entries(value)) {
+              if (forbiddenKey.test(key)) fail();
+              visit(item);
+            }
+          };
+          visit(receipt);
+          NODE
+
+      - name: Upload only the validated task-free receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mvp-preflight-${{ inputs.stage }}-${{ inputs.campaign_id }}-${{ inputs.source_commit }}
+          path: mvp-preflight-receipt.json
+          if-no-files-found: error
+          retention-days: 30

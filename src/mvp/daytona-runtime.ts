@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-import type { MvpCloudConfiguration } from "./cloud-config.js";
-
 export type MvpCloudRole = "optimizer" | "evaluator";
 
 export const MVP_ROLE_MOUNT_PATH = "/workspace/df-state" as const;
@@ -10,6 +8,8 @@ export const MVP_OPTIMIZER_WORKER_PATH =
   "/tmp/df-mvp-controller/dist/mvp/cloud-optimizer-worker.js" as const;
 export const MVP_EVALUATOR_WORKER_PATH =
   "/tmp/df-mvp-controller/dist/mvp/cloud-evaluator-worker.js" as const;
+export const MVP_PREFLIGHT_WORKER_PATH =
+  "/tmp/df-mvp-controller/dist/mvp/preflight-worker.js" as const;
 
 const SDK_CREATE_TIMEOUT_SECONDS = 10 * 60;
 const SDK_DELETE_TIMEOUT_SECONDS = 60;
@@ -51,6 +51,7 @@ export interface MvpRoleSandboxSpec {
     readonly diskGiB: number;
   };
   readonly ttlMinutes: number;
+  readonly networkBlockAll: boolean;
   readonly networkAllowDomains: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
   readonly secretReferences: readonly MvpGovernedSecretReference[];
@@ -58,6 +59,27 @@ export interface MvpRoleSandboxSpec {
     readonly id: string;
     readonly subpath: string;
     readonly mountPath: typeof MVP_ROLE_MOUNT_PATH;
+  };
+}
+
+/**
+ * Provider-only configuration accepted by the Daytona transport. The complete
+ * paid-run configuration remains structurally compatible, while protected
+ * preflight stages do not need to manufacture unrelated Foundry or Pi fields.
+ */
+export interface MvpDaytonaRuntimeConfiguration {
+  readonly campaignId: string;
+  readonly configurationHash: string;
+  readonly daytona: {
+    readonly apiUrl: string;
+    readonly target: string;
+    readonly image: string;
+    readonly volumeId: string;
+    readonly apiKeyEnvironmentName: "DAYTONA_API_KEY";
+    readonly outerSandboxResources: {
+      readonly optimizer: MvpRoleSandboxSpec["resources"];
+      readonly evaluator: MvpRoleSandboxSpec["resources"];
+    };
   };
 }
 
@@ -145,6 +167,7 @@ interface DaytonaSandboxLike {
   readonly autoDeleteInterval?: number;
   readonly env?: Readonly<Record<string, string>>;
   readonly labels?: Readonly<Record<string, string>>;
+  readonly networkBlockAll?: boolean;
   readonly domainAllowList?: string;
   readonly volumes?: readonly DaytonaVolumeLike[];
   readonly process: DaytonaProcessLike;
@@ -175,7 +198,8 @@ interface DaytonaCreateParameters {
   readonly envVars: Readonly<Record<string, string>>;
   readonly secrets: Readonly<Record<string, string>>;
   readonly labels: Readonly<Record<string, string>>;
-  readonly domainAllowList: string;
+  readonly networkBlockAll: boolean;
+  readonly domainAllowList?: string;
   readonly volumes: readonly [
     {
       readonly volumeId: string;
@@ -237,14 +261,17 @@ interface ActiveSandbox {
  * existing persistent volume.
  */
 export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
-  readonly #configuration: MvpCloudConfiguration;
+  readonly #configuration: MvpDaytonaRuntimeConfiguration;
   readonly #environment: () => NodeJS.ProcessEnv;
   readonly #sdkFactory: MvpDaytonaSdkFactory;
   readonly #now: () => Date;
   readonly #active = new Map<string, ActiveSandbox>();
   #clientPromise: Promise<MvpDaytonaSdkClient> | null = null;
 
-  constructor(configuration: MvpCloudConfiguration, options: DaytonaMvpCloudRuntimeOptions = {}) {
+  constructor(
+    configuration: MvpDaytonaRuntimeConfiguration,
+    options: DaytonaMvpCloudRuntimeOptions = {},
+  ) {
     this.#configuration = configuration;
     this.#environment = options.environment ?? (() => process.env);
     this.#sdkFactory = options.sdkFactory ?? new OfficialMvpDaytonaSdkFactory();
@@ -449,7 +476,10 @@ function createParameters(specification: MvpRoleSandboxSpec): DaytonaCreateParam
       "df-config-sha256": specification.configurationHash,
       "df-request-sha256": sha256(specification.requestId),
     },
-    domainAllowList: [...specification.networkAllowDomains].sort().join(","),
+    networkBlockAll: specification.networkBlockAll,
+    ...(specification.networkAllowDomains.length === 0
+      ? {}
+      : { domainAllowList: [...specification.networkAllowDomains].sort().join(",") }),
     volumes: [
       {
         volumeId: specification.volume.id,
@@ -461,7 +491,7 @@ function createParameters(specification: MvpRoleSandboxSpec): DaytonaCreateParam
 }
 
 function assertSandboxSpecification(
-  configuration: MvpCloudConfiguration,
+  configuration: MvpDaytonaRuntimeConfiguration,
   specification: MvpRoleSandboxSpec,
 ): void {
   const targets = new Set<string>();
@@ -494,7 +524,10 @@ function assertSandboxSpecification(
     !Number.isSafeInteger(specification.ttlMinutes) ||
     specification.ttlMinutes < 5 ||
     specification.ttlMinutes > 300 ||
-    specification.networkAllowDomains.length < 1 ||
+    typeof specification.networkBlockAll !== "boolean" ||
+    (specification.networkBlockAll
+      ? specification.networkAllowDomains.length !== 0
+      : specification.networkAllowDomains.length < 1) ||
     specification.networkAllowDomains.some((domain) => !SAFE_DOMAIN.test(domain)) ||
     new Set(specification.networkAllowDomains).size !== specification.networkAllowDomains.length ||
     environmentEntries.some(
@@ -535,6 +568,7 @@ function assertCreatedSandbox(
     sandbox.disk !== specification.resources.diskGiB ||
     sandbox.public !== false ||
     sandbox.autoDeleteInterval !== 0 ||
+    sandbox.networkBlockAll !== specification.networkBlockAll ||
     sandbox.labels?.["df-role"] !== specification.role ||
     sandbox.labels?.["df-config-sha256"] !== specification.configurationHash ||
     sandbox.env?.["DF_CLOUD_EXECUTION"] !== "1" ||
@@ -554,12 +588,9 @@ function assertWorkerCommand(
   command: MvpRoleWorkerCommand,
 ): void {
   const expectedExecutable = MVP_PROCESS_ENTRYPOINT;
-  const expectedWorkerPath =
-    specification.role === "optimizer" ? MVP_OPTIMIZER_WORKER_PATH : MVP_EVALUATOR_WORKER_PATH;
   if (
     command.executable !== expectedExecutable ||
-    command.arguments[0] !== "node" ||
-    command.arguments[1] !== expectedWorkerPath ||
+    !isAllowedWorkerArguments(specification.role, command.arguments) ||
     !Number.isSafeInteger(command.timeoutMs) ||
     command.timeoutMs < 1 ||
     command.timeoutMs > specification.ttlMinutes * 60_000 ||
@@ -579,6 +610,22 @@ function assertWorkerCommand(
   ) {
     throw new MvpDaytonaRuntimeError("The Daytona role worker command is invalid.");
   }
+}
+
+function isAllowedWorkerArguments(role: MvpCloudRole, arguments_: readonly string[]): boolean {
+  if (arguments_.length !== 3 || arguments_[0] !== "node") return false;
+  if (role === "optimizer") {
+    return arguments_[1] === MVP_OPTIMIZER_WORKER_PATH && arguments_[2] === "optimize";
+  }
+  if (arguments_[1] === MVP_EVALUATOR_WORKER_PATH) {
+    return arguments_[2] === "prepare" || arguments_[2] === "evaluate";
+  }
+  return (
+    arguments_[1] === MVP_PREFLIGHT_WORKER_PATH &&
+    (arguments_[2] === "bootstrap" ||
+      arguments_[2] === "synthetic" ||
+      arguments_[2] === "connectivity")
+  );
 }
 
 function normalizeDomains(value: string | undefined): readonly string[] {

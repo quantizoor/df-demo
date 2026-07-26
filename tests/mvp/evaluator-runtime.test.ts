@@ -5,19 +5,24 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  canonicalJson,
   type EvaluationEnvironment,
   hiddenTaskHandle,
   MVP_SCHEMA_VERSION,
   type PrivateEvaluationRequest,
 } from "../../src/mvp/contracts.js";
 import type {
+  MvpDaytonaProviderLimits,
+  MvpEligibleHarborTaskDefinition,
   MvpHarborExecutionPort,
   MvpPiRuntimeMaterialization,
 } from "../../src/mvp/evaluator-runtime.js";
 import {
+  assertMvpEvaluatorRuntimePin,
   type MvpEvaluatorRuntimePin,
   type MvpPiRuntimeSourcePort,
   MvpTrustedBatchEvaluator,
+  mvpEvaluatorEligibilityPolicyDigest,
 } from "../../src/mvp/evaluator-runtime.js";
 import type { MountedHiddenTaskCatalog } from "../../src/mvp/mounted-hidden-task-catalog.js";
 
@@ -35,6 +40,11 @@ describe("MVP trusted evaluator runtime", () => {
       revisionDigest: digest(String(index + 6)),
       harborTaskName: `terminal-bench/hidden-${index + 1}`,
     }));
+    const runtimePin = pin(
+      adapterPath,
+      adapterSha256,
+      tasks.map((task) => task.revisionDigest),
+    );
     const cells = tasks.flatMap((task, taskIndex) =>
       ([1, 2, 3] as const).map((repetition) => ({
         cellId: digest(`${taskIndex + 1}${repetition}`),
@@ -48,7 +58,7 @@ describe("MVP trusted evaluator runtime", () => {
         repetition,
       })),
     );
-    const environment = evaluationEnvironment();
+    const environment = evaluationEnvironment(runtimePin);
     const environmentDigest = createHash("sha256")
       .update(
         JSON.stringify(
@@ -120,11 +130,7 @@ describe("MVP trusted evaluator runtime", () => {
     } as unknown as MountedHiddenTaskCatalog;
     const evaluator = new MvpTrustedBatchEvaluator({
       stateRoot: root,
-      pin: pin(
-        adapterPath,
-        adapterSha256,
-        tasks.map((task) => task.revisionDigest),
-      ),
+      pin: runtimePin,
       catalog,
       environment,
       evaluatedDeployment: "existing-opus-4-8",
@@ -148,6 +154,44 @@ describe("MVP trusted evaluator runtime", () => {
     expect(materialized).toEqual(
       expect.arrayContaining([`candidate:${candidateRevision}`, `champion:${championRevision}`]),
     );
+  });
+
+  it("accepts a fully bound V2 runtime pin", () => {
+    const runtimePin = pin(
+      "/tmp/df-mvp-controller/src/terminal-bench/assets/dark_factory_pi.py",
+      digest("a"),
+      Array.from({ length: 5 }, (_, index) => digest(String(index + 1))),
+    );
+
+    expect(() => assertMvpEvaluatorRuntimePin(runtimePin)).not.toThrow();
+  });
+
+  it("rejects a difficulty prior that is not bound to the eligibility policy", () => {
+    const runtimePin = pin(
+      "/tmp/df-mvp-controller/src/terminal-bench/assets/dark_factory_pi.py",
+      digest("a"),
+      Array.from({ length: 5 }, (_, index) => digest(String(index + 1))),
+    );
+    const driftedDefinitions = runtimePin.hiddenTaskDefinitions.map((definition, index) =>
+      index === 0
+        ? {
+            ...definition,
+            baselineProvenance: {
+              kind: "dataset-declared-difficulty-prior" as const,
+              sourceDigest: definition.baselineProvenance.sourceDigest,
+              policyDigest: digest("0"),
+              datasetRevision: definition.baselineProvenance.datasetRevision,
+            },
+          }
+        : definition,
+    );
+    const driftedPin: MvpEvaluatorRuntimePin = {
+      ...runtimePin,
+      hiddenTaskDefinitions: driftedDefinitions,
+      inventoryDigest: canonicalDigest(driftedDefinitions),
+    };
+
+    expect(() => assertMvpEvaluatorRuntimePin(driftedPin)).toThrow("Runtime pin is incomplete.");
   });
 });
 
@@ -180,56 +224,148 @@ function pin(
   adapterSha256: string,
   eligible: readonly string[],
 ): MvpEvaluatorRuntimePin {
+  const providerLimits: MvpDaytonaProviderLimits = {
+    perSandbox: {
+      cpu: 4,
+      memoryMiB: 8 * 1_024,
+      storageMiB: 10 * 1_024,
+      gpus: 0,
+    },
+    organization: {
+      cpu: 100,
+      memoryMiB: 200 * 1_024,
+      storageMiB: 300 * 1_024,
+    },
+    outerEvaluator: {
+      cpu: 4,
+      memoryMiB: 8 * 1_024,
+      storageMiB: 10 * 1_024,
+      gpus: 0,
+    },
+    harborMaxConcurrentTrials: 5,
+    maximumOverlappingChildSandboxes: 10,
+  };
+  const providerLimitsDigest = canonicalDigest(providerLimits);
+  const eligibilityPolicyDigest = mvpEvaluatorEligibilityPolicyDigest();
+  const bunExecutableSha256 = digest("a");
+  const sortedEligible = [...eligible].sort();
+  const hiddenTaskDefinitions: MvpEligibleHarborTaskDefinition[] = sortedEligible.map(
+    (revisionDigest, index) => {
+      const officialResources = {
+        agent: {
+          cpu: 1,
+          memoryMiB: 1_024,
+          storageMiB: 1_024,
+          gpus: 0 as const,
+        },
+        verifiers: [
+          {
+            cpu: 1,
+            memoryMiB: 1_024,
+            storageMiB: 1_024,
+            gpus: 0 as const,
+          },
+        ],
+      };
+      return {
+        harborTaskLocator: `terminal-bench/hidden-${index + 1}`,
+        revisionDigest,
+        difficulty: index === sortedEligible.length - 1 ? ("easy" as const) : ("hard" as const),
+        easyCanary: index === sortedEligible.length - 1,
+        baselineFailureRate: index === sortedEligible.length - 1 ? 0.3 : 0.8,
+        baselineProvenance: {
+          kind: "dataset-declared-difficulty-prior" as const,
+          sourceDigest: digest("b"),
+          policyDigest: eligibilityPolicyDigest,
+          datasetRevision: "terminal-bench-2-1-r6",
+        },
+        graderIsolation: {
+          verifierEnvironmentMode: "separate" as const,
+          allStepVerifierEnvironmentModesSeparate: true as const,
+          sourceDigest: digest("c"),
+        },
+        leaderboard: {
+          kind: "unknown" as const,
+          reason: "not-published" as const,
+        },
+        initialFailureRate: index === sortedEligible.length - 1 ? 0.3 : 0.8,
+        uncertainty: 0.9,
+        normalizedCost: 0.2,
+        sensitiveLiterals: [`terminal-bench/hidden-${index + 1}`],
+        executionEligibility: {
+          environmentType: "daytona" as const,
+          sandboxMode: "direct" as const,
+          compose: false as const,
+          officialResources,
+          resourceSourceDigest: canonicalDigest({
+            revisionDigest,
+            agent: officialResources.agent,
+            verifiers: officialResources.verifiers,
+          }),
+          providerLimitsDigest,
+          resourceFit: true as const,
+          runtimeCompatibility: {
+            architecture: "x86_64" as const,
+            runtimeAbi: "linux-x64-glibc" as const,
+            bunExecutableSha256,
+            smokeEvidenceDigest: canonicalDigest({
+              policy: "direct-daytona-bun-exec-v1",
+              revisionDigest,
+              bunExecutableSha256,
+              reportedVersion: "1.3.14",
+              exitCode: 0,
+              destroyed: true,
+            }),
+            compatible: true as const,
+          },
+        },
+      };
+    },
+  );
+  const imageDigest = digest("3");
+  const resourcesDigest = canonicalDigest({
+    providerLimits,
+    tasks: hiddenTaskDefinitions.map((definition) => ({
+      revisionDigest: definition.revisionDigest,
+      officialResources: definition.executionEligibility.officialResources,
+      resourceSourceDigest: definition.executionEligibility.resourceSourceDigest,
+    })),
+  });
   return {
-    schemaVersion: 1,
-    domain: "dark-factory.mvp-evaluator-runtime-pin.v1",
+    schemaVersion: 2,
+    domain: "dark-factory.mvp-evaluator-runtime-pin.v2",
+    sourceCommit: revision("d"),
+    imageReference: `ghcr.io/parallaxai/dark-factory-mvp@sha256:${imageDigest}`,
+    runtimePinsSha256: digest("f"),
     harborVersion: "0.20.0",
+    harborPackageSha256: digest("1"),
     terminalBenchVersion: "2.1",
-    datasetName: "terminal-bench",
-    datasetRef: "2.1",
-    datasetRevision: "terminal-bench-2.1",
+    datasetName: "terminal-bench/terminal-bench-2-1",
+    datasetRef: `sha256:${digest("2")}`,
+    datasetRevision: "terminal-bench-2-1-r6",
     datasetContentSha256: digest("1"),
-    graderProtocolVersion: "harbor-0.20.0",
-    evaluatorVersion: "mvp-1",
+    datasetManifestSha256: digest("2"),
+    graderProtocolVersion: "harbor-0.20.0-separate-verifier",
+    evaluatorVersion: "mvp-2",
     harborExecutable: "/usr/local/bin/harbor",
     harborExecutableSha256: digest("2"),
     bunExecutable: "/usr/local/bin/bun",
-    bunExecutableSha256: digest("a"),
+    bunExecutableSha256,
     adapterPath,
     adapterSha256,
     piEntrypoint: "packages/coding-agent/dist/pi",
     enabledTools: ["read", "bash", "write", "edit"],
     timeoutSeconds: 7_200,
-    directSandboxEligibleTaskRevisionDigests: eligible,
-    hiddenTaskDefinitions: eligible.map((revisionDigest, index) => ({
-      harborTaskLocator: `terminal-bench/hidden-${index + 1}`,
-      revisionDigest,
-      difficulty: index === eligible.length - 1 ? ("easy" as const) : ("hard" as const),
-      easyCanary: index === eligible.length - 1,
-      baselineFailureRate: 0.8,
-      baselineProvenance: {
-        kind: "trusted-measurement" as const,
-        sourceDigest: digest("b"),
-        datasetRevision: "terminal-bench-2.1",
-      },
-      graderIsolation: {
-        verifierEnvironmentMode: "separate" as const,
-        allStepVerifierEnvironmentModesSeparate: true as const,
-        sourceDigest: digest("c"),
-      },
-      leaderboard: {
-        kind: "unknown" as const,
-        reason: "not-published" as const,
-      },
-      initialFailureRate: 0.8,
-      uncertainty: 0.5,
-      normalizedCost: 0.2,
-      sensitiveLiterals: [`terminal-bench/hidden-${index + 1}`],
-    })),
-    imageDigest: digest("3"),
+    directSandboxEligibleTaskRevisionDigests: sortedEligible,
+    hiddenTaskDefinitions,
+    imageDigest,
     architecture: "x86_64",
     runtimeAbi: "linux-x64-glibc",
-    resourcesDigest: digest("4"),
+    providerLimits,
+    providerLimitsDigest,
+    eligibilityPolicyDigest,
+    inventoryDigest: canonicalDigest(hiddenTaskDefinitions),
+    resourcesDigest,
     networkPolicyDigest: digest("5"),
     samplingSettingsDigest: digest("6"),
     contextSettingsDigest: digest("7"),
@@ -238,24 +374,28 @@ function pin(
   };
 }
 
-function evaluationEnvironment(): EvaluationEnvironment {
+function evaluationEnvironment(pin: MvpEvaluatorRuntimePin): EvaluationEnvironment {
   return {
-    terminalBenchVersion: "2.1",
-    datasetRevision: "terminal-bench-2.1",
-    graderProtocolVersion: "harbor-0.20.0",
-    evaluatorVersion: "mvp-1",
+    terminalBenchVersion: pin.terminalBenchVersion,
+    datasetRevision: pin.datasetRevision,
+    graderProtocolVersion: pin.graderProtocolVersion,
+    evaluatorVersion: pin.evaluatorVersion,
     modelProvider: "microsoft-foundry",
     modelDeployment: "existing-opus-4-8",
     reasoningEffort: "high",
-    samplingSettingsDigest: digest("6"),
-    contextSettingsDigest: digest("7"),
+    samplingSettingsDigest: pin.samplingSettingsDigest,
+    contextSettingsDigest: pin.contextSettingsDigest,
     sandboxProvider: "daytona",
     sandboxRegion: "eu",
-    imageDigest: digest("3"),
+    imageDigest: pin.imageDigest,
     architecture: "x86_64",
-    resourcesDigest: digest("4"),
-    networkPolicyDigest: digest("5"),
-    harnessConfigDigest: digest("8"),
-    extraConfigDigest: digest("9"),
+    resourcesDigest: pin.resourcesDigest,
+    networkPolicyDigest: pin.networkPolicyDigest,
+    harnessConfigDigest: pin.harnessConfigDigest,
+    extraConfigDigest: pin.extraConfigDigest,
   };
+}
+
+function canonicalDigest(value: unknown): string {
+  return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
