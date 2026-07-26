@@ -146,6 +146,41 @@ export function selectRepairPanel(
   tasks: readonly HiddenTaskLedgerEntry[],
   context: SelectionContext & { readonly epoch: number },
 ): HiddenPanelSelection {
+  return selectRepairPanelByEligibility(
+    tasks.filter((task) =>
+      eligibleForRepair(task, context.currentExperiment),
+    ),
+    context,
+  );
+}
+
+/**
+ * Selects the bounded repair screen only from a previously consumed discovery
+ * panel. Immediate walk-forward reuse deliberately ignores the ordinary
+ * cooldown/consecutive-exposure checks: the source panel is already
+ * feedback-bearing, can never regain positive-promotion eligibility, and may
+ * be screened at most twice by the trusted catalog. Infrastructure, shadow,
+ * and feedback-release boundaries still fail closed here.
+ */
+export function selectRepairPanelFromSource(
+  tasks: readonly HiddenTaskLedgerEntry[],
+  context: SelectionContext & { readonly epoch: number },
+): HiddenPanelSelection {
+  return selectRepairPanelByEligibility(
+    tasks.filter(
+      (task) =>
+        task.infrastructureValid &&
+        task.exposure.feedbackReleased &&
+        !task.shadowReserved,
+    ),
+    context,
+  );
+}
+
+function selectRepairPanelByEligibility(
+  eligible: readonly HiddenTaskLedgerEntry[],
+  context: SelectionContext & { readonly epoch: number },
+): HiddenPanelSelection {
   if (!Number.isSafeInteger(context.epoch) || context.epoch < 0) {
     throw new SelectionError("Repair epoch must be a non-negative safe integer");
   }
@@ -157,7 +192,7 @@ export function selectRepairPanel(
     coverage: alternating === "coverage" ? 1 : 0,
   };
   const selected = selectByQuota(
-    tasks.filter((task) => eligibleForRepair(task, context.currentExperiment)),
+    eligible,
     quota,
     context.changedComponentRelevance,
   );

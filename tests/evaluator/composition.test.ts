@@ -191,6 +191,7 @@ function options(): TrustedEvaluationServiceCompositionOptions {
       durabilityAttestationHash: "9".repeat(64),
       ledger: {
         claim: unavailable,
+        inspect: unavailable,
         bindDispositionAttestation: unavailable,
         complete: unavailable,
         consumeFailure: unavailable,
@@ -202,6 +203,19 @@ function options(): TrustedEvaluationServiceCompositionOptions {
       },
       custodian: { destroy: unavailable },
       hiddenOutcomeSink: { commit: unavailable },
+      onlineErrorAuthority: {
+        boundary: "trusted-cloud-online-error-authority",
+        reserve: unavailable,
+        reconcile: unavailable,
+      },
+      behavioralPreparations: {
+        boundary: "trusted-cloud",
+        prepare: unavailable,
+        resolve: unavailable,
+        finalize: unavailable,
+        abandon: unavailable,
+        consume: unavailable,
+      },
     },
     raw: rawPorts(),
     policyProvider,
@@ -214,6 +228,20 @@ function options(): TrustedEvaluationServiceCompositionOptions {
     resultEnvelopeSigning: {
       keyId: "result-envelope-key-1",
       trustedKeyIds: ["result-envelope-key-1"],
+      privateKeys: privateKeys(),
+      publicKeys: publicKeys(),
+    },
+    behavioralReleaseStore: {
+      boundary: "trusted-cloud",
+      load: unavailable,
+      resolveByContentHash: unavailable,
+      inspectCommit: unavailable,
+      commit: unavailable,
+      orphan: unavailable,
+    },
+    behavioralReleaseSigning: {
+      keyId: "behavioral-release-key-1",
+      trustedKeyIds: ["behavioral-release-key-1"],
       privateKeys: privateKeys(),
       publicKeys: publicKeys(),
     },
@@ -245,6 +273,39 @@ describe("production trusted evaluation service composition", () => {
     ).rejects.toBeInstanceOf(TrustedEvaluationCompositionError);
   });
 
+  it("rejects a process-local behavioral preparation store", async () => {
+    const value = options();
+    await expect(
+      createTrustedEvaluationService({
+        ...value,
+        stores: {
+          ...value.stores,
+          behavioralPreparations: {
+            ...value.stores.behavioralPreparations,
+            boundary: "test-only-in-memory",
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(TrustedEvaluationCompositionError);
+  });
+
+  it("rejects a preparation store without durable abandonment", async () => {
+    const value = options();
+    const behavioralPreparations = {
+      ...value.stores.behavioralPreparations,
+      abandon: undefined,
+    } as unknown as typeof value.stores.behavioralPreparations;
+    await expect(
+      createTrustedEvaluationService({
+        ...value,
+        stores: {
+          ...value.stores,
+          behavioralPreparations,
+        },
+      }),
+    ).rejects.toBeInstanceOf(TrustedEvaluationCompositionError);
+  });
+
   it("rejects a composition whose signing key is not in its verification keyring", async () => {
     const value = options();
     await expect(
@@ -253,6 +314,23 @@ describe("production trusted evaluation service composition", () => {
         resultEnvelopeSigning: {
           ...value.resultEnvelopeSigning,
           trustedKeyIds: ["another-result-key"],
+        },
+      }),
+    ).rejects.toBeInstanceOf(TrustedEvaluationCompositionError);
+  });
+
+  it("rejects a one-use ledger without exact completion inspection", async () => {
+    const value = options();
+    const ledger = {
+      ...value.stores.ledger,
+      inspect: undefined,
+    } as unknown as typeof value.stores.ledger;
+    await expect(
+      createTrustedEvaluationService({
+        ...value,
+        stores: {
+          ...value.stores,
+          ledger,
         },
       }),
     ).rejects.toBeInstanceOf(TrustedEvaluationCompositionError);

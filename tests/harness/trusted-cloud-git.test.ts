@@ -14,10 +14,15 @@ import type {
 } from "../../src/cloud/types.js";
 import { createEd25519Signature } from "../../src/evidence/signatures.js";
 import {
+  ArtifactReadingTrustedGitPublicationAttestor,
+  ArtifactReadingTrustedGitSourceSnapshotAttestor,
+} from "../../src/harness/git-operation-attestors.js";
+import {
   assertTrustedGitPublicationWorkerResult,
   createTrustedGitPublicationAuthorizationPayload,
   createTrustedGitPublicationSpec,
   parseTrustedGitPublicationWorkerResult,
+  trustedGitCandidateBundleRef,
   TrustedGitPublicationRunner,
   type TrustedGitPublicationAttestor,
   type TrustedGitPublicationAuthorization,
@@ -28,6 +33,7 @@ import {
   createTrustedGitSourceSnapshotSpec,
   parseTrustedGitSourceWorkerManifest,
   registeredBaselineGitSourceTarget,
+  TRUSTED_GIT_SOURCE_BUNDLE_REF,
   TrustedGitSourceRunner,
   type TrustedGitSourceSnapshotAttestor,
   type TrustedGitSourceSnapshotReceipt,
@@ -70,6 +76,11 @@ function artifact(
 
 const workerArtifact = artifact("worker", "3", "text/javascript");
 const sourceArtifact = artifact("source", "4", "application/x-tar");
+const sourceBundleArtifact = artifact(
+  "source-bundle",
+  "0",
+  "application/vnd.git.bundle",
+);
 const sourceManifestArtifact = artifact(
   "source-manifest",
   "5",
@@ -253,6 +264,9 @@ class FakeGitProvider implements CloudSandboxProvider {
     if (remotePath.endsWith("source-manifest.json")) {
       return Promise.resolve(sourceManifestArtifact);
     }
+    if (remotePath.endsWith("candidate-source.bundle")) {
+      return Promise.resolve(sourceBundleArtifact);
+    }
     return Promise.resolve(publicationResultArtifact);
   }
 
@@ -279,7 +293,7 @@ function sourceAttestor(
     async attest(input) {
       const body = {
         sensitivity: "trusted-git-source-snapshot" as const,
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         snapshotId: input.spec.snapshotId,
         registrationId: input.spec.registrationId,
         originRepositoryHash: input.spec.originRepositoryHash,
@@ -298,10 +312,13 @@ function sourceAttestor(
         lockSha256: input.spec.target.lockSha256,
         archiveMethod: "git-archive-format-tar" as const,
         compression: "none" as const,
+        bundleMethod: "git-bundle-v2" as const,
+        bundleRef: TRUSTED_GIT_SOURCE_BUNDLE_REF,
         workerSha256: input.spec.workerArtifact.sha256,
         executionReceiptHash: cloudExecutionReceiptHash(input.execution),
         manifestArtifactSha256: input.manifestArtifact.sha256,
         sourceArtifact: input.sourceArtifact,
+        sourceBundleArtifact: input.sourceBundleArtifact,
         createdAt: "2026-07-01T00:03:00.000Z",
         passed: true as const,
       };
@@ -449,19 +466,19 @@ function publicationRunner(
   });
 }
 
-describe("trusted Git worker JSON schemas", () => {
-  it("accepts only content-addressed source manifests with exact lineage", () => {
-    const target = registeredBaselineGitSourceTarget(registration);
-    const spec = createTrustedGitSourceSnapshotSpec({
-      requestId: "source-schema-001",
-      registration,
-      origin,
-      target,
-      workerArtifact,
-    });
-    const manifest = withContentHash({
-      schemaVersion: 1,
-      domain: "dark-factory.trusted-git-source.v1",
+function sourceManifest(): string {
+  const target = registeredBaselineGitSourceTarget(registration);
+  const spec = createTrustedGitSourceSnapshotSpec({
+    requestId: sandbox().requestId,
+    registration,
+    origin,
+    target,
+    workerArtifact,
+  });
+  return `${canonicalJson(
+    withContentHash({
+      schemaVersion: 2,
+      domain: "dark-factory.trusted-git-source.v2",
       originRepositoryHash: spec.originRepositoryHash,
       upstreamRepositoryHash: spec.upstreamRepositoryHash,
       upstreamHeadCommit: spec.upstreamHeadCommit,
@@ -475,35 +492,110 @@ describe("trusted Git worker JSON schemas", () => {
       compression: "none",
       archiveSha256: sourceArtifact.sha256,
       archiveByteLength: sourceArtifact.byteLength,
+      bundleMethod: "git-bundle-v2",
+      bundleRef: TRUSTED_GIT_SOURCE_BUNDLE_REF,
+      bundleSha256: sourceBundleArtifact.sha256,
+      bundleByteLength: sourceBundleArtifact.byteLength,
+    }),
+  )}\n`;
+}
+
+function publicationResult(authorized: TrustedGitPublicationAuthorization): string {
+  const spec = createTrustedGitPublicationSpec({
+    requestId: sandbox().requestId,
+    registration,
+    origin,
+    workerArtifact,
+    authorization: authorized,
+  });
+  return `${canonicalJson(
+    withContentHash({
+      schemaVersion: 1,
+      domain: "dark-factory.trusted-git-publication.v1",
+      originRepositoryHash: spec.originRepositoryHash,
+      upstreamRepositoryHash: spec.upstreamRepositoryHash,
+      upstreamHeadCommit: spec.upstreamHeadCommit,
+      upstreamBaseCommit: spec.upstreamBaseCommit,
+      experimentId: authorized.experimentId,
+      baselineCommit: authorized.baselineCommit,
+      baseRef: authorized.baseRef,
+      baseCommit: authorized.baseCommit,
+      candidateCommit: authorized.candidateCommit,
+      candidateTree: authorized.candidateTree,
+      lockSha256: authorized.lockSha256,
+      candidateBundleSha256: authorized.candidateBundle.sha256,
+      bundleRef: spec.bundleRef,
+      branchRef: authorized.branchRef,
+      tagRef: authorized.tagRef,
+      branchCommit: authorized.candidateCommit,
+      tagObjectId: "e".repeat(40),
+      tagPeeledCommit: authorized.candidateCommit,
+      publicationMode: "atomic-non-force",
+      disposition: "published",
+    }),
+  )}\n`;
+}
+
+describe("trusted Git worker JSON schemas", () => {
+  it("accepts only content-addressed source manifests with exact lineage", () => {
+    const target = registeredBaselineGitSourceTarget(registration);
+    const spec = createTrustedGitSourceSnapshotSpec({
+      requestId: "source-schema-001",
+      registration,
+      origin,
+      target,
+      workerArtifact,
+    });
+    const manifest = withContentHash({
+      schemaVersion: 2,
+      domain: "dark-factory.trusted-git-source.v2",
+      originRepositoryHash: spec.originRepositoryHash,
+      upstreamRepositoryHash: spec.upstreamRepositoryHash,
+      upstreamHeadCommit: spec.upstreamHeadCommit,
+      upstreamBaseCommit: spec.upstreamBaseCommit,
+      baselineCommit: spec.baselineCommit,
+      remoteRef: target.remoteRef,
+      commitSha: target.commitSha,
+      treeSha: target.treeSha,
+      lockSha256: target.lockSha256,
+      archiveMethod: "git-archive-format-tar",
+      compression: "none",
+      archiveSha256: sourceArtifact.sha256,
+      archiveByteLength: sourceArtifact.byteLength,
+      bundleMethod: "git-bundle-v2",
+      bundleRef: TRUSTED_GIT_SOURCE_BUNDLE_REF,
+      bundleSha256: sourceBundleArtifact.sha256,
+      bundleByteLength: sourceBundleArtifact.byteLength,
     });
     expect(() =>
       assertTrustedGitSourceWorkerManifest(manifest, {
         spec,
         sourceArtifact,
+        sourceBundleArtifact,
       }),
     ).not.toThrow();
     expect(
       parseTrustedGitSourceWorkerManifest(
         `${canonicalJson(manifest)}\n`,
-        { spec, sourceArtifact },
+        { spec, sourceArtifact, sourceBundleArtifact },
       ),
     ).toEqual(manifest);
     expect(() =>
       parseTrustedGitSourceWorkerManifest(
         JSON.stringify(manifest, null, 2),
-        { spec, sourceArtifact },
+        { spec, sourceArtifact, sourceBundleArtifact },
       ),
     ).toThrow(/canonical/u);
     expect(() =>
       assertTrustedGitSourceWorkerManifest(
         { ...manifest, treeSha: "f".repeat(40) },
-        { spec, sourceArtifact },
+        { spec, sourceArtifact, sourceBundleArtifact },
       ),
     ).toThrow(/manifest/u);
     expect(() =>
       assertTrustedGitSourceWorkerManifest(
         { ...manifest, unexpected: true },
-        { spec, sourceArtifact },
+        { spec, sourceArtifact, sourceBundleArtifact },
       ),
     ).toThrow(/non-canonical/u);
   });
@@ -563,7 +655,7 @@ describe("trusted Git worker JSON schemas", () => {
 });
 
 describe("trusted cloud Git source snapshot", () => {
-  it("uses a secret reference and attests the exact uncompressed archive", async () => {
+  it("attests the exact archive and standalone bundle", async () => {
     const provider = new FakeGitProvider();
     const receipt = await sourceRunner(provider).run();
     expect(receipt).toMatchObject({
@@ -573,6 +665,7 @@ describe("trusted cloud Git source snapshot", () => {
       archiveMethod: "git-archive-format-tar",
       compression: "none",
       sourceArtifact,
+      sourceBundleArtifact,
     });
     expect(provider.uploads).toEqual([
       {
@@ -583,6 +676,7 @@ describe("trusted cloud Git source snapshot", () => {
     expect(provider.downloads).toEqual([
       "/trusted/git/candidate-source.tar",
       "/trusted/git/source-manifest.json",
+      "/trusted/git/candidate-source.bundle",
     ]);
     expect(provider.commands).toHaveLength(1);
     const command = provider.commands[0]!;
@@ -592,6 +686,10 @@ describe("trusted cloud Git source snapshot", () => {
     expect(command.arguments).toContain(baselineCommit);
     expect(command.arguments).toContain(baselineTree);
     expect(command.arguments).toContain(lockSha256);
+    expect(command.arguments).toContain("--bundle");
+    expect(command.arguments).toContain(
+      TRUSTED_GIT_SOURCE_BUNDLE_REF,
+    );
     expect(provider.calls.at(-1)).toBe("destroy");
     expect(JSON.stringify(command)).not.toContain(localCanonicalPath);
     expect(JSON.stringify(receipt)).not.toContain("parallaxai");
@@ -680,6 +778,15 @@ describe("trusted cloud Git source snapshot", () => {
 });
 
 describe("trusted cloud Git publication", () => {
+  it("reserves experiment zero for the source snapshot bundle", () => {
+    expect(() =>
+      trustedGitCandidateBundleRef("000-source-snapshot"),
+    ).toThrow(/experiment identifier/u);
+    expect(
+      trustedGitCandidateBundleRef("001-improve-recovery"),
+    ).not.toBe(TRUSTED_GIT_SOURCE_BUNDLE_REF);
+  });
+
   it("publishes the sealed bundle to fixed experiment refs without force", async () => {
     const provider = new FakeGitProvider();
     const receipt = await publicationRunner(provider).run();
@@ -792,5 +899,112 @@ describe("trusted cloud Git publication", () => {
     });
     expect(provider.commands[0]?.arguments).toContain(candidateCommit);
     expect(provider.commands[0]?.arguments).not.toContain("f".repeat(40));
+  });
+});
+
+describe("artifact-reading trusted Git operation attestors", () => {
+  it("parses the verified source manifest before signing the exact snapshot", async () => {
+    const attestor = new ArtifactReadingTrustedGitSourceSnapshotAttestor({
+      reader: {
+        async readUtf8(artifact, maximumBytes) {
+          expect(artifact).toEqual(sourceManifestArtifact);
+          expect(maximumBytes).toBe(4 * 1024 * 1024);
+          return sourceManifest();
+        },
+      },
+      signer: {
+        boundary: "trusted-cloud-key-material",
+        keyId: "trusted-git-source-key-001",
+        async sign(body) {
+          return createEd25519Signature(
+            body as unknown as Readonly<Record<string, unknown>>,
+            sourceKeys.privateKey,
+            "trusted-git-source-key-001",
+            "2026-07-01T00:04:00.000Z",
+          );
+        },
+      },
+      now: () => new Date("2026-07-01T00:03:00.000Z"),
+    });
+    await expect(
+      sourceRunner(new FakeGitProvider(), attestor).run(),
+    ).resolves.toMatchObject({
+      commitSha: baselineCommit,
+      treeSha: baselineTree,
+      sourceArtifact,
+      passed: true,
+    });
+  });
+
+  it("parses the verified publication result before signing both exact refs", async () => {
+    const authorized = authorization();
+    const attestor = new ArtifactReadingTrustedGitPublicationAttestor({
+      reader: {
+        async readUtf8(artifact, maximumBytes) {
+          expect(artifact).toEqual(publicationResultArtifact);
+          expect(maximumBytes).toBe(4 * 1024 * 1024);
+          return publicationResult(authorized);
+        },
+      },
+      signer: {
+        boundary: "trusted-cloud-key-material",
+        keyId: "trusted-git-publication-key-001",
+        async sign(body) {
+          return createEd25519Signature(
+            body as unknown as Readonly<Record<string, unknown>>,
+            publicationKeys.privateKey,
+            "trusted-git-publication-key-001",
+            "2026-07-01T00:04:00.000Z",
+          );
+        },
+      },
+      now: () => new Date("2026-07-01T00:03:00.000Z"),
+    });
+    await expect(
+      publicationRunner(
+        new FakeGitProvider(),
+        authorized,
+        attestor,
+      ).run(),
+    ).resolves.toMatchObject({
+      branchCommit: candidateCommit,
+      tagPeeledCommit: candidateCommit,
+      publicationMode: "atomic-non-force",
+      passed: true,
+    });
+  });
+
+  it("rejects task-sensitive or otherwise non-canonical worker fields before signing", async () => {
+    let signingCalls = 0;
+    const attestor = new ArtifactReadingTrustedGitSourceSnapshotAttestor({
+      reader: {
+        async readUtf8() {
+          const parsed = JSON.parse(sourceManifest()) as Record<
+            string,
+            unknown
+          >;
+          parsed["taskId"] = "hidden-task";
+          return `${canonicalJson(parsed)}\n`;
+        },
+      },
+      signer: {
+        boundary: "trusted-cloud-key-material",
+        keyId: "trusted-git-source-key-001",
+        async sign(body) {
+          signingCalls += 1;
+          return createEd25519Signature(
+            body as unknown as Readonly<Record<string, unknown>>,
+            sourceKeys.privateKey,
+            "trusted-git-source-key-001",
+            "2026-07-01T00:04:00.000Z",
+          );
+        },
+      },
+      now: () => new Date("2026-07-01T00:03:00.000Z"),
+    });
+    await expect(
+      sourceRunner(new FakeGitProvider(), attestor).run(),
+    ).rejects.toThrow("failed closed");
+    expect(signingCalls).toBe(0);
   });
 });

@@ -9,6 +9,7 @@ import { fingerprintRemoteUrl } from "./git.js";
 import type { RepositoryRegistration } from "./repository.js";
 
 export const TRUSTED_GIT_CREDENTIAL_TARGET = "DF_GITHUB_TOKEN" as const;
+export const TRUSTED_GIT_PROVIDER_API_HOST = "api.github.com" as const;
 export const TRUSTED_GIT_MAXIMUM_LIFETIME_MS = 60 * 60_000;
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -32,6 +33,34 @@ export interface PrivateGitHubOrigin {
   readonly owner: string;
   readonly repository: string;
   readonly credential: SecretReference;
+}
+
+export function assertPrivateGitHubOrigin(
+  origin: PrivateGitHubOrigin,
+): void {
+  assertExactPlainObjectKeys(
+    origin,
+    ["host", "owner", "repository", "credential"],
+    "Private GitHub origin",
+  );
+  assertExactPlainObjectKeys(
+    origin.credential,
+    ["sourceEnvironmentName", "targetEnvironmentName"],
+    "GitHub credential reference",
+  );
+  if (
+    origin.host !== "github.com" ||
+    !SAFE_GITHUB_OWNER.test(origin.owner) ||
+    !SAFE_GITHUB_REPOSITORY.test(origin.repository) ||
+    origin.repository.startsWith(".") ||
+    origin.repository.endsWith(".git") ||
+    !SAFE_ENVIRONMENT_NAME.test(origin.credential.sourceEnvironmentName) ||
+    origin.credential.targetEnvironmentName !== TRUSTED_GIT_CREDENTIAL_TARGET
+  ) {
+    throw new TrustedGitContractError(
+      "Private GitHub origin configuration is outside policy.",
+    );
+  }
 }
 
 export function assertExactPlainObjectKeys(
@@ -100,29 +129,7 @@ export function assertRegisteredPrivateGitHubOrigin(
   registration: RepositoryRegistration,
   origin: PrivateGitHubOrigin,
 ): void {
-  assertExactPlainObjectKeys(
-    origin,
-    ["host", "owner", "repository", "credential"],
-    "Private GitHub origin",
-  );
-  assertExactPlainObjectKeys(
-    origin.credential,
-    ["sourceEnvironmentName", "targetEnvironmentName"],
-    "GitHub credential reference",
-  );
-  if (
-    origin.host !== "github.com" ||
-    !SAFE_GITHUB_OWNER.test(origin.owner) ||
-    !SAFE_GITHUB_REPOSITORY.test(origin.repository) ||
-    origin.repository.startsWith(".") ||
-    origin.repository.endsWith(".git") ||
-    !SAFE_ENVIRONMENT_NAME.test(origin.credential.sourceEnvironmentName) ||
-    origin.credential.targetEnvironmentName !== TRUSTED_GIT_CREDENTIAL_TARGET
-  ) {
-    throw new TrustedGitContractError(
-      "Private GitHub origin configuration is outside policy.",
-    );
-  }
+  assertPrivateGitHubOrigin(origin);
   const fingerprint = fingerprintRemoteUrl(privateGitHubRemoteUrl(origin));
   if (
     fingerprint.hostHash !== registration.originFingerprint.hostHash ||
@@ -145,6 +152,25 @@ export function assertTrustedGitSandbox(
   sandbox: SandboxCreateRequest,
   origin: PrivateGitHubOrigin,
 ): void {
+  assertTrustedGitSandboxWithDomains(sandbox, origin, [origin.host]);
+}
+
+export function assertTrustedGitRegistrationSandbox(
+  sandbox: SandboxCreateRequest,
+  origin: PrivateGitHubOrigin,
+): void {
+  assertTrustedGitSandboxWithDomains(sandbox, origin, [
+    origin.host,
+    TRUSTED_GIT_PROVIDER_API_HOST,
+  ]);
+}
+
+function assertTrustedGitSandboxWithDomains(
+  sandbox: SandboxCreateRequest,
+  origin: PrivateGitHubOrigin,
+  allowedDomains: readonly string[],
+): void {
+  assertPrivateGitHubOrigin(origin);
   if (
     !SAFE_ID.test(sandbox.requestId) ||
     !SAFE_ID.test(sandbox.regionClass) ||
@@ -160,8 +186,10 @@ export function assertTrustedGitSandbox(
     sandbox.resources.diskMiB <= 0 ||
     sandbox.resources.gpuClass !== undefined ||
     sandbox.network.defaultAction !== "deny" ||
-    sandbox.network.allowDomains.length !== 1 ||
-    sandbox.network.allowDomains[0] !== origin.host ||
+    sandbox.network.allowDomains.length !== allowedDomains.length ||
+    sandbox.network.allowDomains.some(
+      (domain, index) => domain !== allowedDomains[index],
+    ) ||
     sandbox.lifetimeMs <= 0 ||
     sandbox.lifetimeMs > TRUSTED_GIT_MAXIMUM_LIFETIME_MS ||
     !Number.isSafeInteger(sandbox.lifetimeMs) ||
@@ -172,7 +200,7 @@ export function assertTrustedGitSandbox(
       origin.credential.targetEnvironmentName
   ) {
     throw new TrustedGitContractError(
-      "Trusted Git requires a bounded x86_64 sandbox with only the private-origin grant.",
+      "Trusted Git requires a bounded x86_64 sandbox with only its exact GitHub grants.",
     );
   }
 }

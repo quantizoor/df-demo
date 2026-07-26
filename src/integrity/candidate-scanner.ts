@@ -8,6 +8,7 @@ export const INTEGRITY_VIOLATION_CODES = [
   "LARGE_CONSTANT",
   "MUTATION_TOO_LARGE",
   "NETWORK_TOOL_ADDITION",
+  "OPAQUE_BINARY_CHANGE",
   "PROTECTED_PATH",
   "SOLUTION_REFERENCE",
   "SUSPICIOUS_LITERAL",
@@ -34,6 +35,7 @@ export interface CandidateScanInput {
 
 export interface CandidateScanPolicy {
   readonly allowedRoots: readonly string[];
+  readonly allowedFileExtensions: readonly string[];
   readonly protectedGlobs: readonly RegExp[];
   readonly maximumChangedFiles: number;
   readonly maximumChangedLines: number;
@@ -52,6 +54,20 @@ export interface CandidateScanResult {
 
 export const DEFAULT_PI_SCAN_POLICY: CandidateScanPolicy = {
   allowedRoots: ["packages/agent/", "packages/coding-agent/", "packages/ai/"],
+  allowedFileExtensions: [
+    ".cjs",
+    ".css",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".mjs",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+  ],
   protectedGlobs: [
     /(^|\/)(test|tests|grader|graders|verifier|verifiers|solution|solutions|reference)(\/|$)/iu,
     /(^|\/)(terminal-bench|terminalbench|tbench|harbor)(\/|$)/iu,
@@ -235,6 +251,20 @@ export function scanCandidate(
         ),
       );
     }
+    if (
+      !policy.allowedFileExtensions.some((extension) =>
+        file.normalized?.endsWith(extension),
+      )
+    ) {
+      violations.push(
+        violation(
+          "OPAQUE_BINARY_CHANGE",
+          "Candidate changes an extensionless, binary, or unapproved source format",
+          file.normalized,
+          file.normalized,
+        ),
+      );
+    }
     if (policy.protectedGlobs.some((pattern) => pattern.test(file.normalized))) {
       violations.push(
         violation(
@@ -245,6 +275,20 @@ export function scanCandidate(
         ),
       );
     }
+  }
+
+  if (
+    /(?:^|\n)(?:GIT binary patch|Binary files [^\n]+ differ)(?:\n|$)/u.test(
+      input.unifiedDiff,
+    )
+  ) {
+    violations.push(
+      violation(
+        "OPAQUE_BINARY_CHANGE",
+        "Candidate diff contains an opaque binary change",
+        input.unifiedDiff,
+      ),
+    );
   }
 
   if (

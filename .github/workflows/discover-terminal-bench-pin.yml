@@ -1,0 +1,161 @@
+name: discover-terminal-bench-pin-review-artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character main-branch commit to inspect
+        required: true
+        type: string
+      registry_revision:
+        description: Exact positive Terminal-Bench registry revision
+        required: true
+        type: string
+      harbor_version:
+        description: Exact Harbor semantic version
+        required: true
+        type: string
+      confirmation:
+        description: Type DISCOVER:<source_commit>:<registry_revision>:<harbor_version>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dark-factory-terminal-bench-pin-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover-review-artifact:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.confirmation == format('DISCOVER:{0}:{1}:{2}', inputs.source_commit, inputs.registry_revision, inputs.harbor_version)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_TBENCH_REGISTRY_REVISION: ${{ inputs.registry_revision }}
+      DF_HARBOR_VERSION: ${{ inputs.harbor_version }}
+      DF_DATASET_REFERENCE: terminal-bench/terminal-bench-2-1@${{ inputs.registry_revision }}
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_INPUT: "1"
+    steps:
+      - name: Verify cloud-hosted immutable request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          [[ "$DF_REQUESTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DF_TBENCH_REGISTRY_REVISION" =~ ^[1-9][0-9]*$ ]]
+          [[ "$DF_HARBOR_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]
+          test "$DF_REQUESTED_SOURCE_COMMIT" = "$GITHUB_SHA"
+
+      - name: Checkout exact requested commit without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Prove checked-out discovery source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DF_REQUESTED_SOURCE_COMMIT"
+          test -f scripts/discover-terminal-bench-pin.mjs
+          test -f src/terminal-bench/assets/dark_factory_pi.py
+          test "$(git status --porcelain=v1 --untracked-files=no)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Set up exact Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: 3.13.7
+
+      - name: Resolve the exact Harbor distribution in an ephemeral directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          discovery_root="$RUNNER_TEMP/df-pin-discovery"
+          mkdir -p \
+            "$discovery_root/package" \
+            "$discovery_root/dataset" \
+            "$discovery_root/output"
+          python -m venv "$discovery_root/venv"
+          "$discovery_root/venv/bin/python" -m pip install \
+            --quiet \
+            "pip==25.2"
+          "$discovery_root/venv/bin/python" -m pip download \
+            --no-deps \
+            --only-binary=:all: \
+            --dest "$discovery_root/package" \
+            "harbor==$DF_HARBOR_VERSION"
+          "$discovery_root/venv/bin/python" -m pip install \
+            --quiet \
+            "$discovery_root"/package/*.whl
+          "$discovery_root/venv/bin/harbor" --version \
+            > "$discovery_root/harbor-version.txt"
+          printf 'DF_DISCOVERY_ROOT=%s\n' "$discovery_root" \
+            >> "$GITHUB_ENV"
+
+      - name: Download the exact public dataset without releasing its inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! "$DF_DISCOVERY_ROOT/venv/bin/harbor" download \
+            "$DF_DATASET_REFERENCE" \
+            --output-dir "$DF_DISCOVERY_ROOT/dataset" \
+            > "$DF_DISCOVERY_ROOT/download.log" 2>&1
+          then
+            echo "Pinned dataset download failed; protected task output is suppressed." >&2
+            exit 1
+          fi
+
+      - name: Seal the task-free content-addressed pin receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t package_files < <(
+            find "$DF_DISCOVERY_ROOT/package" -maxdepth 1 -type f -print
+          )
+          test "${#package_files[@]}" -eq 1
+          node scripts/discover-terminal-bench-pin.mjs \
+            --dataset-root "$DF_DISCOVERY_ROOT/dataset" \
+            --harbor-package "${package_files[0]}" \
+            --harbor-executable "$DF_DISCOVERY_ROOT/venv/bin/harbor" \
+            --harbor-version-output "$DF_DISCOVERY_ROOT/harbor-version.txt" \
+            --pi-adapter src/terminal-bench/assets/dark_factory_pi.py \
+            --source-commit "$DF_REQUESTED_SOURCE_COMMIT" \
+            --registry-revision "$DF_TBENCH_REGISTRY_REVISION" \
+            --harbor-version "$DF_HARBOR_VERSION" \
+            --output "$DF_DISCOVERY_ROOT/output/terminal-bench-2.1.pin.json"
+          sha256sum \
+            "$DF_DISCOVERY_ROOT/output/terminal-bench-2.1.pin.json" \
+            > "$DF_DISCOVERY_ROOT/output/terminal-bench-2.1.pin.json.sha256"
+
+      - name: Remove task-bearing discovery material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup_root="$RUNNER_TEMP/df-pin-discovery"
+          rm -rf \
+            "$cleanup_root/dataset" \
+            "$cleanup_root/download.log"
+
+      - name: Upload only the task-free review receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: terminal-bench-pin-${{ inputs.source_commit }}-${{ inputs.registry_revision }}
+          path: ${{ runner.temp }}/df-pin-discovery/output/
+          if-no-files-found: error
+          retention-days: 14

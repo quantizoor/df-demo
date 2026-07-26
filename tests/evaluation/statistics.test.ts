@@ -99,6 +99,7 @@ describe("deterministic statistics", () => {
     }
     expect(spent).toBeLessThanOrEqual(0.05);
     expect(state.remainingAlpha).toBeCloseTo(0.05 - spent, 12);
+    expect(state.spentAlpha).toBe(spent);
   });
 
   it("rejects weights that could silently reweight a panel", () => {

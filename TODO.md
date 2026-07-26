@@ -56,7 +56,26 @@ Reference: [PLAN §2.1](./PLAN.md#21-harness-under-optimization) and
   branch, and private GitHub repository identity into a separate fail-closed
   cloud source configuration. Independent remote verification is still
   pending.
-- [ ] Implement `df harness register ../pi` and `df harness doctor`.
+- [x] Implement the read-only `df harness doctor` inspection surface.
+- [ ] Compose path-free `df harness register` with the protected cloud Git
+  worker, exact private-Pi source authorization, registration attestor, and
+  governed source index. The sibling `../pi` checkout remains read-only
+  planning evidence and is never an executable production input.
+- [x] Implement the bounded trusted cloud registration worker and an attestor
+  that reads the exact verified result artifact, validates it against the
+  signed source authorization and execution receipt, and only then delegates
+  release-safe signing to a cloud key authority.
+- [x] Implement equivalent parse-before-sign production attestors for the
+  exact source archive/bundle manifest and atomic non-force publication
+  result. Source snapshot receipt v2 now binds the evaluator tar plus a
+  standalone one-head optimizer Git bundle at the reserved experiment-zero
+  ref; their cloud key authority and full cloud acceptance run remain pending.
+- [x] Reject experiment-zero candidate publication so
+  `refs/heads/df/bundle/000-source-snapshot` cannot collide with a real
+  candidate bundle.
+- [ ] Create the baseline source snapshot v2 in the trusted cloud and seed its
+  signed receipt into the same commit-keyed durable source index used for
+  promoted candidates before experiment `001`.
 - [ ] Verify through the remote provider that `origin` is private and supports
   authenticated fetch/push without logging its URL or credentials.
 - [ ] Verify the official `earendil-works/pi` upstream and merge base in an
@@ -101,11 +120,34 @@ Reference: [PLAN §6](./PLAN.md#6-evidence-store-and-schemas).
 - [ ] Implement append-only amendments.
 - [x] Implement cloud-only canonical atomic state envelopes and non-expiring,
   provider-destruction-attested controller locks for the one-use ledger,
-  hidden catalog CAS, and optimizer session records.
+  hidden catalog CAS, optimizer session records, blind-broker leases,
+  correctness-gate records/source index, online-error authority, and
+  experiment journal.
+- [x] Implement source-level fenced mounted-volume coordination ports for
+  task-free input preparation, strict checkpoint-chain resume, and durable
+  interruption intent/control/CAS, with adversarial and handoff test sources.
+- [x] Implement source-level mounted-volume journal artifact assembly,
+  leak-scan-before-sign seal authorization, and fixed-category interruption
+  attestation authorities, with adversarial and recovery test sources.
+- [x] Implement one artifact-backed production verifier for CampaignState
+  genesis/control authorizations, ledger transitions, and decisions. It
+  enforces canonical exact-payload evidence, content hashes, a trusted-cloud
+  source/reader/keyring boundary, and Ed25519 historical-key verification.
+- [x] Implement the durable mounted-volume trusted artifact registry and exact
+  typed sources/readers for evaluator releases, optimizer released-evidence
+  metadata, production-composition evidence sets, campaign attestations, and
+  production-bootstrap prerequisites. Enforce atomic index visibility,
+  canonical immutable bytes, purpose/namespace binding, exact replay, collision
+  rejection, verified reads, and lifecycle handoff without enumeration or
+  filesystem fallback.
+- [ ] Bind the campaign attestation artifact registry and campaign-purpose
+  cloud/KMS keyring, publish the exact genesis evidence before initialization,
+  and execute the authored adversarial verifier suite in approved cloud CI.
 - [ ] Run the mounted-volume semantics canary and crash/recovery suite against
   the exact production volume class; use a managed transactional store if
   atomic rename and durable synchronization cannot be attested.
-- [ ] Implement artifact checksum verification.
+- [x] Implement streaming artifact checksum, length, media-type, URI, and
+  canonical-byte verification at the trusted registry boundary.
 - [ ] Implement disposable SQLite index and rebuild.
 - [ ] Add positive, negative, property, and corruption fixtures.
 - [ ] Acceptance: the complete local store rebuilds from JSON; every evidence
@@ -136,6 +178,17 @@ Reference: [PLAN §5](./PLAN.md#5-experiment-lifecycle).
 - [ ] Restore from the last fully sealed active and certified champions.
 - [ ] Restore broker-attested exposure/cooldown state plus repeated-testing and
   privacy budgets without resetting them.
+- [x] Implement the production completion-material adapter that reconciles the
+  sealed/unsealed journal, evaluator-owned online-error state, and closed
+  in-flight operation ledger through trusted accounting and campaign-seal
+  authorities. Its source-level tests are authored but have not run.
+- [x] Implement durable external-stop recovery for idle and in-flight
+  optimization: reconcile and archive unfinished work, permit a completed
+  result to seal, acknowledge the stop without number reuse, preserve a stable
+  archive-state control binding across crash retries, let an external stop
+  supersede a pending pause only after exact checks, and reject stop reasons
+  inferred from untrusted provider text. Cloud signal and recovery execution
+  remain pending.
 - [ ] Test idempotent resume and repeated stop signals.
 - [ ] Acceptance: fault injection at every write and lifecycle boundary cannot
   corrupt the last seal, reuse a consumed panel, reset an attempt/privacy
@@ -194,9 +247,86 @@ Reference: [PLAN §2.3](./PLAN.md#23-sandbox-policy) and
   need concurrent cancellation must preseal `command.executionId`.
 - [ ] Run the shared provider contract suite.
 - [ ] Generate and commit the dependency lockfile in approved cloud CI; local
-  dependency installation remains forbidden.
+  dependency installation remains forbidden. The bootstrap workflow can now
+  resolve an exact repository branch tip with read-only checkout, no pnpm
+  hooks/workspace configuration, ignored lifecycle scripts, and artifact-only
+  output, so the lock can join the implementation pull request without first
+  merging unverified source.
 - [x] Add protected, confirmation-bound workflows for cloud quality, first
-  lockfile review, role-image publication, and paid control bootstrap.
+  lockfile review, task-free Terminal-Bench pin discovery, free staged control
+  preflight, role-image publication, and paid control bootstrap.
+- [x] Reject Daytona organization-secret target collisions with controller
+  configuration, trusted runtime/provider markers, source pins, process
+  loader/startup controls, volume identity, and hosted-runner identity before
+  creating the control sandbox.
+- [x] Make control-bootstrap grants command-specific: synthetic/status have no
+  secrets and no network, probe receives only the nested provider credential,
+  and optimize alone receives the reviewed additional controller secrets.
+  Their parsers and forwarded environment are staged too: offline commands no
+  longer require optimizer/evaluated-model, Git, benchmark, budget, descriptor,
+  or KMS/controller-secret configuration; probe adds only build/evaluator
+  images plus provider probe inputs.
+- [x] Implement a release-safe pre-composition `status` command. It persists
+  only `awaiting-production-composition`, the control-image digest, and the
+  public non-authorizing binding-readiness commitment; it does not claim to be
+  real campaign reconstruction.
+- [x] Add a strict task-free production-optimize bootstrap descriptor and
+  protected GitHub-to-Daytona forwarding path. It campaign-binds one exact
+  `TrustedCloudArtifactRef` and independent authority-set, verification-key-set,
+  and verifier-policy commitments; canonical JSON/environment data cannot
+  select a provider, model, key, verifier implementation, or executable port.
+- [x] Add the non-authorizing trusted-cloud bootstrap artifact loader. It
+  verifies descriptor authority through an injected verifier, independently
+  verifies exact URI/media/length/SHA/canonical bytes through an injected
+  trusted-cloud reader, and checks the shared ordered nine-port task-free
+  commitment surface while returning
+  `compositionAuthorityVerified: false` and
+  `executableBindingsCreated: false`.
+- [x] Implement the provider-neutral Ed25519 bootstrap-descriptor verifier. It
+  accepts only an injected purpose/rotation-aware public-SPKI authority,
+  independently configured authority/key-set/policy commitments, and an
+  explicit non-overlapping key-version schedule; it rejects private material,
+  revocation, detached commitments, invalid/expired/future signatures, and
+  mutation while returning one strict deterministic attestation receipt.
+- [x] Add the provider-neutral one-shot production composition owner. It
+  preattests the manifest, binds source, campaign genesis, and hidden-catalog
+  genesis to a strict idempotent bootstrap-or-reconstruct receipt, accepts
+  executable ports only from an injected trusted in-process factory, delegates
+  `status`/`run` to the sealed production runtime, rejects concurrent/reused
+  owners, and drains all registered stores and leases in reverse order on
+  every exit.
+- [x] Implement the durable provider-neutral bootstrap-or-reconstruct port.
+  It verifies the exact signed private-Pi registration plus separate
+  purpose/rotation-aware campaign and task-free hidden-catalog genesis
+  commitments, binds one request to a fenced mounted-volume phase journal,
+  delegates exact domain-state creation/reconstruction, rejects impossible
+  cross-store prefixes, registers every acquired resource immediately, and
+  returns deterministic bootstrapped/reconstructed receipts without claiming
+  cross-store physical atomicity.
+- [x] Implement the concrete trusted-cloud nine-port runtime factory. It
+  statically constructs the existing durable campaign, coordination,
+  completion, journal, cloud-only Claude optimizer, correctness, source-index,
+  blind-broker, and evaluator-release components; independently pins the
+  manifest/component/operational/ordered-port commitments; requires a separate
+  provider/KMS authority to authenticate that dependency attestation against
+  the composition verifier receipt; captures dependency methods and data
+  against mutation; immediately lifecycle-registers every acquired store;
+  cleans partial construction through close-once wrappers; and returns frozen
+  canonical-order bindings whose implementations are reference-equal to the
+  role components. No JSON or environment field can select a constructor,
+  module, command, key, model, task, or port.
+- [ ] Bind real descriptor/composition verifiers, artifact storage,
+  governed prerequisite registries/key authorities, concrete campaign/catalog
+  genesis authorities, the factory's required provider/KMS/artifact/runtime
+  dependency objects and independent dependency attestation, durable
+  cross-process recovery authority, and same-runtime volume semantics to the
+  owner; execute the authored bootstrap phase/crash, source substitution, key
+  rotation, mutation, cleanup, and real provider-volume suites only in
+  approved cloud CI.
+- [ ] Provision the concrete bootstrap descriptor authority, versioned
+  authority/key-set/verifier-policy documents, immutable composition artifact,
+  and protected environment value; run the descriptor, artifact-reader,
+  forwarding, mutation, and expiry suites in approved cloud CI.
 - [x] Add role-specific default-deny OCI builds for the control, optimizer,
   candidate-build, and evaluator zones. Exact base digests, Claude Code
   version, and Harbor version remain operator inputs.
@@ -216,11 +346,36 @@ Reference: [PLAN §2.3](./PLAN.md#23-sandbox-policy) and
   names, exact runtime markers, bounded network/resources/TTL, paid-run
   authorization, and confirmed teardown. Cloud execution is still pending.
 - [ ] Cloud-verify the implemented trusted-controller `probe` and `synthetic` entrypoints with a
-  mounted-volume integrity round trip and a disposable live provider probe.
-  Production `optimize`, status, stop, and resume remain locked until their
-  signed composition is complete.
-- [ ] Confirm the pinned Terminal-Bench image includes a working DIND runtime
-  and run the live Daytona profile/architecture/network/TTL attestation suite.
+  mounted-volume integrity round trip and a disposable live provider probe;
+  also cloud-verify the free pre-composition `status`. Production `optimize`,
+  real campaign status, stop, and resume remain locked until their signed
+  composition is complete.
+- [x] Replace the production `optimize` generic lock with a provider-neutral,
+  fail-closed binding-readiness receipt. It reports the exact fixed
+  composition contracts and their hashes without reflecting implementations,
+  arbitrary keys, secrets, models, source identities, tasks, or grader data;
+  it remains explicitly non-runnable even when every binding is present.
+- [x] Bind the source-level production composer to exact in-process wrappers
+  for its nine executable runtime ports. The signed manifest and independent
+  verifier receipt commit the same fixed task-free ID/digest list; detached
+  objects, plain ports, wrapper mutation, recursive manifest/verifier
+  inclusion, and JSON/environment executable injection fail closed.
+- [x] Implement the concrete provider-neutral artifact-backed composition
+  verifier. It cryptographically verifies the manifest and a separately
+  purposed, rotation-aware signed envelope for exactly four component, one
+  operational, and nine runtime-port evidence artifacts; every artifact is
+  bounded, immutable, canonical, expiring, and exactly campaign/manifest
+  bound, and its deterministic receipt contains no executable.
+- [ ] Provision the real composition/evidence public-key authorities and
+  immutable artifact-set source, authorize evidence-envelope signing only
+  after provider attestation, and execute rotation, revocation, substitution,
+  mutation, and recovery acceptance in protected cloud CI.
+- [x] Implement a paid-run readiness check that probes both immutable role
+  images and executes `docker info` in a real deny-all evaluator lease; it
+  emits commitments only and destroys both leases.
+- [ ] Cloud-confirm that the pinned Terminal-Bench image passes that DIND
+  execution check and run the live Daytona
+  profile/architecture/network/TTL attestation suite.
 - [ ] Keep Daytona GPU jobs unschedulable until returned metadata or an
   independent attestor can verify the exact GPU type.
 - [ ] Acceptance: the scheduler can select a compatible provider or explain why
@@ -247,12 +402,87 @@ Reference: [PLAN §3.3](./PLAN.md#33-evaluator-and-task-broker-zone) and
   zeroization, with no filesystem fallback.
 - [x] Add a hash-bound canonical policy resolver covering cache evidence,
   promotion guardrails, release-scanner registries, online error budget, and
-  privacy-qualified behavioral release lineage.
+  pre-outcome behavioral extraction/privacy/scanner configuration without
+  outcome-derived release hashes.
 - [x] Add cloud-key-provider-backed Ed25519 signing and verification for
   broker-private hidden-catalog outcome updates.
 - [x] Add a production-only trusted evaluator composition factory connecting
   `TerminalBenchCloudRunner` through deterministic derivation, mandatory raw
   destruction, and signed broker release while rejecting test-only ports.
+- [x] Add a durable mounted-volume evaluator replay ledger that atomically
+  burns both one-use request ID and request hash before transport, survives
+  clean controller handoff, and rejects duplicate or malformed claims without
+  exposing hidden panel data.
+- [x] Add the provider-neutral artifact-backed evaluator release-bundle
+  service that wraps the narrow signed-result service, resolves only committed
+  cache/behavioral hashes, verifies bounded canonical bytes, strict schemas,
+  content hashes, purpose/rotation-aware signature receipts, exact lineage,
+  all-or-none diagnostics, task-safe persistence, mutation resistance, and
+  deterministic replay.
+- [x] Replace the impossible result/release full-content-hash cycle with the
+  domain-separated immutable result identity/derivation source commitment;
+  update client/broker validation and add negative legacy-reference tests.
+- [ ] Bind the release-bundle artifact source/reader and historical
+  purpose-specific signature verifier to governed cloud services, then run the
+  authored canonical-byte, signature, partial-release, mutation, replay, and
+  legacy-lineage suites in approved cloud CI. Network transport is not part of
+  the source-level service.
+- [x] Remove post-outcome behavioral `contentHash`/`sourceSetHash` values from
+  pre-outcome policy material. Implement a separate post-normalization
+  evidence/cards/brief producer, privacy/scanner decision, atomic artifact
+  publisher, purpose-specific behavioral-release signer, exact unsigned-result
+  source commitment, result-envelope handoff, and issuer-failure orphaning.
+  The durable mounted-volume privacy/artifact transaction, exact hash-only
+  reader, permanent orphaning, clean lifecycle handoff, and provider-attested
+  crash-recovery suite are implemented. Its protected cloud acceptance run
+  remains deployment work.
+- [x] Keep the hidden privacy ledger and the complete four-artifact behavioral
+  bundle behind one mounted-volume state-envelope commit. Validate every
+  historical privacy transition, reverse one-use binding, schema/content hash,
+  and cross-artifact link on every load; prohibit enumeration, refunds,
+  partial visibility, deletion, and rebinding.
+- [x] Add a read-only one-use-ledger inspection and reconcile an ambiguous
+  result-completion acknowledgement before orphaning diagnostics. A durably
+  completed result is returned only when it is byte-exact to the attempted
+  envelope; a provably in-flight/consumed result may be orphaned; an unavailable
+  or contradictory reconciliation leaves the nonrefundable bundle untouched
+  for protected recovery and never rewrites the request as failed.
+- [x] Add exact privacy/artifact commit reconciliation for the case where both
+  bounded commit acknowledgements are lost. Bind the non-enumerating lookup to
+  request, unsigned-result source, authorization, signed-release, and
+  artifact-set hashes; return the historical receipt plus four hash references
+  only for an exact non-orphaned commit. Prove that inspection spends nothing,
+  never refunds, orphans, publishes, or rebinds, and make the broker preserve
+  its claim and trusted-private preparation on conflict or ambiguity.
+- [x] Replace the process-local, destructively taken behavioral preparation
+  map with a fenced exact-query store and integrate its
+  `prepared -> finalized -> abandoned` or `prepared -> consumed` transitions
+  through the deriver, production composition contract, and broker. Prohibit
+  enumeration,
+  resurrection, cross-request release rebinding, finalized-to-consumed, and
+  abandoned-to-reusable transitions; retain prepared state across ambiguous
+  release finalization.
+- [x] Normalize every durable behavioral-release orphan acknowledgement into
+  one task-free, content-bound receipt and require the preparation store to
+  erase the reusable finalization handle when it atomically records that
+  receipt. Exact replay returns the historical abandonment attestation and
+  every changed binding fails closed.
+- [ ] Instantiate and immediately lifecycle-register that store in the
+  concrete evaluator bootstrap, execute its adversarial suite against the
+  provider volume, and prove provider-attested crash handoff.
+- [ ] Implement provider-termination-attested one-use-ledger recovery plus an
+  exact release-recovery record. It must resume post-destruction
+  reconciliation without rerunning tasks, preserve a claim when preparation
+  cleanup is unacknowledged, and prevent a finalized preparation whose release
+  was permanently orphaned from ever issuing a result.
+- [ ] Replace logical JSON tombstoning with per-record envelope encryption and
+  destroy the record data key on finalized/consumed/abandoned transitions if
+  provider snapshots or old filesystem blocks fall inside the required
+  destruction threat model.
+- [ ] If a remote evaluator transport is introduced, register that replay
+  ledger with its production lifecycle owner and verify unclean controller
+  recovery with provider-attested predecessor termination in protected cloud
+  tests. Do not insert it into the MVP's direct in-process release-service path.
 - [ ] Bind the raw reader, decryption, Harbor/ATIF decoder, policy material,
   durable stores, and Ed25519 key ports to concrete cloud services; in-memory
   fixtures remain test-only and are rejected by production composition.
@@ -261,22 +491,28 @@ Reference: [PLAN §3.3](./PLAN.md#33-evaluator-and-task-broker-zone) and
   pseudonyms, and grader text before aggregation.
 - [ ] Implement the authoritative statistical evidence engine and approved
   failure taxonomy. Repair, fresh-validation, and shadow gate aggregation are
-  wired into the canonical deriver; behavioral release composition remains.
-- [ ] Require at least five distinct tasks, 20 total trajectories, and five
-  observations in every compared group before releasing a card.
+  wired into the canonical deriver; the deterministic release producer is
+  wired, while final taxonomy review and cloud calibration remain.
+- [x] Require at least five distinct tasks, 20 total trajectories, and five
+  observations in every compared group before releasing a card, with an exact
+  twelve-pair production preparation check.
 - [ ] Aggregate successful-versus-failed and candidate-versus-champion
   behavioral contrasts with effect sizes, uncertainty, task clustering, and
   runtime/budget controls.
-- [ ] Implement `diagnostic-brief.json` generation, source binding, card
-  ranking, and suppression metadata.
+- [x] Implement task-free `behavioral-evidence.json`, `failure-cards.json`, and
+  `diagnostic-brief.json` generation, exact source binding, allowlisted generic
+  recommendations, no-actionable suppression, expiry, and atomic publication.
 - [ ] Permit an optional LLM interpreter to see only released aggregate cards;
   require every claim to cite a card and prohibit model-generated statistics.
 - [ ] Implement grader/test canary and fingerprint scans. The canonical
   no-literal/no-task firewall and adversarial source-fingerprint tests are
   present, and the scanner registry is now a required signed policy binding;
   the concrete cloud registry population and verification remain.
-- [ ] Implement complementary-count suppression, overlap/query budgets,
-  adaptive task re-identification, and cohort-differencing scans.
+- [ ] Complete complementary-count and adaptive re-identification hardening.
+  Minimum support, task-clustered comparisons, nonrefundable release count,
+  duplicate-experiment rejection, and task-disjoint overlap/differencing
+  suppression are implemented; cloud concurrency and attack calibration
+  remain.
 - [ ] Emit at most one sealed diagnostic brief per eligible experiment; do not
   expose interactive cohort narrowing or single-trial drill-down.
 - [ ] Persist attestations without matched leak content.
@@ -316,6 +552,31 @@ Reference:
 [PLAN §7](./PLAN.md#7-walk-forward-blind-evaluation-and-economy).
 
 - [ ] Build the pinned task catalog only inside the trusted cloud broker.
+- [x] Implement the source-level one-use catalog-genesis loader: bind the
+  exact dataset content/manifest/revision pin, capture its trusted source
+  before asynchronous work, admit optional baseline/leaderboard rows only by
+  immutable commitment, burn failed/replayed loads, and expose only a
+  task-free receipt.
+- [x] Implement the dedicated cloud-only hidden catalog-material registry and
+  bounded canonical bundle producer: content-address inventory and optional
+  observation artifacts on the trusted mounted volume, commit their exact
+  query bindings once, burn the in-process generic cloud normalizer capability
+  before its first asynchronous use, preserve the task-free registry
+  invariant, and expose no list/enumeration/artifact-location surface.
+- [x] Add a main-commit-bound cloud-only pin-discovery workflow that resolves
+  one exact public registry revision with one exact Harbor version, hashes the
+  downloaded dataset, manifest, Harbor distribution/executable, and Pi
+  adapter, verifies exactly 89 task manifests without printing them, deletes
+  all task-bearing material, and uploads only a canonical content-addressed
+  receipt with no task names, paths, instructions, graders, or selectors.
+- [ ] Run pin discovery in GitHub-hosted cloud, review the receipt and adjacent
+  checksum, retain its workflow/run provenance, and populate the protected
+  benchmark pin variables from its exact `pin` object.
+- [ ] In a trusted cloud evaluator, resolve revision 6 without a mutable alias,
+  produce the canonical 89-row normalized inventory bundle, publish it through
+  the hidden catalog-material registry, and record cloud acceptance of the
+  exact content/manifest hashes. No generated row may cross into optimizer or
+  workstation storage.
 - [ ] Import the selected comparable leaderboard baseline's per-task failure
   rates when available.
 - [ ] Keep actual names, instructions, mappings, pools, weights, and exposure
@@ -328,14 +589,17 @@ Reference:
   broker-private task estimates. The deriver, adaptive posterior policy, and
   durable catalog adapter are present; cloud integration and live verification
   remain.
-- [ ] Implement deterministic failure-weighted priority.
-- [ ] Allocate each five-task repair panel as exactly three hard, one
+- [x] Implement deterministic failure-weighted priority in source.
+- [x] Allocate each five-task repair panel as exactly three hard, one
   uncertain/discriminating, and a fifth slot alternating easy-integrity and
   underexposed-coverage by epoch.
-- [ ] Implement a deterministic carry ledger so twelve-task panels converge to
+- [x] Implement a deterministic carry ledger so twelve-task panels converge to
   the 60/20/10/10 long-run mix.
-- [ ] Give every task a nonzero eligibility floor.
-- [ ] Implement deterministic exposure-age tie-breaking.
+- [x] Give every task a nonzero eligibility floor.
+- [x] Implement deterministic exposure-age tie-breaking.
+- [ ] Execute and calibrate the deterministic selection/property suites in
+  protected cloud CI against the reviewed 89-row hidden catalog; source
+  implementation and authored tests are complete.
 - [ ] Implement one-use, non-correlatable trial handles.
 - [ ] Prevent Dark Factory and Claude from requesting, listing, or naming tasks.
 - [ ] Require validation to be fresh to the frozen hypothesis and disjoint from
@@ -347,6 +611,13 @@ Reference:
 - [ ] Allow immediate validation→repair reuse plus one revised candidate, then
   enforce a three-sealed-experiment repair cooldown after advancement or the
   second attempt.
+- [x] Bind repair attempt one to one completed source-validation allocation
+  and select its five cells only from that source panel; bind the real frozen
+  hypothesis and candidate/champion archives into the allocation.
+- [x] Require repair attempt two to use a distinct candidate on the exact same
+  five hidden cells, buckets, order, source request, incumbent archive, and
+  hypothesis; reject attempt three and do not advance the easy/coverage epoch
+  on retry.
 - [ ] Keep shadow tasks feedback-dark and shadow-exclusive.
 - [ ] Reserve two disjoint twelve-task shadow slices before allocating
   validation capacity; consume each slice at most once.
@@ -391,6 +662,9 @@ References: [PLAN §7.1](./PLAN.md#71-walk-forward-repair-and-fresh-validation),
   create an active champion.
 - [ ] Enforce at most two candidate commits per discovery panel, then close the
   hypothesis.
+- [x] Fail closed if a repair retry resamples the panel or if fresh validation
+  does not use the candidate and hypothesis that passed the committed repair
+  screen.
 - [ ] Ensure a five-by-one repair result cannot generate a diagnostic brief.
 - [ ] Freeze the candidate before the broker selects and preseals twelve fresh,
   hypothesis-disjoint validation tasks, strata, six AB/six BA order,
@@ -461,8 +735,24 @@ References: [PLAN §7.1](./PLAN.md#71-walk-forward-repair-and-fresh-validation),
 - [ ] Implement the stratified paired Dirichlet-Jeffreys promotion posterior,
   `0.95` positive-delta probability, `0.05` median-effect floor, and stratum
   regression boundary.
-- [ ] Implement a campaign-level online error budget calibrated by null
-  simulations for repeated promotion attempts.
+- [ ] Complete the campaign-level online error budget calibrated by null
+  simulations for repeated promotion attempts:
+  - [x] Add finite `[0,1]`, non-refundable accounting to every domain budget
+    snapshot.
+  - [x] Add an idempotent, request-hash-bound trusted-cloud CAS authority that
+    spends before outcome visibility and fails closed on exhaustion.
+  - [x] Bind the reservation through canonical policy derivation, signed
+    release-safe validation accounting, broker mapping, runner accounting,
+    durable mounted-volume state, and adversarial fixtures.
+  - [x] Expose an exact-key, task-agnostic reconciliation receipt scoped by a
+    canonical domain-separated campaign-ID hash.
+  - [x] Reconcile evaluator-burned alpha and every trusted journal/operation
+    budget checkpoint before interruption archival, including the
+    record-before-archive crash window. The concrete production material
+    service and source-level adversarial tests are implemented; cloud
+    execution and acceptance remain pending.
+  - [ ] Run the cloud-only typecheck, lint, coverage, mounted-volume handoff,
+    concurrent-CAS, failure-burn, tamper/replay, and exhaustion tests.
 - [ ] Implement regression and cost/latency guardrails.
 - [ ] Implement challenger, active-promotion, reject, and inconclusive rules.
 - [ ] Implement feedback-dark shadow certification every third active
@@ -492,17 +782,57 @@ References: [PLAN §7.1](./PLAN.md#71-walk-forward-repair-and-fresh-validation),
 
 Reference: [PLAN §9](./PLAN.md#9-claude-code-plugin-and-mcp).
 
-- [ ] Scaffold the project-local Claude Code plugin.
-- [ ] Implement all eight planned skills, including diagnostic-brief analysis.
-- [ ] Implement the read-only evidence MCP tools.
-- [ ] Implement one-use, bounded `df_get_latest_diagnostic_brief`.
-- [ ] Implement the hypothesis/analysis/request MCP tools.
-- [ ] Enforce request and response schemas.
-- [ ] Add task-agnostic redaction, result limits, token budgets, cumulative
-  query/differencing budgets, and complementary-count suppression.
-- [ ] Audit every evidence query and bind submitted hypotheses to cited brief
-  hashes.
-- [ ] Configure protected paths and allowed tools.
+- [x] Scaffold the project-local Claude Code plugin manifest, MCP
+  configuration, hook configuration, and eight source skill definitions.
+- [x] Implement the provider-neutral artifact-backed production optimizer
+  resolver. It accepts only a signed source snapshot v2 matching the pinned
+  private-Pi registration and active champion, returns its credential-free Git
+  bundle, uses one fixed reviewed source-only bootstrap for experiment `001`,
+  resolves later proposals by the exact `DiagnosticBriefReference`, and binds
+  analysis evidence to the exact hypothesis, candidate, repair, validation,
+  and released-evidence commitments.
+- [x] Add strict canonical signed optimizer-evidence metadata, purpose- and
+  rotation-aware public-key resolution, exact artifact
+  URI/SHA-256/media/length checks, task/panel/cell/raw/grader field exclusion,
+  captured asynchronous boundaries, immutable outputs, idempotent exact
+  retries, and cross-query archive replay rejection.
+- [x] Require an independent verifying byte reader before the resolver can
+  return any signed evidence reference to Claude. Re-hash and length-check the
+  full archive, parse a bounded link-free/traversal-free USTAR profile, scan
+  every released JSON/text body for protected paths, identities, encoded
+  payloads, and campaign canary fingerprints, enforce a fixed policy-bound
+  release-path allowlist, and inspect the signed source tar/Git bundle pair
+  against their shared advertised commit as far as their formats permit.
+- [x] Make hidden catalog genesis material non-enumerable and immutable so
+  routine JSON/canonical serialization and object spreading cannot serialize
+  task rows; retain only explicit trusted-broker access.
+- [ ] Wire the resolver to governed cloud implementations of the baseline and
+  candidate source index, immutable evidence metadata registry, verifying
+  artifact bridge, independent release-byte reader, campaign-bound inspection
+  policy, fixed reviewed bootstrap reference, and historical purpose-specific
+  public-key authority.
+- [ ] Execute the resolver/source-bundle focused and adversarial suites in
+  approved cloud CI, including malicious false-flag archives, protected and
+  encoded literals, traversal, links, nested archives, canary fingerprints,
+  unlisted release paths, protected source paths/content, detached source
+  commit headers/refs, full-reference cache substitution, mutation,
+  truncation, real Git-bundle fixtures, and a representative safe corpus for
+  scanner false-positive calibration;
+  no Node, package-manager, test, typecheck, build, lint, or formatter command
+  is authorized on the Mac.
+- [x] Author all eight planned skills, including diagnostic-brief analysis.
+- [x] Implement the source read-only evidence MCP tools and one-use, bounded
+  `df_get_latest_diagnostic_brief`.
+- [x] Implement task-agnostic hypothesis, candidate-staging, analysis, and
+  contamination-report tools. Do not expose stage selection or champion
+  decisions to the optimizer.
+- [x] Enforce request/response schemas, task-agnostic redaction, result limits,
+  token budgets, cumulative query/differencing budgets, complementary-count
+  suppression, query auditing, and cited-brief binding in source.
+- [x] Configure protected paths and allowed tools in source.
+- [ ] Build the generated MCP server and hook-guard bundles into the optimizer
+  image, verify the exact plugin artifact hash, and cloud-test plugin loading,
+  skill triggering, permissions, query budgets, and every denial.
 - [ ] Disable raw/per-task evidence, panel roles, exposure history, behavioral
   excerpts, web, browser, GitHub, task selection, validation/shadow scheduling,
   Harbor, and full-run access.
@@ -516,11 +846,15 @@ Reference: [PLAN §9](./PLAN.md#9-claude-code-plugin-and-mcp).
 
 Reference: [PLAN §8](./PLAN.md#8-anti-overfitting-and-benchmark-integrity).
 
-- [ ] Scan diffs for task and instruction fragments.
-- [ ] Scan for test, grader, verifier, solution, and reference paths.
-- [ ] Detect encoded payloads and suspicious large constants.
-- [ ] Detect task/environment fingerprint routing.
-- [ ] Detect solution URLs and unapproved network tools.
+- [x] Implement source diff scanning for protected task/instruction fragments.
+- [x] Reject test, grader, verifier, solution, reference, benchmark, build, and
+  policy paths outside the approved Pi mutation roots.
+- [x] Detect encoded payloads and suspicious large constants.
+- [x] Detect task/environment fingerprint routing.
+- [x] Detect solution URLs and unapproved network tools.
+- [x] Reject every changed extensionless, opaque, binary, or unapproved source
+  format and explicit Git binary patch; unchanged baseline-pinned binary
+  artifacts remain outside candidate mutations.
 - [ ] Test failure-card re-identification, unique literals, and differencing
   attacks.
 - [ ] Test adaptive-query, overlapping/complementary-cohort, stable-feature
@@ -531,12 +865,15 @@ Reference: [PLAN §8](./PLAN.md#8-anti-overfitting-and-benchmark-integrity).
   differencing.
 - [ ] Test cache poisoning, duplicate signed attempts, and unauthorized
   invalidation.
-- [ ] Enforce changed-file and mutation-size limits.
+- [x] Enforce changed-file and mutation-size limits in source.
 - [ ] Freeze the hypothesis, cited brief hashes, predicted repair/unseen
   effects, and candidate commit before any panel is selected.
 - [ ] Run integrity judging over passing trajectories.
 - [ ] Log and inspect evaluated-agent egress.
 - [ ] Add adversarial bypass fixtures.
+- [ ] Execute the candidate-integrity scanner and adversarial suites in
+  protected cloud CI; source implementation and focused tests are authored but
+  have not run on the Mac.
 - [ ] Acceptance: every known prohibited pattern fails closed and records a
   machine-readable reason.
 
@@ -650,7 +987,18 @@ Reference: [PLAN §12](./PLAN.md#12-testing-strategy).
   re-identification, and stable-feature leakage tests.
 - [ ] Pass provider contract tests.
 - [ ] Pass malicious store, ATIF, path, environment, and network tests.
+- [ ] Cloud-run the independent optimizer archive-byte inspection suite and
+  verify the production evidence packager emits the exact strict USTAR profile
+  accepted by the gate.
 - [ ] Test every lifecycle interruption point.
+- [ ] Execute the authored optimization-coordination, production
+  completion-material, journal artifact-assembly, seal-authority, and
+  interruption-attestor suites in approved cloud CI, including real
+  volume-class crash handoff.
+- [ ] Execute the concrete runtime-factory suite in approved cloud CI,
+  including exact nine-port composition, detached component/port
+  attestations, caller mutation, duplicate lifecycle use, partial-acquisition
+  cleanup, task-free surfaces, and real mounted-volume close handoff.
 - [ ] Keep paid live tests explicitly opt-in.
 - [ ] Acceptance: the complete cloud CI/sandbox quality gate is green without
   executing tests or workloads on the Mac.

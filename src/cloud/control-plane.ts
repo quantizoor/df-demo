@@ -9,25 +9,29 @@ import {
   type BootstrapConfiguration,
 } from "../config/environment.js";
 import { inspectPiHarnessSourceEnvironment } from "../config/harness-source.js";
-import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
+import { canonicalJson } from "../schemas/canonical.js";
 import { createOfficialDaytonaProvider } from "./adapters/daytona.js";
 import {
   CloudMarkerTrustedArtifactRuntimeGuard,
   VerifyingTrustedArtifactBridge,
 } from "./artifact-bridge.js";
+import {
+  inspectStagedControlEnvironment,
+  type StagedControlConfiguration,
+} from "./control-stage-configuration.js";
 import { MountedVolumeTrustedArtifactBackend } from "./mounted-volume-backend.js";
 import {
   AttestedMountedVolumeStateSemanticsGuard,
   runMountedVolumeSemanticsCanary,
   type MountedVolumeRuntimeIdentity,
 } from "./mounted-volume-canary.js";
-import { requireCompatibleProvider } from "./probe.js";
+import {
+  inspectProductionOptimizeBindingReadiness,
+  releaseSafeProductionOptimizeBindingReport,
+} from "./production-optimize-binding-readiness.js";
+import { runProductionProviderReadiness } from "./production-readiness.js";
 import { assertCloudExecutionEnvironment } from "./runtime-marker.js";
-import type {
-  CloudSandboxProvider,
-  SandboxLease,
-  TrustedCloudArtifactRef,
-} from "./types.js";
+import type { TrustedCloudArtifactRef } from "./types.js";
 
 const SAFE_CAMPAIGN_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
 const CONTROL_COMMANDS = [
@@ -67,11 +71,30 @@ function parseArguments(
   return { command: command as ControlCommand, campaignId };
 }
 
-function configuration(): BootstrapConfiguration {
-  const readiness = inspectBootstrapEnvironment(process.env);
+function configuration(
+  command: ControlCommand,
+): BootstrapConfiguration | StagedControlConfiguration {
+  if (command === "optimize") {
+    const readiness = inspectBootstrapEnvironment(process.env);
+    if (!readiness.ready || readiness.configuration === null) {
+      throw new TrustedControlPlaneError(
+        "Trusted paid-optimize configuration is incomplete.",
+      );
+    }
+    if (readiness.configuration.cloudProvider !== "daytona") {
+      throw new TrustedControlPlaneError(
+        "The MVP trusted control plane supports Daytona only.",
+      );
+    }
+    return readiness.configuration;
+  }
+  const readiness = inspectStagedControlEnvironment(
+    process.env,
+    command === "probe" ? "probe" : "offline",
+  );
   if (!readiness.ready || readiness.configuration === null) {
     throw new TrustedControlPlaneError(
-      "Trusted control-plane configuration is incomplete.",
+      "Trusted control-stage configuration is incomplete.",
     );
   }
   if (readiness.configuration.cloudProvider !== "daytona") {
@@ -101,15 +124,6 @@ async function consume(
     chunks.push(chunk);
   }
   return Buffer.concat(chunks, byteLength);
-}
-
-function releaseSafeReceipt(
-  input: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
-  return {
-    ...input,
-    receiptHash: canonicalHash(input),
-  };
 }
 
 async function persistControlReceipt(
@@ -146,65 +160,6 @@ async function persistControlReceipt(
   return artifact;
 }
 
-async function liveProviderProbe(input: {
-  readonly provider: CloudSandboxProvider;
-  readonly configuration: BootstrapConfiguration;
-  readonly campaignId: string;
-  readonly volumeSemanticsReceiptHash: string;
-  readonly volumeSemanticsArtifactSha256: string;
-}): Promise<Readonly<Record<string, unknown>>> {
-  const resources = {
-    architecture: "x86_64" as const,
-    cpuCores: 2,
-    memoryMiB: 4 * 1024,
-    diskMiB: 20 * 1024,
-  };
-  const requestId = `control-probe-${sha256(input.campaignId).slice(0, 24)}`;
-  const report = await requireCompatibleProvider(input.provider, {
-    requestId,
-    imageDigest: input.configuration.images.build.digest,
-    regionClass: input.configuration.cloudRegionClass,
-    resources,
-    requireDockerInDocker: false,
-    requireGpu: false,
-  });
-  let lease: SandboxLease | undefined;
-  try {
-    lease = await input.provider.create({
-      requestId,
-      imageReference: input.configuration.images.build.reference,
-      imageDigest: input.configuration.images.build.digest,
-      regionClass: input.configuration.cloudRegionClass,
-      resources,
-      network: {
-        defaultAction: "deny",
-        allowDomains: [],
-      },
-      lifetimeMs: 10 * 60_000,
-      secretReferences: [],
-    });
-    return releaseSafeReceipt({
-      schemaVersion: 1,
-      domain: "dark-factory.control-provider-probe.v1",
-      provider: report.provider,
-      compatible: report.compatible,
-      capabilityHash: sha256(JSON.stringify(report.capabilities)),
-      imageDigest: lease.imageDigest,
-      regionClass: lease.regionClass,
-      resourceHash: sha256(JSON.stringify(lease.resources)),
-      networkPolicyHash: lease.networkPolicyHash,
-      sandboxIdHash: sha256(lease.sandboxId),
-      volumeSemanticsReceiptHash: input.volumeSemanticsReceiptHash,
-      volumeSemanticsArtifactSha256:
-        input.volumeSemanticsArtifactSha256,
-    });
-  } finally {
-    if (lease !== undefined) {
-      await input.provider.destroy(lease);
-    }
-  }
-}
-
 async function main(): Promise<void> {
   const { command, campaignId } = parseArguments(process.argv.slice(2));
   const marker = assertCloudExecutionEnvironment("daytona", process.env);
@@ -213,7 +168,7 @@ async function main(): Promise<void> {
       "Trusted control-plane marker is absent.",
     );
   }
-  const config = configuration();
+  const config = configuration(command);
   const volumeRoot = process.env["DF_TRUSTED_VOLUME_ROOT"];
   if (
     volumeRoot === undefined ||
@@ -234,6 +189,13 @@ async function main(): Promise<void> {
   const bridge = new VerifyingTrustedArtifactBridge(backend, guard);
 
   if (command === "probe") {
+    const buildImage = config.images.build;
+    const evaluatorImage = config.images.evaluator;
+    if (buildImage === null || evaluatorImage === null) {
+      throw new TrustedControlPlaneError(
+        "Trusted provider-probe image configuration is incomplete.",
+      );
+    }
     const stateVolumeRoot = process.env["DF_CAMPAIGN_STATE_ROOT"];
     const volumeId = process.env["DF_DAYTONA_VOLUME_ID"];
     const volumeSubpath = process.env["DF_DAYTONA_VOLUME_SUBPATH"];
@@ -286,10 +248,12 @@ async function main(): Promise<void> {
     const provider = createOfficialDaytonaProvider(process.env, {
       artifactBridge: bridge,
     });
-    const receipt = await liveProviderProbe({
+    const receipt = await runProductionProviderReadiness({
       provider,
-      configuration: config,
       campaignId,
+      regionClass: config.cloudRegionClass,
+      buildImage,
+      evaluatorImage,
       volumeSemanticsReceiptHash: volumeSemantics.contentHash,
       volumeSemanticsArtifactSha256: volumeSemanticsArtifact.sha256,
     });
@@ -329,13 +293,72 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "status") {
+    const readiness =
+      inspectProductionOptimizeBindingReadiness({
+        bindings: {},
+        piSourceConfiguration:
+          inspectPiHarnessSourceEnvironment(process.env),
+      });
+    const report =
+      releaseSafeProductionOptimizeBindingReport(readiness);
+    const status = {
+      schemaVersion: 1 as const,
+      domain:
+        "dark-factory.cloud-control-precomposition-status.v1" as const,
+      campaignId,
+      state: "awaiting-production-composition" as const,
+      controlImageDigest: config.images.control.digest,
+      ...report,
+    };
+    const artifact = await persistControlReceipt(
+      bridge,
+      campaignId,
+      "status",
+      status,
+    );
+    process.stdout.write(
+      `${JSON.stringify({
+        ok: true,
+        command,
+        state: status.state,
+        readinessReceiptHash: status.readinessReceiptHash,
+        artifactSha256: artifact.sha256,
+      })}\n`,
+    );
+    return;
+  }
+
   if (command === "optimize") {
     const sourceReadiness = inspectPiHarnessSourceEnvironment(process.env);
-    if (!sourceReadiness.ready) {
-      throw new TrustedControlPlaneError(
-        "Trusted control-plane Pi source configuration is incomplete.",
-      );
-    }
+    /*
+     * No production objects are bound at this entry point yet. Report the
+     * exact public composition surface rather than accepting an environment
+     * declaration as proof that executable ports exist.
+     */
+    const readiness =
+      inspectProductionOptimizeBindingReadiness({
+        bindings: {},
+        piSourceConfiguration: sourceReadiness,
+      });
+    const artifact = await persistControlReceipt(
+      bridge,
+      campaignId,
+      "optimize-binding-readiness",
+      readiness,
+    );
+    const report =
+      releaseSafeProductionOptimizeBindingReport(readiness);
+    process.stdout.write(
+      `${JSON.stringify({
+        ok: false,
+        command,
+        ...report,
+        artifactSha256: artifact.sha256,
+      })}\n`,
+    );
+    process.exitCode = 1;
+    return;
   }
 
   throw new TrustedControlPlaneError(

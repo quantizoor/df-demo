@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
+import { assertReleaseSafeText } from "../schemas/safety.js";
+
 export const MAX_MCP_RESPONSE_CHARACTERS = 12_000;
 export const MAX_MCP_INPUT_CHARACTERS = 20_000;
 
@@ -56,7 +58,17 @@ export function assertSafeReleasedObject(
   if (depth > 20) {
     throw new Error("Released object nesting exceeds the safety limit");
   }
-  if (value === null || typeof value === "string" || typeof value === "boolean") {
+  if (typeof value === "string") {
+    try {
+      assertReleaseSafeText(value, location);
+    } catch {
+      throw new Error(
+        `Released object contains a protected literal category at ${location}`,
+      );
+    }
+    return;
+  }
+  if (value === null || typeof value === "boolean") {
     return;
   }
   if (typeof value === "number") {
@@ -131,7 +143,18 @@ const NARRATIVE_FIELDS = new Set([
 
 function scanNarrative(value: unknown, path: string): void {
   if (typeof value === "string") {
-    if (FORBIDDEN_NARRATIVE_PATTERN.some((pattern) => pattern.test(value))) {
+    try {
+      assertReleaseSafeText(value, path);
+    } catch {
+      throw new Error(
+        `Submission narrative contains a protected literal category at ${path}`,
+      );
+    }
+    if (
+      FORBIDDEN_NARRATIVE_PATTERN.some((pattern) =>
+        pattern.test(value),
+      )
+    ) {
       throw new Error(`Submission narrative contains a protected literal category at ${path}`);
     }
     return;

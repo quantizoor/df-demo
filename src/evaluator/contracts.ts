@@ -26,6 +26,7 @@ export type PanelSelectionRequest =
       readonly taskCount: 5;
       readonly attemptsPerTask: 1;
       readonly candidateAttempt: 1 | 2;
+      readonly frozenHypothesisHash: string;
     }
   | {
       readonly kind: "fresh-matched-validation";
@@ -33,6 +34,7 @@ export type PanelSelectionRequest =
       readonly attemptsPerArm: 1;
       readonly pairOrder: "balanced-6-ab-6-ba";
       readonly weightingPolicyHash: string;
+      readonly frozenHypothesisHash: string;
       readonly hypothesisExclusionAttestationHash: string;
     }
   | {
@@ -303,6 +305,7 @@ function assertSelection(request: TrustedEvaluationRequest): void {
       "taskCount",
       "attemptsPerTask",
       "candidateAttempt",
+      "frozenHypothesisHash",
     ],
     "fresh-matched-validation": [
       "kind",
@@ -310,6 +313,7 @@ function assertSelection(request: TrustedEvaluationRequest): void {
       "attemptsPerArm",
       "pairOrder",
       "weightingPolicyHash",
+      "frozenHypothesisHash",
       "hypothesisExclusionAttestationHash",
     ],
     "fresh-shadow": [
@@ -355,6 +359,15 @@ function assertSelection(request: TrustedEvaluationRequest): void {
     !SHA256.test(selection.weightingPolicyHash)
   ) {
     throw new EvaluatorContractError("Selection weighting policy must be pinned.");
+  }
+  if (
+    (selection.kind === "repair-reuse" ||
+      selection.kind === "fresh-matched-validation") &&
+    !SHA256.test(selection.frozenHypothesisHash)
+  ) {
+    throw new EvaluatorContractError(
+      "Adaptive selection requires the exact frozen hypothesis hash.",
+    );
   }
   if (
     selection.kind === "fresh-matched-validation" &&

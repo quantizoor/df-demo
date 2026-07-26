@@ -51,14 +51,68 @@ const ALLOWED_AGGREGATE_FIELD_NAMES = new Set([
   "trajectorycountband",
 ]);
 
-const RELEASE_TEXT_PATTERNS: readonly { readonly label: string; readonly pattern: RegExp }[] = [
-  { label: "URL", pattern: /\b(?:https?|ftp):\/\/\S+/iu },
-  { label: "absolute POSIX path", pattern: /(?:^|\s)\/(?:[\w.@+-]+\/)+[\w.@+-]+/u },
-  { label: "Windows path", pattern: /\b[A-Za-z]:\\(?:[^\\\s]+\\)+[^\\\s]+/u },
+const RELEASE_TEXT_PATTERNS: readonly {
+  readonly label: string;
+  readonly pattern: RegExp;
+}[] = [
+  {
+    label: "URL",
+    pattern:
+      /\b(?:https?|ftp|file|data|git|ssh):(?:\/\/|[^\s]+)/iu,
+  },
+  {
+    label: "credentialed repository locator",
+    pattern:
+      /\b[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s"'`]+/u,
+  },
+  {
+    label: "absolute POSIX path",
+    pattern:
+      /(?:^|[\s"'(=:[{])\/(?:[A-Za-z0-9._@+-]+\/)*[A-Za-z0-9._@+-]+(?=$|[\s"'`),.;:\]}])/u,
+  },
+  {
+    label: "protected POSIX root",
+    pattern:
+      /(?:^|[\s"'(=:[{])\/(?:Users|etc|home|opt|private|root|tmp|var|workspace)(?:\/|(?=$|[\s"'`),.;:\]}]))/u,
+  },
+  {
+    label: "Windows path",
+    pattern: /\b[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*/u,
+  },
+  {
+    label: "path traversal",
+    pattern: /(?:^|[\\/])\.\.(?:[\\/]|$)/u,
+  },
+  {
+    label: "encoded path",
+    pattern:
+      /(?:%(?:2e|2f|5c)|\\x(?:2e|2f|5c)|\\u00(?:2e|2f|5c))/iu,
+  },
   { label: "code fence", pattern: /```/u },
   { label: "inline command or code", pattern: /`[^`]+`/u },
-  { label: "shell environment expansion", pattern: /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/u },
-  { label: "task-number reference", pattern: /\btask[-_\s]*(?:id[-_\s]*)?\d+\b/iu },
+  {
+    label: "shell environment expansion",
+    pattern: /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/u,
+  },
+  {
+    label: "task-number reference",
+    pattern: /\btask[-_\s]*(?:id[-_\s]*)?\d+\b/iu,
+  },
+  {
+    label: "benchmark identity",
+    pattern:
+      /\b(?:task|trial|panel|cell)[-_\s]*(?:id|key|name|handle|digest|revision)[-_\s]*[A-Za-z0-9][A-Za-z0-9._:-]*\b/iu,
+  },
+  {
+    label: "grader or verifier identity",
+    pattern:
+      /\b(?:grader|verifier|reference[-_\s]*answer|solution)\b/iu,
+  },
+  {
+    label: "control or bidirectional character",
+    pattern:
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u,
+  },
 ];
 
 export class UnsafeEvidenceError extends Error {
@@ -91,13 +145,113 @@ function forbiddenFieldName(value: string): boolean {
   );
 }
 
+function printableRatio(bytes: Uint8Array): number {
+  if (bytes.byteLength === 0) return 0;
+  let printable = 0;
+  for (const byte of bytes) {
+    if (
+      byte === 9 ||
+      byte === 10 ||
+      byte === 13 ||
+      (byte >= 32 && byte <= 126)
+    ) {
+      printable += 1;
+    }
+  }
+  return printable / bytes.byteLength;
+}
+
+function decodedLooksLikePayload(bytes: Uint8Array): boolean {
+  if (printableRatio(bytes) < 0.85) return false;
+  let decoded: string;
+  try {
+    decoded = new TextDecoder("utf-8", { fatal: true }).decode(
+      bytes,
+    );
+  } catch {
+    return false;
+  }
+  return (
+    /^\s*[/\\[{]/u.test(decoded) ||
+    /\b(?:task|trial|panel|cell|grader|verifier|solution)\b/iu.test(
+      decoded,
+    ) ||
+    /[A-Za-z]{3,}(?:[\s:/._-]+[A-Za-z]{3,}){1,}/u.test(
+      decoded,
+    )
+  );
+}
+
+function looksLikeBase64EncodedText(value: string): boolean {
+  if (
+    value.length < 16 ||
+    value.length > 16_384 ||
+    !/^[A-Za-z0-9+/_-]+={0,2}$/u.test(value)
+  ) {
+    return false;
+  }
+  try {
+    const normalized = value.replace(/=+$/u, "");
+    const encoding =
+      /[+\/]/u.test(normalized) ? "base64" : "base64url";
+    const decoded = Buffer.from(normalized, encoding);
+    const canonical = decoded
+      .toString(encoding)
+      .replace(/=+$/u, "");
+    return (
+      decoded.byteLength >= 8 &&
+      decodedLooksLikePayload(decoded) &&
+      canonical === normalized
+    );
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeHexEncodedText(value: string): boolean {
+  if (
+    value.length < 16 ||
+    value.length > 16_384 ||
+    value.length % 2 !== 0 ||
+    !/^[a-f0-9]+$/iu.test(value)
+  ) {
+    return false;
+  }
+  try {
+    const decoded = Buffer.from(value, "hex");
+    return (
+      decoded.byteLength >= 8 &&
+      decodedLooksLikePayload(decoded)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function assertReleaseSafeString(value: string, path: string): void {
+  const normalized = value.normalize("NFKC");
+  for (const { label, pattern } of RELEASE_TEXT_PATTERNS) {
+    if (pattern.test(normalized)) {
+      throw new UnsafeEvidenceError(
+        path,
+        `contains a forbidden ${label}`,
+      );
+    }
+  }
+  if (
+    looksLikeBase64EncodedText(normalized) ||
+    looksLikeHexEncodedText(normalized)
+  ) {
+    throw new UnsafeEvidenceError(
+      path,
+      "contains an encoded printable payload",
+    );
+  }
+}
+
 function scan(value: unknown, path: string, ancestors: ReadonlySet<object>): void {
   if (typeof value === "string") {
-    for (const { label, pattern } of RELEASE_TEXT_PATTERNS) {
-      if (pattern.test(value)) {
-        throw new UnsafeEvidenceError(path, `contains a forbidden ${label}`);
-      }
-    }
+    assertReleaseSafeString(value, path);
     return;
   }
 
@@ -140,6 +294,13 @@ export function isReleaseSafe(value: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+export function assertReleaseSafeText(
+  value: string,
+  path = "$",
+): void {
+  assertReleaseSafeString(value, path);
 }
 
 export function isForbiddenEvidenceField(fieldName: string): boolean {

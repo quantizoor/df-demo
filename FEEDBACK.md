@@ -1,6 +1,10 @@
 # Dark Factory Experiment Feedback
 
-This file is the append-only human-facing ledger of sealed experiments.
+This file is the append-only, operator-only human-facing ledger of sealed
+experiments. It is never optimizer input, never mounted in a Claude Code
+sandbox, and never included in an optimizer evidence archive. Claude receives
+only separately signed, privacy-thresholded, task-agnostic diagnostic
+artifacts that pass the optimizer byte-inspection gate.
 
 ## Generation contract
 
@@ -291,5 +295,7 @@ No experiment has been run yet. The first generated entry will describe
 `000-pi-baseline`; creating these planning documents does not create or evaluate
 the harness baseline. Discovering the existing clean private Pi working copy at
 `../pi` and its planning-time commit is repository setup evidence only; the
-baseline is created only after origin privacy/authentication, the missing
-official upstream remote, and the reviewed commit/lock provenance are sealed.
+baseline is created only after origin privacy/authentication, the canonical
+official upstream lineage, and the reviewed commit/lock provenance are
+independently verified and sealed in a trusted cloud clone. No upstream remote
+is added to or fetched in the Mac checkout.

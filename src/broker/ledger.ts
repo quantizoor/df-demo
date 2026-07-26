@@ -33,6 +33,12 @@ export type OneUseClaim =
       readonly state: "conflict";
     };
 
+export type OneUseLedgerInspection =
+  | Exclude<OneUseClaim, { readonly state: "acquired" }>
+  | {
+      readonly state: "missing";
+    };
+
 /**
  * Implementations must provide linearizable operations backed by durable cloud
  * storage. A request ID is permanently bound to its first request hash, and a
@@ -40,6 +46,17 @@ export type OneUseClaim =
  */
 export interface OneUseRequestLedger {
   claim(requestId: string, requestHash: string): Promise<OneUseClaim>;
+
+  /**
+   * Read-only completion reconciliation. This must never create a claim. It is
+   * used after an ambiguous `complete` failure to decide whether a committed
+   * result—and any privacy-spending release it references—must be returned
+   * rather than orphaned.
+   */
+  inspect(
+    requestId: string,
+    requestHash: string,
+  ): Promise<OneUseLedgerInspection>;
 
   bindDispositionAttestation(
     claimToken: string,
@@ -126,6 +143,15 @@ export function assertOneUseClaim(claim: OneUseClaim): void {
   ) {
     throw new OneUseLedgerError("One-use ledger returned an invalid retry interval.");
   }
+}
+
+export function assertOneUseLedgerInspection(
+  inspection: OneUseLedgerInspection,
+): void {
+  if (inspection.state === "missing" || inspection.state === "conflict") {
+    return;
+  }
+  assertOneUseClaim(inspection);
 }
 
 function assertRequestIdentity(requestId: string, requestHash: string): void {
@@ -232,6 +258,66 @@ export class DurableOneUseRequestLedger implements OneUseRequestLedger {
       return {
         next: nextState(state, { ...state.records, [requestId]: record }),
         result: { state: "acquired" as const, claimToken },
+      };
+    });
+  }
+
+  inspect(
+    requestId: string,
+    requestHash: string,
+  ): Promise<OneUseLedgerInspection> {
+    assertRequestIdentity(requestId, requestHash);
+    return this.#store.transact((state) => {
+      const existing = state.records[requestId];
+      if (existing === undefined) {
+        return {
+          next: state,
+          result: { state: "missing" as const },
+        };
+      }
+      if (existing.requestHash !== requestHash) {
+        return {
+          next: state,
+          result: { state: "conflict" as const },
+        };
+      }
+      if (existing.status === "completed") {
+        if (existing.envelope === null) {
+          throw new OneUseLedgerError(
+            "Completed ledger record has no signed envelope.",
+          );
+        }
+        return {
+          next: state,
+          result: {
+            state: "completed" as const,
+            requestHash,
+            envelope: existing.envelope,
+          },
+        };
+      }
+      if (existing.status === "consumed") {
+        if (existing.failureCode === null) {
+          throw new OneUseLedgerError(
+            "Consumed ledger record has no failure code.",
+          );
+        }
+        return {
+          next: state,
+          result: {
+            state: "consumed" as const,
+            requestHash,
+            failureCode: existing.failureCode,
+          },
+        };
+      }
+      return {
+        next: state,
+        result: {
+          state: "in-flight" as const,
+          requestHash,
+          retryAfterMs: this.#retryAfterMs,
+        },
       };
     });
   }

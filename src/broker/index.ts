@@ -1,4 +1,5 @@
 export * from "./catalog.js";
+export * from "./catalog-genesis-loader.js";
 export * from "./catalog-import.js";
 export * from "./issuer.js";
 export * from "./ledger.js";

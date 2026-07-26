@@ -6,6 +6,10 @@ import type {
   ChampionPointers,
   ExperimentIdentity,
 } from "../domain/models.js";
+import {
+  allocateOnlineGate,
+  createOnlineErrorBudget,
+} from "../evaluation/statistics.js";
 import type {
   BlindBroker,
   DiagnosticBriefReference,
@@ -122,7 +126,16 @@ function optimizer(
 function validationAggregate(
   disposition: "promoted" | "inconclusive",
   evidenceHash: string,
+  gateOrdinal: 1 | 2,
 ): ValidationAggregate {
+  let state = createOnlineErrorBudget(
+    0.05,
+    "synthetic-null-calibration-v1",
+  );
+  if (gateOrdinal === 2) {
+    state = allocateOnlineGate(state).nextState;
+  }
+  const gate = allocateOnlineGate(state);
   return {
     disposition,
     validPairs: 12,
@@ -130,8 +143,26 @@ function validationAggregate(
     replacementAttempts: 0,
     probabilityPositive: disposition === "promoted" ? 0.99 : 0.7,
     medianAccuracyDelta: disposition === "promoted" ? 0.08 : 0.01,
-    requiredPosteriorProbability: 0.95,
+    requiredPosteriorProbability: gate.requiredPosteriorProbability,
     onlineGateAuthorized: true,
+    onlineErrorBudget: {
+      policyVersion: "online-alpha-spending-v1",
+      maximumOnlineError: state.initialAlpha,
+      gateOrdinal,
+      alphaSpent: gate.alphaSpent,
+      cumulativeSpentBefore: state.spentAlpha,
+      cumulativeSpentAfter: gate.nextState.spentAlpha,
+      remainingAfter: gate.nextState.remainingAlpha,
+      reservationHash: sha256(
+        `synthetic-online-reservation:${String(gateOrdinal)}`,
+      ),
+      priorStateHash: sha256(
+        `synthetic-online-state:${String(gateOrdinal - 1)}`,
+      ),
+      resultingStateHash: sha256(
+        `synthetic-online-state:${String(gateOrdinal)}`,
+      ),
+    },
     stratumRegressionVeto: false,
     integrityVeto: false,
     correctnessVeto: false,
@@ -144,6 +175,9 @@ function validationAggregate(
     wallTimeMs: 1,
     attestationHash: sha256(`synthetic-validation:${disposition}`),
     releasedEvidenceHash: evidenceHash,
+    behavioralSourceCommitmentHash: sha256(
+      `synthetic-behavioral-source:${disposition}`,
+    ),
     attemptAccounting: {
       policyVersion: "validation-attempt-ledger-v1",
       terminalStatus: "complete",
@@ -171,6 +205,7 @@ class SyntheticBroker implements BlindBroker {
     | "repair-reject"
     | "validation-inconclusive";
   readonly #brief: DiagnosticBriefReference;
+  readonly #onlineGateOrdinal: 1 | 2;
   readonly #privateTaskCanary = SYNTHETIC_PRIVATE_TASK_CANARY;
   validationConsumed = false;
 
@@ -182,6 +217,7 @@ class SyntheticBroker implements BlindBroker {
     experimentNumber: number,
   ) {
     this.#scenario = scenario;
+    this.#onlineGateOrdinal = experimentNumber === 1 ? 1 : 2;
     this.#brief = {
       hash: sha256(`synthetic-brief:${String(experimentNumber)}`),
       releaseId: `synthetic-release-${String(experimentNumber)}`,
@@ -254,6 +290,7 @@ class SyntheticBroker implements BlindBroker {
           ? "inconclusive"
           : "promoted",
         this.#brief.hash,
+        this.#onlineGateOrdinal,
       ),
     );
   }
@@ -354,6 +391,7 @@ function initialBudget(): BudgetSnapshot {
       maximumAttempts: 100,
       maximumPrivacyReleases: 3,
       maximumPromotionLooks: 3,
+      maximumOnlineError: 0.05,
     },
     usage: {
       spentUsd: 0,
@@ -362,6 +400,7 @@ function initialBudget(): BudgetSnapshot {
       attempts: 0,
       privacyReleases: 0,
       promotionLooks: 0,
+      onlineErrorSpent: 0,
     },
   };
 }

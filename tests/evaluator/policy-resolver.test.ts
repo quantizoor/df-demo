@@ -6,6 +6,7 @@ import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "../../src/evaluator/contracts.js";
+import { createTrustedOnlineErrorBudgetReservation } from "../../src/evaluator/online-error-authority.js";
 import {
   fingerprintForbiddenReleaseLiteral,
   hashTrustedCacheEvidence,
@@ -79,6 +80,7 @@ function request(): TrustedEvaluationRequest {
       attemptsPerArm: 1,
       pairOrder: "balanced-6-ab-6-ba",
       weightingPolicyHash: "3".repeat(64),
+      frozenHypothesisHash: "4".repeat(64),
       hypothesisExclusionAttestationHash: "4".repeat(64),
     },
     executionProfile: {
@@ -167,6 +169,23 @@ function rawRun(): TrustedRawRun {
   };
 }
 
+function onlineReservation(
+  evaluationRequest: TrustedEvaluationRequest,
+  hiddenPanel: TrustedMatchedPanel,
+) {
+  return createTrustedOnlineErrorBudgetReservation({
+    request: evaluationRequest,
+    requestHash: hashEvaluationRequest(evaluationRequest),
+    dispositionAttestationHash:
+      hiddenPanel.dispositionAttestationHash,
+    stateBefore: createOnlineErrorBudget(
+      0.05,
+      "null-calibration-v1",
+    ),
+    reservedAt: "2026-07-01T00:01:15.000Z",
+  });
+}
+
 function bound<T extends { readonly bindingHash: string }>(
   value: Omit<T, "bindingHash">,
   hash: (input: Omit<T, "bindingHash">) => string,
@@ -228,7 +247,8 @@ function material(
     {
       sensitivity: "trusted-online-error-budget-binding",
       requestHash,
-      state: createOnlineErrorBudget(0.05, "null-calibration-v1"),
+      state: onlineReservation(evaluationRequest, hiddenPanel).stateBefore,
+      reservation: onlineReservation(evaluationRequest, hiddenPanel),
     },
     hashTrustedOnlineErrorBudgetBinding,
   );
@@ -236,8 +256,21 @@ function material(
     {
       sensitivity: "trusted-behavioral-policy-binding",
       requestHash,
-      release: null,
-      privacyThresholdPassed: false,
+      diagnosticsEnabled: true,
+      comparison: "candidate-vs-champion",
+      maximumPrivacyReleases: 8,
+      diagnosticTtlMs: 2 * 60 * 60_000,
+      policyVersions: {
+        protocol: "protocol-v1",
+        broker: "broker-v1",
+        extraction: "extraction-v1",
+        statistics: "statistics-v1",
+        privacy: "privacy-v1",
+        weighting: "weighting-v1",
+        cache: "cache-v1",
+        repeatedTesting: "testing-v1",
+        leakScanner: "scanner-v1",
+      },
     },
     hashTrustedBehavioralPolicyBinding,
   );
@@ -309,6 +342,10 @@ describe("bound canonical policy resolver", () => {
         panel: hiddenPanel,
         schedule,
         rawRun: raw,
+        onlineErrorReservation: onlineReservation(
+          evaluationRequest,
+          hiddenPanel,
+        ),
       }),
     ).resolves.toMatchObject({
       sensitivity: "trusted-canonical-derivation-policy",
@@ -318,7 +355,10 @@ describe("bound canonical policy resolver", () => {
         costWithinGuardrail: true,
         latencyWithinGuardrail: true,
       },
-      privacyThresholdPassed: false,
+      behavioralPolicy: {
+        diagnosticsEnabled: true,
+        comparison: "candidate-vs-champion",
+      },
     });
   });
 
@@ -357,6 +397,10 @@ describe("bound canonical policy resolver", () => {
           panel: hiddenPanel,
           schedule,
           rawRun: raw,
+          onlineErrorReservation: onlineReservation(
+            evaluationRequest,
+            hiddenPanel,
+          ),
         }),
       ).rejects.toBeInstanceOf(TrustedPolicyResolutionError);
     },
@@ -398,6 +442,57 @@ describe("bound canonical policy resolver", () => {
         panel: hiddenPanel,
         schedule,
         rawRun: raw,
+        onlineErrorReservation: onlineReservation(
+          evaluationRequest,
+          hiddenPanel,
+        ),
+      }),
+    ).rejects.toBeInstanceOf(TrustedPolicyResolutionError);
+  });
+
+  it("rejects outcome-derived release hashes even when smuggled into a rehashed pre-outcome binding", async () => {
+    const evaluationRequest = request();
+    const hiddenPanel = panel();
+    const raw = rawRun();
+    const schedule = createTrustedMatchedArmSchedule(
+      hiddenPanel,
+      evaluationRequest.candidate,
+      evaluationRequest.champion,
+    );
+    const original = material(evaluationRequest, hiddenPanel, raw);
+    const behavioral = {
+      ...original.behavioral,
+      release: {
+        contentHash: "8".repeat(64),
+        sourceSetHash: "9".repeat(64),
+      },
+    } as unknown as TrustedBehavioralPolicyBinding;
+    const {
+      policyAttestationHash: _policyAttestationHash,
+      ...originalUnsigned
+    } = original;
+    const tamperedUnsigned = {
+      ...originalUnsigned,
+      behavioral,
+    };
+    const tampered = {
+      ...tamperedUnsigned,
+      policyAttestationHash:
+        hashTrustedCanonicalPolicyAttestation(tamperedUnsigned),
+    } as TrustedCanonicalPolicyMaterial;
+    await expect(
+      new BoundCanonicalDerivationPolicyResolver({
+        deployment: "trusted-cloud",
+        provider: provider(tampered),
+      }).resolve({
+        request: evaluationRequest,
+        panel: hiddenPanel,
+        schedule,
+        rawRun: raw,
+        onlineErrorReservation: onlineReservation(
+          evaluationRequest,
+          hiddenPanel,
+        ),
       }),
     ).rejects.toBeInstanceOf(TrustedPolicyResolutionError);
   });

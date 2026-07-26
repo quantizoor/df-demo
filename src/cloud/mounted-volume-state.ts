@@ -51,6 +51,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_PROVIDER_ID =
   /^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,511}$/u;
 const SAFE_STORE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+const SAFE_STORE_NAMESPACE =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_URI =
   /^trusted:\/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const SAFE_MEDIA_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/u;
@@ -325,7 +327,13 @@ interface MountedVolumeStateEnvelope<State> {
   readonly contentHash: string;
 }
 
-interface TransactionalStateCodec<State> {
+/**
+ * Strict codec for a state domain persisted by the mounted-volume
+ * transactional store. The assertion must validate the complete durable
+ * shape; accepting a partial shape would turn storage corruption into trusted
+ * controller state.
+ */
+export interface MountedVolumeTransactionalStateCodec<State> {
   readonly domain: string;
   readonly initialState: () => State;
   assertState(value: unknown): asserts value is State;
@@ -1233,9 +1241,14 @@ class MountedVolumeSingleWriterCoordinator {
   }
 }
 
-class MountedVolumeTransactionalJsonStore<State> {
+/**
+ * Fenced, linearizable JSON state primitive for trusted-cloud production
+ * ports. Domain-specific adapters should expose a narrower interface and
+ * provide a complete state validator.
+ */
+export class MountedVolumeTransactionalJsonStore<State> {
   readonly #coordinator: MountedVolumeSingleWriterCoordinator;
-  readonly #codec: TransactionalStateCodec<State>;
+  readonly #codec: MountedVolumeTransactionalStateCodec<State>;
   readonly #storeDirectory: string;
   readonly #statePath: string;
   readonly #maximumStateBytes: number;
@@ -1244,8 +1257,11 @@ class MountedVolumeTransactionalJsonStore<State> {
   constructor(
     options: MountedVolumeDurableStateOptions,
     namespace: string,
-    codec: TransactionalStateCodec<State>,
+    codec: MountedVolumeTransactionalStateCodec<State>,
   ) {
+    if (!SAFE_STORE_NAMESPACE.test(namespace)) {
+      fail("Mounted-volume state namespace is malformed.");
+    }
     this.#coordinator = new MountedVolumeSingleWriterCoordinator(
       options,
       namespace,
@@ -1679,6 +1695,21 @@ function assertStoredTask(
   }
 }
 
+function hiddenCatalogExperimentOrdinal(
+  experimentId: string,
+): number {
+  const prefix = experimentId.split("-", 1)[0] ?? "";
+  const ordinal = Number.parseInt(prefix, 10);
+  if (
+    !/^\d+$/u.test(prefix) ||
+    !Number.isSafeInteger(ordinal) ||
+    ordinal < 0
+  ) {
+    fail("Trusted hidden catalog experiment identity is malformed.");
+  }
+  return ordinal;
+}
+
 function assertTrustedHiddenCatalogStorageState(
   value: unknown,
 ): asserts value is TrustedHiddenCatalogState {
@@ -1802,7 +1833,14 @@ function assertTrustedHiddenCatalogStorageState(
       fail("Trusted shadow slice is malformed.");
     }
   }
-  for (const [requestId, allocation] of Object.entries(catalog.allocations)) {
+  const allocationRecords = Object.values(catalog.allocations);
+  const allocationRequestIds = new Set<string>();
+  const allocationClaimCommitments = new Set<string>();
+  const allocationLeaseIds = new Set<string>();
+  let repairAllocationCount = 0;
+  for (const [requestHash, allocation] of Object.entries(
+    catalog.allocations,
+  )) {
     if (!isPlainRecord(allocation)) {
       fail("Trusted panel allocation is not an object.");
     }
@@ -1819,6 +1857,11 @@ function assertTrustedHiddenCatalogStorageState(
         "claimTokenCommitment",
         "dispositionNonce",
         "frozenHypothesisDigest",
+        "candidateArchiveSha256",
+        "championArchiveSha256",
+        "repairSourceExperimentId",
+        "repairSourceRequestHash",
+        "repairAttemptOrdinal",
         "selectedBuckets",
         "panel",
       ],
@@ -1826,12 +1869,13 @@ function assertTrustedHiddenCatalogStorageState(
     );
     if (
       allocation.sensitivity !== "trusted-hidden-panel-allocation" ||
-      allocation.requestId !== requestId ||
-      !SAFE_ID.test(requestId) ||
+      typeof allocation.requestId !== "string" ||
+      !SAFE_ID.test(allocation.requestId) ||
       typeof allocation.experimentId !== "string" ||
       !SAFE_ID.test(allocation.experimentId) ||
       typeof allocation.requestHash !== "string" ||
       !SHA256.test(allocation.requestHash) ||
+      allocation.requestHash !== requestHash ||
       allocation.datasetPinHash !== catalog.datasetPinHash ||
       allocation.registryRevision !== 6 ||
       typeof allocation.protocolHash !== "string" ||
@@ -1839,9 +1883,24 @@ function assertTrustedHiddenCatalogStorageState(
       typeof allocation.claimTokenCommitment !== "string" ||
       !SHA256.test(allocation.claimTokenCommitment) ||
       typeof allocation.dispositionNonce !== "string" ||
-      !/^[a-f0-9]{48}$/u.test(allocation.dispositionNonce) ||
+      !/^[A-Za-z0-9_-]{32,128}$/u.test(
+        allocation.dispositionNonce,
+      ) ||
       typeof allocation.frozenHypothesisDigest !== "string" ||
       !SHA256.test(allocation.frozenHypothesisDigest) ||
+      typeof allocation.candidateArchiveSha256 !== "string" ||
+      !SHA256.test(allocation.candidateArchiveSha256) ||
+      typeof allocation.championArchiveSha256 !== "string" ||
+      !SHA256.test(allocation.championArchiveSha256) ||
+      (allocation.repairSourceExperimentId !== null &&
+        (typeof allocation.repairSourceExperimentId !== "string" ||
+          !SAFE_ID.test(allocation.repairSourceExperimentId))) ||
+      (allocation.repairSourceRequestHash !== null &&
+        (typeof allocation.repairSourceRequestHash !== "string" ||
+          !SHA256.test(allocation.repairSourceRequestHash))) ||
+      (allocation.repairAttemptOrdinal !== null &&
+        allocation.repairAttemptOrdinal !== 1 &&
+        allocation.repairAttemptOrdinal !== 2) ||
       !Array.isArray(allocation.selectedBuckets) ||
       allocation.selectedBuckets.some(
         (bucket) =>
@@ -1853,7 +1912,65 @@ function assertTrustedHiddenCatalogStorageState(
       fail("Trusted panel allocation is malformed.");
     }
     assertTrustedMatchedPanel(allocation.panel);
+    const repair = allocation.panel.stage === "repair";
+    const repairBucketCounts = Object.fromEntries(
+      [...SELECTION_BUCKETS].map((bucket) => [
+        bucket,
+        allocation.selectedBuckets.filter(
+          (selected) => selected === bucket,
+        ).length,
+      ]),
+    ) as unknown as Readonly<
+      Record<"hard" | "uncertain" | "easy" | "coverage", number>
+    >;
+    if (
+      allocation.panel.requestId !== allocation.requestId ||
+      (allocation.panel.stage !== "repair" &&
+        allocation.panel.stage !== "validation" &&
+        allocation.panel.stage !== "shadow") ||
+      allocation.selectedBuckets.length !==
+        (repair ? 5 : 12) ||
+      (repair &&
+        (repairBucketCounts.hard !== 3 ||
+          repairBucketCounts.uncertain !== 1 ||
+          repairBucketCounts.easy +
+            repairBucketCounts.coverage !==
+            1)) ||
+      repair !==
+        (allocation.repairSourceExperimentId !== null &&
+          allocation.repairSourceRequestHash !== null &&
+          allocation.repairAttemptOrdinal !== null) ||
+      allocationRequestIds.has(allocation.requestId) ||
+      allocationClaimCommitments.has(
+        allocation.claimTokenCommitment,
+      ) ||
+      allocationLeaseIds.has(allocation.panel.leaseId) ||
+      allocation.panel.cells.some((cell, index) => {
+        const task = catalog.tasks[cell.taskId];
+        const selectedBucket = allocation.selectedBuckets[index];
+        return (
+          task === undefined ||
+          task.taskRevisionDigest !== cell.taskRevisionDigest ||
+          task.capabilityStratum !== cell.capabilityStratum ||
+          selectedBucket === undefined ||
+          (allocation.panel.stage !== "shadow" &&
+            !task.buckets.includes(selectedBucket))
+        );
+      })
+    ) {
+      fail("Trusted panel allocation source lineage is malformed.");
+    }
+    allocationRequestIds.add(allocation.requestId);
+    allocationClaimCommitments.add(
+      allocation.claimTokenCommitment,
+    );
+    allocationLeaseIds.add(allocation.panel.leaseId);
+    if (repair) repairAllocationCount += 1;
   }
+  if (repairAllocationCount !== catalog.repairEpoch) {
+    fail("Trusted repair epoch is inconsistent.");
+  }
+  const committedRequestHashes = new Set<string>();
   for (const [updateId, commitment] of Object.entries(
     catalog.outcomeUpdates,
   )) {
@@ -1889,9 +2006,90 @@ function assertTrustedHiddenCatalogStorageState(
       !SHA256.test(commitment.signatureHash) ||
       typeof commitment.observedAt !== "string" ||
       !Number.isFinite(Date.parse(commitment.observedAt)) ||
-      (commitment.taskCount !== 5 && commitment.taskCount !== 12)
+      (commitment.taskCount !== 5 && commitment.taskCount !== 12) ||
+      catalog.allocations[commitment.requestHash] === undefined ||
+      catalog.allocations[commitment.requestHash]?.panel.cells
+        .length !== commitment.taskCount ||
+      committedRequestHashes.has(commitment.requestHash)
     ) {
       fail("Trusted outcome commitment is malformed.");
+    }
+    committedRequestHashes.add(commitment.requestHash);
+  }
+  const repairsBySource = new Map<
+    string,
+    typeof allocationRecords
+  >();
+  for (const allocation of allocationRecords) {
+    if (allocation.panel.stage !== "repair") continue;
+    const sourceHash = allocation.repairSourceRequestHash;
+    const sourceExperimentId =
+      allocation.repairSourceExperimentId;
+    if (sourceHash === null || sourceExperimentId === null) {
+      fail("Trusted repair source is absent.");
+    }
+    const source = catalog.allocations[sourceHash];
+    const namedSources = allocationRecords.filter(
+      (candidate) =>
+        candidate.experimentId === sourceExperimentId &&
+        candidate.panel.stage === "validation",
+    );
+    const sourceTaskIds = new Set(
+      source?.panel.cells.map((cell) => cell.taskId) ?? [],
+    );
+    if (
+      source === undefined ||
+      namedSources.length !== 1 ||
+      namedSources[0] !== source ||
+      source.panel.stage !== "validation" ||
+      source.experimentId !== sourceExperimentId ||
+      source.protocolHash !== allocation.protocolHash ||
+      source.datasetPinHash !== allocation.datasetPinHash ||
+      hiddenCatalogExperimentOrdinal(source.experimentId) >=
+        hiddenCatalogExperimentOrdinal(allocation.experimentId) ||
+      !committedRequestHashes.has(source.requestHash) ||
+      source.championArchiveSha256 !==
+        allocation.championArchiveSha256 ||
+      allocation.panel.cells.some(
+        (cell) => !sourceTaskIds.has(cell.taskId),
+      )
+    ) {
+      fail("Trusted repair source lineage is inconsistent.");
+    }
+    repairsBySource.set(sourceHash, [
+      ...(repairsBySource.get(sourceHash) ?? []),
+      allocation,
+    ]);
+  }
+  for (const attempts of repairsBySource.values()) {
+    attempts.sort(
+      (left, right) =>
+        (left.repairAttemptOrdinal ?? 0) -
+        (right.repairAttemptOrdinal ?? 0),
+    );
+    const first = attempts[0];
+    const second = attempts[1];
+    if (
+      attempts.length > 2 ||
+      first?.repairAttemptOrdinal !== 1 ||
+      (second !== undefined &&
+        (second.repairAttemptOrdinal !== 2 ||
+          !committedRequestHashes.has(first.requestHash) ||
+          second.candidateArchiveSha256 ===
+            first.candidateArchiveSha256 ||
+          canonicalJson(second.selectedBuckets) !==
+            canonicalJson(first.selectedBuckets) ||
+          second.panel.cells.some(
+            (cell, index) =>
+              cell.taskId !== first.panel.cells[index]?.taskId ||
+              cell.taskRevisionDigest !==
+                first.panel.cells[index]?.taskRevisionDigest ||
+              cell.capabilityStratum !==
+                first.panel.cells[index]?.capabilityStratum ||
+              cell.order !== first.panel.cells[index]?.order,
+          )))
+    ) {
+      fail("Trusted repair attempts are not bounded panel reuse.");
     }
   }
   if (

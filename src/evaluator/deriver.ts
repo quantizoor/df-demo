@@ -8,9 +8,14 @@ import {
 import {
   extractBehaviorSummary,
   normalizeGraderOutcome,
+  type BehaviorSummary,
   type RawTrajectory,
   type ScalarGraderOutcomeInput,
 } from "../evaluation/behavior.js";
+import type {
+  BehaviorComparison,
+  PrivateBehaviorObservation,
+} from "../evaluation/privacy.js";
 import type {
   HiddenTaskId,
   SelectionBucket,
@@ -21,7 +26,10 @@ import type {
   TrustedCanonicalEvaluationDeriver,
 } from "../broker/service.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
-import type { Signature } from "../schemas/primitives.js";
+import type {
+  PolicyVersions,
+  Signature,
+} from "../schemas/primitives.js";
 import type {
   NormalizedGraderOutcome,
   SignedResultEnvelope,
@@ -31,6 +39,14 @@ import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "./contracts.js";
+import {
+  assertTrustedOnlineErrorBudgetReservation,
+  type TrustedOnlineErrorBudgetReservation,
+} from "./online-error-authority.js";
+import {
+  hashTrustedBehavioralPreparation,
+  type TrustedBehavioralPreparationStore,
+} from "./behavioral-preparation-store.js";
 import type { TrustedRawRun } from "../terminal-bench/runner.js";
 import type {
   MatchedArmKind,
@@ -104,9 +120,34 @@ export interface TrustedRepairControl {
   readonly targetBehaviorImproved: boolean;
 }
 
-export interface TrustedBehavioralReleaseBinding {
-  readonly contentHash: string;
-  readonly sourceSetHash: string;
+export interface TrustedBehavioralExtractionPolicy {
+  readonly diagnosticsEnabled: boolean;
+  readonly comparison: BehaviorComparison;
+  readonly maximumPrivacyReleases: number;
+  readonly diagnosticTtlMs: number;
+  readonly policyVersions: PolicyVersions;
+}
+
+/**
+ * Task-private, outcome-derived preparation. It may exist only inside the
+ * trusted evaluator boundary and its durable private preparation store. It is
+ * never a release-safe artifact.
+ */
+export interface TrustedPrivateBehavioralPreparation {
+  readonly sensitivity: "trusted-private-behavioral-preparation";
+  readonly requestHash: string;
+  readonly protocolHash: string;
+  readonly experimentNumber: number;
+  readonly behaviorSourceSetHash: string;
+  readonly analysisWindow: {
+    readonly openedAt: string;
+    readonly closedAt: string;
+  };
+  readonly observations: readonly PrivateBehaviorObservation[];
+  readonly policy: TrustedBehavioralExtractionPolicy;
+  readonly forbiddenReleaseLiterals: readonly string[];
+  readonly forbiddenContentFingerprints: readonly string[];
+  readonly graderCanaryFingerprints: readonly string[];
 }
 
 export interface TrustedCanonicalDerivationPolicy {
@@ -121,6 +162,7 @@ export interface TrustedCanonicalDerivationPolicy {
   readonly candidateFrozenAt: string;
   readonly presealedStratumWeights: Readonly<Record<string, number>>;
   readonly onlineErrorBudget: OnlineErrorBudgetState;
+  readonly onlineErrorReservation: TrustedOnlineErrorBudgetReservation | null;
   readonly integrationPoints: number;
   readonly replacementAttemptCeiling: number;
   readonly repair: {
@@ -137,8 +179,7 @@ export interface TrustedCanonicalDerivationPolicy {
     readonly accuracyTradeoffPredeclared: boolean;
     readonly complianceFlagsPassed: boolean;
   };
-  readonly behavioralRelease: TrustedBehavioralReleaseBinding | null;
-  readonly privacyThresholdPassed: boolean;
+  readonly behavioralPolicy: TrustedBehavioralExtractionPolicy;
   readonly forbiddenReleaseLiterals: readonly string[];
   readonly forbiddenContentFingerprints: readonly string[];
   readonly graderCanaryFingerprints: readonly string[];
@@ -150,6 +191,7 @@ export interface TrustedCanonicalDerivationPolicyResolver {
     readonly panel: TrustedMatchedPanel;
     readonly schedule: TrustedMatchedArmSchedule;
     readonly rawRun: TrustedRawRun;
+    readonly onlineErrorReservation: TrustedOnlineErrorBudgetReservation | null;
   }): Promise<TrustedCanonicalDerivationPolicy>;
 }
 
@@ -159,6 +201,7 @@ export interface DeterministicCanonicalEvaluationDeriverOptions {
   readonly hiddenOutcomeSigner: TrustedHiddenCatalogOutcomeUpdateSigner;
   readonly hiddenOutcomeVerifier: TrustedHiddenCatalogOutcomeUpdateVerifier;
   readonly hiddenOutcomeSink: TrustedHiddenCatalogOutcomeUpdateSink;
+  readonly behavioralPreparationStore: TrustedBehavioralPreparationStore;
   readonly now?: () => Date;
 }
 
@@ -267,6 +310,7 @@ export class TrustedCanonicalDeriverError extends Error {
 interface NormalizedAttempt {
   readonly source: TrustedDecodedEvaluationAttempt;
   readonly outcome: NormalizedGraderOutcome;
+  readonly behavior: BehaviorSummary;
   readonly behaviorHash: string;
 }
 
@@ -492,14 +536,22 @@ function assertOnlineErrorBudget(state: OnlineErrorBudgetState): void {
     "nullCalibrationId",
     "initialAlpha",
     "remainingAlpha",
+    "spentAlpha",
     "gatesSpent",
   ]);
   if (
     state.policyVersion !== "online-alpha-spending-v1" ||
     !/^[a-z0-9][a-z0-9._-]{2,127}$/u.test(state.nullCalibrationId) ||
     !(state.initialAlpha > 0 && state.initialAlpha <= 0.05) ||
+    !Number.isFinite(state.remainingAlpha) ||
     state.remainingAlpha < 0 ||
     state.remainingAlpha > state.initialAlpha ||
+    !Number.isFinite(state.spentAlpha) ||
+    state.spentAlpha < 0 ||
+    state.spentAlpha > state.initialAlpha ||
+    Math.abs(
+      state.remainingAlpha + state.spentAlpha - state.initialAlpha,
+    ) > 1e-12 ||
     !Number.isSafeInteger(state.gatesSpent) ||
     state.gatesSpent < 0
   ) {
@@ -627,12 +679,12 @@ function assertPolicy(
     "candidateFrozenAt",
     "presealedStratumWeights",
     "onlineErrorBudget",
+    "onlineErrorReservation",
     "integrationPoints",
     "replacementAttemptCeiling",
     "repair",
     "guardrails",
-    "behavioralRelease",
-    "privacyThresholdPassed",
+    "behavioralPolicy",
     "forbiddenReleaseLiterals",
     "forbiddenContentFingerprints",
     "graderCanaryFingerprints",
@@ -665,6 +717,28 @@ function assertPolicy(
   canonicalTimestamp(policy.candidateFrozenAt);
   assertStratumWeights(policy.presealedStratumWeights, panel);
   assertOnlineErrorBudget(policy.onlineErrorBudget);
+  if (request.stage === "validation") {
+    if (policy.onlineErrorReservation === null) {
+      throw new Error("Fresh validation lacks its pre-outcome online gate.");
+    }
+    assertTrustedOnlineErrorBudgetReservation(
+      policy.onlineErrorReservation,
+    );
+    if (
+      policy.onlineErrorReservation.requestId !== request.requestId ||
+      policy.onlineErrorReservation.requestHash !==
+        hashEvaluationRequest(request) ||
+      policy.onlineErrorReservation.protocolHash !== request.protocolHash ||
+      policy.onlineErrorReservation.dispositionAttestationHash !==
+        panel.dispositionAttestationHash ||
+      canonicalJson(policy.onlineErrorReservation.stateBefore) !==
+        canonicalJson(policy.onlineErrorBudget)
+    ) {
+      throw new Error("Fresh-validation online gate is detached.");
+    }
+  } else if (policy.onlineErrorReservation !== null) {
+    throw new Error("Only fresh validation may carry an online gate.");
+  }
   plainObject(policy.guardrails, [
     "externalIntegrityVeto",
     "correctnessVeto",
@@ -716,19 +790,40 @@ function assertPolicy(
     throw new Error("Cache evidence commitment does not match repair controls.");
   }
 
-  if (policy.behavioralRelease !== null) {
-    plainObject(policy.behavioralRelease, ["contentHash", "sourceSetHash"]);
-    digest(policy.behavioralRelease.contentHash);
-    digest(policy.behavioralRelease.sourceSetHash);
-  }
+  plainObject(policy.behavioralPolicy, [
+    "diagnosticsEnabled",
+    "comparison",
+    "maximumPrivacyReleases",
+    "diagnosticTtlMs",
+    "policyVersions",
+  ]);
+  plainObject(policy.behavioralPolicy.policyVersions, [
+    "protocol",
+    "broker",
+    "extraction",
+    "statistics",
+    "privacy",
+    "weighting",
+    "cache",
+    "repeatedTesting",
+    "leakScanner",
+  ]);
   if (
-    request.stage !== "validation" &&
-    (policy.behavioralRelease !== null || policy.privacyThresholdPassed)
-  ) {
-    throw new Error("Only validation may release privacy-thresholded behavior.");
-  }
-  if (
-    policy.privacyThresholdPassed !== (policy.behavioralRelease !== null) ||
+    typeof policy.behavioralPolicy.diagnosticsEnabled !== "boolean" ||
+    policy.behavioralPolicy.comparison !== "candidate-vs-champion" ||
+    !Number.isSafeInteger(
+      policy.behavioralPolicy.maximumPrivacyReleases,
+    ) ||
+    policy.behavioralPolicy.maximumPrivacyReleases < 1 ||
+    policy.behavioralPolicy.maximumPrivacyReleases > 1_000 ||
+    !Number.isSafeInteger(policy.behavioralPolicy.diagnosticTtlMs) ||
+    policy.behavioralPolicy.diagnosticTtlMs < 60_000 ||
+    policy.behavioralPolicy.diagnosticTtlMs > 24 * 60 * 60_000 ||
+    Object.values(policy.behavioralPolicy.policyVersions).some(
+      (version) =>
+        typeof version !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,199}$/u.test(version),
+    ) ||
     !Array.isArray(policy.forbiddenReleaseLiterals) ||
     !Array.isArray(policy.forbiddenContentFingerprints) ||
     !Array.isArray(policy.graderCanaryFingerprints) ||
@@ -799,6 +894,7 @@ function normalizeAttempts(input: {
     const item: NormalizedAttempt = {
       source: attempt,
       outcome,
+      behavior,
       behaviorHash: canonicalHash(behavior),
     };
     normalized.push(item);
@@ -877,6 +973,77 @@ function normalizeAttempts(input: {
     invalidCount,
     behaviorSourceSetHash,
     normalizedOutcomeSetHash,
+  };
+}
+
+function parsedExperimentNumber(experimentId: string): number {
+  const prefix = experimentId.split("-", 1)[0] ?? "";
+  const value = Number.parseInt(prefix, 10);
+  if (
+    !/^\d+$/u.test(prefix) ||
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    throw new Error("Behavioral preparation experiment is malformed.");
+  }
+  return value;
+}
+
+function createPrivateBehavioralPreparation(input: {
+  readonly request: TrustedEvaluationRequest;
+  readonly normalized: ReturnType<typeof normalizeAttempts>;
+  readonly policy: TrustedCanonicalDerivationPolicy;
+}): TrustedPrivateBehavioralPreparation | null {
+  if (
+    input.request.stage !== "validation" ||
+    !input.policy.behavioralPolicy.diagnosticsEnabled
+  ) {
+    return null;
+  }
+  const finalAttempts = [...input.normalized.byArm.values()].map(
+    (attempts) => attempts.final,
+  );
+  const observations: PrivateBehaviorObservation[] = finalAttempts.map(
+    (attempt) => ({
+      taskId: attempt.source.taskId,
+      arm: attempt.source.arm,
+      outcome:
+        attempt.outcome.outcome === "pass" ? "pass" : "fail",
+      behavior: attempt.behavior,
+    }),
+  );
+  const openedAt = new Date(
+    Math.min(
+      ...finalAttempts.map((attempt) =>
+        canonicalTimestamp(attempt.source.startedAt),
+      ),
+    ),
+  ).toISOString();
+  const closedAt = new Date(
+    Math.max(
+      ...finalAttempts.map((attempt) =>
+        canonicalTimestamp(attempt.source.completedAt),
+      ),
+    ),
+  ).toISOString();
+  return {
+    sensitivity: "trusted-private-behavioral-preparation",
+    requestHash: hashEvaluationRequest(input.request),
+    protocolHash: input.request.protocolHash,
+    experimentNumber: parsedExperimentNumber(
+      input.request.experimentId,
+    ),
+    behaviorSourceSetHash:
+      input.normalized.behaviorSourceSetHash,
+    analysisWindow: { openedAt, closedAt },
+    observations,
+    policy: input.policy.behavioralPolicy,
+    forbiddenReleaseLiterals:
+      input.policy.forbiddenReleaseLiterals,
+    forbiddenContentFingerprints:
+      input.policy.forbiddenContentFingerprints,
+    graderCanaryFingerprints:
+      input.policy.graderCanaryFingerprints,
   };
 }
 
@@ -1467,6 +1634,12 @@ function freshValidationInput(input: {
     accuracyTradeoffPredeclared:
       input.policy.guardrails.accuracyTradeoffPredeclared,
     onlineErrorBudget: input.policy.onlineErrorBudget,
+    ...(input.policy.onlineErrorReservation === null
+      ? {}
+      : {
+          reservedOnlineGate:
+            input.policy.onlineErrorReservation.allocation,
+        }),
     integrationPoints: input.policy.integrationPoints,
   } as const;
 }
@@ -1490,6 +1663,13 @@ function deriveValidationPayload(input: {
   const result = evaluateFreshValidation(
     freshValidationInput({ ...input, pairs }),
   );
+  const reservation = input.policy.onlineErrorReservation;
+  if (
+    reservation === null ||
+    result.onlineGateAlphaSpent !== reservation.accounting.alphaSpent
+  ) {
+    throw new Error("Validation did not use its reserved online gate.");
+  }
   return {
     kind: "validation",
     disposition: result.disposition,
@@ -1510,6 +1690,7 @@ function deriveValidationPayload(input: {
     },
     requiredPosteriorProbability: result.requiredPosteriorProbability,
     onlineGateAuthorized: result.onlineGateAuthorized,
+    onlineErrorBudget: reservation.accounting,
     stratumRegressionVeto: result.stratumRegressionVeto,
     integrityVeto: input.policy.guardrails.externalIntegrityVeto,
     correctnessVeto: input.policy.guardrails.correctnessVeto,
@@ -1665,6 +1846,8 @@ export class DeterministicCanonicalEvaluationDeriver
   readonly #hiddenOutcomeSigner: TrustedHiddenCatalogOutcomeUpdateSigner;
   readonly #hiddenOutcomeVerifier: TrustedHiddenCatalogOutcomeUpdateVerifier;
   readonly #hiddenOutcomeSink: TrustedHiddenCatalogOutcomeUpdateSink;
+  readonly #prepareBehavioral:
+    TrustedBehavioralPreparationStore["prepare"];
   readonly #now: () => Date;
 
   constructor(options: DeterministicCanonicalEvaluationDeriverOptions) {
@@ -1675,7 +1858,21 @@ export class DeterministicCanonicalEvaluationDeriver
       typeof options.policies?.resolve !== "function" ||
       typeof options.hiddenOutcomeSigner?.sign !== "function" ||
       typeof options.hiddenOutcomeVerifier?.verify !== "function" ||
-      typeof options.hiddenOutcomeSink?.commit !== "function"
+      typeof options.hiddenOutcomeSink?.commit !== "function" ||
+      (options.behavioralPreparationStore?.boundary !==
+        "trusted-cloud" &&
+        options.behavioralPreparationStore?.boundary !==
+          "test-only-in-memory") ||
+      typeof options.behavioralPreparationStore?.prepare !==
+        "function" ||
+      typeof options.behavioralPreparationStore?.resolve !==
+        "function" ||
+      typeof options.behavioralPreparationStore?.finalize !==
+        "function" ||
+      typeof options.behavioralPreparationStore?.abandon !==
+        "function" ||
+      typeof options.behavioralPreparationStore?.consume !==
+        "function"
     ) {
       throw new TrustedCanonicalDeriverError("policy-failed");
     }
@@ -1684,6 +1881,10 @@ export class DeterministicCanonicalEvaluationDeriver
     this.#hiddenOutcomeSigner = options.hiddenOutcomeSigner;
     this.#hiddenOutcomeVerifier = options.hiddenOutcomeVerifier;
     this.#hiddenOutcomeSink = options.hiddenOutcomeSink;
+    this.#prepareBehavioral =
+      options.behavioralPreparationStore.prepare.bind(
+        options.behavioralPreparationStore,
+      );
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -1734,13 +1935,6 @@ export class DeterministicCanonicalEvaluationDeriver
       ) {
         throw new Error("Infrastructure replacement ceiling was exceeded.");
       }
-      if (
-        policy.behavioralRelease !== null &&
-        policy.behavioralRelease.sourceSetHash !==
-          normalized.behaviorSourceSetHash
-      ) {
-        throw new Error("Behavioral release is detached from normalized ATIF evidence.");
-      }
       const derivedAt = this.#now().toISOString();
       assertTiming({
         request: input.request,
@@ -1778,14 +1972,13 @@ export class DeterministicCanonicalEvaluationDeriver
         payload,
         normalizedOutcomeSetHash: normalized.normalizedOutcomeSetHash,
         cacheAttestationHash: policy.cacheAttestationHash,
-        behavioralAggregateHash:
-          policy.behavioralRelease?.contentHash ?? null,
+        behavioralAggregateHash: null,
         derivedAt,
         releaseChecks: {
           graderCanaryScanPassed: true,
           contentFingerprintScanPassed: true,
           taskIdentityScanPassed: true,
-          privacyThresholdPassed: policy.privacyThresholdPassed,
+          privacyThresholdPassed: false,
         },
       };
       assertNoSensitiveReleaseMaterial({
@@ -1809,6 +2002,27 @@ export class DeterministicCanonicalEvaluationDeriver
         sink: this.#hiddenOutcomeSink,
         unsigned: hiddenCatalogUpdate,
       });
+      const preparation = createPrivateBehavioralPreparation({
+        request: input.request,
+        normalized,
+        policy,
+      });
+      if (preparation !== null) {
+        const receipt = await this.#prepareBehavioral(preparation);
+        const preparationHash =
+          hashTrustedBehavioralPreparation(preparation);
+        if (
+          (receipt.status !== "prepared" &&
+            receipt.status !== "already-prepared") ||
+          receipt.requestHash !== aggregate.requestHash ||
+          receipt.protocolHash !== aggregate.protocolHash ||
+          receipt.preparationHash !== preparationHash
+        ) {
+          throw new Error(
+            "Behavioral preparation durability receipt is detached.",
+          );
+        }
+      }
       return aggregate;
     } catch (error) {
       if (error instanceof TrustedCanonicalDeriverError) {

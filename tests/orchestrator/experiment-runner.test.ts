@@ -36,6 +36,7 @@ const budget: BudgetSnapshot = {
     maximumAttempts: 100,
     maximumPrivacyReleases: 5,
     maximumPromotionLooks: 5,
+    maximumOnlineError: 0.05,
   },
   usage: {
     spentUsd: 0,
@@ -44,6 +45,7 @@ const budget: BudgetSnapshot = {
     attempts: 0,
     privacyReleases: 0,
     promotionLooks: 0,
+    onlineErrorSpent: 0,
   },
 };
 
@@ -99,6 +101,18 @@ function validation(
     ...decisionInputs,
     requiredPosteriorProbability: 0.95,
     onlineGateAuthorized: true,
+    onlineErrorBudget: {
+      policyVersion: "online-alpha-spending-v1",
+      maximumOnlineError: 0.05,
+      gateOrdinal: 1,
+      alphaSpent: 0.05,
+      cumulativeSpentBefore: 0,
+      cumulativeSpentAfter: 0.05,
+      remainingAfter: 0,
+      reservationHash: "1".repeat(64),
+      priorStateHash: "2".repeat(64),
+      resultingStateHash: "3".repeat(64),
+    },
     stratumRegressionVeto: false,
     integrityVeto: false,
     correctnessVeto: false,
@@ -111,6 +125,7 @@ function validation(
     wallTimeMs: 10_000,
     attestationHash: HASH,
     releasedEvidenceHash: HASH,
+    behavioralSourceCommitmentHash: HASH,
     attemptAccounting: {
       policyVersion: "validation-attempt-ledger-v1",
       terminalStatus: "complete",
@@ -252,6 +267,11 @@ describe("walk-forward experiment runner", () => {
       stop: { requested: false },
     });
 
+    expect(fakeJournal.create).toHaveBeenCalledWith({
+      experiment: experiment(1),
+      activeChampionBefore: champions,
+      initialBudget: budget,
+    });
     expect(fakeBroker.prepareRepair).not.toHaveBeenCalled();
     expect(fakeBroker.runValidation).toHaveBeenCalledOnce();
     expect(fakeBroker.consumeOrQuarantine).toHaveBeenCalledWith(
@@ -260,6 +280,7 @@ describe("walk-forward experiment runner", () => {
     expect(result.activeChampion.activeCommit).toBe(CANDIDATE);
     expect(result.budget.usage.attempts).toBe(24);
     expect(result.budget.usage.promotionLooks).toBe(1);
+    expect(result.budget.usage.onlineErrorSpent).toBe(0.05);
     expect(result.budget.usage.privacyReleases).toBe(1);
     expect(fakeJournal.events.at(-1)).toBe("seal");
   });
@@ -385,10 +406,57 @@ describe("walk-forward experiment runner", () => {
     ).rejects.toThrow(/does not reproduce/u);
   });
 
+  it("rejects online alpha accounting that does not continue campaign usage", async () => {
+    const detached = {
+      ...validation("promoted"),
+      requiredPosteriorProbability: 0.96,
+      onlineErrorBudget: {
+        ...validation("promoted").onlineErrorBudget,
+        alphaSpent: 0.04,
+        cumulativeSpentBefore: 0.01,
+        cumulativeSpentAfter: 0.05,
+      },
+    };
+    const fakeBroker = broker(detached);
+    const runner = new ExperimentRunner({
+      optimizer: optimizer(null),
+      gates: {
+        run: vi.fn(async () => ({
+          passed: true,
+          integrityPassed: true,
+          protocolHash,
+          checksHash: HASH,
+          aggregateCostUsd: 1,
+          tokens: 10,
+          wallTimeMs: 100,
+          failureCode: null,
+        })),
+      },
+      broker: fakeBroker,
+      journal: journal(),
+      now: () => new Date("2026-01-02T00:00:00.000Z"),
+    });
+    await expect(
+      runner.run({
+        experiment: experiment(1),
+        activeChampion: champions,
+        budget,
+        diagnosticBrief: null,
+        previousDiscoveryAttestationHash: null,
+        repairAttemptOrdinal: 1,
+        stop: { requested: false },
+      }),
+    ).rejects.toThrow(/does not continue/u);
+    expect(fakeBroker.consumeOrQuarantine).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "started-abandoned" }),
+    );
+  });
+
   it("preauthorizes no diagnostic release when the privacy budget is exhausted", async () => {
     const noReleaseResult = {
       ...validation(),
       releasedEvidenceHash: null,
+      behavioralSourceCommitmentHash: null,
     };
     const fakeBroker = broker(noReleaseResult);
     const runner = new ExperimentRunner({

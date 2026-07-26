@@ -205,18 +205,26 @@ function request(
   index: number,
   options: {
     readonly candidate?: ReturnType<typeof artifact>;
+    readonly champion?: ReturnType<typeof artifact>;
+    readonly sourceExperimentId?: string;
+    readonly candidateAttempt?: 1 | 2;
+    readonly hypothesisHash?: string;
     readonly shadowSlice?: 1 | 2;
   } = {},
 ): TrustedEvaluationRequest {
   const candidate = options.candidate ?? artifact(index + 1);
+  const hypothesisHash = options.hypothesisHash ?? "d".repeat(64);
   const selection =
     stage === "repair"
       ? ({
           kind: "repair-reuse",
-          sourceExperimentId: `${Math.max(0, index - 1)}-source`,
+          sourceExperimentId:
+            options.sourceExperimentId ??
+            `${Math.max(0, index - 1)}-catalog`,
           taskCount: 5,
           attemptsPerTask: 1,
-          candidateAttempt: 1,
+          candidateAttempt: options.candidateAttempt ?? 1,
+          frozenHypothesisHash: hypothesisHash,
         } as const)
       : stage === "validation"
         ? ({
@@ -225,6 +233,7 @@ function request(
             attemptsPerArm: 1,
             pairOrder: "balanced-6-ab-6-ba",
             weightingPolicyHash: WEIGHTING_POLICY_HASH,
+            frozenHypothesisHash: hypothesisHash,
             hypothesisExclusionAttestationHash: "d".repeat(64),
           } as const)
         : ({
@@ -245,7 +254,7 @@ function request(
     protocolHash: HASH,
     complianceManifestHash: SECOND_HASH,
     candidate,
-    champion: artifact(9),
+    champion: options.champion ?? artifact(9),
     selection,
     executionProfile: {
       provider: "daytona",
@@ -357,6 +366,30 @@ function outcomeUpdate(
       signature: "A".repeat(86),
     },
   };
+}
+
+async function committedValidationSource(
+  brokerCatalog: DurableTrustedHiddenCatalog,
+  store: AtomicMemoryCatalogStore,
+  experimentIndex: number,
+  sourceSuffix: string,
+): Promise<{
+  readonly request: TrustedEvaluationRequest;
+  readonly requestHash: string;
+  readonly record: ReturnType<typeof allocation>;
+}> {
+  const sourceRequest = request("validation", experimentIndex);
+  const sourceHash = hashEvaluationRequest(sourceRequest);
+  await brokerCatalog.allocateAndConsume(
+    sourceRequest,
+    sourceHash,
+    `claim-source-${experimentIndex}`,
+  );
+  const record = allocation(store, sourceHash);
+  await brokerCatalog.commit(
+    outcomeUpdate(record, { sourceSuffix }),
+  );
+  return { request: sourceRequest, requestHash: sourceHash, record };
 }
 
 describe("durable trusted hidden-task catalog", () => {
@@ -518,24 +551,33 @@ describe("durable trusted hidden-task catalog", () => {
     expect(firstStore.state?.taskOrder).not.toContain(unkeyed);
   });
 
-  it("weights prior failures strongly while retaining the alternating easy canary", async () => {
+  it("weights only a committed discovery panel while retaining the alternating easy canary", async () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
+    const firstSource = await committedValidationSource(
+      brokerCatalog,
+      store,
+      9,
+      "a",
+    );
 
-    const firstRequest = request("repair", 10);
+    const firstRequest = request("repair", 10, {
+      sourceExperimentId: firstSource.request.experimentId,
+    });
     const firstHash = hashEvaluationRequest(firstRequest);
     const firstPanel = await brokerCatalog.allocateAndConsume(
       firstRequest,
       firstHash,
       "claim-repair-10",
     );
-    const firstNames = firstPanel.cells.map(
-      (cell) => store.state?.tasks[cell.taskId]?.packageTaskName,
-    );
     expect(JSON.stringify(firstPanel)).not.toContain("terminal-bench/task-");
-    expect(firstNames).toContain("terminal-bench/task-001");
-    expect(firstNames).not.toContain("terminal-bench/task-002");
+    const firstSourceIds = new Set(
+      firstSource.record.panel.cells.map((cell) => cell.taskId),
+    );
+    expect(
+      firstPanel.cells.every((cell) => firstSourceIds.has(cell.taskId)),
+    ).toBe(true);
     expect(allocation(store, firstHash).selectedBuckets).toEqual([
       "hard",
       "hard",
@@ -551,7 +593,15 @@ describe("durable trusted hidden-task catalog", () => {
       "terminal-bench/task-",
     );
 
-    const secondRequest = request("repair", 11);
+    const secondSource = await committedValidationSource(
+      brokerCatalog,
+      store,
+      11,
+      "b",
+    );
+    const secondRequest = request("repair", 12, {
+      sourceExperimentId: secondSource.request.experimentId,
+    });
     const secondHash = hashEvaluationRequest(secondRequest);
     await brokerCatalog.allocateAndConsume(
       secondRequest,
@@ -567,19 +617,235 @@ describe("durable trusted hidden-task catalog", () => {
     ]);
   });
 
+  it("reuses the exact five hidden tasks once, then exhausts the discovery panel", async () => {
+    const store = new AtomicMemoryCatalogStore();
+    const brokerCatalog = catalog(store);
+    await brokerCatalog.initialize();
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      13,
+      "8",
+    );
+    const firstRequest = request("repair", 14, {
+      sourceExperimentId: source.request.experimentId,
+      candidate: artifact(6),
+      candidateAttempt: 1,
+      hypothesisHash: "c".repeat(64),
+    });
+    const firstHash = hashEvaluationRequest(firstRequest);
+    const firstPanel = await brokerCatalog.allocateAndConsume(
+      firstRequest,
+      firstHash,
+      "claim-repair-first",
+    );
+    await brokerCatalog.commit(
+      outcomeUpdate(allocation(store, firstHash), {
+        sourceSuffix: "9",
+      }),
+    );
+
+    const repeatedCandidate = request("repair", 15, {
+      sourceExperimentId: source.request.experimentId,
+      candidate: artifact(6),
+      candidateAttempt: 2,
+      hypothesisHash: "b".repeat(64),
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        repeatedCandidate,
+        hashEvaluationRequest(repeatedCandidate),
+        "claim-repair-repeated-candidate",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+
+    const secondRequest = request("repair", 15, {
+      sourceExperimentId: source.request.experimentId,
+      candidate: artifact(7),
+      candidateAttempt: 2,
+      hypothesisHash: "b".repeat(64),
+    });
+    const secondHash = hashEvaluationRequest(secondRequest);
+    const secondPanel = await brokerCatalog.allocateAndConsume(
+      secondRequest,
+      secondHash,
+      "claim-repair-second",
+    );
+    expect(secondPanel.cells).toEqual(firstPanel.cells);
+    expect(allocation(store, secondHash)).toMatchObject({
+      repairSourceExperimentId: source.request.experimentId,
+      repairSourceRequestHash: source.requestHash,
+      repairAttemptOrdinal: 2,
+      frozenHypothesisDigest: "b".repeat(64),
+    });
+
+    const nextSource = await committedValidationSource(
+      brokerCatalog,
+      store,
+      16,
+      "a",
+    );
+    const nextFirstRequest = request("repair", 17, {
+      sourceExperimentId: nextSource.request.experimentId,
+      candidate: artifact(8),
+      candidateAttempt: 1,
+    });
+    const nextFirstHash =
+      hashEvaluationRequest(nextFirstRequest);
+    await brokerCatalog.allocateAndConsume(
+      nextFirstRequest,
+      nextFirstHash,
+      "claim-next-new-repair-panel",
+    );
+    expect(allocation(store, nextFirstHash).selectedBuckets).toEqual([
+      "hard",
+      "hard",
+      "hard",
+      "uncertain",
+      "coverage",
+    ]);
+
+    const exhausted = request("repair", 16, {
+      sourceExperimentId: source.request.experimentId,
+      candidate: artifact(8),
+      candidateAttempt: 2,
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        exhausted,
+        hashEvaluationRequest(exhausted),
+        "claim-repair-exhausted",
+      ),
+    ).rejects.toMatchObject({ code: "allocation-exhausted" });
+  });
+
+  it("rejects an uncommitted, protocol-incompatible, or inactive-champion discovery source", async () => {
+    const uncommittedStore = new AtomicMemoryCatalogStore();
+    const uncommittedCatalog = catalog(uncommittedStore);
+    await uncommittedCatalog.initialize();
+    const uncommittedSource = request("validation", 16);
+    const uncommittedSourceHash =
+      hashEvaluationRequest(uncommittedSource);
+    await uncommittedCatalog.allocateAndConsume(
+      uncommittedSource,
+      uncommittedSourceHash,
+      "claim-uncommitted-source",
+    );
+    const fromUncommitted = request("repair", 17, {
+      sourceExperimentId: uncommittedSource.experimentId,
+    });
+    await expect(
+      uncommittedCatalog.allocateAndConsume(
+        fromUncommitted,
+        hashEvaluationRequest(fromUncommitted),
+        "claim-from-uncommitted-source",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+
+    const store = new AtomicMemoryCatalogStore();
+    const brokerCatalog = catalog(store);
+    await brokerCatalog.initialize();
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      16,
+      "7",
+    );
+    const protocolMismatchBase = request("repair", 17, {
+      sourceExperimentId: source.request.experimentId,
+    });
+    const incompatibleProtocol = "e".repeat(64);
+    const protocolMismatch: TrustedEvaluationRequest = {
+      ...protocolMismatchBase,
+      protocolHash: incompatibleProtocol,
+      executionProfile: {
+        ...protocolMismatchBase.executionProfile,
+        protocolHash: incompatibleProtocol,
+      },
+    };
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        protocolMismatch,
+        hashEvaluationRequest(protocolMismatch),
+        "claim-protocol-mismatch",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+
+    const inactiveChampion = request("repair", 17, {
+      sourceExperimentId: source.request.experimentId,
+      champion: artifact(8),
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        inactiveChampion,
+        hashEvaluationRequest(inactiveChampion),
+        "claim-inactive-champion",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+  });
+
+  it("requires a committed first repair before reusing its panel", async () => {
+    const store = new AtomicMemoryCatalogStore();
+    const brokerCatalog = catalog(store);
+    await brokerCatalog.initialize();
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      18,
+      "8",
+    );
+    const first = request("repair", 19, {
+      sourceExperimentId: source.request.experimentId,
+      candidate: artifact(4),
+      candidateAttempt: 1,
+    });
+    await brokerCatalog.allocateAndConsume(
+      first,
+      hashEvaluationRequest(first),
+      "claim-uncommitted-first-repair",
+    );
+    const second = request("repair", 20, {
+      sourceExperimentId: source.request.experimentId,
+      candidate: artifact(5),
+      candidateAttempt: 2,
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        second,
+        hashEvaluationRequest(second),
+        "claim-second-before-commit",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+  });
+
   it("allocates fresh hypothesis-disjoint validation with exact balanced AB/BA order", async () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      19,
+      "c",
+    );
     const candidate = artifact(2);
-    const repairRequest = request("repair", 20, { candidate });
+    const repairRequest = request("repair", 20, {
+      candidate,
+      sourceExperimentId: source.request.experimentId,
+    });
     const repairHash = hashEvaluationRequest(repairRequest);
     const repairPanel = await brokerCatalog.allocateAndConsume(
       repairRequest,
       repairHash,
       "claim-hypothesis-repair",
     );
-    const validationRequest = request("validation", 21, { candidate });
+    await brokerCatalog.commit(
+      outcomeUpdate(allocation(store, repairHash), {
+        candidatePass: true,
+        sourceSuffix: "f",
+      }),
+    );
+    const validationRequest = request("validation", 20, { candidate });
     const validationHash = hashEvaluationRequest(validationRequest);
     const carryBeforeValidation = requiredState(store).validationCarry;
     const validationPanel = await brokerCatalog.allocateAndConsume(
@@ -613,11 +879,96 @@ describe("durable trusted hidden-task catalog", () => {
     );
   });
 
+  it("binds same-iteration fresh validation to the committed repair candidate and hypothesis", async () => {
+    const store = new AtomicMemoryCatalogStore();
+    const brokerCatalog = catalog(store);
+    await brokerCatalog.initialize();
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      21,
+      "9",
+    );
+    const candidate = artifact(3);
+    const repairRequest = request("repair", 22, {
+      candidate,
+      sourceExperimentId: source.request.experimentId,
+      hypothesisHash: "c".repeat(64),
+    });
+    const repairHash = hashEvaluationRequest(repairRequest);
+    await brokerCatalog.allocateAndConsume(
+      repairRequest,
+      repairHash,
+      "claim-validation-binding-repair",
+    );
+
+    const beforeCommit = request("validation", 22, {
+      candidate,
+      hypothesisHash: "c".repeat(64),
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        beforeCommit,
+        hashEvaluationRequest(beforeCommit),
+        "claim-validation-before-repair-commit",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+
+    await brokerCatalog.commit(
+      outcomeUpdate(allocation(store, repairHash), {
+        candidatePass: true,
+        sourceSuffix: "a",
+      }),
+    );
+    const wrongCandidate = request("validation", 22, {
+      candidate: artifact(4),
+      hypothesisHash: "c".repeat(64),
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        wrongCandidate,
+        hashEvaluationRequest(wrongCandidate),
+        "claim-validation-wrong-candidate",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+
+    const wrongHypothesis = request("validation", 22, {
+      candidate,
+      hypothesisHash: "b".repeat(64),
+    });
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        wrongHypothesis,
+        hashEvaluationRequest(wrongHypothesis),
+        "claim-validation-wrong-hypothesis",
+      ),
+    ).rejects.toMatchObject({ code: "request-invalid" });
+
+    await expect(
+      brokerCatalog.allocateAndConsume(
+        beforeCommit,
+        hashEvaluationRequest(beforeCommit),
+        "claim-validation-after-repair-commit",
+      ),
+    ).resolves.toMatchObject({
+      stage: "validation",
+      cells: expect.any(Array),
+    });
+  });
+
   it("makes request-hash and claim-token replay idempotent and conflicts fail closed", async () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const evaluationRequest = request("repair", 30);
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      29,
+      "d",
+    );
+    const evaluationRequest = request("repair", 30, {
+      sourceExperimentId: source.request.experimentId,
+    });
     const requestHash = hashEvaluationRequest(evaluationRequest);
     const first = await brokerCatalog.allocateAndConsume(
       evaluationRequest,
@@ -655,7 +1006,15 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const evaluationRequest = request("repair", 40);
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      39,
+      "e",
+    );
+    const evaluationRequest = request("repair", 40, {
+      sourceExperimentId: source.request.experimentId,
+    });
     const requestHash = hashEvaluationRequest(evaluationRequest);
     store.throwAfterNextCommit = true;
     await expect(
@@ -729,7 +1088,24 @@ describe("durable trusted hidden-task catalog", () => {
     const secondCatalog = catalog(secondStore, { nonce: nonceFactory(100) });
     await firstCatalog.initialize();
     await secondCatalog.initialize();
-    const evaluationRequest = request("repair", 60);
+    const firstSource = await committedValidationSource(
+      firstCatalog,
+      firstStore,
+      59,
+      "a",
+    );
+    const secondSource = await committedValidationSource(
+      secondCatalog,
+      secondStore,
+      59,
+      "a",
+    );
+    expect(secondSource.request.experimentId).toBe(
+      firstSource.request.experimentId,
+    );
+    const evaluationRequest = request("repair", 60, {
+      sourceExperimentId: firstSource.request.experimentId,
+    });
     const requestHash = hashEvaluationRequest(evaluationRequest);
     const first = await firstCatalog.allocateAndConsume(
       evaluationRequest,
@@ -804,7 +1180,15 @@ describe("durable trusted hidden-task catalog", () => {
     const store = new AtomicMemoryCatalogStore();
     const brokerCatalog = catalog(store);
     await brokerCatalog.initialize();
-    const evaluationRequest = request("repair", 71);
+    const source = await committedValidationSource(
+      brokerCatalog,
+      store,
+      70,
+      "6",
+    );
+    const evaluationRequest = request("repair", 71, {
+      sourceExperimentId: source.request.experimentId,
+    });
     const requestHash = hashEvaluationRequest(evaluationRequest);
     await brokerCatalog.allocateAndConsume(
       evaluationRequest,
@@ -842,13 +1226,25 @@ describe("durable trusted hidden-task catalog", () => {
     ).rejects.toMatchObject({ code: "outcome-conflict" });
 
     const rejectedStore = new AtomicMemoryCatalogStore();
+    let signatureChecks = 0;
     const rejectingCatalog = catalog(rejectedStore, {
       outcomeVerifier: {
-        verify: async () => false,
+        verify: async () => {
+          signatureChecks += 1;
+          return signatureChecks === 1;
+        },
       },
     });
     await rejectingCatalog.initialize();
-    const rejectedRequest = request("repair", 72);
+    const rejectedSource = await committedValidationSource(
+      rejectingCatalog,
+      rejectedStore,
+      71,
+      "7",
+    );
+    const rejectedRequest = request("repair", 72, {
+      sourceExperimentId: rejectedSource.request.experimentId,
+    });
     const rejectedHash = hashEvaluationRequest(rejectedRequest);
     await rejectingCatalog.allocateAndConsume(
       rejectedRequest,

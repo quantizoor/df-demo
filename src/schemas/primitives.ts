@@ -134,6 +134,8 @@ export const SignatureSchema = Type.Object(
 );
 
 export type Signature = Static<typeof SignatureSchema>;
+export type PolicyVersions = Static<typeof PolicyVersionsSchema>;
+export type PrivacySupport = Static<typeof PrivacySupportSchema>;
 
 export const CountBandSchema = Type.Union([
   Type.Literal("0"),

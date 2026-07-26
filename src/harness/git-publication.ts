@@ -206,7 +206,12 @@ function publicationRefs(experimentId: string): {
   readonly branchRef: string;
   readonly tagRef: string;
 } {
-  if (!EXPERIMENT_ID.test(experimentId)) {
+  const ordinal = Number.parseInt(experimentId.split("-", 1)[0] ?? "", 10);
+  if (
+    !EXPERIMENT_ID.test(experimentId) ||
+    !Number.isSafeInteger(ordinal) ||
+    ordinal < 1
+  ) {
     throw new TrustedGitContractError("Git publication experiment identifier is invalid.");
   }
   return {

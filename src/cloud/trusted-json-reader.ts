@@ -16,6 +16,7 @@ export class TrustedJsonArtifactReaderError extends Error {
 export class VerifyingTrustedJsonArtifactReader
   implements TrustedOptimizerArtifactReader
 {
+  readonly boundary = "trusted-cloud" as const;
   readonly #bridge: TrustedArtifactBridge;
 
   constructor(bridge: TrustedArtifactBridge) {

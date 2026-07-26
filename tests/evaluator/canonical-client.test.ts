@@ -9,17 +9,30 @@ import {
   EphemeralCanonicalEvaluatorReplayLedger,
   type CanonicalEvaluatorKeyring,
   type CanonicalEvaluatorTransport,
+  type ReleasedEvaluationBundle,
 } from "../../src/evaluator/canonical-client.js";
 import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "../../src/evaluator/contracts.js";
 import {
+  resultEnvelopeBehavioralSourceCommitmentHash,
+} from "../../src/evaluator/release-lineage.js";
+import {
   createEd25519Signature,
 } from "../../src/evidence/signatures.js";
+import type {
+  BehavioralEvidence,
+  DiagnosticBrief,
+  FailureCards,
+} from "../../src/schemas/artifacts.js";
 import {
   withContentHash,
 } from "../../src/schemas/canonical.js";
+import type {
+  SignedBehavioralRelease,
+  SignedResultEnvelope,
+} from "../../src/schemas/trusted.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -59,6 +72,7 @@ function request(overrides: Partial<TrustedEvaluationRequest> = {}): TrustedEval
       attemptsPerArm: 1,
       pairOrder: "balanced-6-ab-6-ba",
       weightingPolicyHash: HASH_A,
+      frozenHypothesisHash: HASH_B,
       hypothesisExclusionAttestationHash: HASH_B,
     },
     executionProfile: {
@@ -175,6 +189,18 @@ function releaseBundle(
         },
         requiredPosteriorProbability: 0.98,
         onlineGateAuthorized: true,
+        onlineErrorBudget: {
+          policyVersion: "online-alpha-spending-v1",
+          maximumOnlineError: 0.05,
+          gateOrdinal: 1,
+          alphaSpent: 0.02,
+          cumulativeSpentBefore: 0,
+          cumulativeSpentAfter: 0.02,
+          remainingAfter: 0.03,
+          reservationHash: "3".repeat(64),
+          priorStateHash: "4".repeat(64),
+          resultingStateHash: "5".repeat(64),
+        },
         stratumRegressionVeto: false,
         integrityVeto: false,
         correctnessVeto: false,
@@ -220,6 +246,146 @@ function releaseBundle(
     behavioralEvidence: null,
     failureCards: null,
     diagnosticBrief: null,
+  };
+}
+
+function diagnosticReleaseBundle(
+  evaluationRequest: TrustedEvaluationRequest,
+  privateKey: KeyObject,
+  legacySourceReference = false,
+): ReleasedEvaluationBundle {
+  const base = releaseBundle(
+    evaluationRequest,
+    privateKey,
+  ) as ReleasedEvaluationBundle;
+  const {
+    contentHash: _baseContentHash,
+    signature: _baseSignature,
+    ...resultBody
+  } = base.result;
+  const provisionalResult = signedDocument(
+    {
+      ...resultBody,
+      derivation: {
+        ...base.result.derivation,
+        behavioralAggregateHash: "f".repeat(64),
+      },
+      releaseChecks: {
+        ...base.result.releaseChecks,
+        privacyThresholdPassed: true,
+      },
+    },
+    privateKey,
+  ) as unknown as SignedResultEnvelope;
+  const sourceHash = legacySourceReference
+    ? provisionalResult.contentHash
+    : resultEnvelopeBehavioralSourceCommitmentHash(
+        provisionalResult,
+      );
+  const policyVersions = {
+    protocol: "protocol-v1",
+    broker: "broker-v1",
+    extraction: "extraction-v1",
+    statistics: "statistics-v1",
+    privacy: "privacy-v1",
+    weighting: "weighting-v1",
+    cache: "cache-v1",
+    repeatedTesting: "testing-v1",
+    leakScanner: "scanner-v1",
+  };
+  const support = {
+    distinctTaskCountBand: "10-19" as const,
+    trajectoryCountBand: "20-39" as const,
+    minimumComparedGroupSizeBand: "10-19" as const,
+    complementaryCountSuppressionPassed: true,
+    differencingBudgetPassed: true,
+  };
+  const evidence = withContentHash({
+    schemaVersion: "1.0.0",
+    createdAt: DERIVED_AT,
+    provenanceRefs: [],
+    experimentNumber: 1,
+    sourceEnvelopeHash: sourceHash,
+    protocolHash: evaluationRequest.protocolHash,
+    policyVersions,
+    analysisWindow: {
+      openedAt: SUBMITTED_AT,
+      closedAt: DERIVED_AT,
+      support,
+    },
+    metrics: [],
+    suppressedFindingCountBand: "0" as const,
+    releaseChecksPassed: true,
+    derivationHash: HASH_A,
+  }) as BehavioralEvidence;
+  const cards = withContentHash({
+    schemaVersion: "1.0.0",
+    createdAt: DERIVED_AT,
+    provenanceRefs: [],
+    experimentNumber: 1,
+    behavioralEvidenceHash: evidence.contentHash,
+    cards: [],
+    suppressionApplied: true,
+    policyVersions,
+  }) as FailureCards;
+  const brief = withContentHash({
+    schemaVersion: "1.0.0",
+    createdAt: DERIVED_AT,
+    provenanceRefs: [],
+    experimentNumber: 1,
+    releaseId: "diagnostic-001",
+    sourceExperimentNumber: 1,
+    aggregateEvidenceHash: evidence.contentHash,
+    failureCardsHash: cards.contentHash,
+    policyVersions,
+    status: "no-actionable-evidence" as const,
+    cards: [],
+    limitations: ["No statistically supported generic pattern was released."],
+    oneUse: true as const,
+    expiresAt: "2026-07-26T14:00:00.000Z",
+  }) as DiagnosticBrief;
+  const release = signedDocument(
+    {
+      schemaVersion: "1.0.0",
+      createdAt: DERIVED_AT,
+      provenanceRefs: [],
+      releaseId: brief.releaseId,
+      experimentNumber: 1,
+      sourceResultEnvelopeHash: sourceHash,
+      protocolHash: evaluationRequest.protocolHash,
+      policyVersions,
+      support,
+      aggregateArtifactHashes: {
+        behavioralEvidence: evidence.contentHash,
+        failureCards: cards.contentHash,
+        diagnosticBrief: brief.contentHash,
+      },
+      suppressedFindingCountBand: "0",
+      releaseOnce: true,
+    },
+    privateKey,
+  ) as unknown as SignedBehavioralRelease;
+  const result = signedDocument(
+    {
+      ...resultBody,
+      derivation: {
+        ...base.result.derivation,
+        behavioralAggregateHash: release.contentHash,
+      },
+      releaseChecks: {
+        ...base.result.releaseChecks,
+        privacyThresholdPassed: true,
+      },
+    },
+    privateKey,
+  ) as unknown as SignedResultEnvelope;
+  return {
+    result,
+    cacheAttestation: base.cacheAttestation,
+    behavioralRelease: release,
+    behavioralEvidence: evidence,
+    failureCards: cards,
+    diagnosticBrief: brief,
   };
 }
 
@@ -276,6 +442,35 @@ describe("canonical evaluator client", () => {
         },
       },
     });
+  });
+
+  it("accepts the cycle-free behavioral source commitment", async () => {
+    const evaluationRequest = request();
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { evaluator } = client(
+      diagnosticReleaseBundle(evaluationRequest, privateKey),
+      publicKey,
+    );
+    const bundle = await evaluator.evaluate(evaluationRequest);
+    expect(bundle.behavioralRelease?.sourceResultEnvelopeHash).toBe(
+      resultEnvelopeBehavioralSourceCommitmentHash(bundle.result),
+    );
+  });
+
+  it("rejects the legacy cyclic full-envelope source reference", async () => {
+    const evaluationRequest = request();
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { evaluator } = client(
+      diagnosticReleaseBundle(
+        evaluationRequest,
+        privateKey,
+        true,
+      ),
+      publicKey,
+    );
+    await expect(evaluator.evaluate(evaluationRequest)).rejects.toThrow(
+      /hash lineage/u,
+    );
   });
 
   it("burns one-use requests before submission and rejects a replay", async () => {

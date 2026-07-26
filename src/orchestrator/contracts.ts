@@ -3,6 +3,7 @@ import type {
   ChampionPointers,
   ExperimentIdentity,
 } from "../domain/models.js";
+import type { ReleaseSafeOnlineErrorBudgetAccounting } from "../evaluation/statistics.js";
 import type { ReleaseSafeTerminalValidationAttemptAccounting } from "../evaluation/validation-attempt-ledger.js";
 
 export interface DiagnosticBriefReference {
@@ -73,6 +74,7 @@ export interface ValidationAggregate {
   readonly medianAccuracyDelta: number;
   readonly requiredPosteriorProbability: number;
   readonly onlineGateAuthorized: boolean;
+  readonly onlineErrorBudget: ReleaseSafeOnlineErrorBudgetAccounting;
   readonly stratumRegressionVeto: boolean;
   readonly integrityVeto: boolean;
   readonly correctnessVeto: boolean;
@@ -85,6 +87,7 @@ export interface ValidationAggregate {
   readonly wallTimeMs: number;
   readonly attestationHash: string;
   readonly releasedEvidenceHash: string | null;
+  readonly behavioralSourceCommitmentHash: string | null;
   readonly attemptAccounting: ReleaseSafeTerminalValidationAttemptAccounting;
 }
 
@@ -158,6 +161,7 @@ export interface ExperimentJournal {
   create(input: {
     readonly experiment: ExperimentIdentity;
     readonly activeChampionBefore: ChampionPointers;
+    readonly initialBudget: BudgetSnapshot;
   }): Promise<void>;
   freezeProposal(input: {
     readonly experiment: ExperimentIdentity;

@@ -22,6 +22,20 @@ class AtomicMemoryStore implements AtomicOneUseLedgerStore {
 }
 
 describe("durable one-use ledger protocol", () => {
+  it("inspects completion state without creating a claim", async () => {
+    const store = new AtomicMemoryStore();
+    const ledger = new DurableOneUseRequestLedger({
+      store,
+      claimTokenFactory: () => "claim-001",
+    });
+    const requestHash = "a".repeat(64);
+
+    await expect(
+      ledger.inspect("request-001", requestHash),
+    ).resolves.toEqual({ state: "missing" });
+    expect(store.state).toEqual(emptyOneUseLedgerState());
+  });
+
   it("is idempotent for one immutable request and rejects request-ID mutation", async () => {
     const ledger = new DurableOneUseRequestLedger({
       store: new AtomicMemoryStore(),

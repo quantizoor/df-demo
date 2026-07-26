@@ -57,6 +57,7 @@ function validationRequest(): TrustedEvaluationRequest {
       attemptsPerArm: 1,
       pairOrder: "balanced-6-ab-6-ba",
       weightingPolicyHash: HASH,
+      frozenHypothesisHash: SECOND_HASH,
       hypothesisExclusionAttestationHash: SECOND_HASH,
     },
     executionProfile: {
@@ -233,6 +234,7 @@ describe("trusted evaluation request", () => {
         taskCount: 5,
         attemptsPerTask: 1,
         candidateAttempt: 1,
+        frozenHypothesisHash: SECOND_HASH,
       } as const,
     };
     expect(() => assertEvaluationRequest(request)).toThrow(/fresh matched/u);

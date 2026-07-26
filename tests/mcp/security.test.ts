@@ -53,6 +53,19 @@ describe("MCP evidence security", () => {
     ).toThrow(/protected literal/u);
     expect(() =>
       assertTaskAgnosticSubmission({
+        causalClaim: "Inspect /var/private/control.json.",
+      }),
+    ).toThrow(/protected literal/u);
+    expect(() =>
+      assertTaskAgnosticSubmission({
+        causalClaim: Buffer.from(
+          "/root/grader/answer.txt",
+          "utf8",
+        ).toString("base64url"),
+      }),
+    ).toThrow(/protected literal/u);
+    expect(() =>
+      assertTaskAgnosticSubmission({
         causalClaim:
           "Generic execution recovery should inspect failures before choosing another action.",
       }),

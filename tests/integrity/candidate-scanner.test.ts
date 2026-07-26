@@ -76,4 +76,26 @@ describe("candidate integrity scanner", () => {
       expect.arrayContaining([expect.objectContaining({ code: "TASK_FRAGMENT_MATCH" })]),
     );
   });
+
+  it("rejects changed opaque files and Git binary patches", () => {
+    const result = scanCandidate({
+      changedFiles: [
+        "packages/coding-agent/src/opaque",
+        "packages/coding-agent/src/payload.bin",
+      ],
+      unifiedDiff:
+        "diff --git a/packages/coding-agent/src/payload.bin b/packages/coding-agent/src/payload.bin\nGIT binary patch\nliteral 4\nLcmeZt\n",
+      addedLines: 0,
+      deletedLines: 0,
+      taskFragmentHashes: new Set(),
+    });
+
+    expect(result.passed).toBe(false);
+    expect(
+      result.violations.filter(
+        (violation) =>
+          violation.code === "OPAQUE_BINARY_CHANGE",
+      ),
+    ).toHaveLength(3);
+  });
 });

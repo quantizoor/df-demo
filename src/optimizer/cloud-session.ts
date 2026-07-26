@@ -14,7 +14,10 @@ import type { ExperimentIdentity } from "../domain/models.js";
 import {
   trustedGitCandidateBundleRef,
 } from "../harness/git-publication.js";
-import type { GitSourceTarget } from "../harness/git-source.js";
+import {
+  TRUSTED_GIT_SOURCE_BUNDLE_REF,
+  type GitSourceTarget,
+} from "../harness/git-source.js";
 import type { RepositoryRegistration } from "../harness/repository.js";
 import {
   assertGitObjectId,
@@ -374,9 +377,13 @@ function sourceIdentity(source: OptimizerGitSource): {
     "application/vnd.git.bundle",
     "Optimizer source Git bundle",
   );
-  if (source.bundleRef !== trustedGitCandidateBundleRef(
-    source.bundleRef.slice("refs/heads/df/bundle/".length),
-  )) {
+  if (
+    source.target.remoteRef !== source.bundleRef ||
+    (source.bundleRef !== TRUSTED_GIT_SOURCE_BUNDLE_REF &&
+      source.bundleRef !== trustedGitCandidateBundleRef(
+        source.bundleRef.slice("refs/heads/df/bundle/".length),
+      ))
+  ) {
     throw new CloudOptimizerSessionError(
       "Optimizer bundle source ref is outside the candidate namespace.",
     );

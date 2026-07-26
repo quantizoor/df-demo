@@ -42,6 +42,7 @@ function request(): TrustedEvaluationRequest {
       attemptsPerArm: 1,
       pairOrder: "balanced-6-ab-6-ba",
       weightingPolicyHash: "3".repeat(64),
+      frozenHypothesisHash: "4".repeat(64),
       hypothesisExclusionAttestationHash: "4".repeat(64),
     },
     executionProfile: {
@@ -91,6 +92,18 @@ function aggregate(evaluationRequest: TrustedEvaluationRequest): TrustedCanonica
       },
       requiredPosteriorProbability: 0.95,
       onlineGateAuthorized: true,
+      onlineErrorBudget: {
+        policyVersion: "online-alpha-spending-v1",
+        maximumOnlineError: 0.05,
+        gateOrdinal: 1,
+        alphaSpent: 0.05,
+        cumulativeSpentBefore: 0,
+        cumulativeSpentAfter: 0.05,
+        remainingAfter: 0,
+        reservationHash: "3".repeat(64),
+        priorStateHash: "4".repeat(64),
+        resultingStateHash: "5".repeat(64),
+      },
       stratumRegressionVeto: false,
       integrityVeto: false,
       correctnessVeto: false,
@@ -115,7 +128,7 @@ function aggregate(evaluationRequest: TrustedEvaluationRequest): TrustedCanonica
       graderCanaryScanPassed: true,
       contentFingerprintScanPassed: true,
       taskIdentityScanPassed: true,
-      privacyThresholdPassed: true,
+      privacyThresholdPassed: false,
     },
   };
 }

@@ -5,6 +5,16 @@ import {
   type BootstrapConfiguration,
 } from "../config/environment.js";
 import { inspectPiHarnessSourceEnvironment } from "../config/harness-source.js";
+import { canonicalJson } from "../schemas/canonical.js";
+import {
+  inspectStagedControlEnvironment,
+  type StagedControlConfiguration,
+} from "./control-stage-configuration.js";
+import {
+  parseProductionOptimizeBootstrapDescriptorEnvironment,
+  PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME,
+  type ProductionOptimizeBootstrapDescriptor,
+} from "./production-optimize-bootstrap.js";
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SAFE_CAMPAIGN_ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/u;
@@ -17,6 +27,94 @@ const CONTROL_MOUNT_PATH = "/trusted/dark-factory";
 const CONTROL_ENTRYPOINT = "/app/dist/cloud/control-plane.js";
 const MAXIMUM_CONTROL_TTL_MINUTES = 24 * 60;
 const MAXIMUM_CONTROL_OUTPUT_BYTES = 4 * 1024 * 1024;
+const OFFLINE_CONTROL_ENVIRONMENT_NAMES = [
+  "DF_CLOUD_PROVIDER",
+  "DF_CLOUD_REGION_CLASS",
+  "DF_CONTROL_IMAGE_REFERENCE",
+  "DF_CONTROL_IMAGE_DIGEST",
+] as const;
+const PROBE_CONTROL_ENVIRONMENT_NAMES = [
+  ...OFFLINE_CONTROL_ENVIRONMENT_NAMES,
+  "DAYTONA_API_URL",
+  "DAYTONA_TARGET",
+  "DF_BUILD_IMAGE_REFERENCE",
+  "DF_BUILD_IMAGE_DIGEST",
+  "DF_EVALUATOR_IMAGE_REFERENCE",
+  "DF_EVALUATOR_IMAGE_DIGEST",
+] as const;
+const OPTIMIZE_CONTROL_ENVIRONMENT_NAMES = [
+  ...PROBE_CONTROL_ENVIRONMENT_NAMES,
+  "DF_OPTIMIZER_IMAGE_REFERENCE",
+  "DF_OPTIMIZER_IMAGE_DIGEST",
+  "DF_OPTIMIZER_MODEL",
+  "DF_OPTIMIZER_EFFORT",
+  "DF_CLAUDE_CODE_VERSION",
+  "DF_OPTIMIZER_SECRET_SOURCE",
+  "DF_OPTIMIZER_SECRET_TARGET",
+  "DF_EVALUATED_PROVIDER",
+  "DF_EVALUATED_MODEL",
+  "DF_EVALUATED_REASONING",
+  "DF_EVALUATED_SECRET_BINDINGS_JSON",
+  "DF_GITHUB_SECRET_SOURCE",
+  "DF_HARBOR_SECRET_BINDINGS_JSON",
+  "DF_MODE",
+  "DF_LEADERBOARD_ELIGIBILITY",
+  "DF_TRUSTED_ZONE",
+  "DF_SIGNING_KEY_ID",
+  "DF_HARBOR_VERSION",
+  "DF_TBENCH_REGISTRY_REVISION",
+  "DF_TBENCH_DATASET_CONTENT_SHA256",
+  "DF_TBENCH_DATASET_MANIFEST_SHA256",
+  "DF_HARBOR_PACKAGE_SHA256",
+  "DF_HARBOR_EXECUTABLE_SHA256",
+  "DF_PI_HARBOR_ADAPTER_SHA256",
+  "DF_BUDGET_USD",
+  "DF_BUDGET_TOKENS",
+  "DF_BUDGET_WALL_TIME_MINUTES",
+  "DF_BUDGET_ATTEMPTS",
+  "DF_BUDGET_PRIVACY_RELEASES",
+  "DF_BUDGET_PROMOTION_LOOKS",
+  "DF_BUDGET_ONLINE_ERROR",
+] as const;
+const OPTIMIZE_SOURCE_ENVIRONMENT_NAMES = [
+  "DF_PI_GITHUB_OWNER",
+  "DF_PI_GITHUB_REPOSITORY",
+  "DF_PI_BRANCH",
+  "DF_PI_BASELINE_COMMIT",
+  "DF_PI_BASELINE_TREE",
+  "DF_PI_PACKAGE_LOCK_SHA256",
+  "DF_PI_CODING_AGENT_VERSION",
+] as const;
+const CONTROL_RUNTIME_ENVIRONMENT_NAMES = new Set<string>([
+  ...OPTIMIZE_CONTROL_ENVIRONMENT_NAMES,
+  ...OPTIMIZE_SOURCE_ENVIRONMENT_NAMES,
+  "DF_CLOUD_EXECUTION",
+  "DF_TRUSTED_CONTROL_PLANE",
+  "DF_TRUSTED_VOLUME_ROOT",
+  "DF_CAMPAIGN_ID",
+  "DF_CAMPAIGN_STATE_ROOT",
+  "DF_DAYTONA_VOLUME_ID",
+  "DF_DAYTONA_VOLUME_SUBPATH",
+  PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME,
+  "DAYTONA_API_KEY",
+  "DAYTONA_WORKSPACE_ID",
+  "DAYTONA_SANDBOX_ID",
+  "PATH",
+  "HOME",
+  "SHELL",
+  "ENV",
+  "BASH_ENV",
+  "ZDOTDIR",
+  "IFS",
+  "CDPATH",
+  "GLOBIGNORE",
+  "PROMPT_COMMAND",
+  "LC_ALL",
+  "LANG",
+  "LANGUAGE",
+]);
+const CONTROL_RUNTIME_ENVIRONMENT_PREFIX =
+  /^(?:DAYTONA|GITHUB|RUNNER|NODE|NPM|PNPM|COREPACK|LD|DYLD|LC)_/u;
 
 export type CloudControlCommand =
   | "probe"
@@ -110,16 +208,20 @@ export interface DaytonaControlClientFactory {
 export interface CloudControlBootstrapRequest {
   readonly command: CloudControlCommand;
   readonly campaignId: string;
-  readonly configuration: BootstrapConfiguration;
+  readonly configuration:
+    | BootstrapConfiguration
+    | StagedControlConfiguration;
   readonly volumeId: string;
   readonly volumeSubpath: string;
   readonly ttlMinutes: number;
   readonly networkAllowDomains: readonly string[];
-  readonly controllerDaytonaSecretSource: string;
+  readonly controllerDaytonaSecretSource: string | null;
   readonly additionalControllerSecrets: readonly {
     readonly sourceEnvironmentName: string;
     readonly targetEnvironmentName: string;
   }[];
+  readonly optimizeBootstrapDescriptor:
+    ProductionOptimizeBootstrapDescriptor | null;
   readonly resources: {
     readonly cpu: number;
     readonly memoryGiB: number;
@@ -227,8 +329,8 @@ function parseControllerSecrets(
       typeof target !== "string" ||
       !SAFE_ENVIRONMENT_NAME.test(source) ||
       !SAFE_ENVIRONMENT_NAME.test(target) ||
-      target === "PATH" ||
-      target === "DAYTONA_API_KEY" ||
+      CONTROL_RUNTIME_ENVIRONMENT_NAMES.has(target) ||
+      CONTROL_RUNTIME_ENVIRONMENT_PREFIX.test(target) ||
       targets.has(target)
     ) {
       throw new CloudControlBootstrapError(
@@ -289,23 +391,44 @@ export function parseCloudControlBootstrapEnvironment(
   if (!SAFE_CAMPAIGN_ID.test(campaignId)) {
     throw new CloudControlBootstrapError("Campaign identifier is malformed.");
   }
-  const readiness = inspectBootstrapEnvironment(environment);
-  if (!readiness.ready || readiness.configuration === null) {
-    throw new CloudControlBootstrapError(
-      `Bootstrap configuration is incomplete (${[
-        ...readiness.missing.map((name) => `missing:${name}`),
-        ...readiness.invalid.map((name) => `invalid:${name}`),
-      ].join(",")}).`,
+  const typedCommand = command as CloudControlCommand;
+  let configuration:
+    | BootstrapConfiguration
+    | StagedControlConfiguration;
+  if (typedCommand === "optimize") {
+    const readiness = inspectBootstrapEnvironment(environment);
+    if (!readiness.ready || readiness.configuration === null) {
+      throw new CloudControlBootstrapError(
+        `Paid optimize configuration is incomplete (${[
+          ...readiness.missing.map((name) => `missing:${name}`),
+          ...readiness.invalid.map((name) => `invalid:${name}`),
+        ].join(",")}).`,
+      );
+    }
+    configuration = readiness.configuration;
+  } else {
+    const readiness = inspectStagedControlEnvironment(
+      environment,
+      typedCommand === "probe" ? "probe" : "offline",
     );
+    if (!readiness.ready || readiness.configuration === null) {
+      throw new CloudControlBootstrapError(
+        `Control-stage configuration is incomplete (${[
+          ...readiness.missing.map((name) => `missing:${name}`),
+          ...readiness.invalid.map((name) => `invalid:${name}`),
+        ].join(",")}).`,
+      );
+    }
+    configuration = readiness.configuration;
   }
-  if (readiness.configuration.cloudProvider !== "daytona") {
+  if (configuration.cloudProvider !== "daytona") {
     throw new CloudControlBootstrapError(
       "The MVP control bootstrap supports Daytona only.",
     );
   }
   if (
     environment["DAYTONA_TARGET"]?.trim() !==
-    readiness.configuration.cloudRegionClass
+    configuration.cloudRegionClass
   ) {
     throw new CloudControlBootstrapError(
       "DAYTONA_TARGET must exactly equal DF_CLOUD_REGION_CLASS.",
@@ -313,29 +436,30 @@ export function parseCloudControlBootstrapEnvironment(
   }
   const volumeId = required(environment, "DF_DAYTONA_VOLUME_ID");
   const volumeSubpath = required(environment, "DF_DAYTONA_VOLUME_SUBPATH");
-  const controllerDaytonaSecretSource = required(
-    environment,
-    "DF_CONTROL_DAYTONA_SECRET_SOURCE",
-  );
+  const controllerDaytonaSecretSource =
+    typedCommand === "probe" || typedCommand === "optimize"
+      ? required(environment, "DF_CONTROL_DAYTONA_SECRET_SOURCE")
+      : null;
   if (
     !SAFE_ID.test(volumeId) ||
     !SAFE_VOLUME_SUBPATH.test(volumeSubpath) ||
-    !SAFE_ENVIRONMENT_NAME.test(controllerDaytonaSecretSource)
+    (controllerDaytonaSecretSource !== null &&
+      !SAFE_ENVIRONMENT_NAME.test(controllerDaytonaSecretSource))
   ) {
     throw new CloudControlBootstrapError(
       "Control volume or organization-secret identifier is malformed.",
     );
   }
   if (
-    command === "optimize" &&
+    typedCommand === "optimize" &&
     environment["DF_PAID_RUN_AUTHORIZATION"] !==
-      `RUN:${campaignId}:${readiness.configuration.images.control.digest}`
+      `RUN:${campaignId}:${configuration.images.control.digest}`
   ) {
     throw new CloudControlBootstrapError(
       "Paid optimization requires an exact image-bound workflow authorization.",
     );
   }
-  if (command === "optimize") {
+  if (typedCommand === "optimize") {
     const sourceReadiness = inspectPiHarnessSourceEnvironment(environment);
     if (!sourceReadiness.ready) {
       throw new CloudControlBootstrapError(
@@ -346,10 +470,25 @@ export function parseCloudControlBootstrapEnvironment(
       );
     }
   }
+  let optimizeBootstrapDescriptor:
+    ProductionOptimizeBootstrapDescriptor | null = null;
+  if (typedCommand === "optimize") {
+    try {
+      optimizeBootstrapDescriptor =
+        parseProductionOptimizeBootstrapDescriptorEnvironment(
+          environment,
+          campaignId,
+        );
+    } catch {
+      throw new CloudControlBootstrapError(
+        "Production optimize bootstrap descriptor is missing or invalid.",
+      );
+    }
+  }
   return {
-    command: command as CloudControlCommand,
+    command: typedCommand,
     campaignId,
-    configuration: readiness.configuration,
+    configuration,
     volumeId,
     volumeSubpath,
     ttlMinutes: positiveInteger(
@@ -357,11 +496,18 @@ export function parseCloudControlBootstrapEnvironment(
       "DF_CONTROL_TTL_MINUTES",
       MAXIMUM_CONTROL_TTL_MINUTES,
     ),
-    networkAllowDomains: normalizeDomains(
-      required(environment, "DF_CONTROL_NETWORK_ALLOW_DOMAINS"),
-    ),
+    networkAllowDomains:
+      typedCommand === "probe" || typedCommand === "optimize"
+        ? normalizeDomains(
+            required(environment, "DF_CONTROL_NETWORK_ALLOW_DOMAINS"),
+          )
+        : [],
     controllerDaytonaSecretSource,
-    additionalControllerSecrets: parseControllerSecrets(environment),
+    additionalControllerSecrets:
+      typedCommand === "optimize"
+        ? parseControllerSecrets(environment)
+        : [],
+    optimizeBootstrapDescriptor,
     resources: {
       cpu: positiveInteger(environment, "DF_CONTROL_CPU", 32),
       memoryGiB: positiveInteger(environment, "DF_CONTROL_MEMORY_GIB", 128),
@@ -374,59 +520,15 @@ function controlEnvironment(
   request: CloudControlBootstrapRequest,
   source: NodeJS.ProcessEnv,
 ): Readonly<Record<string, string>> {
-  const names: readonly string[] = [
-    "DF_CLOUD_PROVIDER",
-    "DAYTONA_API_URL",
-    "DAYTONA_TARGET",
-    "DF_CLOUD_REGION_CLASS",
-    "DF_CONTROL_IMAGE_REFERENCE",
-    "DF_CONTROL_IMAGE_DIGEST",
-    "DF_OPTIMIZER_IMAGE_REFERENCE",
-    "DF_OPTIMIZER_IMAGE_DIGEST",
-    "DF_BUILD_IMAGE_REFERENCE",
-    "DF_BUILD_IMAGE_DIGEST",
-    "DF_EVALUATOR_IMAGE_REFERENCE",
-    "DF_EVALUATOR_IMAGE_DIGEST",
-    "DF_OPTIMIZER_MODEL",
-    "DF_OPTIMIZER_EFFORT",
-    "DF_CLAUDE_CODE_VERSION",
-    "DF_OPTIMIZER_SECRET_SOURCE",
-    "DF_OPTIMIZER_SECRET_TARGET",
-    "DF_EVALUATED_PROVIDER",
-    "DF_EVALUATED_MODEL",
-    "DF_EVALUATED_REASONING",
-    "DF_EVALUATED_SECRET_BINDINGS_JSON",
-    "DF_GITHUB_SECRET_SOURCE",
-    "DF_HARBOR_SECRET_BINDINGS_JSON",
-    "DF_MODE",
-    "DF_LEADERBOARD_ELIGIBILITY",
-    "DF_TRUSTED_ZONE",
-    "DF_SIGNING_KEY_ID",
-    "DF_HARBOR_VERSION",
-    "DF_TBENCH_REGISTRY_REVISION",
-    "DF_TBENCH_DATASET_CONTENT_SHA256",
-    "DF_TBENCH_DATASET_MANIFEST_SHA256",
-    "DF_HARBOR_PACKAGE_SHA256",
-    "DF_HARBOR_EXECUTABLE_SHA256",
-    "DF_PI_HARBOR_ADAPTER_SHA256",
-    "DF_BUDGET_USD",
-    "DF_BUDGET_TOKENS",
-    "DF_BUDGET_WALL_TIME_MINUTES",
-    "DF_BUDGET_ATTEMPTS",
-    "DF_BUDGET_PRIVACY_RELEASES",
-    "DF_BUDGET_PROMOTION_LOOKS",
-    ...(request.command === "optimize"
+  const names: readonly string[] =
+    request.command === "optimize"
       ? [
-          "DF_PI_GITHUB_OWNER",
-          "DF_PI_GITHUB_REPOSITORY",
-          "DF_PI_BRANCH",
-          "DF_PI_BASELINE_COMMIT",
-          "DF_PI_BASELINE_TREE",
-          "DF_PI_PACKAGE_LOCK_SHA256",
-          "DF_PI_CODING_AGENT_VERSION",
+          ...OPTIMIZE_CONTROL_ENVIRONMENT_NAMES,
+          ...OPTIMIZE_SOURCE_ENVIRONMENT_NAMES,
         ]
-      : []),
-  ];
+      : request.command === "probe"
+        ? PROBE_CONTROL_ENVIRONMENT_NAMES
+        : OFFLINE_CONTROL_ENVIRONMENT_NAMES;
   const result: Record<string, string> = {
     DF_CLOUD_EXECUTION: "1",
     DF_TRUSTED_CONTROL_PLANE: "1",
@@ -445,23 +547,40 @@ function controlEnvironment(
     }
     result[name] = value;
   }
+  if (request.command === "optimize") {
+    if (request.optimizeBootstrapDescriptor === null) {
+      throw new CloudControlBootstrapError(
+        "Validated optimize bootstrap descriptor disappeared before launch.",
+      );
+    }
+    result[PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_ENVIRONMENT_NAME] =
+      canonicalJson(request.optimizeBootstrapDescriptor);
+  }
   return result;
 }
 
 function controllerSecrets(
   request: CloudControlBootstrapRequest,
 ): Readonly<Record<string, string>> {
-  const result: Record<string, string> = {
-    DAYTONA_API_KEY: request.controllerDaytonaSecretSource,
-  };
-  for (const binding of request.additionalControllerSecrets) {
-    if (Object.hasOwn(result, binding.targetEnvironmentName)) {
+  const result: Record<string, string> = {};
+  if (request.command === "probe" || request.command === "optimize") {
+    if (request.controllerDaytonaSecretSource === null) {
       throw new CloudControlBootstrapError(
-        "Controller secret target is duplicated.",
+        "Validated nested Daytona secret reference disappeared before launch.",
       );
     }
-    result[binding.targetEnvironmentName] =
-      binding.sourceEnvironmentName;
+    result["DAYTONA_API_KEY"] = request.controllerDaytonaSecretSource;
+  }
+  if (request.command === "optimize") {
+    for (const binding of request.additionalControllerSecrets) {
+      if (Object.hasOwn(result, binding.targetEnvironmentName)) {
+        throw new CloudControlBootstrapError(
+          "Controller secret target is duplicated.",
+        );
+      }
+      result[binding.targetEnvironmentName] =
+        binding.sourceEnvironmentName;
+    }
   }
   return result;
 }
@@ -513,7 +632,10 @@ export async function launchDaytonaControlPlane(
     mountPath: CONTROL_MOUNT_PATH,
     subpath: request.volumeSubpath,
   };
-  const domains = [...request.networkAllowDomains].sort();
+  const domains =
+    request.command === "probe" || request.command === "optimize"
+      ? [...request.networkAllowDomains].sort()
+      : [];
   const parameters: DaytonaControlCreateParameters = {
     image: request.configuration.images.control.reference,
     resources: {

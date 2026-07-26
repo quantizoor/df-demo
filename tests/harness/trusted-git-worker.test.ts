@@ -71,12 +71,60 @@ function malformedSnapshot(remote: string): readonly string[] {
     "7".repeat(40),
     "--archive",
     "/trusted/git/source.tar",
+    "--bundle",
+    "/trusted/git/source.bundle",
+    "--bundle-ref",
+    "refs/heads/df/bundle/000-source-snapshot",
     "--manifest",
     "/trusted/git/source.json",
     "--archive-format",
     "git-archive-tar",
     "--compression",
     "none",
+  ];
+}
+
+function malformedRegistration(remote: string): readonly string[] {
+  return [
+    "register",
+    "--authorization-sha256",
+    "0".repeat(64),
+    "--authorization-expires-at",
+    "2099-07-26T11:00:00.000Z",
+    "--remote",
+    remote,
+    "--origin-repository-sha256",
+    "1".repeat(64),
+    "--ref",
+    "refs/heads/main",
+    "--commit",
+    "2".repeat(40),
+    "--tree",
+    "3".repeat(40),
+    "--lock-sha256",
+    "4".repeat(64),
+    "--package-name",
+    "@earendil-works/pi-coding-agent",
+    "--package-version",
+    "0.82.1",
+    "--harness-registration-schema-version",
+    "1.2.0",
+    "--adapter-id",
+    "harbor-pi-print-json",
+    "--adapter-execution-mode",
+    "print-json",
+    "--sessions-disabled",
+    "true",
+    "--uncontrolled-extensions-disabled",
+    "true",
+    "--uncontrolled-context-files-disabled",
+    "true",
+    "--upstream",
+    "https://github.com/earendil-works/pi.git",
+    "--upstream-repository-sha256",
+    "5".repeat(64),
+    "--result",
+    "/trusted/git/registration-result.json",
   ];
 }
 
@@ -104,6 +152,20 @@ describe("trusted Git cloud worker adversarial boundary", () => {
     expect(result.stderr).toBe("Trusted Git worker failed closed.\n");
     expect(result.stderr).not.toContain(secretSentinel);
     expect(result.stderr).not.toContain("credential-in");
+  });
+
+  it("rejects registration identity mismatch without disclosing its credential", async () => {
+    const result = await invokeWorker(
+      malformedRegistration(
+        "https://github.com/parallaxai/df-pi-tbench.git",
+      ),
+    );
+    expect(result.code).toBe(78);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("Trusted Git worker failed closed.\n");
+    expect(result.stderr).not.toContain(secretSentinel);
+    expect(result.stderr).not.toContain("parallaxai");
+    expect(result.stderr).not.toContain("df-pi-tbench");
   });
 
   it("rejects duplicate flags and arbitrary publication refs before Git runs", async () => {
@@ -170,6 +232,14 @@ describe("trusted Git cloud worker adversarial boundary", () => {
   it("uses fixed argv-based Git execution and never enables a shell", async () => {
     const source = await readFile(workerPath, "utf8");
     expect(source).toContain('spawnSync("/usr/bin/git", arguments_');
+    expect(source).toContain('hostname: "api.github.com"');
+    expect(source).toContain("permissions.push !== true");
+    expect(source).toContain(
+      'const HARNESS_REGISTRATION_SCHEMA_VERSION = "1.2.0"',
+    );
+    expect(source).toContain(
+      'const PI_ADAPTER_ID = "harbor-pi-print-json"',
+    );
     expect(source).toContain("shell: false");
     expect(source).not.toContain("shell: true");
     expect(source).not.toContain("execSync(");

@@ -14,6 +14,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
+import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import {
   basename,
@@ -37,11 +38,20 @@ const EXPERIMENT_ID = /^[0-9]{3,8}-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u;
 const SAFE_HEAD_REF =
   /^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$/u;
+const EXACT_SEMVER =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const REGULAR_TREE_MODES = new Set(["100644", "100755"]);
 const OFFICIAL_UPSTREAM = "https://github.com/earendil-works/pi.git";
+const PI_CODING_AGENT_PACKAGE = "@earendil-works/pi-coding-agent";
+const HARNESS_REGISTRATION_SCHEMA_VERSION = "1.2.0";
+const PI_ADAPTER_ID = "harbor-pi-print-json";
+const PI_ADAPTER_EXECUTION_MODE = "print-json";
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
+const MAX_GITHUB_API_BYTES = 1024 * 1024;
 const MAX_SOURCE_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const MAX_BUNDLE_BYTES = 2 * 1024 * 1024 * 1024;
+const SOURCE_BUNDLE_REF =
+  "refs/heads/df/bundle/000-source-snapshot";
 const GIT_TIMEOUT_MS = 15 * 60_000;
 
 class WorkerPolicyError extends Error {
@@ -187,6 +197,9 @@ function parseRemoteIdentity(value) {
   }
   const repository = `${match[1]}/${match[2]}`;
   return {
+    owner: match[1],
+    name: match[2],
+    repository,
     normalizedUrl: `https://github.com/${repository}.git`,
     repositorySha256: createHash("sha256")
       .update(`github.com/${repository}`)
@@ -433,6 +446,183 @@ async function createContext() {
   return context;
 }
 
+function readGitHubRepositoryAuthorization(
+  context,
+  identity,
+  expectedBranch,
+) {
+  return new Promise((resolveAuthorization, rejectAuthorization) => {
+    const request = httpsRequest(
+      {
+        protocol: "https:",
+        hostname: "api.github.com",
+        port: 443,
+        method: "GET",
+        path: `/repos/${encodeURIComponent(identity.owner)}/${encodeURIComponent(identity.name)}`,
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: "Bearer " + context.token,
+          "User-Agent": "dark-factory-trusted-git-registration",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        agent: false,
+      },
+      (response) => {
+        const contentType = response.headers["content-type"];
+        const contentLength = Number(response.headers["content-length"]);
+        if (
+          response.statusCode !== 200 ||
+          typeof contentType !== "string" ||
+          !/^application\/(?:json|vnd\.github\+json)(?:;|$)/u.test(
+            contentType,
+          ) ||
+          (Number.isFinite(contentLength) &&
+            (contentLength <= 0 ||
+              contentLength > MAX_GITHUB_API_BYTES))
+        ) {
+          response.resume();
+          rejectAuthorization(
+            new WorkerPolicyError(
+              "GitHub repository authorization could not be verified.",
+            ),
+          );
+          return;
+        }
+        const chunks = [];
+        let byteLength = 0;
+        response.on("aborted", () => {
+          rejectAuthorization(
+            new WorkerPolicyError(
+              "GitHub repository authorization response was interrupted.",
+            ),
+          );
+        });
+        response.on("error", () => {
+          rejectAuthorization(
+            new WorkerPolicyError(
+              "GitHub repository authorization response failed.",
+            ),
+          );
+        });
+        response.on("data", (chunk) => {
+          if (!Buffer.isBuffer(chunk)) {
+            request.destroy(
+              new WorkerPolicyError(
+                "GitHub repository authorization response is malformed.",
+              ),
+            );
+            return;
+          }
+          byteLength += chunk.length;
+          if (byteLength > MAX_GITHUB_API_BYTES) {
+            request.destroy(
+              new WorkerPolicyError(
+                "GitHub repository authorization response is too large.",
+              ),
+            );
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("end", () => {
+          let document;
+          try {
+            document = JSON.parse(
+              Buffer.concat(chunks, byteLength).toString("utf8"),
+            );
+          } catch {
+            rejectAuthorization(
+              new WorkerPolicyError(
+                "GitHub repository authorization response is invalid.",
+              ),
+            );
+            return;
+          }
+          const permissions = document?.permissions;
+          const owner = document?.owner;
+          if (
+            document === null ||
+            typeof document !== "object" ||
+            Array.isArray(document) ||
+            !Number.isSafeInteger(document.id) ||
+            document.id <= 0 ||
+            typeof document.node_id !== "string" ||
+            document.node_id.length === 0 ||
+            document.node_id.length > 255 ||
+            typeof document.name !== "string" ||
+            document.name.toLowerCase() !== identity.name.toLowerCase() ||
+            typeof document.full_name !== "string" ||
+            document.full_name.toLowerCase() !==
+              identity.repository.toLowerCase() ||
+            typeof document.clone_url !== "string" ||
+            document.clone_url.toLowerCase() !==
+              identity.normalizedUrl.toLowerCase() ||
+            document.private !== true ||
+            document.visibility !== "private" ||
+            document.archived !== false ||
+            document.disabled !== false ||
+            document.default_branch !== expectedBranch ||
+            permissions === null ||
+            typeof permissions !== "object" ||
+            Array.isArray(permissions) ||
+            permissions.pull !== true ||
+            permissions.push !== true ||
+            owner === null ||
+            typeof owner !== "object" ||
+            Array.isArray(owner) ||
+            typeof owner.login !== "string" ||
+            owner.login.toLowerCase() !== identity.owner.toLowerCase()
+          ) {
+            rejectAuthorization(
+              new WorkerPolicyError(
+                "GitHub repository is not the authorized private writable origin.",
+              ),
+            );
+            return;
+          }
+          const attestation = {
+            provider: "github",
+            repositoryId: document.id,
+            repositoryNodeId: document.node_id,
+            ownerNodeId:
+              typeof owner.node_id === "string" ? owner.node_id : null,
+            private: true,
+            visibility: "private",
+            pull: true,
+            push: true,
+            archived: false,
+            disabled: false,
+            defaultBranch: expectedBranch,
+          };
+          resolveAuthorization({
+            repositoryAttestationHash: createHash("sha256")
+              .update(canonicalJson(attestation))
+              .digest("hex"),
+            verifiedAt: new Date().toISOString(),
+          });
+        });
+      },
+    );
+    request.setTimeout(30_000, () => {
+      request.destroy(
+        new WorkerPolicyError(
+          "GitHub repository authorization request timed out.",
+        ),
+      );
+    });
+    request.on("error", (error) => {
+      rejectAuthorization(
+        error instanceof WorkerPolicyError
+          ? error
+          : new WorkerPolicyError(
+              "GitHub repository authorization request failed.",
+            ),
+      );
+    });
+    request.end();
+  });
+}
+
 function parseSingleRemoteRef(output, expectedRef) {
   const lines = text(output)
     .split("\n")
@@ -546,6 +736,38 @@ function verifyCommit(context, input, localRef) {
   return { commit, tree };
 }
 
+function verifyRegistrationPackageMetadata(context, input) {
+  const packageBytes = runGit(context, [
+    "show",
+    `${input.commit}:packages/coding-agent/package.json`,
+  ]).stdout;
+  const lockBytes = runGit(context, [
+    "show",
+    `${input.commit}:package-lock.json`,
+  ]).stdout;
+  let packageMetadata;
+  let lockMetadata;
+  try {
+    packageMetadata = JSON.parse(packageBytes.toString("utf8"));
+    lockMetadata = JSON.parse(lockBytes.toString("utf8"));
+  } catch {
+    reject("Trusted Git Pi package metadata is invalid.");
+  }
+  const lockedPackage = lockMetadata?.packages?.["packages/coding-agent"];
+  if (
+    input["package-name"] !== PI_CODING_AGENT_PACKAGE ||
+    packageMetadata?.name !== input["package-name"] ||
+    packageMetadata?.version !== input["package-version"] ||
+    lockedPackage?.name !== input["package-name"] ||
+    lockedPackage?.version !== input["package-version"]
+  ) {
+    reject(
+      "Trusted Git Pi package metadata does not match its authorization.",
+    );
+  }
+  return createHash("sha256").update(packageBytes).digest("hex");
+}
+
 function verifyLineage(context, input, candidateRef) {
   for (const objectId of [
     input.baseline,
@@ -612,10 +834,201 @@ function assertUpstreamStable(context, expectedHead) {
   }
 }
 
+async function register(input) {
+  if (
+    !SHA256.test(input["authorization-sha256"]) ||
+    !OBJECT_ID.test(input.commit) ||
+    !OBJECT_ID.test(input.tree) ||
+    !SHA256.test(input["lock-sha256"]) ||
+    input["package-name"] !== PI_CODING_AGENT_PACKAGE ||
+    !EXACT_SEMVER.test(input["package-version"]) ||
+    input["harness-registration-schema-version"] !==
+      HARNESS_REGISTRATION_SCHEMA_VERSION ||
+    input["adapter-id"] !== PI_ADAPTER_ID ||
+    input["adapter-execution-mode"] !== PI_ADAPTER_EXECUTION_MODE ||
+    input["sessions-disabled"] !== "true" ||
+    input["uncontrolled-extensions-disabled"] !== "true" ||
+    input["uncontrolled-context-files-disabled"] !== "true" ||
+    !Number.isFinite(Date.parse(input["authorization-expires-at"])) ||
+    new Date(input["authorization-expires-at"]).toISOString() !==
+      input["authorization-expires-at"] ||
+    Date.now() >= Date.parse(input["authorization-expires-at"])
+  ) {
+    reject("Trusted Git registration authorization is malformed or expired.");
+  }
+  assertRef(input.ref);
+  const identities = assertIdentities(input);
+  const expectedBranch = input.ref.slice("refs/heads/".length);
+  const resultOutput = await assertNewOutput(input.result, ".json");
+  const context = await createContext();
+  try {
+    const initialProviderAuthorization =
+      await readGitHubRepositoryAuthorization(
+        context,
+        identities.origin,
+        expectedBranch,
+      );
+    runGit(context, [
+      "remote",
+      "add",
+      "origin",
+      identities.origin.normalizedUrl,
+    ]);
+    runGit(context, [
+      "remote",
+      "add",
+      "upstream",
+      identities.upstream.normalizedUrl,
+    ]);
+    const upstreamHead = readRemoteHead(context, "upstream");
+    if (!OBJECT_ID.test(upstreamHead)) {
+      reject("Trusted Git canonical upstream HEAD is malformed.");
+    }
+    if (readRemoteRef(context, "origin", input.ref) !== input.commit) {
+      reject(
+        "Trusted Git registered branch does not resolve to its authorized commit.",
+      );
+    }
+    runGit(context, [
+      "fetch",
+      "--no-tags",
+      "--no-write-fetch-head",
+      "origin",
+      `${input.ref}:refs/df/baseline`,
+    ]);
+    runGit(context, [
+      "fetch",
+      "--no-tags",
+      "--no-write-fetch-head",
+      "--filter=blob:none",
+      "upstream",
+      "HEAD:refs/df/upstream",
+    ]);
+    const fetchedUpstream = text(
+      runGit(context, [
+        "rev-parse",
+        "--verify",
+        "refs/df/upstream^{commit}",
+      ]).stdout,
+    );
+    if (fetchedUpstream !== upstreamHead) {
+      reject("Trusted Git fetched an unexpected canonical upstream object.");
+    }
+    verifyCommit(context, input, "refs/df/baseline");
+    const packageJsonSha256 = verifyRegistrationPackageMetadata(
+      context,
+      input,
+    );
+    const upstreamBase = text(
+      runGit(context, [
+        "merge-base",
+        "refs/df/baseline",
+        "refs/df/upstream",
+      ]).stdout,
+    );
+    if (!OBJECT_ID.test(upstreamBase)) {
+      reject(
+        "Trusted Git private origin has no canonical upstream merge base.",
+      );
+    }
+    runGit(context, [
+      "merge-base",
+      "--is-ancestor",
+      upstreamBase,
+      "refs/df/baseline",
+    ]);
+    runGit(context, ["fsck", "--full", "--strict", "--no-reflogs"]);
+    if (readRemoteRef(context, "origin", input.ref) !== input.commit) {
+      reject("Trusted Git registered branch moved during verification.");
+    }
+    assertUpstreamStable(context, upstreamHead);
+    const finalProviderAuthorization =
+      await readGitHubRepositoryAuthorization(
+        context,
+        identities.origin,
+        expectedBranch,
+      );
+    if (
+      finalProviderAuthorization.repositoryAttestationHash !==
+      initialProviderAuthorization.repositoryAttestationHash
+    ) {
+      reject(
+        "GitHub repository authorization changed during registration.",
+      );
+    }
+    if (Date.now() >= Date.parse(input["authorization-expires-at"])) {
+      reject("Trusted Git registration authorization expired during use.");
+    }
+    const originRepositoryHash = input["origin-repository-sha256"];
+    const upstreamRepositoryHash =
+      input["upstream-repository-sha256"];
+    const registrationId = createHash("sha256")
+      .update(`${input.commit}:${originRepositoryHash}:${upstreamBase}`)
+      .digest("hex");
+    const lineageAttestationHash = createHash("sha256")
+      .update(
+        canonicalJson({
+          originRepositoryHash,
+          upstreamRepositoryHash,
+          upstreamHeadCommit: upstreamHead,
+          upstreamBaseCommit: upstreamBase,
+          baselineCommit: input.commit,
+        }),
+      )
+      .digest("hex");
+    const result = withContentHash({
+      schemaVersion: 1,
+      domain: "dark-factory.trusted-git-registration.v1",
+      authorizationHash: input["authorization-sha256"],
+      registrationId,
+      originRepositoryHash,
+      upstreamRepositoryHash,
+      remoteRef: input.ref,
+      commitSha: input.commit,
+      treeSha: input.tree,
+      lockSha256: input["lock-sha256"],
+      packageName: input["package-name"],
+      packageVersion: input["package-version"],
+      harnessRegistrationSchemaVersion:
+        input["harness-registration-schema-version"],
+      adapterId: input["adapter-id"],
+      adapterExecutionMode: input["adapter-execution-mode"],
+      sessionsDisabled: true,
+      uncontrolledExtensionsDisabled: true,
+      uncontrolledContextFilesDisabled: true,
+      packageJsonSha256,
+      upstreamHeadCommit: upstreamHead,
+      upstreamBaseCommit: upstreamBase,
+      originPrivate: true,
+      originFetchable: true,
+      originWritable: true,
+      privacyEvidence: "github-rest-private-and-visibility",
+      fetchEvidence: "authenticated-ls-remote-and-fetch",
+      writeEvidence: "github-rest-permissions-push",
+      lineageEvidence: "canonical-upstream-fetched-merge-base",
+      providerRepositoryAttestationHash:
+        finalProviderAuthorization.repositoryAttestationHash,
+      lineageAttestationHash,
+      providerVerifiedAt: finalProviderAuthorization.verifiedAt,
+    });
+    await writeFile(
+      resultOutput.resolved,
+      `${canonicalJson(result)}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+  } catch (error) {
+    await unlink(resultOutput.resolved).catch(() => undefined);
+    throw error;
+  } finally {
+    await rm(context.root, { recursive: true, force: true });
+  }
+}
+
 async function snapshot(input) {
   if (
     input["archive-format"] !== "git-archive-tar" ||
     input.compression !== "none" ||
+    input["bundle-ref"] !== SOURCE_BUNDLE_REF ||
     !OBJECT_ID.test(input.commit) ||
     !OBJECT_ID.test(input.tree) ||
     !SHA256.test(input["lock-sha256"])
@@ -625,12 +1038,26 @@ async function snapshot(input) {
   assertRef(input.ref);
   const identities = assertIdentities(input);
   const archiveOutput = await assertNewOutput(input.archive, ".tar");
+  const bundleOutput = await assertNewOutput(input.bundle, ".bundle");
   const manifestOutput = await assertNewOutput(input.manifest, ".json");
-  if (archiveOutput.resolved === manifestOutput.resolved) {
+  if (
+    new Set([
+      archiveOutput.resolved,
+      bundleOutput.resolved,
+      manifestOutput.resolved,
+    ]).size !== 3
+  ) {
     reject("Trusted Git source outputs overlap.");
+  }
+  if (
+    archiveOutput.parent !== bundleOutput.parent ||
+    archiveOutput.parent !== manifestOutput.parent
+  ) {
+    reject("Trusted Git source outputs must share one trusted directory.");
   }
   const context = await createContext();
   let archivePublished = false;
+  let bundlePublished = false;
   try {
     addVerifiedRemotes(context, input, identities);
     const remoteCommit = readRemoteRef(context, "origin", input.ref);
@@ -653,6 +1080,7 @@ async function snapshot(input) {
     );
     await chmod(outputStaging, 0o700);
     const stagedArchive = join(outputStaging, "source.tar");
+    const stagedBundle = join(outputStaging, "source.bundle");
     try {
       runGit(
         context,
@@ -671,12 +1099,42 @@ async function snapshot(input) {
       if (archive.byteLength % 512 !== 0) {
         reject("Trusted Git source archive is not an uncompressed tar stream.");
       }
+      runGit(context, [
+        "update-ref",
+        SOURCE_BUNDLE_REF,
+        input.commit,
+      ]);
+      runGit(
+        context,
+        [
+          "bundle",
+          "create",
+          "--version=2",
+          stagedBundle,
+          SOURCE_BUNDLE_REF,
+        ],
+        { timeoutMs: GIT_TIMEOUT_MS },
+      );
+      parseBundleHeads(
+        runGit(context, ["bundle", "list-heads", stagedBundle]).stdout,
+        SOURCE_BUNDLE_REF,
+        input.commit,
+      );
+      runGit(context, ["bundle", "verify", stagedBundle], {
+        timeoutMs: GIT_TIMEOUT_MS,
+      });
+      const bundle = await sha256File(
+        stagedBundle,
+        MAX_BUNDLE_BYTES,
+      );
       if (readRemoteRef(context, "origin", input.ref) !== input.commit) {
         reject("Trusted Git source ref moved during archiving.");
       }
       assertUpstreamStable(context, input["upstream-head"]);
       await link(stagedArchive, archiveOutput.resolved);
       archivePublished = true;
+      await link(stagedBundle, bundleOutput.resolved);
+      bundlePublished = true;
       const publishedArchive = await sha256File(
         archiveOutput.resolved,
         MAX_SOURCE_ARCHIVE_BYTES,
@@ -687,9 +1145,19 @@ async function snapshot(input) {
       ) {
         reject("Trusted Git source archive changed while it was published.");
       }
+      const publishedBundle = await sha256File(
+        bundleOutput.resolved,
+        MAX_BUNDLE_BYTES,
+      );
+      if (
+        publishedBundle.sha256 !== bundle.sha256 ||
+        publishedBundle.byteLength !== bundle.byteLength
+      ) {
+        reject("Trusted Git source bundle changed while it was published.");
+      }
       const manifest = withContentHash({
-        schemaVersion: 1,
-        domain: "dark-factory.trusted-git-source.v1",
+        schemaVersion: 2,
+        domain: "dark-factory.trusted-git-source.v2",
         originRepositoryHash: input["origin-repository-sha256"],
         upstreamRepositoryHash: input["upstream-repository-sha256"],
         upstreamHeadCommit: input["upstream-head"],
@@ -703,6 +1171,10 @@ async function snapshot(input) {
         compression: "none",
         archiveSha256: archive.sha256,
         archiveByteLength: archive.byteLength,
+        bundleMethod: "git-bundle-v2",
+        bundleRef: SOURCE_BUNDLE_REF,
+        bundleSha256: bundle.sha256,
+        bundleByteLength: bundle.byteLength,
       });
       await writeFile(
         manifestOutput.resolved,
@@ -715,6 +1187,9 @@ async function snapshot(input) {
   } catch (error) {
     if (archivePublished) {
       await unlink(archiveOutput.resolved).catch(() => undefined);
+    }
+    if (bundlePublished) {
+      await unlink(bundleOutput.resolved).catch(() => undefined);
     }
     await unlink(manifestOutput.resolved).catch(() => undefined);
     throw error;
@@ -729,7 +1204,7 @@ function parseBundleHeads(output, expectedRef, expectedCommit) {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   if (lines.length !== 1) {
-    reject("Candidate bundle must expose exactly one authorized head.");
+    reject("Git bundle must expose exactly one authorized head.");
   }
   const parts = lines[0].split(/\s+/u);
   if (
@@ -737,7 +1212,7 @@ function parseBundleHeads(output, expectedRef, expectedCommit) {
     parts[0] !== expectedCommit ||
     parts[1] !== expectedRef
   ) {
-    reject("Candidate bundle head does not match authorization.");
+    reject("Git bundle head does not match authorization.");
   }
 }
 
@@ -771,6 +1246,7 @@ async function publish(input) {
     `refs/tags/df/experiment/${input.experiment}/candidate`;
   if (
     !EXPERIMENT_ID.test(input.experiment) ||
+    Number.parseInt(input.experiment.split("-", 1)[0] ?? "", 10) < 1 ||
     input.mode !== "atomic-non-force" ||
     input["branch-ref"] !== expectedBranch ||
     input["tag-ref"] !== expectedTag ||
@@ -961,9 +1437,32 @@ const SNAPSHOT_FLAGS = [
   "upstream-head",
   "upstream-base",
   "archive",
+  "bundle",
+  "bundle-ref",
   "manifest",
   "archive-format",
   "compression",
+];
+const REGISTRATION_FLAGS = [
+  "authorization-sha256",
+  "authorization-expires-at",
+  "remote",
+  "origin-repository-sha256",
+  "ref",
+  "commit",
+  "tree",
+  "lock-sha256",
+  "package-name",
+  "package-version",
+  "harness-registration-schema-version",
+  "adapter-id",
+  "adapter-execution-mode",
+  "sessions-disabled",
+  "uncontrolled-extensions-disabled",
+  "uncontrolled-context-files-disabled",
+  "upstream",
+  "upstream-repository-sha256",
+  "result",
 ];
 const PUBLICATION_FLAGS = [
   "remote",
@@ -992,6 +1491,10 @@ const PUBLICATION_FLAGS = [
 async function main() {
   assertCloudRuntime();
   const [operation, ...flags] = process.argv.slice(2);
+  if (operation === "register") {
+    await register(parseFlags(flags, REGISTRATION_FLAGS));
+    return;
+  }
   if (operation === "snapshot") {
     await snapshot(parseFlags(flags, SNAPSHOT_FLAGS));
     return;

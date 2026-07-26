@@ -2,10 +2,12 @@
 
 ## 1. Purpose and success criteria
 
-Dark Factory is a local TypeScript control plane that continuously proposes,
-tests, evaluates, and records changes to an open-source terminal-agent harness.
-Its first target is Terminal-Bench 2.1, with Claude Code acting as the optimizer
-and a fork of Pi acting as the harness under optimization.
+Dark Factory is a TypeScript control plane, authored and triggered from the
+operator's Mac but executed entirely in trusted cloud sandboxes, that
+continuously proposes, tests, evaluates, and records changes to an open-source
+terminal-agent harness. Its first target is Terminal-Bench 2.1, with Claude
+Code acting as the optimizer and the operator's private Pi fork acting as the
+harness under optimization.
 
 The MVP is successful when it can run this loop unattended:
 
@@ -101,6 +103,89 @@ not accepted as evidence until the cloud Git worker independently resolves
 the private `parallaxai/df-pi-tbench` origin, the exact objects and lock bytes,
 the canonical upstream, and the merge base.
 
+The worker result is not trusted merely because it was downloaded from a
+sandbox. A verifying artifact reader must check its digest, length, EOF, and
+UTF-8 bytes; the registration attestor then parses canonical JSON against the
+signed authorization and cloud execution before asking the cloud key authority
+to sign a release-safe receipt. The caller independently verifies that
+signature before experiment `000` can reference the source.
+
+The same parse-before-sign rule applies to every later source snapshot and
+non-force candidate publication. Their attestors read only the exact
+content-addressed manifest/result artifact through the verifying bridge,
+reproduce its authorization, lineage, archive, bundle, and ref bindings, and
+only then ask the cloud key authority to sign. Source snapshot schema v2
+contains both the existing uncompressed tar used by the evaluator and a
+standalone Git bundle used by the optimizer. The bundle advertises exactly
+`refs/heads/df/bundle/000-source-snapshot`, resolves it to the attested commit,
+and is independently length- and SHA-256-bound by the worker manifest and
+signed receipt. Real candidate publication forbids experiment number zero, so
+that fixed source ref cannot collide with
+`refs/heads/df/bundle/<positive-experiment-id>`. Merely receiving a provider
+artifact reference is never sufficient evidence that a candidate was
+snapshotted or published.
+
+The production optimizer resolver consumes only this signed, commit-keyed
+source snapshot/index. It must match the pinned private-Pi registration and
+the active champion's baseline, experiment number, commit, tree, lock, origin,
+upstream, and ref lineage. It returns the credential-free bundle; it never
+returns the private remote, credential, or `../pi` path and never reads the Mac
+checkout. Experiment `001` receives one fixed reviewed source-only evidence
+archive. Every later proposal resolves exactly one signed metadata artifact
+for the complete `DiagnosticBriefReference` tuple. Analysis evidence is
+separately bound to campaign, experiment, hypothesis hash and document hash,
+candidate commit/patch/document hashes, repair and validation attestation
+hashes, and released-evidence hash.
+
+All optimizer evidence metadata uses strict exact-key canonical JSON, immutable
+URI/SHA-256/media-type/length references, all-false task/panel/cell/raw/grader
+flags, and purpose-separated Ed25519 verification through an independently
+configured rotation-aware public-key authority. Artifact source and reader
+boundary strings do not authorize content: exact digests, signatures,
+purpose/version/window/revocation checks, and registration/champion
+correlation do. Equal calls are idempotent, concurrent equal calls coalesce,
+and one released archive cannot be rebound to a different evidence query.
+Inputs are snapshotted before every await, dependency methods are captured,
+mutation fails closed, and returned references are defensively frozen. See
+ADR-0068.
+
+Those metadata controls are necessary but not sufficient. Before any referenced
+archive can be returned toward Claude, the production resolver must use a
+separate verifying byte reader, independently recheck the complete byte length
+and SHA-256, and inspect the bytes under the campaign-bound release-inspection
+policy. Its evaluator-policy commitment must equal the signed production
+composition manifest's evaluator-policy binding. Release-evidence tar files
+use a strict bounded USTAR profile: unique
+relative paths, regular files/directories only, no links, devices, traversal,
+PAX ambiguity, nested archives, duplicate names, non-UTF-8 text, or
+non-canonical JSON. Every release path must also appear in the policy's fixed,
+campaign-bound allowlist; every JSON/text body then passes the release-safety
+scanner and the exact forbidden-literal and grader-canary fingerprint sets.
+Source tree tar files receive the same structural archive checks plus a
+protected benchmark-material path denylist, obvious protected-literal scans,
+and exact canary/fingerprint matching over bounded tokens from every
+UTF-8-decodable file. Known text extensions fail closed on malformed UTF-8. The
+candidate integrity gate separately rejects changed extensionless or
+unapproved binary paths and Git binary-patch markers, preventing descendants
+from introducing an opaque changed-file channel that this text scan cannot
+decode. The
+source-specific PAX record is mandatory and may only be Git's first, exact
+global comment for the signed source commit. The corresponding Git bundle
+receives bounded header/ref validation, must advertise that same commit at the
+fixed bundle ref, and receives a raw-byte protected-literal/path scan before
+its already-signed commit/tree/lock lineage may be used. Its trusted worker
+manifest and source receipt bind both exact artifact references to the one
+verified commit, and the independently unpacked source tar is always inspected
+before the bundle can be returned. Source registration and publication must
+also attest that this Pi lineage has never ingested evaluator artifacts,
+because compressed historical Git objects are not a release-feedback channel.
+Failed inspections remain failed in the
+resolver cache so a retry cannot probe a different backend response; the cache
+key binds the full canonical artifact reference, inspection kind, expected
+source commit, and policy hash. Boolean `contains*` flags, signatures, registry
+key scans, and artifact references can never substitute for this byte gate.
+See ADR-0080.
+
 The repository currently has only `origin`. Initialization must verify
 [`earendil-works/pi`](https://github.com/earendil-works/pi) as the canonical
 read-only upstream in an isolated cloud clone, verify that the
@@ -187,6 +272,16 @@ rules:
 - map only opaque Daytona organization Secret names to their approved target
   environment names. Never resolve evaluated-model secret values into a
   sandbox request, command, label, receipt, or local log;
+- derive the control sandbox's final grants from the command: synthetic and
+  status receive no secrets or network, probe receives only the nested Daytona
+  credential, and only an authorized optimize command receives the reviewed
+  additional controller-secret bindings;
+- stage configuration parsing and forwarding by the same boundary: synthetic
+  and pre-composition status require only provider/region/control-image plus
+  sandbox/volume profile; probe adds only build/evaluator images, provider
+  endpoint/secret, and network allowlist; optimize alone parses or forwards
+  optimizer/evaluated-model, private-Git, benchmark, budget, descriptor, and
+  KMS/controller-secret configuration;
 - attach only the command's secret subset, serialize command execution per
   sandbox, and detach the subset after completion;
 - translate argv to Daytona's command-string API only with a tested POSIX
@@ -211,10 +306,15 @@ account-health attestation. Live create performs the resource and policy
 checks. Exact GPU-type requests remain incompatible because the current
 returned sandbox metadata exposes GPU count but not an independently
 attestable GPU type. Docker-in-Docker is a provider capability only when the
-pinned image itself contains and starts the required DIND runtime. A trusted
-artifact backend, Daytona organization secrets with host restrictions, a
-cloud-generated pnpm lockfile, and a live provider contract run remain
-deployment prerequisites.
+pinned image itself contains and starts the required DIND runtime. Before a
+paid campaign, probe both the build and evaluator image digests, create real
+deny-all leases for both roles, and require `docker info` to succeed inside
+the evaluator lease. The resulting receipt contains only image, capability,
+sandbox, execution, resource, network, and mounted-volume commitments; it
+never exports Docker output or a sandbox identifier. A trusted artifact
+backend, Daytona organization secrets with host restrictions, a cloud-generated
+pnpm lockfile, and a live provider contract run remain deployment
+prerequisites.
 
 Mutable campaign services use campaign-scoped provider-volume adapters for the
 one-use request ledger, hidden catalog CAS, and immutable optimizer-session
@@ -244,9 +344,9 @@ Primary references:
 ## 3. Trust boundaries and architecture
 
 ```text
-Trusted cloud task broker
+Task-free signed diagnostic brief or reviewed source-only bootstrap
     |
-    | hidden deterministic weighted panels + signed attestations
+    | byte-inspected, privacy-thresholded optimizer input
     v
 Claude Code optimizer
     |
@@ -256,7 +356,10 @@ Cloud correctness and integrity gates
     |
     | candidate commit
     v
-Repair gate on prior discovery panel
+Trusted cloud task broker selects hidden weighted repair panel
+    |
+    v
+Matched repair gate
     |
     | challenger only; never promotion
     v
@@ -265,9 +368,10 @@ Fresh matched validation: challenger vs active champion
     | deterministic normalization + aggregate evidence firewall
     v
 Strict experiment JSON + signed diagnostic brief
-    |
-    v
-Decision -> panel rotation -> FEEDBACK.md -> next hypothesis
+    |                                      \
+    | task-free byte-inspected input         \ operator-only audit mirror
+    v                                         v
+next optimizer hypothesis                   FEEDBACK.md
 
 Trusted Harbor evaluator -> remote sandbox -> sealed grader feeds both
 evaluation stages, but raw tasks, graders, and trajectories never cross the
@@ -339,6 +443,135 @@ The trusted cloud evaluator and task broker own:
   statistics, never tasks, graders, commands, outputs, or raw trajectories.
 - Creation of the minimal signed result envelope returned to the controller.
 
+The narrow trusted evaluator returns only that signed result envelope. A
+separate trusted-cloud release-bundle service adapts it to the atomic
+`ReleasedEvaluationBundle` consumed by the production blind broker. It may
+resolve only the cache-attestation hash committed by the result and, for an
+eligible validation release, the behavioral-release hash committed by the
+result followed by the evidence/cards/brief hashes committed by that signed
+release. Resolution queries contain only a purpose, a content hash, and their
+domain-separated query hash. No experiment hint, task identity, path, provider
+key, or arbitrary lookup value is accepted.
+
+Every resolved artifact is immutable canonical JSON with one final newline,
+bounded independently and in aggregate, and rechecked against its declared
+byte length, byte SHA-256, strict schema, semantic content hash, protocol,
+experiment, and lineage. Result, cache, and behavioral-release signatures use
+an injected purpose- and rotation-aware verifier; diagnostics are returned
+only as an all-present or all-absent set. The final bundle must pass the
+task-safe local-persistence scan before it can reach the controller. Captured
+methods, pre-await snapshots, replay comparison, and defensive output copies
+make dependency/caller mutation and nondeterministic completed replays fail
+closed. Network transport remains a later deployment adapter rather than a
+capability of this service.
+
+This adapter remains consumer-only. The production evaluator now supplies its
+missing producer through a strict two-phase sequence:
+
+1. pre-outcome policy commits only whether diagnostics are enabled, the
+   comparison, maximum release count, brief TTL, and extraction/statistical/
+   privacy/scanner policy versions;
+2. while raw evidence still exists, deterministic derivation creates the
+   release-safe result aggregate and durably commits one task-private
+   behavioral preparation to a fenced evaluator-only store keyed by the exact
+   request and protocol hashes;
+3. the custodian destroys raw Harbor, ATIF, and grader artifacts and the broker
+   verifies the destruction receipt;
+4. only then does the broker resolve the preparation without consuming it and
+   the producer atomically authorize the privacy/differencing release, create
+   task-free evidence/cards/brief, sign a purpose-specific behavioral release,
+   and persist the nonrefundable privacy transition plus all four immutable
+   documents;
+5. the preparation transaction irreversibly replaces the private payload with
+   either the exact task-free finalization binding or a consumed tombstone;
+   the broker then places a finalized release's content hash in the aggregate
+   and signs the final result envelope. If result issuance is then proven not
+   to have completed, the producer returns one normalized task-free orphan
+   receipt and the preparation store atomically replaces the reusable
+   finalization handle with an `abandoned` terminal attestation.
+
+The private preparation store has no list, prefix, iterator, artifact-reader,
+or controller-facing method. `prepare` is byte-exact and idempotent;
+`resolve` requires both exact hashes; `finalize` binds the preparation,
+unsigned-result source, authorization, and release before erasing observations;
+`abandon` accepts only the exact normalized orphan receipt for that finalized
+binding and erases its reusable handle; and `consume` erases only an
+unfinalized payload without permitting resurrection. Lost acknowledgements
+replay the identical state transition. A finalized record can become only
+`abandoned`, never consumed; an abandoned record cannot be finalized,
+consumed, or prepared again; and a consumed record can never be finalized.
+Provider-attested predecessor termination and writer fencing are required for
+crash recovery.
+
+The atomic store exposes no enumeration operation: its release reader accepts
+only purpose plus an already committed content hash. Request, unsigned-result
+source, authorization, and release hashes are one-use. A known failure before
+durable result completion permanently orphans the complete bundle without
+refunding privacy. The exact orphan-store acknowledgement is normalized into a
+task-free content-bound receipt, then atomically attached to the corresponding
+finalized preparation as an `abandoned` terminal record so recovery cannot
+reissue an invisible release. A lost completion acknowledgement is first
+reconciled through a read-only ledger inspection: return only the byte-exact
+valid envelope submitted to the ambiguous completion call, or orphan and
+abandon only when non-completion is proven. If inspection is unavailable or
+contradictory, leave the one-use bundle and finalized preparation untouched
+for protected recovery rather than risk orphaning a release already named by a
+committed result. Repair and shadow never create a preparation and can never
+invoke diagnostic finalization. An ambiguous behavioral-release commit retains
+the durable prepared state for protected exact reconciliation; it is not
+destructively taken or discarded.
+
+The concrete mounted-volume implementation deliberately embeds the hidden
+privacy ledger and all four release-safe documents in one strictly validated,
+content-hashed transactional state envelope. It does not prepublish the
+documents through a second registry, because two durability points would make
+prefix visibility and ambiguous split commits possible. Reverse indexes bind
+every request, unsigned-result source, release, authorization, and artifact
+hash to one historical commit. Recovery revalidates the complete append-only
+privacy sequence and all schema/content/cross-document links before answering
+an exact content-hash query. Orphaning changes only visibility: the first
+orphan marker is permanent, the privacy debit and immutable bytes remain, and
+an exact commit replay can never clear or rebind it.
+
+The privacy/artifact commit has its own ambiguity protocol before result
+issuance. If both the initial commit acknowledgement and its bounded exact
+replay acknowledgement are lost, the producer submits a non-mutating,
+non-enumerating inspection containing the exact request, unsigned-result
+source, authorization, signed-release, and artifact-set hashes. The store
+returns only the exact historical receipt plus four content-hash references,
+`absent`, `conflict`, or `ambiguous`. Only an exact, non-orphaned commit with
+byte-identical bindings is recovered into a finalization handle. Proven
+absence may close the evaluation as failed; conflict, unreadable state, an
+orphan marker, or contradictory references preserve both the one-use broker
+claim and its exact trusted-private preparation for protected recovery. None
+of these paths refunds privacy, republishes artifacts, creates a binding, scans
+releases, or orphans a release whose commit status is uncertain.
+
+The service structurally satisfies the blind broker's
+`TrustedAdaptiveEvaluationClient` port and is injected directly when evaluator
+and controller composition share one trusted-cloud process. In that topology,
+`CanonicalEvaluatorClient` is not layered over it: the blind-broker lease and
+the wrapped evaluator's durable one-use ledger are the authoritative burns,
+while the service's bounded replay record only detects nondeterministic
+outputs. If a later deployment separates the processes, an authenticated
+transport exposes this service and `CanonicalEvaluatorClient` becomes the
+remote implementation of the same port; its durable replay ledger must remain
+immediately client-side and burn before transport submission.
+
+The result/release lineage is intentionally asymmetric. The result commits
+`behavioralAggregateHash = behavioralRelease.contentHash`; the release and
+behavioral evidence commit
+`resultEnvelopeBehavioralSourceCommitmentHash(result)`, a domain-separated
+canonical commitment over immutable result identity and derivation fields that
+excludes the result `contentHash`, signature, and `behavioralAggregateHash`.
+The broker computes the same commitment from the exact unsigned eventual
+result fields after raw destruction, so the producer never predicts a future
+hash. The behavioral release is signed before or at final result issuance;
+consumers verify that order and the exact source commitment.
+The old full-result-hash reference was cryptographically cyclic and is
+backward-incompatible: legacy or fabricated references must be rejected, not
+migrated implicitly. See `documentation.md` ADR-0066.
+
 The evaluator is always remote, so task and grader files never land on the Mac.
 Raw verifier output and raw ATIF are temporary trusted-zone artifacts and are
 destroyed or retained only under the broker's audited retention policy. The
@@ -379,27 +612,32 @@ Only the operator may:
 
 ## 4. Repository and Git design
 
-`df-demo` is the Dark Factory control plane and local evidence store. The
-canonical Pi fork is the existing sibling Git repository `../pi`. It is not
-vendored, recloned, or converted into a submodule. Candidate branches and
-worktrees live outside that clean canonical worktree, and Dark Factory never
-edits or resets `../pi/main` directly.
+`df-demo` contains the Dark Factory source, protocol, schemas, workflows, and
+an optional read-only mirror of release-safe evidence. It is not a locally
+executed controller or a store for task-bearing evidence. The existing sibling
+Git repository `../pi` is a read-only planning-time observation of the
+operator's canonical private fork; no production workload reads it. It is not
+vendored, recloned, mutated, fetched, built, tested, or converted into a
+submodule. Candidate branches and worktrees exist only in isolated cloud
+sandboxes created from an independently verified private-origin snapshot.
 
 Implementation sequence:
 
-1. Register `../pi` as the canonical harness repository and verify it is the Pi
-   monorepo, clean, on the expected branch, and tracking `origin`.
-2. Verify through the remote provider that `origin` is private and that the
-   operator can fetch and push; never log its credential-bearing URL.
-3. Resolve the official `earendil-works/pi` upstream and its merge base in an
-   isolated cloud clone; do not add or fetch a local `upstream` remote.
-4. Pin the fork commit, upstream base commit, repository-native lock hash, and
-   sanitized remote fingerprints from signed cloud verification.
-5. Create an immutable baseline tag for experiment `000`.
-6. Create one controller-owned branch and external worktree per candidate.
+1. Record the exact read-only `../pi` commit, tree, lock, package version, and
+   sanitized origin identity as operator authorization input only.
+2. In a trusted cloud Git worker, clone the configured private origin using a
+   scoped credential and independently verify privacy, fetch/push authority,
+   exact fork objects, and repository-native lock bytes.
+3. Resolve the official `earendil-works/pi` upstream and merge base inside that
+   disposable cloud clone; never add or fetch a local `upstream` remote.
+4. Sign and persist the exact fork commit, upstream base, tree, lock, package
+   version, and sanitized remote fingerprints as one registration receipt.
+5. Snapshot experiment `000` as an immutable source tar plus credential-free
+   Git bundle and publish its protected baseline ref without force.
+6. Create one controller-owned cloud branch and cloud worktree per candidate.
 7. Start every candidate from the active champion commit.
-8. Let Claude edit only the candidate worktree.
-9. Let the controller create commits only after required checks pass.
+8. Let Claude edit only that candidate's isolated cloud worktree.
+9. Let the controller create commits only after required cloud checks pass.
 10. Push sealed experiment branches and accepted champion tags to the private
     origin without force.
 
@@ -407,9 +645,11 @@ If `../pi` is dirty, detached, points to an unexpected repository, or contains
 unpublished operator work, fail closed. Never clean, reset, overwrite, or move
 those changes automatically.
 
-If GitHub is unavailable, the experiment may seal locally with
-`publishStatus: "pending"`. Publication retries later and never changes the
-experiment decision.
+If GitHub is unavailable, do not create a workstation fallback or call a
+candidate sealed. Persist a task-free cloud interruption record, retain the
+cloud worktree only within its approved TTL, and resume publication from the
+same exact tree after connectivity returns. No promotion decision may depend
+on an unpublished candidate identity.
 
 Every experiment records:
 
@@ -419,15 +659,15 @@ Every experiment records:
 - Git tree SHA and dependency lock hash.
 - Canonical patch SHA-256 and changed file list.
 - Mutation category and size.
-- Local and remote branch/tag references.
+- Cloud worktree and sanitized remote branch/tag references.
 - Publication attempts and final status.
 
-Aggregate diagnostic evidence, derived query caches, and experiment folders
-remain local and are ignored by the control-plane Git repository. Raw and
-sanitized per-trial trajectories do not remain local. The task-keyed
-champion/baseline result cache and raw evaluator audit artifacts remain
-exclusively in the trusted cloud broker; only task-agnostic signed attestations
-and privacy-thresholded aggregates are stored locally.
+Canonical experiment folders, aggregate diagnostic evidence, and derived
+query caches remain on the governed cloud volume. An optional read-only export
+of task-agnostic signed attestations and privacy-thresholded aggregates may be
+placed in this directory for operator review; no runtime reads that mirror.
+Raw or sanitized per-trial trajectories, task-keyed champion/baseline cache,
+and evaluator audit artifacts remain exclusively in the trusted cloud broker.
 
 ## 5. Experiment lifecycle
 
@@ -501,6 +741,39 @@ On resume:
    repeated-testing and privacy budgets.
 7. Continue the optimization campaign.
 
+The production source design gives coordinator input preparation, resume
+verification, and interruption handling one fenced, linearizable
+mounted-volume state. Input is idempotent per allocation and task-free; resume
+accepts only an exact replay or strict extension of the attested checkpoint
+chain; interruption intent, broker-exposure accounting, authorized control,
+and the final CampaignState compare-and-swap survive controller replacement.
+
+Completion and journal finalization use independent trusted authorities.
+Successful completion must match a sealed journal. Interrupted completion
+instead reconciles the unsealed journal, evaluator-owned online-error state,
+and a closed in-flight operation ledger before an authority attests the
+monotonic budget maximum. Release-safe artifact assembly validates the exact
+required schema set from task-free providers and requires a hidden-identity
+exclusion attestation. The seal authority scans the immutable manifest before
+key access, while raw interruption text terminates at an attestor that stores
+only a fixed category and commitments. These production adapters and their
+adversarial test sources are implemented; cloud-only typecheck, test,
+provider-volume recovery, and end-to-end acceptance remain pending.
+
+A stop request may be written by a separate trusted controller while an
+optimization claim is in flight. Recovery accepts that monotonic
+`running -> stop-requested` path, then takes exactly one of two safe outcomes:
+an already completed result seals without changing its disposition and the
+campaign acknowledges `stopped`, or unfinished work first reconciles every
+burned budget, archives the experiment number and broker-exposure attestation,
+and only then acknowledges `stopped`. A durable external stop takes precedence
+over a pending pause, but it cannot bypass exact claim or accounting checks.
+Interruption control remains bound to the immutable archive-transition hash
+across crash retries, including a crash after stop acknowledgement but before
+interruption finalization. Provider-controlled exception text never creates an
+operator stop; SIGINT, SIGTERM, and operator requests must enter through the
+authenticated durable control path.
+
 There is no fixed lifetime experiment count, but every campaign must have an
 operator-set rolling monetary/token/wall-time budget and pause when it is
 exhausted. Each official task timeout still applies, and the walk-forward
@@ -519,6 +792,30 @@ Use JSON Schema Draft 2020-12. Every persisted JSON object has:
 - Provenance references
 - Canonical JSON serialization
 - SHA-256 content hash
+
+CampaignState reconstruction uses one artifact-backed production verifier for
+genesis/control authorizations, ledger transitions, and experiment decisions.
+The verifier derives a single lookup tuple from the exact expected payload,
+reads only canonical release-safe JSON through the trusted artifact boundary,
+requires byte-for-byte payload equality and a valid content hash, and verifies
+an Ed25519 signature against a predeclared historical key set. Genesis and
+ledger evidence use their payload hash as the immutable lookup; control and
+decision evidence use the authority hash already committed by CampaignState.
+The unsigned-document helper is shared with the future cloud/KMS publisher so
+the two sides cannot drift. A concrete mounted-volume artifact registry now
+provides the injected storage binding for evaluator releases, optimizer
+released-evidence metadata, production-composition evidence sets, campaign
+attestations, and the three production-bootstrap prerequisites. It writes
+canonical JSON to purpose-and-namespace-bound content-addressed URIs through
+the verifying artifact bridge, then publishes an exact-query index in one
+fenced state transaction. A crash before that index commit can leave only an
+unreachable object; it cannot expose a partial behavioral bundle. Exact replay
+is idempotent, while locator, purpose, semantic hash, URI, byte hash, length,
+or owner collisions fail closed. Readers can resolve one typed exact lookup
+only: there is no enumeration, prefix search, arbitrary URI, or filesystem
+fallback. The campaign-purpose KMS keyring and all other rotation-aware
+public-key authorities remain separate injected operator bindings so storage
+cannot appoint its own verification keys.
 
 The requirement to keep logs, traces, hypotheses, and experiments locally is
 implemented as **complete local retention of every release-safe artifact**:
@@ -791,9 +1088,12 @@ privacy-qualified aggregates become discovery evidence for later experiments.
 2. Claude records the brief hash, causal hypothesis, predicted repair behavior,
    predicted unseen-panel effect, regressions, and falsification rules. The
    candidate commit is frozen before the broker selects or attests a panel.
-3. The broker privately selects five tasks from the feedback-consumed
-   discovery evidence using the exact `3 hard + 1 uncertain + 1 alternating
-   easy/underexposed` rule.
+3. The broker binds repair to exactly one earlier, completed,
+   feedback-consumed validation allocation. On repair attempt one it privately
+   selects five tasks only from that twelve-task source panel using the exact
+   `3 hard + 1 uncertain + 1 alternating easy/underexposed` rule. It records
+   the source request commitment, candidate archive, champion archive, frozen
+   hypothesis, and selected cells before execution.
 4. Run the candidate once on each repair task. Compare against eligible
    exact-key champion cache distributions, with deterministic fresh champion
    drift anchors; on cache miss or drift failure, run the champion fresh.
@@ -809,9 +1109,13 @@ privacy-qualified aggregates become discovery evidence for later experiments.
    a **challenger**, never a champion.
 6. One discovery panel may support at most two distinct candidate commits. A
    first repair failure returns only the signed gate disposition and original
-   brief; it cannot expose a five-task diagnostic slice. After the second
-   failure, close the hypothesis and rotate or accumulate a new qualifying
-   discovery brief.
+   brief; it cannot expose a five-task diagnostic slice. A second attempt must
+   use a distinct candidate commit but the exact same five hidden cells,
+   buckets, order, source validation request, incumbent archive, and frozen
+   hypothesis. It does not advance the easy/coverage alternation epoch. After
+   the second failure, close the hypothesis and rotate or accumulate a new
+   qualifying discovery brief. A third attempt, a different source panel, or
+   an easier re-sample fails closed.
 7. For a challenger, the broker selects and seals exactly twelve validation
    tasks that were not used in the candidate's repair panel and whose released
    evidence did not inform its hypothesis. It also seals strata, six AB/six BA
@@ -840,6 +1144,12 @@ This means a failed validation panel can be used again immediately, but only
 as the old-panel repair gate the user intended—not as repeated promotion
 evidence. Re-running it for promotion after Claude saw its diagnostics would
 turn the holdout into training data.
+
+The exact-five reuse rule makes the first repair failure interpretable: the
+revised candidate is compared on the same hidden difficulty mix instead of
+receiving a new draw. Even then, improvement on the reused cells is only a
+screening result. A passing revision must freeze before the broker allocates a
+different twelve-task panel that is fresh to the entire hypothesis ancestry.
 
 The repair gate uses five tasks once each, rather than five tasks three times.
 Three repeats improve the noise estimate but still provide only five
@@ -882,6 +1192,54 @@ fresh panels, the campaign also uses a predeclared online error budget
 calibrated by null simulations. The posterior thresholds above are necessary
 but not sufficient once the campaign-level budget is exhausted. Ambiguous
 evidence yields `inconclusive`; the observed winner is not promoted by default.
+
+The online budget is evaluator-owned durable state, not a counter inferred
+from successful experiment results. For every fresh validation request, after
+the one-use panel disposition is bound but before Harbor starts, a
+trusted-cloud authority atomically reserves and permanently spends the next
+`6/(pi² n²)` alpha allocation. The reservation is keyed by the immutable
+request hash, idempotent for an exact replay, conflicting for a mutated replay,
+and never refunded after provider, normalization, destruction, or release
+failure. Exhaustion fails before any outcome-bearing workload starts.
+
+The signed release carries only task-agnostic reconciliation material:
+maximum alpha, gate ordinal, exact alpha spent, cumulative spend before and
+after, remaining alpha, and commitments to the reservation and prior/resulting
+states. The runner accepts it only when the before value equals campaign
+usage, the maximum equals the sealed campaign limit, the threshold equals
+`max(0.95, 1-alphaSpent)`, and the after value is the exact monotonic result.
+The campaign coordinator must additionally reconcile those commitments with
+the evaluator authority after interrupted runs, because a failed run still
+burns alpha even when no release envelope exists. Before it archives any
+interrupted experiment, a trusted completion-material service also reconciles
+the experiment journal and operation ledgers into every monotonic campaign
+budget dimension. This preserves paid cost, tokens, wall time, attempts,
+privacy releases, and promotion looks consumed before the failure. The
+controller accepts only a verifier-authorized accounting attestation, records
+it before archival, and treats the record-then-archive crash window
+idempotently; no failed or abandoned run can reset either alpha or another
+budget counter.
+
+If a deployment inserts a separate remote evaluator transport, its
+release-facing client has a separate durable one-use replay ledger. It
+atomically burns both the canonical request ID and request hash before the
+transport is invoked, and never refunds either value after timeout, invalid
+release, controller failure, or restart. The ledger is stored on the trusted
+linearizable campaign volume under the same provider-attested runtime and
+single-writer fencing rules as the other durable authorities. A clean handoff
+preserves the burn; an unclean handoff requires provider-attested predecessor
+termination. Reusing an ID with different bytes, or replaying the exact
+canonical request, fails before any outcome-bearing work can be submitted.
+Hidden-panel replacement and reuse remain governed by the broker/evaluator
+one-use ledger rather than inferred from this task-free client ledger. The
+client ledger contains request commitments and canonical claim times
+only—never task identities, panel contents, grader output, or
+optimizer-visible evidence.
+
+The MVP's direct in-process release-bundle service does not add that client
+ledger. Its outer blind-broker lease and inner evaluator one-use request ledger
+already durably consume the operation; adding an uncorrelated third burn would
+complicate recovery without creating a new transport boundary.
 
 Newly selected tasks lacking a compatible experiment-`000` observation enter a
 broker-private asynchronous baseline-maintenance queue. Baseline comparisons
@@ -1207,8 +1565,11 @@ Create a project-local Claude Code plugin.
 - `df_submit_hypothesis`
 - `df_stage_candidate`
 - `df_submit_analysis`
-- `df_request_next_stage`
-- `df_record_decision`
+- `df_report_contamination`
+
+There is deliberately no optimizer tool for selecting the next evaluation
+stage or recording a promotion decision. Those are controller-owned policy
+actions.
 
 The MCP server enforces strict schemas, query limits, task-agnostic redaction,
 access logs, cumulative differencing/privacy budgets, one-use brief release,
@@ -1239,7 +1600,7 @@ Implement these commands:
 ```text
 df init
 df doctor
-df harness register ../pi
+df harness register
 df harness doctor
 df sandbox probe
 df baseline init
@@ -1272,6 +1633,56 @@ binding, Daytona runtime marker, and confirmed teardown. A paid `optimize`
 dispatch additionally requires the literal authorization
 `RUN:<campaign-id>:<control-image-digest>` in a protected GitHub environment.
 
+The paid dispatch also requires
+`DF_PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_JSON`: one strict, canonical,
+signed, task-free bootstrap descriptor. It binds the campaign, lineage, and
+protocol to an exact `TrustedCloudArtifactRef` for the production-composition
+manifest and to four non-recursive trust commitments: authority set,
+verification key set, verifier policy, and the domain-separated hash of those
+three independent values. None of those commitments may be derived from the
+descriptor, its signature, or a verifier receipt. The GitHub-hosted bootstrap
+parses and campaign-checks the descriptor, re-canonicalizes it, reserves its
+environment target against organization-Secret collisions, and forwards it
+only for `optimize`; no JSON or environment field chooses a provider, model,
+key, verifier implementation, or executable port.
+
+Inside the trusted control zone, a separately injected descriptor authority
+verifies the signature and exact trust commitments. A separately injected
+trusted-cloud artifact reader is the only path allowed to fetch the referenced
+manifest. The loader independently checks the URI, JSON media type, declared
+and maximum byte lengths, SHA-256, UTF-8 canonical JSON plus one final newline,
+campaign/lineage/protocol/manifest bindings, all-false information-boundary
+flags, and the exact ordered nine task-free runtime-port attestation IDs and
+digests shared with the production runtime. Its receipt says only that
+descriptor authority and artifact transport were verified; it explicitly says
+that composition authority is unverified and no executable binding was
+created. The production composition owner must separately validate the full
+signed manifest, resolve independently supplied trusted runtime-port wrappers,
+and authorize construction.
+
+The descriptor verifier is a provider-neutral Ed25519 implementation, not a
+boundary-only placeholder. At construction it captures a purpose-specific
+public-key authority, an explicit non-overlapping rotation schedule, and the
+four independently configured trust commitments. The authority request fixes
+the descriptor-signing purpose, key ID and version, signature time, and all
+trust commitments. Returned material must be exact public SPKI DER with the
+same purpose/version/half-open validity window, matching authority/key-set
+hashes, and `revoked: false`; private-key fields and PKCS#8 input have no
+accepted representation. The verifier checks the canonical unsigned
+descriptor hash, the exact Ed25519 signing payload, freshness both before and
+after key resolution, clock-skew policy, and rotation window. Its deterministic
+attestation hash binds the signature, resolved key fingerprint and version,
+rotation window, resolution request, and all trust commitments. It captures
+the authority method and snapshots the descriptor before awaiting external
+code, so caller mutation cannot redirect verification. No environment value
+is a key authority.
+
+Artifact transport stays on the existing
+`VerifyingTrustedJsonArtifactReader` over `TrustedArtifactBridge`; it already
+defines the bootstrap loader's reader type through an exact public
+`boundary`/`readUtf8` type projection. There is no second reader, local-file
+fallback, or provider-selected parsing path.
+
 Before any paid model or benchmark call, the controller supports:
 
 1. `probe`, which round-trips a content-addressed receipt through the mounted
@@ -1279,11 +1690,137 @@ Before any paid model or benchmark call, the controller supports:
    image; and
 2. `synthetic`, which runs a deterministic three-experiment smoke campaign
    covering fresh promotion, repair rejection, fresh inconclusive rotation,
-   cumulative accounting, champion preservation, and canary non-release.
+   cumulative accounting, champion preservation, and canary non-release; and
+3. pre-composition `status`, which persists only an
+   `awaiting-production-composition` receipt, the immutable control-image
+   digest, and the public non-authorizing binding-readiness commitment.
 
 These smoke operations do not certify the real evaluator. `optimize`, mutable
-status/stop/resume, and baseline initialization stay locked until their signed
-durable production composition and cloud quality suite are complete.
+campaign status/stop/resume, and baseline initialization stay locked until
+their signed durable production composition and cloud quality suite are
+complete. Pre-composition status is explicitly not campaign reconstruction.
+While that lock remains, `optimize` emits a content-addressed, release-safe
+readiness receipt instead of a generic error. The receipt lists the fixed
+task-free composition contracts that are missing or malformed, commits to the
+complete binding set and supplied attestation hashes, and reduces Pi source
+configuration problems to `missing` or `invalid`. It never reflects arbitrary
+binding keys, source environment names, implementations, credentials, model
+identifiers, task identities, or grader data. Even a complete binding list
+reports `runnable: false`; only the separately attested production composition
+may authorize execution.
+
+The signed production composition then binds the nine executable runtime
+ports—campaign store, input factory, resume verifier, completion material,
+interruption port, experiment journal, optimizer adapter, correctness gate,
+and blind broker—as one fixed ordered list of task-free port IDs and
+attestation digests. The manifest and its verifier remain the two prerequisite
+slots in the eleven-slot bootstrap readiness surface; they are intentionally
+excluded from the nine-port commitment because either committing to itself
+would create a recursive authorization. Each digest is also carried by an
+in-process trusted-cloud wrapper whose implementation must be reference-equal
+to the actual component port. Only the safe ID/digest list reaches the
+independent verifier, and its receipt must reproduce the same
+domain-separated canonical commitment. JSON or environment data can therefore
+describe commitments but cannot inject executable ports.
+
+The concrete composition verifier is provider-neutral and artifact-backed.
+It verifies the manifest with a predeclared, purpose- and rotation-aware
+Ed25519 public-key authority, then resolves one separately signed evidence
+envelope containing exactly fourteen unique immutable JSON references: four
+role-component attestations, one complete operational-binding attestation,
+and the nine ordered runtime-port attestations. The evidence-envelope key
+purpose, accepted rotation set, and resolved SPKI are distinct from and
+disjoint with the manifest-signing keys. Only after both signatures verify
+does the bounded
+trusted reader accept canonical UTF-8 JSON whose byte length, SHA-256,
+content hash, domain, expiry, campaign, manifest, component, operational, and
+port bindings reproduce the signed inputs exactly. The deterministic verifier
+receipt commits both public-key versions and fingerprints plus the signed
+artifact set. Provider-specific artifact registries and public-key authorities
+remain deployment bindings; neither environment data nor an evidence document
+can name or construct an executable.
+
+One provider-neutral, one-shot composition owner is the only bridge from those
+verified commitments to `status` or `run`. Before constructing ports, it
+preverifies the manifest and creates a content-addressed, durable-idempotency
+request whose source, campaign-genesis, and hidden-catalog-genesis hashes
+exactly reproduce the three opaque manifest bindings. A trusted in-process
+port verifies the exact signed private-Pi registration and separately signed
+campaign/catalog genesis prerequisites. The source identity hash commits the
+registration ID, private-origin attestation, commit, tree, dependency lock,
+and Pi package version; three disjoint purpose/rotation-aware Ed25519
+authorities verify source, campaign, and catalog evidence. The catalog
+commitment exposes only the dataset pin, registry revision, seed-set and
+weighting commitments, task/disposition key IDs, and all-false
+information-boundary flags—never task names, hidden IDs, panels, or grader
+evidence.
+
+Bootstrap is a recoverable multi-store protocol, not a cross-store atomic
+transaction. A fenced mounted-volume journal binds one request hash and
+advances only through `claimed`, `campaign-ensured`, `catalog-ensured`, and
+`committed`. Each replay re-verifies every signature and asks the injected
+campaign and hidden-catalog authorities to create or exactly reconstruct their
+own state hashes. A replayed or partially recovered invocation returns
+`reconstructed`; only a new request that created both stores returns
+`bootstrapped`. Journal/store disagreement, a catalog whose campaign is
+missing, recreation after a later durable phase, a changed request, or a state
+hash mismatch fails closed. Every coordination/campaign/catalog resource is
+registered with the owner immediately after acquisition. See
+`documentation.md` ADR-0069.
+
+The owner then receives components plus all nine
+reference-equal wrappers from a trusted in-process factory, composes the
+production runtime, and calls the selected runtime method. Every store and
+lease acquired during bootstrap, partial factory construction, composition,
+or lazy runtime use is registered immediately and closed in reverse order in
+`finally`; any close failure fails the invocation. Each owner is permanently
+consumed after one call, a process-local campaign fence blocks overlapping
+owners, and the concrete campaign store must add the durable cross-process
+single-writer fence. See `documentation.md` ADR-0063.
+
+The production implementation of that authority is
+`ProductionTrustedCloudRuntimeFactory`. Its constructor accepts only explicit
+trusted in-process dependencies and one independently produced, task-free
+dependency attestation. The attestation pins the exact manifest hash, all four
+component-manifest hashes, the operational-binding hash, and the canonical
+ordered nine-port digest list. It cannot name a constructor, module, command,
+key, model, task, panel, or grader input. A separate captured provider/KMS
+authority must authenticate that attestation against the exact composition
+verifier receipt before construction. The factory snapshots every data input
+and binds every callable before any lifecycle callback can mutate it.
+
+The factory statically constructs the append-only campaign store; shared
+fenced optimization-coordination ports; production completion material;
+mounted journal state, artifact assembler, seal authority, interruption
+attestor, and evidence store; cloud-only Claude session, artifact-backed
+optimizer resolver, and durable session records; correctness runner, durable
+records, and commit-keyed source index; and the blind broker, durable lease
+store, content-hash-only evaluator release service, and durable diagnostic
+publisher. Each backing store is registered immediately. A registration or
+later constructor failure closes the partial stack through idempotent
+close-once wrappers, while the owner may safely perform its normal final
+drain. The nine returned method-captured implementations and their port
+bindings are frozen, canonical-order, and reference-equal. The trusted runtime
+guard and reviewed mounted-volume semantics are checked before construction.
+See `documentation.md` ADR-0072.
+
+Deployment still supplies real provider/KMS/artifact authorities rather than
+test fallbacks: campaign transition/decision/control verifiers, optimization
+diagnostic/resume/interruption authorities, completion accounting/ledger/seal
+authorities, journal policy/provenance/task-exclusion/leak-scan authorities,
+the cloud provider and optimizer artifact/key registries, correctness
+scan/build/publication/snapshot and receipt authorities, evaluator service and
+release artifact/key authorities, broker configuration and source keyrings,
+the independent factory dependency attestation, and the exact policy,
+provider-readiness, and volume-semantics commitments.
+
+Additional Daytona organization Secrets are mapped only to non-reserved
+credential targets. The bootstrap rejects collisions with controller-owned
+configuration, cloud/runtime identity, volume and campaign markers, provider
+identity, Node/package-loader controls, dynamic-loader controls, shell startup,
+locale, and GitHub runner variables before creating a sandbox. Thus a secret
+binding cannot replace a validated source pin, protocol choice, runtime marker,
+execution path, or provider attestation field.
 
 ### 10.2 Full-evaluation authorization
 
@@ -1313,7 +1850,11 @@ The optimizer plugin contains no reference to the authorization mechanism.
 
 ## 11. Feedback and decision documentation
 
-Every sealed experiment appends one generated entry to `FEEDBACK.md` containing:
+Every sealed experiment appends one generated entry to operator-only
+`FEEDBACK.md`. This file is an audit mirror and is never mounted, archived,
+queried, or otherwise supplied to Claude Code. The optimizer receives only the
+separately signed, privacy-thresholded, byte-inspected diagnostic artifacts
+defined in §9. Entries in the operator mirror contain:
 
 - Experiment number, hypothesis, mutation, and candidate commit.
 - Source diagnostic-brief hash and candidate/challenger/active/certified state.
@@ -1361,18 +1902,32 @@ execution target.
 
 ### 12.0 Cloud delivery gates
 
-Use four separate, explicit cloud delivery paths:
+Use six separate, explicit cloud delivery paths:
 
-1. a one-time, read-only, main-commit-bound workflow that generates an
-   uncommitted `pnpm-lock.yaml` review artifact without lifecycle scripts;
-2. read-only automated and manually confirmed cloud quality gates that require
+1. a one-time, read-only workflow that runs automatically on the exact
+   `codex/dark-factory-mvp` source-only bootstrap branch, or manually from
+   `main` once merged, and checks out the exact branch tip to generate an
+   uncommitted `pnpm-lock.yaml` review artifact without lifecycle scripts or
+   pnpm hooks. The lock can therefore join the same pull request instead of
+   requiring unverified source on `main`;
+2. a main-commit-bound, no-secret pin-discovery workflow that downloads one
+   exact Terminal-Bench registry revision using one exact Harbor version,
+   verifies and hashes its 89-task inventory inside ephemeral cloud storage,
+   deletes all task-bearing material, and emits only a canonical task-free
+   content-addressed review receipt;
+3. read-only automated and manually confirmed cloud quality gates that require
    the reviewed lockfile;
-3. a manually confirmed and protected GHCR publication workflow that first
+4. a manually confirmed free preflight workflow for synthetic,
+   pre-composition status, and provider probe. The first two pass no sandbox
+   secrets and block all sandbox network; probe receives only its provider
+   inputs. None requires paid model, private-Git, benchmark, budget,
+   descriptor, or signing configuration;
+5. a manually confirmed and protected GHCR publication workflow that first
    passes quality, accepts only digest-qualified role bases, installs exact
    operator-selected Claude Code and Harbor versions, and emits immutable
    control/optimizer/build/evaluator digest receipts with attached SBOM and
    provenance; and
-4. a main-commit-bound, protected-environment paid workflow whose typed
+6. a main-commit-bound, protected-environment paid workflow whose typed
    authorization binds campaign and control-image digest before it exposes the
    Daytona bootstrap credential to the single controller-launch step.
 
@@ -1507,10 +2062,12 @@ Docker or local execution adapter.
 ### Phase 1: Workspace and existing private fork
 
 - Create the TypeScript workspace and quality tooling.
-- Register and validate the existing private Pi fork at `../pi`.
-- Verify private-origin authentication and add the missing read-only official
-  `upstream` remote.
-- Pin the baseline and implement worktree isolation.
+- Record the read-only identity of the existing private Pi fork at `../pi`.
+- In a trusted cloud clone, verify private-origin fetch/push authority,
+  canonical upstream lineage, exact objects, package version, and lock bytes;
+  never add or fetch a local `upstream` remote.
+- Sign the registration, snapshot the baseline, and implement cloud-only
+  worktree isolation.
 
 ### Phase 2: Schemas and durable store
 
@@ -1552,11 +2109,42 @@ Docker or local execution adapter.
   five-task weighting, capability strata, cost model, champion result cache,
   drift anchors, bounded repair attempts, twelve-pair fresh validation,
   feedback-dark shadow certification, and repeated-testing rules.
+- Admit the catalog through a one-use trusted-cloud loader bound to the exact
+  Terminal-Bench 2.1 content, manifest, registry-revision, and 89-task pin.
+  Optional initial-Pi and comparable-public-leaderboard observations must be
+  named only by immutable commitments and must remain private rows inside the
+  broker. The only releasable genesis result is a task-free commitment receipt;
+  a failed load burns the loader and cannot be retried against alternate
+  material. The returned hidden import is an immutable non-enumerable
+  capability property: trusted broker code must access it explicitly, while
+  JSON serialization, canonical logging, and object spreading expose only the
+  task-free receipt/control fields.
+- Seal the loader's inputs in a dedicated hidden-material, content-addressed
+  mounted-volume registry. Its bounded producer accepts exactly one canonical
+  normalized bundle, verifies the full pin plus 89 unique task-name/revision
+  pairs and optional exact observation artifacts, atomically commits only exact
+  query bindings, and exposes a three-method capability (`boundary`,
+  `loadInventory`, `loadObservations`) with no list, alias, locator, artifact
+  reference, or local-mirroring surface. Keep this registry separate from the
+  task-free artifact registry so the latter's local-safe invariant is never
+  weakened.
 
 ### Phase 8: Claude optimizer package
 
 - Build the Claude Code plugin, skills, MCP tools, permissions, hooks, and
   evidence audit trail.
+- Compose the provider-neutral artifact-backed optimizer resolver with the
+  trusted commit-keyed source snapshot index, immutable released-evidence
+  registry, bounded canonical-JSON reader, independent full-byte verifying
+  reader, campaign-bound release-inspection policy, and
+  purpose/rotation-aware public-key authority.
+- Seed the baseline commit's signed source snapshot v2 before experiment
+  `001`; later promoted candidate snapshots already enter the same
+  commit-keyed index through the correctness gate.
+- Pin and review the single source-only bootstrap metadata artifact before the
+  campaign. Later proposal and analysis archives are resolved only by their
+  exact signed task-free commitments; no arbitrary evidence lookup is exposed
+  to Claude Code.
 
 ### Phase 9: Analysis, decisions, and feedback
 

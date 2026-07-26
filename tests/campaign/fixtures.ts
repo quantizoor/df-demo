@@ -87,8 +87,8 @@ export function harnessRegistrationFixture(
       attestationHash: HASH_B,
     },
     adapter: {
-      adapterId: "pi-rpc",
-      executionMode: "rpc",
+      adapterId: "harbor-pi-print-json",
+      executionMode: "print-json",
       sessionsDisabled: true,
       uncontrolledExtensionsDisabled: true,
       uncontrolledContextFilesDisabled: true,

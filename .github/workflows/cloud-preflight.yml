@@ -1,0 +1,131 @@
+name: cloud-control-preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character main-branch controller commit
+        required: true
+        type: string
+      command:
+        description: Free, non-optimizing control command
+        required: true
+        type: choice
+        options:
+          - probe
+          - synthetic
+          - status
+      campaign_id:
+        description: Campaign identifier used only for isolated state
+        required: true
+        type: string
+      confirmation:
+        description: Type PREFLIGHT:<command>:<campaign_id>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dark-factory-preflight-${{ inputs.campaign_id }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.confirmation == format('PREFLIGHT:{0}:{1}', inputs.command, inputs.campaign_id)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      DF_CLOUD_EXECUTION: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DF_PREFLIGHT_COMMAND: ${{ inputs.command }}
+      DF_WORKFLOW_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+      DF_CLOUD_PROVIDER: daytona
+      DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
+      DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
+      DF_CLOUD_REGION_CLASS: ${{ vars.DF_CLOUD_REGION_CLASS }}
+      DF_CONTROL_IMAGE_REFERENCE: ${{ vars.DF_CONTROL_IMAGE_REFERENCE }}
+      DF_CONTROL_IMAGE_DIGEST: ${{ vars.DF_CONTROL_IMAGE_DIGEST }}
+      DF_BUILD_IMAGE_REFERENCE: ${{ vars.DF_BUILD_IMAGE_REFERENCE }}
+      DF_BUILD_IMAGE_DIGEST: ${{ vars.DF_BUILD_IMAGE_DIGEST }}
+      DF_EVALUATOR_IMAGE_REFERENCE: ${{ vars.DF_EVALUATOR_IMAGE_REFERENCE }}
+      DF_EVALUATOR_IMAGE_DIGEST: ${{ vars.DF_EVALUATOR_IMAGE_DIGEST }}
+      DF_DAYTONA_VOLUME_ID: ${{ vars.DF_DAYTONA_VOLUME_ID }}
+      DF_DAYTONA_VOLUME_SUBPATH: ${{ vars.DF_DAYTONA_VOLUME_SUBPATH }}
+      DF_CONTROL_DAYTONA_SECRET_SOURCE: ${{ vars.DF_CONTROL_DAYTONA_SECRET_SOURCE }}
+      DF_CONTROL_TTL_MINUTES: ${{ vars.DF_CONTROL_TTL_MINUTES }}
+      DF_CONTROL_NETWORK_ALLOW_DOMAINS: ${{ vars.DF_CONTROL_NETWORK_ALLOW_DOMAINS }}
+      DF_CONTROL_CPU: ${{ vars.DF_CONTROL_CPU }}
+      DF_CONTROL_MEMORY_GIB: ${{ vars.DF_CONTROL_MEMORY_GIB }}
+      DF_CONTROL_DISK_GIB: ${{ vars.DF_CONTROL_DISK_GIB }}
+    steps:
+      - name: Verify free staged invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS:-}" = "true"
+          test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
+          [[ "$DF_REQUESTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$DF_REQUESTED_SOURCE_COMMIT" = "$GITHUB_SHA"
+          [[ "$DF_WORKFLOW_CAMPAIGN_ID" =~ ^[a-z0-9]([a-z0-9._-]{0,94}[a-z0-9])?$ ]]
+          [[ "$DF_PREFLIGHT_COMMAND" =~ ^(probe|synthetic|status)$ ]]
+          [[ "$DF_CONTROL_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test -z "${DF_PAID_RUN_AUTHORIZATION:-}"
+          test -z "${DF_PRODUCTION_OPTIMIZE_BOOTSTRAP_DESCRIPTOR_JSON:-}"
+
+      - name: Checkout exact protected source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Require immutable source and reviewed dependency lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DF_REQUESTED_SOURCE_COMMIT"
+          test -s pnpm-lock.yaml
+          test "$(git status --porcelain=v1 --untracked-files=no)" = ""
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Build the exact free-stage controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          test "$(pnpm --version)" = "11.9.0"
+          pnpm install --frozen-lockfile
+          pnpm check
+          pnpm build
+
+      - name: Run the free command in a disposable Daytona control sandbox
+        shell: bash
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DAYTONA_API_KEY"
+          node dist/cloud/control-bootstrap-cli.js \
+            "$DF_PREFLIGHT_COMMAND" \
+            "$DF_WORKFLOW_CAMPAIGN_ID" \
+            > control-preflight-receipt.json
+          test -s control-preflight-receipt.json
+
+      - name: Upload the release-safe preflight receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: control-preflight-${{ inputs.command }}-${{ inputs.campaign_id }}-${{ inputs.source_commit }}
+          path: control-preflight-receipt.json
+          if-no-files-found: error
+          retention-days: 14

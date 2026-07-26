@@ -116,6 +116,11 @@ export interface BudgetLimits {
   readonly maximumAttempts: number;
   readonly maximumPrivacyReleases: number;
   readonly maximumPromotionLooks: number;
+  /**
+   * Predeclared family-wise online error budget. The trusted evaluator spends
+   * it before a fresh promotion outcome can be observed.
+   */
+  readonly maximumOnlineError: number;
 }
 
 export interface BudgetUsage {
@@ -125,6 +130,7 @@ export interface BudgetUsage {
   readonly attempts: number;
   readonly privacyReleases: number;
   readonly promotionLooks: number;
+  readonly onlineErrorSpent: number;
 }
 
 export interface BudgetSnapshot {
@@ -184,4 +190,3 @@ export interface CampaignStatus {
   readonly shadowSlicesRemaining: number;
   readonly stopRequested: boolean;
 }
-

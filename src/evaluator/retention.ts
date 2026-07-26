@@ -109,8 +109,9 @@ const FORBIDDEN_LOCAL_KEYS = new Set([
 ]);
 const FORBIDDEN_RELEASED_STRING = [
   /https?:\/\//iu,
-  /(?:^|\s)\/(?:Users|home|workspace|tmp|opt)\//u,
+  /(?:^|[\s"'(=:[{])\/(?:Users|etc|home|opt|private|root|tmp|var|workspace)(?:\/|(?=$|[\s"'`),.;:\]}]))/u,
   /[A-Za-z]:\\/u,
+  /(?:%(?:2e|2f|5c)|\\x(?:2e|2f|5c)|\\u00(?:2e|2f|5c))/iu,
   /```/u,
   /\b(?:expected|actual|assertion|grader|verifier|solution)\b/iu,
   /(?:^|\s)(?:npm|pnpm|yarn|pip|apt|brew|docker|kubectl)\s+/iu,

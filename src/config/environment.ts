@@ -59,6 +59,7 @@ export interface BootstrapConfiguration {
     readonly maximumAttempts: number;
     readonly maximumPrivacyReleases: number;
     readonly maximumPromotionLooks: number;
+    readonly maximumOnlineError: number;
   };
 }
 
@@ -122,6 +123,7 @@ const BASE_REQUIRED = [
   "DF_BUDGET_ATTEMPTS",
   "DF_BUDGET_PRIVACY_RELEASES",
   "DF_BUDGET_PROMOTION_LOOKS",
+  "DF_BUDGET_ONLINE_ERROR",
   ...IMAGE_ROLES.flatMap((role) => [
     `DF_${role}_IMAGE_REFERENCE`,
     `DF_${role}_IMAGE_DIGEST`,
@@ -489,6 +491,15 @@ export function inspectBootstrapEnvironment(
     invalid,
     { integer: true },
   );
+  let maximumOnlineError = parsePositive(
+    environment,
+    "DF_BUDGET_ONLINE_ERROR",
+    invalid,
+  );
+  if (maximumOnlineError !== null && maximumOnlineError > 0.05) {
+    invalid.push("DF_BUDGET_ONLINE_ERROR");
+    maximumOnlineError = null;
+  }
 
   const cloudRegionClass = present(environment, "DF_CLOUD_REGION_CLASS");
   if (
@@ -542,7 +553,8 @@ export function inspectBootstrapEnvironment(
     wallMinutes === null ||
     maximumAttempts === null ||
     maximumPrivacyReleases === null ||
-    maximumPromotionLooks === null
+    maximumPromotionLooks === null ||
+    maximumOnlineError === null
   ) {
     return {
       ready: false,
@@ -593,6 +605,7 @@ export function inspectBootstrapEnvironment(
         maximumAttempts,
         maximumPrivacyReleases,
         maximumPromotionLooks,
+        maximumOnlineError,
       },
     },
   };

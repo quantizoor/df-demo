@@ -445,6 +445,7 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
     if (payload.kind === "validation") {
       const totals = objectValue(payload.pairOutcomeTotals);
       const weightedAccuracy = objectValue(payload.weightedAccuracy);
+      const onlineErrorBudget = objectValue(payload.onlineErrorBudget);
       const total =
         numberValue(totals.bothPass) +
         numberValue(totals.challengerOnlyPass) +
@@ -462,6 +463,35 @@ function assertSemanticInvariants(name: SchemaName, value: unknown): void {
           name,
           "/payload/validFreshArmCount",
           "validation must contain exactly two fresh arms per matched task",
+        );
+      }
+      const alphaSpent = numberValue(onlineErrorBudget.alphaSpent);
+      const spentBefore = numberValue(
+        onlineErrorBudget.cumulativeSpentBefore,
+      );
+      const spentAfter = numberValue(
+        onlineErrorBudget.cumulativeSpentAfter,
+      );
+      const maximumOnlineError = numberValue(
+        onlineErrorBudget.maximumOnlineError,
+      );
+      if (
+        payload.onlineGateAuthorized !== true ||
+        alphaSpent <= 0 ||
+        spentBefore + alphaSpent !== spentAfter ||
+        spentAfter > maximumOnlineError ||
+        Math.abs(
+          numberValue(onlineErrorBudget.remainingAfter) +
+            spentAfter -
+            maximumOnlineError,
+        ) > 1e-12 ||
+        numberValue(payload.requiredPosteriorProbability) !==
+          Math.max(0.95, 1 - alphaSpent)
+      ) {
+        semanticFailure(
+          name,
+          "/payload/onlineErrorBudget",
+          "must bind one authorized, monotonic pre-outcome alpha reservation",
         );
       }
       const reproducedDisposition = reproduceFreshValidationDisposition({

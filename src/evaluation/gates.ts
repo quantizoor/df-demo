@@ -1,9 +1,11 @@
 import {
   allocateOnlineGate,
+  assertOnlineGateAllocation,
   jeffreysPosterior,
   summarizePairedDirichletJeffreys,
   summarizeWeightedBetaDifference,
   type OnlineErrorBudgetState,
+  type OnlineGateAllocation,
   type PairedCategoryCounts,
 } from "./statistics.js";
 import { reproduceFreshValidationDisposition } from "../core/validation-decision.js";
@@ -95,6 +97,11 @@ export interface FreshValidationInput {
   readonly latencyWithinGuardrail: boolean;
   readonly accuracyTradeoffPredeclared: boolean;
   readonly onlineErrorBudget: OnlineErrorBudgetState;
+  /**
+   * Trusted evaluators supply the pre-outcome durable reservation. Pure
+   * statistical callers may omit it and allocate directly from the state.
+   */
+  readonly reservedOnlineGate?: OnlineGateAllocation;
   readonly integrationPoints?: number;
 }
 
@@ -110,6 +117,7 @@ export interface ReleaseSafeFreshValidationResult {
   readonly interval95: readonly [number, number];
   readonly requiredPosteriorProbability: number;
   readonly onlineGateAuthorized: boolean;
+  readonly onlineGateAlphaSpent: number;
   readonly stratumRegressionVeto: boolean;
   readonly onlineErrorBudgetAfter: OnlineErrorBudgetState;
   readonly repairCacheHistoryPositiveWeight: 0;
@@ -248,7 +256,9 @@ export function evaluateFreshValidation(
     0,
     input.integrationPoints,
   );
-  const onlineGate = allocateOnlineGate(input.onlineErrorBudget);
+  const onlineGate =
+    input.reservedOnlineGate ?? allocateOnlineGate(input.onlineErrorBudget);
+  assertOnlineGateAllocation(input.onlineErrorBudget, onlineGate);
   const noStratumRegression = posterior.stratumProbabilityBelowMinusPointOne.every(
     (probability) => probability <= 0.8,
   );
@@ -278,6 +288,7 @@ export function evaluateFreshValidation(
     interval95: [posterior.interval95.lower, posterior.interval95.upper],
     requiredPosteriorProbability: onlineGate.requiredPosteriorProbability,
     onlineGateAuthorized: onlineGate.authorized,
+    onlineGateAlphaSpent: onlineGate.alphaSpent,
     stratumRegressionVeto: !noStratumRegression,
     onlineErrorBudgetAfter: onlineGate.nextState,
     repairCacheHistoryPositiveWeight: 0,

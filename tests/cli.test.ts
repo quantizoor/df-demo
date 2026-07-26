@@ -96,6 +96,7 @@ function completeEnvironment(secret: string): NodeJS.ProcessEnv {
     DF_BUDGET_WALL_TIME_MINUTES: "60",
     DF_BUDGET_PRIVACY_RELEASES: "20",
     DF_BUDGET_PROMOTION_LOOKS: "10",
+    DF_BUDGET_ONLINE_ERROR: "0.05",
   };
 }
 

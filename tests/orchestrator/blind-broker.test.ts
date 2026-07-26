@@ -4,6 +4,9 @@ import type { ExperimentIdentity } from "../../src/domain/models.js";
 import type { ReleasedEvaluationBundle } from "../../src/evaluator/canonical-client.js";
 import { hashEvaluationRequest } from "../../src/evaluator/contracts.js";
 import {
+  resultEnvelopeBehavioralSourceCommitmentHash,
+} from "../../src/evaluator/release-lineage.js";
+import {
   ProductionBlindBroker,
   emptyBlindBrokerLeaseState,
   type AtomicBlindBrokerLeaseStore,
@@ -97,6 +100,7 @@ function releaseFor(
   >[0],
   invalidArmTotal = 0,
   withDiagnostics = false,
+  legacyDiagnosticSource = false,
 ): ReleasedEvaluationBundle {
   const cache = cacheAttestation(request.experimentId.startsWith("002-") ? 2 : 1);
   const payload: SignedResultEnvelope["payload"] =
@@ -136,6 +140,18 @@ function releaseFor(
           },
           requiredPosteriorProbability: 0.95,
           onlineGateAuthorized: true,
+          onlineErrorBudget: {
+            policyVersion: "online-alpha-spending-v1",
+            maximumOnlineError: 0.05,
+            gateOrdinal: 1,
+            alphaSpent: 0.05,
+            cumulativeSpentBefore: 0,
+            cumulativeSpentAfter: 0.05,
+            remainingAfter: 0,
+            reservationHash: "3".repeat(64),
+            priorStateHash: "4".repeat(64),
+            resultingStateHash: "5".repeat(64),
+          },
           stratumRegressionVeto: false,
           integrityVeto: false,
           correctnessVeto: false,
@@ -156,7 +172,7 @@ function releaseFor(
     request.stage === "validation" && withDiagnostics
       ? "f".repeat(64)
       : null;
-  const result = withContentHash({
+  let result = withContentHash({
     schemaVersion: "1.0.0",
     createdAt: "2026-07-26T10:00:00.000Z",
     provenanceRefs: [],
@@ -192,6 +208,10 @@ function releaseFor(
     signature: SIGNATURE,
   }) as SignedResultEnvelope;
   if (behavioralReleaseAlias !== null) {
+    const behavioralSourceHash =
+      legacyDiagnosticSource
+        ? result.contentHash
+        : resultEnvelopeBehavioralSourceCommitmentHash(result);
     const policies = {
       protocol: "protocol-v1",
       broker: "broker-v1",
@@ -215,7 +235,7 @@ function releaseFor(
       createdAt: "2026-07-26T10:10:00.000Z",
       provenanceRefs: [],
       experimentNumber: result.experimentNumber,
-      sourceEnvelopeHash: result.contentHash,
+      sourceEnvelopeHash: behavioralSourceHash,
       protocolHash: PROTOCOL,
       policyVersions: policies,
       analysisWindow: {
@@ -254,14 +274,13 @@ function releaseFor(
       oneUse: true,
       expiresAt: "2026-07-26T12:00:00.000Z",
     }) as DiagnosticBrief;
-    const behavioralRelease: SignedBehavioralRelease = {
+    const behavioralRelease = withContentHash({
       schemaVersion: "1.0.0",
       createdAt: "2026-07-26T10:10:00.000Z",
       provenanceRefs: [],
-      contentHash: behavioralReleaseAlias,
       releaseId: brief.releaseId,
       experimentNumber: result.experimentNumber,
-      sourceResultEnvelopeHash: result.contentHash,
+      sourceResultEnvelopeHash: behavioralSourceHash,
       protocolHash: PROTOCOL,
       policyVersions: policies,
       support,
@@ -273,7 +292,18 @@ function releaseFor(
       suppressedFindingCountBand: "0",
       releaseOnce: true,
       signature: SIGNATURE,
-    };
+    }) as SignedBehavioralRelease;
+    const {
+      contentHash: _provisionalContentHash,
+      ...resultWithoutContentHash
+    } = result;
+    result = withContentHash({
+      ...resultWithoutContentHash,
+      derivation: {
+        ...result.derivation,
+        behavioralAggregateHash: behavioralRelease.contentHash,
+      },
+    }) as SignedResultEnvelope;
     return {
       result,
       cacheAttestation: cache,
@@ -298,6 +328,8 @@ function dependencies(input: {
   readonly signatureValid?: boolean;
   readonly invalidArmTotal?: number;
   readonly withDiagnostics?: boolean;
+  readonly legacyDiagnosticSource?: boolean;
+  readonly diagnosticPublishFailures?: number;
 }) {
   const store = input.store ?? new AtomicMemoryLeaseStore();
   const requests: Parameters<
@@ -311,9 +343,12 @@ function dependencies(input: {
         request,
         input.invalidArmTotal,
         input.withDiagnostics,
+        input.legacyDiagnosticSource,
       );
     }),
   };
+  let diagnosticPublishFailures =
+    input.diagnosticPublishFailures ?? 0;
   const options: ProductionBlindBrokerOptions = {
     store,
     configurations: {
@@ -362,12 +397,18 @@ function dependencies(input: {
       verify: vi.fn(async () => input.signatureValid ?? true),
     },
     diagnosticPublisher: {
-      publishOnce: vi.fn(async ({ diagnosticBrief }) => ({
-        hash: diagnosticBrief.contentHash,
-        releaseId: diagnosticBrief.releaseId,
-        actionable:
-          diagnosticBrief.status === "actionable-evidence",
-      })),
+      publishOnce: vi.fn(async ({ diagnosticBrief }) => {
+        if (diagnosticPublishFailures > 0) {
+          diagnosticPublishFailures -= 1;
+          throw new Error("transient publication failure");
+        }
+        return {
+          hash: diagnosticBrief.contentHash,
+          releaseId: diagnosticBrief.releaseId,
+          actionable:
+            diagnosticBrief.status === "actionable-evidence",
+        };
+      }),
     },
     now: () => NOW,
     leaseTokenFactory: () => {
@@ -408,6 +449,7 @@ describe("production blind broker adapter", () => {
       taskCount: 5,
       attemptsPerTask: 1,
       candidateAttempt: 1,
+      frozenHypothesisHash: "0".repeat(64),
     });
     expect(JSON.stringify({ lease, aggregate })).not.toMatch(
       /taskId|packageTaskName|grader/u,
@@ -424,6 +466,14 @@ describe("production blind broker adapter", () => {
         activeChampionCommit: CHAMPION,
       }),
     ).resolves.toEqual(aggregate);
+    await expect(
+      fixture.broker.runRepair({
+        experiment: identity,
+        leaseToken: lease.leaseToken,
+        candidateCommit: CANDIDATE,
+        activeChampionCommit: "f".repeat(40),
+      }),
+    ).rejects.toMatchObject({ code: "lease-conflict" });
     expect(fixture.evaluator.evaluate).toHaveBeenCalledOnce();
   });
 
@@ -541,7 +591,31 @@ describe("production blind broker adapter", () => {
         validationAttestationHash: aggregate.attestationHash,
         releaseAuthorized: true,
       }),
-    ).rejects.toMatchObject({ code: "diagnostic-unavailable" });
+    ).resolves.toEqual(released);
+  });
+
+  it("rejects the legacy cyclic full-envelope diagnostic source reference", async () => {
+    const fixture = dependencies({
+      withDiagnostics: true,
+      legacyDiagnosticSource: true,
+    });
+    const identity = experiment(1);
+    const lease = await fixture.broker.prepareValidation({
+      experiment: identity,
+      hypothesisHash: "0".repeat(64),
+      candidateCommit: CANDIDATE,
+      excludedEvidenceHashes: [],
+      remainingExperimentAttempts: 28,
+      diagnosticReleaseAuthorized: true,
+    });
+    await expect(
+      fixture.broker.runValidation({
+        experiment: identity,
+        leaseToken: lease.leaseToken,
+        candidateCommit: CANDIDATE,
+        activeChampionCommit: CHAMPION,
+      }),
+    ).rejects.toMatchObject({ code: "release-invalid" });
   });
 
   it("burns an unstarted sealed validation without calling the evaluator", async () => {
@@ -569,5 +643,104 @@ describe("production blind broker adapter", () => {
       }),
     ).rejects.toMatchObject({ code: "lease-state-invalid" });
     expect(fixture.evaluator.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("conservatively quarantines a validation invocation that fails before its durable start claim", async () => {
+    const fixture = dependencies({});
+    const identity = experiment(1);
+    const lease = await fixture.broker.prepareValidation({
+      experiment: identity,
+      hypothesisHash: "0".repeat(64),
+      candidateCommit: CANDIDATE,
+      excludedEvidenceHashes: [],
+      remainingExperimentAttempts: 28,
+      diagnosticReleaseAuthorized: false,
+    });
+    await expect(
+      fixture.broker.runValidation({
+        experiment: identity,
+        leaseToken: lease.leaseToken,
+        candidateCommit: CANDIDATE,
+        activeChampionCommit: CANDIDATE,
+      }),
+    ).rejects.toMatchObject({ code: "lease-invalid" });
+    await expect(
+      fixture.broker.consumeOrQuarantine({
+        leaseToken: lease.leaseToken,
+        attestationHash: lease.attestationHash,
+        outcome: "started-abandoned",
+      }),
+    ).resolves.toEqual({
+      dispositionAttestationHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+  });
+
+  it("rejects a completed replay against a different champion", async () => {
+    const fixture = dependencies({});
+    const identity = experiment(1);
+    const lease = await fixture.broker.prepareValidation({
+      experiment: identity,
+      hypothesisHash: "0".repeat(64),
+      candidateCommit: CANDIDATE,
+      excludedEvidenceHashes: [],
+      remainingExperimentAttempts: 28,
+      diagnosticReleaseAuthorized: false,
+    });
+    await fixture.broker.runValidation({
+      experiment: identity,
+      leaseToken: lease.leaseToken,
+      candidateCommit: CANDIDATE,
+      activeChampionCommit: CHAMPION,
+    });
+    await expect(
+      fixture.broker.runValidation({
+        experiment: identity,
+        leaseToken: lease.leaseToken,
+        candidateCommit: CANDIDATE,
+        activeChampionCommit: "f".repeat(40),
+      }),
+    ).rejects.toMatchObject({ code: "lease-conflict" });
+    expect(fixture.evaluator.evaluate).toHaveBeenCalledOnce();
+  });
+
+  it("retries an idempotent diagnostic publication after a transient crash", async () => {
+    const fixture = dependencies({
+      withDiagnostics: true,
+      diagnosticPublishFailures: 1,
+    });
+    const identity = experiment(1);
+    const lease = await fixture.broker.prepareValidation({
+      experiment: identity,
+      hypothesisHash: "0".repeat(64),
+      candidateCommit: CANDIDATE,
+      excludedEvidenceHashes: [],
+      remainingExperimentAttempts: 28,
+      diagnosticReleaseAuthorized: true,
+    });
+    const aggregate = await fixture.broker.runValidation({
+      experiment: identity,
+      leaseToken: lease.leaseToken,
+      candidateCommit: CANDIDATE,
+      activeChampionCommit: CHAMPION,
+    });
+    await fixture.broker.consumeOrQuarantine({
+      leaseToken: lease.leaseToken,
+      attestationHash: lease.attestationHash,
+      outcome: "decided",
+    });
+    const release = {
+      experiment: identity,
+      validationAttestationHash: aggregate.attestationHash,
+      releaseAuthorized: true as const,
+    };
+    await expect(
+      fixture.broker.releaseDiagnosticBrief(release),
+    ).rejects.toMatchObject({ code: "diagnostic-unavailable" });
+    await expect(
+      fixture.broker.releaseDiagnosticBrief(release),
+    ).resolves.toMatchObject({
+      hash: aggregate.releasedEvidenceHash,
+      releaseId: "diagnostic-1",
+    });
   });
 });

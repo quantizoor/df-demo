@@ -44,6 +44,7 @@ export interface OnlineErrorBudgetState {
   readonly nullCalibrationId: string;
   readonly initialAlpha: number;
   readonly remainingAlpha: number;
+  readonly spentAlpha: number;
   readonly gatesSpent: number;
 }
 
@@ -54,8 +55,25 @@ export interface OnlineGateAllocation {
   readonly nextState: OnlineErrorBudgetState;
 }
 
+/**
+ * Task-identity-free accounting suitable for signed evaluator releases and
+ * campaign-budget reconciliation.
+ */
+export interface ReleaseSafeOnlineErrorBudgetAccounting {
+  readonly policyVersion: "online-alpha-spending-v1";
+  readonly maximumOnlineError: number;
+  readonly gateOrdinal: number;
+  readonly alphaSpent: number;
+  readonly cumulativeSpentBefore: number;
+  readonly cumulativeSpentAfter: number;
+  readonly remainingAfter: number;
+  readonly reservationHash: string;
+  readonly priorStateHash: string;
+  readonly resultingStateHash: string;
+}
+
 const DEFAULT_INTEGRATION_POINTS = 4096;
-const MIN_GATE_ALPHA = 1e-6;
+export const MINIMUM_ONLINE_GATE_ALPHA = 1e-6;
 
 export function jeffreysPosterior(passes: number, failures: number): BetaPosterior {
   assertCount(passes, "passes");
@@ -200,6 +218,7 @@ export function createOnlineErrorBudget(
     nullCalibrationId,
     initialAlpha,
     remainingAlpha: initialAlpha,
+    spentAlpha: 0,
     gatesSpent: 0,
   };
 }
@@ -209,13 +228,14 @@ export function createOnlineErrorBudget(
  * opened, regardless of its result, so retries cannot recover error budget.
  */
 export function allocateOnlineGate(state: OnlineErrorBudgetState): OnlineGateAllocation {
-  validateOnlineState(state);
+  assertOnlineErrorBudgetState(state);
   const gateNumber = state.gatesSpent + 1;
   const scheduled = (state.initialAlpha * 6) / (Math.PI ** 2 * gateNumber ** 2);
   const alphaSpent = Math.min(scheduled, state.remainingAlpha);
-  const authorized = alphaSpent >= MIN_GATE_ALPHA;
+  const authorized = alphaSpent >= MINIMUM_ONLINE_GATE_ALPHA;
   const spent = authorized ? alphaSpent : 0;
-  const nextRemaining = Math.max(0, state.remainingAlpha - spent);
+  const nextSpent = state.spentAlpha + spent;
+  const nextRemaining = Math.max(0, state.initialAlpha - nextSpent);
   return {
     authorized,
     alphaSpent: spent,
@@ -223,9 +243,35 @@ export function allocateOnlineGate(state: OnlineErrorBudgetState): OnlineGateAll
     nextState: {
       ...state,
       remainingAlpha: nextRemaining,
+      spentAlpha: nextSpent,
       gatesSpent: authorized ? gateNumber : state.gatesSpent,
     },
   };
+}
+
+export function assertOnlineGateAllocation(
+  state: OnlineErrorBudgetState,
+  allocation: OnlineGateAllocation,
+): void {
+  const expected = allocateOnlineGate(state);
+  if (
+    allocation.authorized !== expected.authorized ||
+    allocation.alphaSpent !== expected.alphaSpent ||
+    allocation.requiredPosteriorProbability !==
+      expected.requiredPosteriorProbability ||
+    allocation.nextState.policyVersion !== expected.nextState.policyVersion ||
+    allocation.nextState.nullCalibrationId !==
+      expected.nextState.nullCalibrationId ||
+    allocation.nextState.initialAlpha !== expected.nextState.initialAlpha ||
+    allocation.nextState.remainingAlpha !==
+      expected.nextState.remainingAlpha ||
+    allocation.nextState.spentAlpha !== expected.nextState.spentAlpha ||
+    allocation.nextState.gatesSpent !== expected.nextState.gatesSpent
+  ) {
+    throw new Error(
+      "Reserved online gate does not match the deterministic spending schedule",
+    );
+  }
 }
 
 export function regularizedIncompleteBeta(x: number, alpha: number, beta: number): number {
@@ -459,13 +505,21 @@ function assertCount(value: number, label: string): void {
   }
 }
 
-function validateOnlineState(state: OnlineErrorBudgetState): void {
+export function assertOnlineErrorBudgetState(
+  state: OnlineErrorBudgetState,
+): void {
   if (
     state.policyVersion !== "online-alpha-spending-v1" ||
     !(state.initialAlpha > 0 && state.initialAlpha <= 0.05) ||
     !Number.isFinite(state.remainingAlpha) ||
     state.remainingAlpha < 0 ||
     state.remainingAlpha > state.initialAlpha ||
+    !Number.isFinite(state.spentAlpha) ||
+    state.spentAlpha < 0 ||
+    state.spentAlpha > state.initialAlpha ||
+    Math.abs(
+      state.remainingAlpha + state.spentAlpha - state.initialAlpha,
+    ) > 1e-12 ||
     !/^[a-z0-9][a-z0-9._-]{2,127}$/u.test(state.nullCalibrationId) ||
     !Number.isSafeInteger(state.gatesSpent) ||
     state.gatesSpent < 0

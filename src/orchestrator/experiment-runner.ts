@@ -161,6 +161,7 @@ function assertValidationAggregate(
       "medianAccuracyDelta",
       "requiredPosteriorProbability",
       "onlineGateAuthorized",
+      "onlineErrorBudget",
       "stratumRegressionVeto",
       "integrityVeto",
       "correctnessVeto",
@@ -173,11 +174,29 @@ function assertValidationAggregate(
       "wallTimeMs",
       "attestationHash",
       "releasedEvidenceHash",
+      "behavioralSourceCommitmentHash",
       "attemptAccounting",
     ],
     "Validation aggregate",
   );
   const accounting = validation.attemptAccounting;
+  const onlineError = validation.onlineErrorBudget;
+  assertExactPlainObjectKeys(
+    onlineError,
+    [
+      "policyVersion",
+      "maximumOnlineError",
+      "gateOrdinal",
+      "alphaSpent",
+      "cumulativeSpentBefore",
+      "cumulativeSpentAfter",
+      "remainingAfter",
+      "reservationHash",
+      "priorStateHash",
+      "resultingStateHash",
+    ],
+    "Online error-budget accounting",
+  );
   assertExactPlainObjectKeys(
     accounting,
     [
@@ -217,6 +236,43 @@ function assertValidationAggregate(
     );
   }
   if (
+    onlineError.policyVersion !== "online-alpha-spending-v1" ||
+    !Number.isSafeInteger(onlineError.gateOrdinal) ||
+    onlineError.gateOrdinal < 1 ||
+    !Number.isFinite(onlineError.maximumOnlineError) ||
+    onlineError.maximumOnlineError <= 0 ||
+    onlineError.maximumOnlineError > 1 ||
+    !Number.isFinite(onlineError.alphaSpent) ||
+    onlineError.alphaSpent <= 0 ||
+    onlineError.alphaSpent > 1 ||
+    !Number.isFinite(onlineError.cumulativeSpentBefore) ||
+    !Number.isFinite(onlineError.cumulativeSpentAfter) ||
+    !Number.isFinite(onlineError.remainingAfter) ||
+    onlineError.cumulativeSpentBefore < 0 ||
+    onlineError.cumulativeSpentAfter < 0 ||
+    onlineError.remainingAfter < 0 ||
+    onlineError.cumulativeSpentBefore + onlineError.alphaSpent !==
+      onlineError.cumulativeSpentAfter ||
+    onlineError.cumulativeSpentAfter > onlineError.maximumOnlineError ||
+    Math.abs(
+      onlineError.cumulativeSpentAfter +
+        onlineError.remainingAfter -
+        onlineError.maximumOnlineError,
+    ) > 1e-12 ||
+    !/^[a-f0-9]{64}$/u.test(onlineError.reservationHash) ||
+    !/^[a-f0-9]{64}$/u.test(onlineError.priorStateHash) ||
+    !/^[a-f0-9]{64}$/u.test(onlineError.resultingStateHash) ||
+    onlineError.priorStateHash === onlineError.resultingStateHash ||
+    validation.onlineGateAuthorized !== true ||
+    validation.requiredPosteriorProbability !==
+      Math.max(0.95, 1 - onlineError.alphaSpent)
+  ) {
+    throw new DarkFactoryError(
+      "EVIDENCE_INVALID",
+      "Validation online error accounting is detached or non-monotonic",
+    );
+  }
+  if (
     accounting.policyVersion !== VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION ||
     accounting.terminalStatus !== "complete" ||
     accounting.presealedPairCount !== 12 ||
@@ -249,7 +305,13 @@ function assertValidationAggregate(
     validation.wallTimeMs < 0 ||
     !/^[a-f0-9]{64}$/u.test(validation.attestationHash) ||
     (validation.releasedEvidenceHash !== null &&
-      !/^[a-f0-9]{64}$/u.test(validation.releasedEvidenceHash))
+      !/^[a-f0-9]{64}$/u.test(validation.releasedEvidenceHash)) ||
+    (validation.behavioralSourceCommitmentHash !== null &&
+      !/^[a-f0-9]{64}$/u.test(
+        validation.behavioralSourceCommitmentHash,
+      )) ||
+    (validation.releasedEvidenceHash !== null) !==
+      (validation.behavioralSourceCommitmentHash !== null)
   ) {
     throw new DarkFactoryError(
       "EVIDENCE_INVALID",
@@ -317,6 +379,7 @@ export class ExperimentRunner {
   public async run(input: ExperimentRunInput): Promise<ExperimentRunResult> {
     let phase = "create";
     let budget = input.budget;
+    let journalCreated = false;
     let validationLease:
       | { readonly leaseToken: string; readonly attestationHash: string; readonly started: boolean }
       | null = null;
@@ -324,7 +387,9 @@ export class ExperimentRunner {
       await this.#dependencies.journal.create({
         experiment: input.experiment,
         activeChampionBefore: input.activeChampion,
+        initialBudget: input.budget,
       });
+      journalCreated = true;
       checkStop(input, phase);
 
       phase = "optimizer-proposal";
@@ -475,7 +540,22 @@ export class ExperimentRunner {
         candidateCommit: proposal.candidate.commit,
         activeChampionCommit: input.activeChampion.activeCommit,
       });
-      assertValidationAggregate(validation, lease.expectedValidArms, lease.maximumAttempts);
+      assertValidationAggregate(
+        validation,
+        lease.expectedValidArms,
+        lease.maximumAttempts,
+      );
+      if (
+        validation.onlineErrorBudget.maximumOnlineError !==
+          budget.limits.maximumOnlineError ||
+        validation.onlineErrorBudget.cumulativeSpentBefore !==
+          budget.usage.onlineErrorSpent
+      ) {
+        throw new DarkFactoryError(
+          "EVIDENCE_INVALID",
+          "Validation online error reservation does not continue the campaign budget",
+        );
+      }
       if (
         (repair?.attempts ?? 0) +
           validation.validArms +
@@ -490,6 +570,9 @@ export class ExperimentRunner {
       budget = spendAggregate(budget, {
         ...validation,
         attempts: validation.validArms + validation.replacementAttempts,
+      });
+      budget = spendBudget(budget, {
+        onlineErrorSpent: validation.onlineErrorBudget.alphaSpent,
       });
       await this.#dependencies.journal.updateBudget(budget);
 
@@ -582,11 +665,13 @@ export class ExperimentRunner {
           outcome: validationLease.started ? "started-abandoned" : "sealed-unstarted",
         });
       }
-      await this.#dependencies.journal.interrupt({
-        experiment: input.experiment,
-        phase,
-        reason: asErrorMessage(error),
-      });
+      if (journalCreated) {
+        await this.#dependencies.journal.interrupt({
+          experiment: input.experiment,
+          phase,
+          reason: asErrorMessage(error),
+        });
+      }
       throw error;
     }
   }

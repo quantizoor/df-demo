@@ -22,6 +22,7 @@ import {
   reserveShadowSlices,
   SELECTION_POLICY_VERSION,
   selectRepairPanel,
+  selectRepairPanelFromSource,
   selectValidationPanel,
   type HiddenPanelSelection,
   type HiddenSelectedTask,
@@ -123,6 +124,11 @@ const ALLOCATION_KEYS = [
   "claimTokenCommitment",
   "dispositionNonce",
   "frozenHypothesisDigest",
+  "candidateArchiveSha256",
+  "championArchiveSha256",
+  "repairSourceExperimentId",
+  "repairSourceRequestHash",
+  "repairAttemptOrdinal",
   "selectedBuckets",
   "panel",
 ] as const;
@@ -267,6 +273,11 @@ export interface TrustedPanelAllocationRecord {
   readonly claimTokenCommitment: string;
   readonly dispositionNonce: string;
   readonly frozenHypothesisDigest: string;
+  readonly candidateArchiveSha256: string;
+  readonly championArchiveSha256: string;
+  readonly repairSourceExperimentId: string | null;
+  readonly repairSourceRequestHash: string | null;
+  readonly repairAttemptOrdinal: 1 | 2 | null;
   readonly selectedBuckets: readonly SelectionBucket[];
   readonly panel: TrustedMatchedPanel;
 }
@@ -451,6 +462,7 @@ interface SelectedPanel {
   readonly selection: HiddenPanelSelection;
   readonly nextCarry: ValidationQuotaCarry;
   readonly shadowSlice: 1 | 2 | null;
+  readonly repairSourceRequestHash: string | null;
 }
 
 function assertExactKeys(
@@ -1110,6 +1122,14 @@ function validatePanelRecord(record: TrustedPanelAllocationRecord): void {
   const panel = record.panel;
   const expectedCount = panel.stage === "repair" ? 5 : 12;
   const taskIds = panel.cells.map((cell) => cell.taskId);
+  const repairBucketCounts = Object.fromEntries(
+    BUCKETS.map((bucket) => [
+      bucket,
+      record.selectedBuckets.filter(
+        (selected) => selected === bucket,
+      ).length,
+    ]),
+  ) as unknown as Readonly<Record<SelectionBucket, number>>;
   let candidateFirst = 0;
   let championFirst = 0;
   if (
@@ -1123,8 +1143,30 @@ function validatePanelRecord(record: TrustedPanelAllocationRecord): void {
     !SHA256.test(record.claimTokenCommitment) ||
     !/^[A-Za-z0-9_-]{32,128}$/u.test(record.dispositionNonce) ||
     !SHA256.test(record.frozenHypothesisDigest) ||
+    !SHA256.test(record.candidateArchiveSha256) ||
+    !SHA256.test(record.championArchiveSha256) ||
+    (record.repairSourceExperimentId !== null &&
+      !SAFE_ID.test(record.repairSourceExperimentId)) ||
+    (record.repairSourceRequestHash !== null &&
+      !SHA256.test(record.repairSourceRequestHash)) ||
+    (record.repairAttemptOrdinal !== null &&
+      record.repairAttemptOrdinal !== 1 &&
+      record.repairAttemptOrdinal !== 2) ||
+    (panel.stage === "repair"
+      ? record.repairSourceExperimentId === null ||
+        record.repairSourceRequestHash === null ||
+        record.repairAttemptOrdinal === null
+      : record.repairSourceExperimentId !== null ||
+        record.repairSourceRequestHash !== null ||
+        record.repairAttemptOrdinal !== null) ||
     record.selectedBuckets.length !== expectedCount ||
     record.selectedBuckets.some((bucket) => !BUCKETS.includes(bucket)) ||
+    (panel.stage === "repair" &&
+      (repairBucketCounts.hard !== 3 ||
+        repairBucketCounts.uncertain !== 1 ||
+        repairBucketCounts.easy +
+          repairBucketCounts.coverage !==
+          1)) ||
     panel.sensitivity !== "hidden-benchmark-panel" ||
     (panel.stage !== "repair" &&
       panel.stage !== "validation" &&
@@ -1414,6 +1456,88 @@ function assertCatalogState(
     }
     committedRequestHashes.add(commitment.requestHash);
   }
+  const repairsBySource = new Map<
+    string,
+    TrustedPanelAllocationRecord[]
+  >();
+  for (const record of records) {
+    if (record.panel.stage !== "repair") continue;
+    const sourceHash = record.repairSourceRequestHash;
+    const sourceExperimentId = record.repairSourceExperimentId;
+    if (sourceHash === null || sourceExperimentId === null) {
+      throw new TrustedHiddenCatalogError(
+        "catalog-invalid",
+        "A repair allocation lost its discovery source.",
+      );
+    }
+    const source = state.allocations[sourceHash];
+    const namedSources = records.filter(
+      (candidate) =>
+        candidate.experimentId === sourceExperimentId &&
+        candidate.panel.stage === "validation",
+    );
+    const sourceIds = new Set(
+      source?.panel.cells.map((cell) => cell.taskId) ?? [],
+    );
+    if (
+      source === undefined ||
+      namedSources.length !== 1 ||
+      namedSources[0] !== source ||
+      source.panel.stage !== "validation" ||
+      source.experimentId !== sourceExperimentId ||
+      source.protocolHash !== record.protocolHash ||
+      source.datasetPinHash !== record.datasetPinHash ||
+      parseExperimentOrdinal(source.experimentId) >=
+        parseExperimentOrdinal(record.experimentId) ||
+      !committedRequestHashes.has(source.requestHash) ||
+      record.championArchiveSha256 !==
+        source.championArchiveSha256 ||
+      record.panel.cells.some((cell) => !sourceIds.has(cell.taskId))
+    ) {
+      throw new TrustedHiddenCatalogError(
+        "catalog-invalid",
+        "A repair allocation is detached from committed prior validation evidence.",
+      );
+    }
+    repairsBySource.set(sourceHash, [
+      ...(repairsBySource.get(sourceHash) ?? []),
+      record,
+    ]);
+  }
+  for (const attempts of repairsBySource.values()) {
+    attempts.sort(
+      (left, right) =>
+        (left.repairAttemptOrdinal ?? 0) -
+        (right.repairAttemptOrdinal ?? 0),
+    );
+    const first = attempts[0];
+    const second = attempts[1];
+    if (
+      attempts.length > 2 ||
+      first?.repairAttemptOrdinal !== 1 ||
+      (second !== undefined &&
+        (second.repairAttemptOrdinal !== 2 ||
+          !committedRequestHashes.has(first.requestHash) ||
+          second.candidateArchiveSha256 ===
+            first.candidateArchiveSha256 ||
+          canonicalJson(second.selectedBuckets) !==
+            canonicalJson(first.selectedBuckets) ||
+          second.panel.cells.some(
+            (cell, index) =>
+              cell.taskId !== first.panel.cells[index]?.taskId ||
+              cell.taskRevisionDigest !==
+                first.panel.cells[index]?.taskRevisionDigest ||
+              cell.capabilityStratum !==
+                first.panel.cells[index]?.capabilityStratum ||
+              cell.order !== first.panel.cells[index]?.order,
+          )))
+    ) {
+      throw new TrustedHiddenCatalogError(
+        "catalog-invalid",
+        "Repair attempts are not a bounded sequential reuse of one hidden panel.",
+      );
+    }
+  }
 }
 
 function createInitialState(
@@ -1468,6 +1592,121 @@ function taskList(
   });
 }
 
+function hasCommittedOutcome(
+  state: TrustedHiddenCatalogState,
+  requestHash: string,
+): boolean {
+  return Object.values(state.outcomeUpdates).some(
+    (commitment) => commitment.requestHash === requestHash,
+  );
+}
+
+function repairSourceForRequest(
+  state: TrustedHiddenCatalogState,
+  request: TrustedEvaluationRequest & {
+    readonly stage: "repair";
+    readonly selection: Extract<
+      TrustedEvaluationRequest["selection"],
+      { readonly kind: "repair-reuse" }
+    >;
+  },
+  experimentOrdinal: number,
+): {
+  readonly source: TrustedPanelAllocationRecord;
+  readonly priorAttempt: TrustedPanelAllocationRecord | null;
+} {
+  const sources = Object.values(state.allocations).filter(
+    (record) =>
+      record.experimentId === request.selection.sourceExperimentId &&
+      record.panel.stage === "validation",
+  );
+  if (
+    sources.length !== 1 ||
+    parseExperimentOrdinal(request.selection.sourceExperimentId) >=
+      experimentOrdinal
+  ) {
+    throw new TrustedHiddenCatalogError(
+      "request-invalid",
+      "Repair must cite one prior fresh-validation discovery allocation.",
+    );
+  }
+  const source = sources[0];
+  if (
+    source === undefined ||
+    source.protocolHash !== request.protocolHash ||
+    source.datasetPinHash !== state.datasetPinHash ||
+    source.registryRevision !==
+      TERMINAL_BENCH_21_REGISTRY_REVISION ||
+    !hasCommittedOutcome(state, source.requestHash) ||
+    request.champion === undefined ||
+    request.champion.archiveSha256 !== source.championArchiveSha256
+  ) {
+    throw new TrustedHiddenCatalogError(
+      "request-invalid",
+      "Repair source evidence is uncommitted or detached from the active champion.",
+    );
+  }
+  const attempts = Object.values(state.allocations)
+    .filter(
+      (record) =>
+        record.panel.stage === "repair" &&
+        record.repairSourceRequestHash === source.requestHash,
+    )
+    .sort(
+      (left, right) =>
+        (left.repairAttemptOrdinal ?? 0) -
+        (right.repairAttemptOrdinal ?? 0),
+    );
+  const expectedAttempt = attempts.length + 1;
+  if (
+    expectedAttempt > 2 ||
+    request.selection.candidateAttempt !== expectedAttempt
+  ) {
+    throw new TrustedHiddenCatalogError(
+      "allocation-exhausted",
+      "A discovery panel permits exactly two sequential repair candidates.",
+    );
+  }
+  const priorAttempt = attempts[0] ?? null;
+  if (
+    request.selection.candidateAttempt === 2 &&
+    (priorAttempt === null ||
+      priorAttempt.repairAttemptOrdinal !== 1 ||
+      !hasCommittedOutcome(state, priorAttempt.requestHash) ||
+      request.candidate.archiveSha256 ===
+        priorAttempt.candidateArchiveSha256)
+  ) {
+    throw new TrustedHiddenCatalogError(
+      "request-invalid",
+      "Second repair requires a committed first screen and a revised candidate.",
+    );
+  }
+  return { source, priorAttempt };
+}
+
+function reuseRepairSelection(
+  attempt: TrustedPanelAllocationRecord,
+): HiddenPanelSelection {
+  const tasks: HiddenSelectedTask[] = attempt.panel.cells.map(
+    (cell, index) => ({
+      taskId: cell.taskId,
+      bucket: attempt.selectedBuckets[index] ?? "coverage",
+      score: 0,
+    }),
+  );
+  return {
+    stage: "repair",
+    tasks,
+    quota: Object.fromEntries(
+      BUCKETS.map((bucket) => [
+        bucket,
+        tasks.filter((task) => task.bucket === bucket).length,
+      ]),
+    ) as unknown as Readonly<Record<SelectionBucket, number>>,
+    policyVersion: SELECTION_POLICY_VERSION,
+  };
+}
+
 function selectForRequest(
   state: TrustedHiddenCatalogState,
   request: TrustedEvaluationRequest,
@@ -1481,15 +1720,50 @@ function selectForRequest(
           "The repair allocation request violates its frozen selection policy.",
         );
       }
-      const selection = selectRepairPanel(taskList(state), {
-        epoch: state.repairEpoch,
-        currentExperiment: experimentOrdinal,
-        changedComponentRelevance: {},
-      });
+      const repairRequest = request as TrustedEvaluationRequest & {
+        readonly stage: "repair";
+        readonly selection: Extract<
+          TrustedEvaluationRequest["selection"],
+          { readonly kind: "repair-reuse" }
+        >;
+      };
+      const { source, priorAttempt } = repairSourceForRequest(
+        state,
+        repairRequest,
+        experimentOrdinal,
+      );
+      const selection =
+        priorAttempt === null
+          ? selectRepairPanelFromSource(
+              source.panel.cells.map((cell) => {
+                const task = state.tasks[cell.taskId];
+                if (task === undefined) {
+                  throw new TrustedHiddenCatalogError(
+                    "catalog-invalid",
+                    "Repair source references an absent hidden task.",
+                  );
+                }
+                return task;
+              }),
+              {
+                // Attempt two is an exact replay and must not advance the
+                // easy/coverage alternation for the next newly selected
+                // discovery subset.
+                epoch: Object.values(state.allocations).filter(
+                  (record) =>
+                    record.panel.stage === "repair" &&
+                    record.repairAttemptOrdinal === 1,
+                ).length,
+                currentExperiment: experimentOrdinal,
+                changedComponentRelevance: {},
+              },
+            )
+          : reuseRepairSelection(priorAttempt);
       return {
         selection,
         nextCarry: state.validationCarry,
         shadowSlice: null,
+        repairSourceRequestHash: source.requestHash,
       };
     }
     if (request.stage === "validation") {
@@ -1506,13 +1780,58 @@ function selectForRequest(
         taskList(state)
           .filter((task) =>
             task.exposure.informedHypothesisDigests.includes(
-              request.candidate.archiveSha256,
+              request.selection.frozenHypothesisHash,
             ),
           )
           .map((task) => task.taskId),
       );
+      const hypothesisRepairs = Object.values(state.allocations)
+        .filter(
+          (record) =>
+            record.panel.stage === "repair" &&
+            record.frozenHypothesisDigest ===
+              request.selection.frozenHypothesisHash,
+        )
+        .sort(
+          (left, right) =>
+            parseExperimentOrdinal(left.experimentId) -
+            parseExperimentOrdinal(right.experimentId),
+        );
+      const latestRepair =
+        hypothesisRepairs[hypothesisRepairs.length - 1];
+      const currentExperimentRepairs = Object.values(
+        state.allocations,
+      ).filter(
+        (record) =>
+          record.panel.stage === "repair" &&
+          record.experimentId === request.experimentId,
+      );
+      if (
+        hypothesisRepairs.some(
+          (record) =>
+            !hasCommittedOutcome(state, record.requestHash),
+        ) ||
+        currentExperimentRepairs.length > 1 ||
+        currentExperimentRepairs.some(
+          (record) =>
+            !hasCommittedOutcome(state, record.requestHash) ||
+            record.candidateArchiveSha256 !==
+              request.candidate.archiveSha256 ||
+            record.frozenHypothesisDigest !==
+              request.selection.frozenHypothesisHash,
+        ) ||
+        (latestRepair !== undefined &&
+          latestRepair.candidateArchiveSha256 !==
+            request.candidate.archiveSha256)
+      ) {
+        throw new TrustedHiddenCatalogError(
+          "request-invalid",
+          "Fresh validation requires the committed screened candidate frozen for this hypothesis.",
+        );
+      }
       const selection = selectValidationPanel(taskList(state), {
-        frozenHypothesisDigest: request.candidate.archiveSha256,
+        frozenHypothesisDigest:
+          request.selection.frozenHypothesisHash,
         repairTaskIds,
         carry: state.validationCarry,
         currentExperiment: experimentOrdinal,
@@ -1522,6 +1841,7 @@ function selectForRequest(
         selection,
         nextCarry: selection.nextCarry,
         shadowSlice: null,
+        repairSourceRequestHash: null,
       };
     }
     if (request.stage === "shadow") {
@@ -1564,6 +1884,7 @@ function selectForRequest(
         },
         nextCarry: state.validationCarry,
         shadowSlice: slice.slice,
+        repairSourceRequestHash: null,
       };
     }
     throw new TrustedHiddenCatalogError(
@@ -2165,7 +2486,29 @@ export class DurableTrustedHiddenCatalog
           protocolHash: request.protocolHash,
           claimTokenCommitment: claimCommitment,
           dispositionNonce,
-          frozenHypothesisDigest: request.candidate.archiveSha256,
+          frozenHypothesisDigest:
+            request.selection.kind === "repair-reuse" ||
+            request.selection.kind === "fresh-matched-validation"
+              ? request.selection.frozenHypothesisHash
+              : request.candidate.archiveSha256,
+          candidateArchiveSha256: request.candidate.archiveSha256,
+          championArchiveSha256:
+            request.champion?.archiveSha256 ??
+            (() => {
+              throw new TrustedHiddenCatalogError(
+                "request-invalid",
+                "Adaptive panel allocation requires a champion artifact.",
+              );
+            })(),
+          repairSourceExperimentId:
+            request.selection.kind === "repair-reuse"
+              ? request.selection.sourceExperimentId
+              : null,
+          repairSourceRequestHash: selected.repairSourceRequestHash,
+          repairAttemptOrdinal:
+            request.selection.kind === "repair-reuse"
+              ? request.selection.candidateAttempt
+              : null,
           selectedBuckets: selected.selection.tasks.map(
             (task) => task.bucket,
           ),
@@ -2176,7 +2519,10 @@ export class DurableTrustedHiddenCatalog
           selected.selection,
           request.stage,
           experimentOrdinal,
-          request.candidate.archiveSha256,
+          request.selection.kind === "repair-reuse" ||
+          request.selection.kind === "fresh-matched-validation"
+            ? request.selection.frozenHypothesisHash
+            : request.candidate.archiveSha256,
         );
         const next = nextSignedState(
           state,

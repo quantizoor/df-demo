@@ -9,7 +9,7 @@ import {
   TimestampSchema,
 } from "./primitives.js";
 
-export const CONTROL_SCHEMA_VERSION = "1.1.0" as const;
+export const CONTROL_SCHEMA_VERSION = "1.2.0" as const;
 
 const ControlMetadataProperties = {
   schemaVersion: Type.Literal(CONTROL_SCHEMA_VERSION),
@@ -141,8 +141,8 @@ export const HarnessRegistrationSchema = Type.Object(
     ),
     adapter: Type.Object(
       {
-        adapterId: Type.Literal("pi-rpc"),
-        executionMode: Type.Literal("rpc"),
+        adapterId: Type.Literal("harbor-pi-print-json"),
+        executionMode: Type.Literal("print-json"),
         sessionsDisabled: Type.Literal(true),
         uncontrolledExtensionsDisabled: Type.Literal(true),
         uncontrolledContextFilesDisabled: Type.Literal(true),
@@ -152,7 +152,7 @@ export const HarnessRegistrationSchema = Type.Object(
   },
   {
     $schema: JSON_SCHEMA_DIALECT,
-    $id: "https://dark-factory.local/schemas/harness-registration-1.1.0.json",
+    $id: "https://dark-factory.local/schemas/harness-registration-1.2.0.json",
     additionalProperties: false,
   },
 );
@@ -353,7 +353,7 @@ export const CampaignStateSchema = Type.Object(
   },
   {
     $schema: JSON_SCHEMA_DIALECT,
-    $id: "https://dark-factory.local/schemas/campaign-state-1.1.0.json",
+    $id: "https://dark-factory.local/schemas/campaign-state-1.2.0.json",
     additionalProperties: false,
   },
 );

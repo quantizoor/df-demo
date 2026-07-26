@@ -8,6 +8,7 @@ import {
   releaseSafePanelAttestation,
   reserveShadowSlices,
   selectRepairPanel,
+  selectRepairPanelFromSource,
   selectValidationPanel,
   type HiddenTaskLedgerEntry,
   type SelectionBucket,
@@ -162,6 +163,31 @@ describe("failure-weighted deterministic selection", () => {
     });
     expect(panel.tasks.map((task) => task.taskId)).not.toContain(repeated.taskId);
     expect(panel.tasks.map((task) => task.taskId)).toContain(canary.taskId);
+  });
+
+  it("permits immediate bounded reuse from an explicit discovery source despite ordinary cooldown", () => {
+    const source = repairPool().map((task) => ({
+      ...task,
+      exposure: {
+        ...task.exposure,
+        consecutiveExperiments: 2,
+        repairCooldownThroughExperiment: 99,
+      },
+    }));
+    expect(() =>
+      selectRepairPanel(source, {
+        epoch: 0,
+        currentExperiment: 21,
+        changedComponentRelevance: {},
+      }),
+    ).toThrow();
+    expect(
+      selectRepairPanelFromSource(source, {
+        epoch: 0,
+        currentExperiment: 21,
+        changedComponentRelevance: {},
+      }).tasks,
+    ).toHaveLength(5);
   });
 
   it("keeps repair and hypothesis-informed tasks out of fresh validation", () => {

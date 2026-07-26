@@ -349,7 +349,7 @@ export class TerminalBenchCloudRunner {
       imageDigest: this.#options.sandbox.imageDigest,
       regionClass: this.#options.sandbox.regionClass,
       resources: this.#options.sandbox.resources,
-      requireDockerInDocker: false,
+      requireDockerInDocker: true,
       requireGpu: this.#options.sandbox.resources.gpuClass !== undefined,
     });
 

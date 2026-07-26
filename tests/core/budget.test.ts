@@ -10,6 +10,7 @@ const snapshot: BudgetSnapshot = {
     maximumAttempts: 38,
     maximumPrivacyReleases: 5,
     maximumPromotionLooks: 5,
+    maximumOnlineError: 0.05,
   },
   usage: {
     spentUsd: 10,
@@ -18,6 +19,7 @@ const snapshot: BudgetSnapshot = {
     attempts: 2,
     privacyReleases: 0,
     promotionLooks: 0,
+    onlineErrorSpent: 0,
   },
 };
 
@@ -30,6 +32,7 @@ describe("campaign budgets", () => {
       attempts: 1,
       privacyReleases: 1,
       promotionLooks: 1,
+      onlineErrorSpent: 0.01,
     });
     expect(result.allowed).toBe(true);
     expect(spendBudget(snapshot, { attempts: 1 }).usage.attempts).toBe(3);
@@ -48,6 +51,7 @@ describe("campaign budgets", () => {
       spentUsd: 90,
       attempts: 36,
       privacyReleases: 5,
+      onlineErrorSpent: 0.05,
     });
   });
 
@@ -62,5 +66,19 @@ describe("campaign budgets", () => {
       ),
     ).toThrow(/finite/u);
   });
-});
 
+  it("never permits an online-error refund or a value outside [0, 1]", () => {
+    expect(() =>
+      checkBudget(snapshot, { onlineErrorSpent: -0.001 }),
+    ).toThrow(/non-negative/u);
+    expect(() =>
+      checkBudget(
+        {
+          ...snapshot,
+          limits: { ...snapshot.limits, maximumOnlineError: 1.01 },
+        },
+        {},
+      ),
+    ).toThrow(/within \[0, 1\]/u);
+  });
+});

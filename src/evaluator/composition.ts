@@ -16,6 +16,14 @@ import {
   type TrustedRawRunIngress,
 } from "../terminal-bench/runner.js";
 import type { TrustedEvaluationRequest } from "./contracts.js";
+import type { TrustedOnlineErrorBudgetAuthority } from "./online-error-authority.js";
+import {
+  DeterministicPostDestructionBehavioralReleaseProducer,
+  type TrustedBehavioralPrivacyArtifactStore,
+} from "./behavioral-release-producer.js";
+import type {
+  TrustedBehavioralPreparationStore,
+} from "./behavioral-preparation-store.js";
 import {
   DeterministicCanonicalEvaluationDeriver,
   type TrustedHiddenCatalogOutcomeUpdateSink,
@@ -50,6 +58,8 @@ export interface TrustedProductionEvaluationStores {
   readonly rawIngress: TrustedRawRunIngress;
   readonly custodian: TrustedRawArtifactCustodian;
   readonly hiddenOutcomeSink: TrustedHiddenCatalogOutcomeUpdateSink;
+  readonly onlineErrorAuthority: TrustedOnlineErrorBudgetAuthority;
+  readonly behavioralPreparations: TrustedBehavioralPreparationStore;
 }
 
 export interface TrustedEvaluationServiceCompositionOptions {
@@ -76,6 +86,13 @@ export interface TrustedEvaluationServiceCompositionOptions {
     readonly publicKeys: TrustedCloudEd25519PublicKeyProvider;
   };
   readonly resultEnvelopeSigning: {
+    readonly keyId: string;
+    readonly trustedKeyIds: readonly string[];
+    readonly privateKeys: TrustedCloudEd25519PrivateKeyProvider;
+    readonly publicKeys: TrustedCloudEd25519PublicKeyProvider;
+  };
+  readonly behavioralReleaseStore: TrustedBehavioralPrivacyArtifactStore;
+  readonly behavioralReleaseSigning: {
     readonly keyId: string;
     readonly trustedKeyIds: readonly string[];
     readonly privateKeys: TrustedCloudEd25519PrivateKeyProvider;
@@ -177,7 +194,13 @@ export async function createTrustedEvaluationService(
       options.resultEnvelopeSigning.privateKeys.boundary !==
         "trusted-cloud" ||
       options.resultEnvelopeSigning.publicKeys.boundary !== "trusted-cloud" ||
+      options.behavioralReleaseStore.boundary !== "trusted-cloud" ||
+      options.behavioralReleaseSigning.privateKeys.boundary !==
+        "trusted-cloud" ||
+      options.behavioralReleaseSigning.publicKeys.boundary !==
+        "trusted-cloud" ||
       typeof options.stores.ledger.claim !== "function" ||
+      typeof options.stores.ledger.inspect !== "function" ||
       typeof options.stores.ledger.bindDispositionAttestation !==
         "function" ||
       typeof options.stores.ledger.complete !== "function" ||
@@ -187,6 +210,23 @@ export async function createTrustedEvaluationService(
       typeof options.stores.rawIngress.discard !== "function" ||
       typeof options.stores.custodian.destroy !== "function" ||
       typeof options.stores.hiddenOutcomeSink.commit !== "function" ||
+      options.stores.onlineErrorAuthority.boundary !==
+        "trusted-cloud-online-error-authority" ||
+      options.stores.behavioralPreparations.boundary !==
+        "trusted-cloud" ||
+      typeof options.stores.onlineErrorAuthority.reserve !== "function" ||
+      typeof options.stores.onlineErrorAuthority.reconcile !==
+        "function" ||
+      typeof options.stores.behavioralPreparations.prepare !==
+        "function" ||
+      typeof options.stores.behavioralPreparations.resolve !==
+        "function" ||
+      typeof options.stores.behavioralPreparations.finalize !==
+        "function" ||
+      typeof options.stores.behavioralPreparations.abandon !==
+        "function" ||
+      typeof options.stores.behavioralPreparations.consume !==
+        "function" ||
       typeof options.raw.source.read !== "function" ||
       typeof options.raw.decryptor.decrypt !== "function" ||
       typeof options.raw.decoder.decode !== "function" ||
@@ -198,6 +238,17 @@ export async function createTrustedEvaluationService(
       typeof options.resultEnvelopeSigning.privateKeys.resolve !==
         "function" ||
       typeof options.resultEnvelopeSigning.publicKeys.resolve !==
+        "function" ||
+      typeof options.behavioralReleaseStore.load !== "function" ||
+      typeof options.behavioralReleaseStore.resolveByContentHash !==
+        "function" ||
+      typeof options.behavioralReleaseStore.inspectCommit !==
+        "function" ||
+      typeof options.behavioralReleaseStore.commit !== "function" ||
+      typeof options.behavioralReleaseStore.orphan !== "function" ||
+      typeof options.behavioralReleaseSigning.privateKeys.resolve !==
+        "function" ||
+      typeof options.behavioralReleaseSigning.publicKeys.resolve !==
         "function" ||
       typeof options.runner.provider.probe !== "function" ||
       typeof options.runner.provider.create !== "function" ||
@@ -218,6 +269,10 @@ export async function createTrustedEvaluationService(
     assertTrustedKeyIds(
       options.resultEnvelopeSigning.keyId,
       options.resultEnvelopeSigning.trustedKeyIds,
+    );
+    assertTrustedKeyIds(
+      options.behavioralReleaseSigning.keyId,
+      options.behavioralReleaseSigning.trustedKeyIds,
     );
 
     const reader = new StrictTrustedDecodedEvaluationReader({
@@ -264,8 +319,21 @@ export async function createTrustedEvaluationService(
       hiddenOutcomeSigner,
       hiddenOutcomeVerifier,
       hiddenOutcomeSink: options.stores.hiddenOutcomeSink,
+      behavioralPreparationStore:
+        options.stores.behavioralPreparations,
       ...(options.now === undefined ? {} : { now: options.now }),
     });
+    const behavioralReleaseProducer =
+      new DeterministicPostDestructionBehavioralReleaseProducer({
+        deployment: "trusted-cloud",
+        store: options.behavioralReleaseStore,
+        keyId: options.behavioralReleaseSigning.keyId,
+        privateKeys:
+          options.behavioralReleaseSigning.privateKeys,
+        publicKeys:
+          options.behavioralReleaseSigning.publicKeys,
+        ...(options.now === undefined ? {} : { now: options.now }),
+      });
     const runner = new TerminalBenchCloudRunner({
       ...options.runner,
       rawIngress: options.stores.rawIngress,
@@ -317,7 +385,12 @@ export async function createTrustedEvaluationService(
         panels: options.stores.panels,
         runner,
         deriver,
+        behavioralPreparationStore:
+          options.stores.behavioralPreparations,
+        behavioralReleaseProducer,
         custodian: options.stores.custodian,
+        onlineErrorAuthority:
+          options.stores.onlineErrorAuthority,
         issuer,
         verifier,
         agent: options.agent,

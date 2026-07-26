@@ -7,6 +7,7 @@ import type {
   DiagnosticBrief,
   FailureCards,
 } from "../schemas/artifacts.js";
+import { canonicalJson } from "../schemas/canonical.js";
 import { assertValidDocument } from "../schemas/registry.js";
 import type {
   SignedBehavioralRelease,
@@ -17,8 +18,8 @@ import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "./contracts.js";
+import { resultEnvelopeBehavioralSourceCommitmentHash } from "./release-lineage.js";
 import { assertSafeForLocalPersistence } from "./retention.js";
-import { canonicalJson } from "../schemas/canonical.js";
 
 export interface CanonicalEvaluatorKeyring {
   getVerificationKey(keyId: string): Promise<KeyLike | undefined>;
@@ -235,7 +236,8 @@ function assertBundleLinks(
   }
   if (
     allDiagnosticPartsAbsent &&
-    result.derivation.behavioralAggregateHash !== null
+    (result.derivation.behavioralAggregateHash !== null ||
+      result.releaseChecks.privacyThresholdPassed)
   ) {
     throw new CanonicalEvaluatorClientError(
       "A result cannot claim a behavioral aggregate without its atomic signed release.",
@@ -249,21 +251,30 @@ function assertBundleLinks(
     if (release === null || evidence === null || cards === null || brief === null) {
       throw new CanonicalEvaluatorClientError("Unreachable incomplete behavioral release.");
     }
+    const sourceResultCommitmentHash =
+      resultEnvelopeBehavioralSourceCommitmentHash(result);
     if (
-      release.sourceResultEnvelopeHash !== result.contentHash ||
+      release.sourceResultEnvelopeHash !==
+        sourceResultCommitmentHash ||
       result.derivation.behavioralAggregateHash !== release.contentHash ||
       result.releaseChecks.privacyThresholdPassed !== true ||
+      release.releaseOnce !== true ||
       release.protocolHash !== request.protocolHash ||
       release.experimentNumber !== experimentNumber ||
-      evidence.sourceEnvelopeHash !== result.contentHash ||
+      evidence.sourceEnvelopeHash !== sourceResultCommitmentHash ||
       evidence.protocolHash !== request.protocolHash ||
       evidence.experimentNumber !== experimentNumber ||
+      evidence.releaseChecksPassed !== true ||
       cards.experimentNumber !== experimentNumber ||
+      cards.suppressionApplied !== true ||
       brief.experimentNumber !== experimentNumber ||
       brief.sourceExperimentNumber !== experimentNumber ||
+      brief.releaseId !== release.releaseId ||
       evidence.contentHash !== release.aggregateArtifactHashes.behavioralEvidence ||
       cards.contentHash !== release.aggregateArtifactHashes.failureCards ||
       brief.contentHash !== release.aggregateArtifactHashes.diagnosticBrief ||
+      release.suppressedFindingCountBand !==
+        evidence.suppressedFindingCountBand ||
       cards.behavioralEvidenceHash !== evidence.contentHash ||
       brief.failureCardsHash !== cards.contentHash ||
       brief.aggregateEvidenceHash !== evidence.contentHash ||
@@ -271,7 +282,9 @@ function assertBundleLinks(
       canonicalJson(release.policyVersions) !== canonicalJson(cards.policyVersions) ||
       canonicalJson(release.policyVersions) !== canonicalJson(brief.policyVersions) ||
       canonicalJson(release.support) !==
-        canonicalJson(evidence.analysisWindow.support)
+        canonicalJson(evidence.analysisWindow.support) ||
+      !release.support.complementaryCountSuppressionPassed ||
+      !release.support.differencingBudgetPassed
     ) {
       throw new CanonicalEvaluatorClientError(
         "Behavioral release hash lineage is incomplete or inconsistent.",

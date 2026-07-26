@@ -1,5 +1,6 @@
 import type { OnlineErrorBudgetState } from "../evaluation/statistics.js";
 import { canonicalHash, canonicalJson } from "../schemas/canonical.js";
+import type { PolicyVersions } from "../schemas/primitives.js";
 import type { TrustedRawRun } from "../terminal-bench/runner.js";
 import type {
   TrustedMatchedArmSchedule,
@@ -8,7 +9,6 @@ import type {
 import {
   fingerprintForbiddenReleaseLiteral,
   hashTrustedCacheEvidence,
-  type TrustedBehavioralReleaseBinding,
   type TrustedCanonicalDerivationPolicy,
   type TrustedCanonicalDerivationPolicyResolver,
   type TrustedRepairControl,
@@ -17,6 +17,10 @@ import {
   hashEvaluationRequest,
   type TrustedEvaluationRequest,
 } from "./contracts.js";
+import {
+  assertTrustedOnlineErrorBudgetReservation,
+  type TrustedOnlineErrorBudgetReservation,
+} from "./online-error-authority.js";
 import type { TrustedEvaluatorPortBoundary } from "./raw-reader.js";
 
 export interface TrustedCachePolicyBinding {
@@ -60,14 +64,23 @@ export interface TrustedOnlineErrorBudgetBinding {
   readonly sensitivity: "trusted-online-error-budget-binding";
   readonly requestHash: string;
   readonly state: OnlineErrorBudgetState;
+  readonly reservation: TrustedOnlineErrorBudgetReservation | null;
   readonly bindingHash: string;
 }
 
 export interface TrustedBehavioralPolicyBinding {
   readonly sensitivity: "trusted-behavioral-policy-binding";
   readonly requestHash: string;
-  readonly release: TrustedBehavioralReleaseBinding | null;
-  readonly privacyThresholdPassed: boolean;
+  /**
+   * These are pre-outcome rules, never an observed release decision. In
+   * particular this binding must not contain a behavioral artifact hash,
+   * source-set hash, support count, privacy result, or diagnostic status.
+   */
+  readonly diagnosticsEnabled: boolean;
+  readonly comparison: "candidate-vs-champion";
+  readonly maximumPrivacyReleases: number;
+  readonly diagnosticTtlMs: number;
+  readonly policyVersions: PolicyVersions;
   readonly bindingHash: string;
 }
 
@@ -105,6 +118,7 @@ export interface TrustedCanonicalPolicyMaterialProvider {
     readonly rawArtifactSetHash: string;
     readonly jobSha256: string;
     readonly runtimeAttestationHash: string;
+    readonly onlineErrorReservation: TrustedOnlineErrorBudgetReservation | null;
   }): Promise<TrustedCanonicalPolicyMaterial>;
 }
 
@@ -214,7 +228,7 @@ export function hashTrustedBehavioralPolicyBinding(
   value: Omit<TrustedBehavioralPolicyBinding, "bindingHash">,
 ): string {
   return canonicalHash({
-    domain: "dark-factory.behavioral-policy-binding.v1",
+    domain: "dark-factory.behavioral-policy-binding.v2",
     ...value,
   });
 }
@@ -441,12 +455,15 @@ function assertScannerBinding(
 
 function assertErrorBudgetBinding(
   binding: TrustedOnlineErrorBudgetBinding,
+  request: TrustedEvaluationRequest,
   context: ReturnType<typeof materialContext>,
+  reserved: TrustedOnlineErrorBudgetReservation | null,
 ): void {
   exactPlainObject(binding, [
     "sensitivity",
     "requestHash",
     "state",
+    "reservation",
     "bindingHash",
   ]);
   exactPlainObject(binding.state, [
@@ -454,6 +471,7 @@ function assertErrorBudgetBinding(
     "nullCalibrationId",
     "initialAlpha",
     "remainingAlpha",
+    "spentAlpha",
     "gatesSpent",
   ]);
   if (
@@ -464,8 +482,17 @@ function assertErrorBudgetBinding(
       binding.state.nullCalibrationId,
     ) ||
     !(binding.state.initialAlpha > 0 && binding.state.initialAlpha <= 0.05) ||
+    !Number.isFinite(binding.state.remainingAlpha) ||
     binding.state.remainingAlpha < 0 ||
     binding.state.remainingAlpha > binding.state.initialAlpha ||
+    !Number.isFinite(binding.state.spentAlpha) ||
+    binding.state.spentAlpha < 0 ||
+    binding.state.spentAlpha > binding.state.initialAlpha ||
+    Math.abs(
+      binding.state.remainingAlpha +
+        binding.state.spentAlpha -
+        binding.state.initialAlpha,
+    ) > 1e-12 ||
     !Number.isSafeInteger(binding.state.gatesSpent) ||
     binding.state.gatesSpent < 0 ||
     binding.bindingHash !==
@@ -473,33 +500,69 @@ function assertErrorBudgetBinding(
   ) {
     throw new Error("Online error-budget binding is invalid.");
   }
+  if (request.stage === "validation") {
+    if (binding.reservation === null || reserved === null) {
+      throw new Error("Validation lacks a reserved online gate.");
+    }
+    assertTrustedOnlineErrorBudgetReservation(binding.reservation);
+    assertTrustedOnlineErrorBudgetReservation(reserved);
+    if (
+      canonicalJson(binding.reservation) !== canonicalJson(reserved) ||
+      canonicalJson(binding.state) !==
+        canonicalJson(binding.reservation.stateBefore) ||
+      binding.reservation.requestHash !== context.requestHash ||
+      binding.reservation.dispositionAttestationHash !==
+        context.dispositionAttestationHash
+    ) {
+      throw new Error("Online error reservation is detached.");
+    }
+  } else if (binding.reservation !== null || reserved !== null) {
+    throw new Error("Only validation may carry an online error reservation.");
+  }
 }
 
 function assertBehavioralBinding(
   binding: TrustedBehavioralPolicyBinding,
-  request: TrustedEvaluationRequest,
   context: ReturnType<typeof materialContext>,
 ): void {
   exactPlainObject(binding, [
     "sensitivity",
     "requestHash",
-    "release",
-    "privacyThresholdPassed",
+    "diagnosticsEnabled",
+    "comparison",
+    "maximumPrivacyReleases",
+    "diagnosticTtlMs",
+    "policyVersions",
     "bindingHash",
+  ]);
+  exactPlainObject(binding.policyVersions, [
+    "protocol",
+    "broker",
+    "extraction",
+    "statistics",
+    "privacy",
+    "weighting",
+    "cache",
+    "repeatedTesting",
+    "leakScanner",
   ]);
   if (
     binding.sensitivity !== "trusted-behavioral-policy-binding" ||
     binding.requestHash !== context.requestHash ||
-    binding.privacyThresholdPassed !== (binding.release !== null) ||
-    (request.stage !== "validation" &&
-      (binding.release !== null || binding.privacyThresholdPassed))
+    typeof binding.diagnosticsEnabled !== "boolean" ||
+    binding.comparison !== "candidate-vs-champion" ||
+    !Number.isSafeInteger(binding.maximumPrivacyReleases) ||
+    binding.maximumPrivacyReleases < 1 ||
+    binding.maximumPrivacyReleases > 1_000 ||
+    !Number.isSafeInteger(binding.diagnosticTtlMs) ||
+    binding.diagnosticTtlMs < 60_000 ||
+    binding.diagnosticTtlMs > 24 * 60 * 60_000 ||
+    Object.values(binding.policyVersions).some(
+      (version) =>
+        typeof version !== "string" || !SAFE_VERSION.test(version),
+    )
   ) {
-    throw new Error("Behavioral policy does not match its release stage.");
-  }
-  if (binding.release !== null) {
-    exactPlainObject(binding.release, ["contentHash", "sourceSetHash"]);
-    digest(binding.release.contentHash);
-    digest(binding.release.sourceSetHash);
+    throw new Error("Behavioral policy contains an invalid predeclared rule.");
   }
   if (
     binding.bindingHash !==
@@ -561,6 +624,7 @@ export class BoundCanonicalDerivationPolicyResolver
     readonly panel: TrustedMatchedPanel;
     readonly schedule: TrustedMatchedArmSchedule;
     readonly rawRun: TrustedRawRun;
+    readonly onlineErrorReservation: TrustedOnlineErrorBudgetReservation | null;
   }): Promise<TrustedCanonicalDerivationPolicy> {
     try {
       if (
@@ -571,7 +635,10 @@ export class BoundCanonicalDerivationPolicyResolver
         throw new Error("Policy inputs are detached.");
       }
       const context = materialContext(input);
-      const material = await this.#provider.load(context);
+      const material = await this.#provider.load({
+        ...context,
+        onlineErrorReservation: input.onlineErrorReservation,
+      });
       exactPlainObject(material, [
         "sensitivity",
         "schemaVersion",
@@ -608,7 +675,12 @@ export class BoundCanonicalDerivationPolicyResolver
         Date.parse(material.candidateFrozenAt) >
           Date.parse(input.panel.sealedAt) ||
         Date.parse(material.sealedAt) < Date.parse(input.panel.sealedAt) ||
-        Date.parse(material.sealedAt) > earliestOutcomeBearingInput
+        Date.parse(material.sealedAt) > earliestOutcomeBearingInput ||
+        (input.onlineErrorReservation !== null &&
+          (Date.parse(input.onlineErrorReservation.reservedAt) <
+            Date.parse(input.panel.sealedAt) ||
+            Date.parse(input.onlineErrorReservation.reservedAt) >
+              earliestOutcomeBearingInput))
       ) {
         throw new Error(
           "Canonical policy was not sealed before evaluation outcomes.",
@@ -618,8 +690,13 @@ export class BoundCanonicalDerivationPolicyResolver
       assertCacheBinding(material.cache, input.request, context);
       assertGuardrailBinding(material.guardrails, context);
       assertScannerBinding(material.scanner, context);
-      assertErrorBudgetBinding(material.errorBudget, context);
-      assertBehavioralBinding(material.behavioral, input.request, context);
+      assertErrorBudgetBinding(
+        material.errorBudget,
+        input.request,
+        context,
+        input.onlineErrorReservation,
+      );
+      assertBehavioralBinding(material.behavioral, context);
       digest(material.policyAttestationHash);
       const unsigned: Omit<
         TrustedCanonicalPolicyMaterial,
@@ -667,6 +744,7 @@ export class BoundCanonicalDerivationPolicyResolver
         candidateFrozenAt: material.candidateFrozenAt,
         presealedStratumWeights: material.presealedStratumWeights,
         onlineErrorBudget: material.errorBudget.state,
+        onlineErrorReservation: material.errorBudget.reservation,
         integrationPoints: material.integrationPoints,
         replacementAttemptCeiling: material.replacementAttemptCeiling,
         repair: material.cache.repair,
@@ -684,9 +762,16 @@ export class BoundCanonicalDerivationPolicyResolver
           complianceFlagsPassed:
             material.guardrails.complianceFlagsPassed,
         },
-        behavioralRelease: material.behavioral.release,
-        privacyThresholdPassed:
-          material.behavioral.privacyThresholdPassed,
+        behavioralPolicy: {
+          diagnosticsEnabled:
+            material.behavioral.diagnosticsEnabled,
+          comparison: material.behavioral.comparison,
+          maximumPrivacyReleases:
+            material.behavioral.maximumPrivacyReleases,
+          diagnosticTtlMs:
+            material.behavioral.diagnosticTtlMs,
+          policyVersions: material.behavioral.policyVersions,
+        },
         forbiddenReleaseLiterals:
           material.scanner.forbiddenReleaseLiterals,
         forbiddenContentFingerprints:

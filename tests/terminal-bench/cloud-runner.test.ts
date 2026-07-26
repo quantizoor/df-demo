@@ -229,6 +229,7 @@ class FakeProvider implements CloudSandboxProvider {
   };
   readonly calls: string[] = [];
   readonly commands: RemoteCommandSpec[] = [];
+  readonly probeRequests: ProviderProbeRequest[] = [];
   readonly uploadedPaths: string[] = [];
   readonly downloadedPaths: string[] = [];
   failExecutionOrdinal: number | undefined;
@@ -237,6 +238,7 @@ class FakeProvider implements CloudSandboxProvider {
 
   probe(request: ProviderProbeRequest): Promise<ProviderProbeReport> {
     this.calls.push("probe");
+    this.probeRequests.push(request);
     return Promise.resolve({
       provider: this.name,
       requestId: request.requestId,
@@ -526,6 +528,11 @@ describe("cloud-only Terminal-Bench runner", () => {
         "trusted://results/raw-bundle-1",
         "trusted://results/raw-bundle-2",
       ]);
+      expect(provider.probeRequests).toHaveLength(1);
+      expect(provider.probeRequests[0]).toMatchObject({
+        requireDockerInDocker: true,
+        requireGpu: false,
+      });
       expect(provider.calls).toEqual([
         "probe",
         "create",

@@ -169,6 +169,18 @@ describe("strict schema registry", () => {
       },
       requiredPosteriorProbability: 0.98,
       onlineGateAuthorized: true,
+      onlineErrorBudget: {
+        policyVersion: "online-alpha-spending-v1",
+        maximumOnlineError: 0.05,
+        gateOrdinal: 1,
+        alphaSpent: 0.02,
+        cumulativeSpentBefore: 0,
+        cumulativeSpentAfter: 0.02,
+        remainingAfter: 0.03,
+        reservationHash: "3".repeat(64),
+        priorStateHash: "4".repeat(64),
+        resultingStateHash: "5".repeat(64),
+      },
       stratumRegressionVeto: false,
       integrityVeto: false,
       correctnessVeto: false,
@@ -218,11 +230,24 @@ describe("release safety scanner", () => {
 
   it.each([
     "See https://private.example.invalid/result",
+    "Fetch git@github.com:private/repository.git",
     "Inspect /workspace/secret/answer.txt",
+    "Inspect /var",
+    "Inspect '/private/evaluator/result.json'",
+    "Inspect /root/grader/result.json",
     "Use C:\\private\\grader\\answer.txt",
     "Run `task-specific-command`",
     "Read ${SECRET_TOKEN}",
     "The result came from task 42",
+    "Read %2Froot%2Fgrader.txt",
+    Buffer.from("/private/grader/answer.txt", "utf8").toString(
+      "base64url",
+    ),
+    Buffer.from("/var/private/grader.txt", "utf8").toString(
+      "base64",
+    ),
+    Buffer.from("/root/grader.txt", "utf8").toString("hex"),
+    "safe\u202esecret",
   ])("rejects a task-identifying or literal-bearing release string", (text) => {
     expect(() => assertReleaseSafe({ summary: text })).toThrow(UnsafeEvidenceError);
   });

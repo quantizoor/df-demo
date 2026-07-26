@@ -39,7 +39,10 @@ import {
 const SOURCE_WORKING_DIRECTORY = "/workspace";
 const SOURCE_WORKER_REMOTE_PATH = "/trusted/git/source-worker.mjs";
 const SOURCE_ARCHIVE_REMOTE_PATH = "/trusted/git/candidate-source.tar";
+const SOURCE_BUNDLE_REMOTE_PATH = "/trusted/git/candidate-source.bundle";
 const SOURCE_MANIFEST_REMOTE_PATH = "/trusted/git/source-manifest.json";
+export const TRUSTED_GIT_SOURCE_BUNDLE_REF =
+  "refs/heads/df/bundle/000-source-snapshot" as const;
 
 export interface GitSourceTarget {
   readonly remoteRef: string;
@@ -87,13 +90,15 @@ export interface TrustedGitSourceSnapshotSpec {
   readonly workerArtifact: TrustedCloudArtifactRef;
   readonly workerRemotePath: string;
   readonly archiveRemotePath: string;
+  readonly bundleRemotePath: string;
+  readonly bundleRef: typeof TRUSTED_GIT_SOURCE_BUNDLE_REF;
   readonly manifestRemotePath: string;
   readonly command: RemoteCommandSpec;
 }
 
 export interface TrustedGitSourceSnapshotReceipt {
   readonly sensitivity: "trusted-git-source-snapshot";
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly snapshotId: string;
   readonly registrationId: string;
   readonly originRepositoryHash: string;
@@ -112,18 +117,21 @@ export interface TrustedGitSourceSnapshotReceipt {
   readonly lockSha256: string;
   readonly archiveMethod: "git-archive-format-tar";
   readonly compression: "none";
+  readonly bundleMethod: "git-bundle-v2";
+  readonly bundleRef: typeof TRUSTED_GIT_SOURCE_BUNDLE_REF;
   readonly workerSha256: string;
   readonly executionReceiptHash: string;
   readonly manifestArtifactSha256: string;
   readonly sourceArtifact: TrustedCloudArtifactRef;
+  readonly sourceBundleArtifact: TrustedCloudArtifactRef;
   readonly createdAt: string;
   readonly passed: true;
   readonly signature: Signature;
 }
 
 export interface TrustedGitSourceWorkerManifest {
-  readonly schemaVersion: 1;
-  readonly domain: "dark-factory.trusted-git-source.v1";
+  readonly schemaVersion: 2;
+  readonly domain: "dark-factory.trusted-git-source.v2";
   readonly originRepositoryHash: string;
   readonly upstreamRepositoryHash: string;
   readonly upstreamHeadCommit: string;
@@ -137,6 +145,10 @@ export interface TrustedGitSourceWorkerManifest {
   readonly compression: "none";
   readonly archiveSha256: string;
   readonly archiveByteLength: number;
+  readonly bundleMethod: "git-bundle-v2";
+  readonly bundleRef: typeof TRUSTED_GIT_SOURCE_BUNDLE_REF;
+  readonly bundleSha256: string;
+  readonly bundleByteLength: number;
   readonly contentHash: string;
 }
 
@@ -145,8 +157,8 @@ export interface TrustedGitSourceSnapshotAttestor {
    * Implementations live in the trusted artifact boundary. They must load the
    * manifest by its exact artifact reference, require canonical JSON with the
    * worker schema through parseTrustedGitSourceWorkerManifest, independently
-   * match every lineage/archive field, and only then sign the release-safe
-   * receipt.
+   * match every lineage/archive/bundle field, and only then sign the
+   * release-safe receipt.
    */
   attest(input: {
     readonly sensitivity: "trusted-git-source-attestation-request";
@@ -154,6 +166,7 @@ export interface TrustedGitSourceSnapshotAttestor {
     readonly spec: TrustedGitSourceSnapshotSpec;
     readonly execution: RemoteExecutionReceipt;
     readonly sourceArtifact: TrustedCloudArtifactRef;
+    readonly sourceBundleArtifact: TrustedCloudArtifactRef;
     readonly manifestArtifact: TrustedCloudArtifactRef;
   }): Promise<TrustedGitSourceSnapshotReceipt>;
 }
@@ -244,6 +257,9 @@ function unsignedSnapshotReceipt(
     executionReceiptHash: receipt.executionReceiptHash,
     manifestArtifactSha256: receipt.manifestArtifactSha256,
     sourceArtifact: receipt.sourceArtifact,
+    sourceBundleArtifact: receipt.sourceBundleArtifact,
+    bundleMethod: receipt.bundleMethod,
+    bundleRef: receipt.bundleRef,
     createdAt: receipt.createdAt,
     passed: receipt.passed,
   };
@@ -260,6 +276,7 @@ export function assertTrustedGitSourceWorkerManifest(
   input: {
     readonly spec: TrustedGitSourceSnapshotSpec;
     readonly sourceArtifact: TrustedCloudArtifactRef;
+    readonly sourceBundleArtifact: TrustedCloudArtifactRef;
   },
 ): asserts manifest is TrustedGitSourceWorkerManifest {
   assertExactPlainObjectKeys(
@@ -280,6 +297,10 @@ export function assertTrustedGitSourceWorkerManifest(
       "compression",
       "archiveSha256",
       "archiveByteLength",
+      "bundleMethod",
+      "bundleRef",
+      "bundleSha256",
+      "bundleByteLength",
       "contentHash",
     ],
     "Git source worker manifest",
@@ -290,10 +311,16 @@ export function assertTrustedGitSourceWorkerManifest(
     "Git source manifest archive",
     512 * 1024 * 1024,
   );
+  assertTrustedGitArtifact(
+    input.sourceBundleArtifact,
+    "application/vnd.git.bundle",
+    "Git source manifest bundle",
+    2 * 1024 * 1024 * 1024,
+  );
   const document = manifest as unknown as TrustedGitSourceWorkerManifest;
   if (
-    document.schemaVersion !== 1 ||
-    document.domain !== "dark-factory.trusted-git-source.v1" ||
+    document.schemaVersion !== 2 ||
+    document.domain !== "dark-factory.trusted-git-source.v2" ||
     document.originRepositoryHash !== input.spec.originRepositoryHash ||
     document.upstreamRepositoryHash !== input.spec.upstreamRepositoryHash ||
     document.upstreamHeadCommit !== input.spec.upstreamHeadCommit ||
@@ -307,11 +334,16 @@ export function assertTrustedGitSourceWorkerManifest(
     document.compression !== "none" ||
     document.archiveSha256 !== input.sourceArtifact.sha256 ||
     document.archiveByteLength !== input.sourceArtifact.byteLength ||
+    document.bundleMethod !== "git-bundle-v2" ||
+    document.bundleRef !== TRUSTED_GIT_SOURCE_BUNDLE_REF ||
+    document.bundleRef !== input.spec.bundleRef ||
+    document.bundleSha256 !== input.sourceBundleArtifact.sha256 ||
+    document.bundleByteLength !== input.sourceBundleArtifact.byteLength ||
     typeof document.contentHash !== "string" ||
     document.contentHash !== computeContentHash(document)
   ) {
     throw new TrustedGitContractError(
-      "Git source worker manifest does not bind the exact archive.",
+      "Git source worker manifest does not bind the exact archive and bundle.",
     );
   }
 }
@@ -321,6 +353,7 @@ export function parseTrustedGitSourceWorkerManifest(
   input: {
     readonly spec: TrustedGitSourceSnapshotSpec;
     readonly sourceArtifact: TrustedCloudArtifactRef;
+    readonly sourceBundleArtifact: TrustedCloudArtifactRef;
   },
 ): TrustedGitSourceWorkerManifest {
   if (
@@ -388,6 +421,8 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     upstreamBaseCommit: input.registration.upstreamBaseCommit,
     baselineCommit: input.registration.headCommit,
     target: input.target,
+    snapshotSchemaVersion: 2,
+    bundleRef: TRUSTED_GIT_SOURCE_BUNDLE_REF,
     workerSha256: input.workerArtifact.sha256,
   }).slice(0, 48)}`;
   assertTrustedGitPaths({
@@ -396,6 +431,17 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     outputRemotePath: SOURCE_ARCHIVE_REMOTE_PATH,
     resultRemotePath: SOURCE_MANIFEST_REMOTE_PATH,
   });
+  assertTrustedGitPaths({
+    workingDirectory: SOURCE_WORKING_DIRECTORY,
+    workerRemotePath: SOURCE_WORKER_REMOTE_PATH,
+    outputRemotePath: SOURCE_BUNDLE_REMOTE_PATH,
+    resultRemotePath: SOURCE_MANIFEST_REMOTE_PATH,
+  });
+  if (SOURCE_ARCHIVE_REMOTE_PATH === SOURCE_BUNDLE_REMOTE_PATH) {
+    throw new TrustedGitContractError(
+      "Trusted Git source archive and bundle paths overlap.",
+    );
+  }
   const command: RemoteCommandSpec = {
     executable: "/usr/bin/node",
     arguments: [
@@ -425,6 +471,10 @@ export function createTrustedGitSourceSnapshotSpec(input: {
       input.registration.upstreamBaseCommit,
       "--archive",
       SOURCE_ARCHIVE_REMOTE_PATH,
+      "--bundle",
+      SOURCE_BUNDLE_REMOTE_PATH,
+      "--bundle-ref",
+      TRUSTED_GIT_SOURCE_BUNDLE_REF,
       "--manifest",
       SOURCE_MANIFEST_REMOTE_PATH,
       "--archive-format",
@@ -455,6 +505,8 @@ export function createTrustedGitSourceSnapshotSpec(input: {
     workerArtifact: structuredClone(input.workerArtifact),
     workerRemotePath: SOURCE_WORKER_REMOTE_PATH,
     archiveRemotePath: SOURCE_ARCHIVE_REMOTE_PATH,
+    bundleRemotePath: SOURCE_BUNDLE_REMOTE_PATH,
+    bundleRef: TRUSTED_GIT_SOURCE_BUNDLE_REF,
     manifestRemotePath: SOURCE_MANIFEST_REMOTE_PATH,
     command,
   };
@@ -467,6 +519,7 @@ export function assertTrustedGitSourceSnapshotReceipt(
     readonly spec: TrustedGitSourceSnapshotSpec;
     readonly execution: RemoteExecutionReceipt;
     readonly sourceArtifact: TrustedCloudArtifactRef;
+    readonly sourceBundleArtifact: TrustedCloudArtifactRef;
     readonly manifestArtifact: TrustedCloudArtifactRef;
     readonly verifier: TrustedGitSourceReceiptVerifier;
   },
@@ -494,10 +547,13 @@ export function assertTrustedGitSourceSnapshotReceipt(
       "lockSha256",
       "archiveMethod",
       "compression",
+      "bundleMethod",
+      "bundleRef",
       "workerSha256",
       "executionReceiptHash",
       "manifestArtifactSha256",
       "sourceArtifact",
+      "sourceBundleArtifact",
       "createdAt",
       "passed",
       "signature",
@@ -522,6 +578,18 @@ export function assertTrustedGitSourceSnapshotReceipt(
     512 * 1024 * 1024,
   );
   assertTrustedGitArtifact(
+    receipt.sourceBundleArtifact,
+    "application/vnd.git.bundle",
+    "Attested Git source bundle",
+    2 * 1024 * 1024 * 1024,
+  );
+  assertTrustedGitArtifact(
+    input.sourceBundleArtifact,
+    "application/vnd.git.bundle",
+    "Downloaded Git source bundle",
+    2 * 1024 * 1024 * 1024,
+  );
+  assertTrustedGitArtifact(
     input.manifestArtifact,
     "application/json",
     "Downloaded Git source manifest",
@@ -533,7 +601,7 @@ export function assertTrustedGitSourceSnapshotReceipt(
   };
   if (
     receipt.sensitivity !== "trusted-git-source-snapshot" ||
-    receipt.schemaVersion !== 1 ||
+    receipt.schemaVersion !== 2 ||
     receipt.snapshotId !== input.spec.snapshotId ||
     receipt.registrationId !== input.spec.registrationId ||
     receipt.originRepositoryHash !== input.spec.originRepositoryHash ||
@@ -552,10 +620,17 @@ export function assertTrustedGitSourceSnapshotReceipt(
     receipt.lockSha256 !== input.spec.target.lockSha256 ||
     receipt.archiveMethod !== "git-archive-format-tar" ||
     receipt.compression !== "none" ||
+    receipt.bundleMethod !== "git-bundle-v2" ||
+    receipt.bundleRef !== TRUSTED_GIT_SOURCE_BUNDLE_REF ||
+    receipt.bundleRef !== input.spec.bundleRef ||
     receipt.workerSha256 !== input.spec.workerArtifact.sha256 ||
     receipt.executionReceiptHash !== cloudExecutionReceiptHash(input.execution) ||
     receipt.manifestArtifactSha256 !== input.manifestArtifact.sha256 ||
     !sameTrustedArtifact(receipt.sourceArtifact, input.sourceArtifact) ||
+    !sameTrustedArtifact(
+      receipt.sourceBundleArtifact,
+      input.sourceBundleArtifact,
+    ) ||
     !isCanonicalTimestamp(receipt.createdAt) ||
     Date.parse(receipt.createdAt) < Date.parse(input.execution.finishedAt) ||
     Date.parse(receipt.createdAt) > Date.parse(input.lease.expiresAt) ||
@@ -568,15 +643,16 @@ export function assertTrustedGitSourceSnapshotReceipt(
     !verifyEd25519Signature(signedDocument, input.verifier.publicKey)
   ) {
     throw new TrustedGitContractError(
-      "Git source receipt does not attest the exact requested archive.",
+      "Git source receipt does not attest the exact requested archive and bundle.",
     );
   }
 }
 
 /**
- * Produces a source archive only inside the injected cloud provider. The
- * canonical local Pi checkout is represented solely by immutable registration
- * hashes and is never opened, fetched, tagged, or otherwise mutated here.
+ * Produces a source archive and a standalone one-head Git bundle only inside
+ * the injected cloud provider. The canonical local Pi checkout is represented
+ * solely by immutable registration hashes and is never opened, fetched,
+ * tagged, or otherwise mutated here.
  */
 export class TrustedGitSourceRunner {
   readonly #options: TrustedGitSourceRunnerOptions;
@@ -639,7 +715,7 @@ export class TrustedGitSourceRunner {
           this.#spec.archiveRemotePath,
           {
             mediaType: "application/x-tar",
-            maximumByteLength: 4 * 1024 * 1024 * 1024,
+            maximumByteLength: 512 * 1024 * 1024,
           },
         ),
       );
@@ -653,12 +729,23 @@ export class TrustedGitSourceRunner {
           },
         ),
       );
+      const sourceBundleArtifact = structuredClone(
+        await this.#options.provider.download(
+          lease,
+          this.#spec.bundleRemotePath,
+          {
+            mediaType: "application/vnd.git.bundle",
+            maximumByteLength: 2 * 1024 * 1024 * 1024,
+          },
+        ),
+      );
       const receipt = await this.#options.attestor.attest({
         sensitivity: "trusted-git-source-attestation-request",
         lease: structuredClone(lease),
         spec: structuredClone(this.#spec),
         execution: structuredClone(execution),
         sourceArtifact: structuredClone(sourceArtifact),
+        sourceBundleArtifact: structuredClone(sourceBundleArtifact),
         manifestArtifact: structuredClone(manifestArtifact),
       });
       assertTrustedGitSourceSnapshotReceipt(receipt, {
@@ -666,6 +753,7 @@ export class TrustedGitSourceRunner {
         spec: this.#spec,
         execution,
         sourceArtifact,
+        sourceBundleArtifact,
         manifestArtifact,
         verifier: this.#options.receiptVerifier,
       });

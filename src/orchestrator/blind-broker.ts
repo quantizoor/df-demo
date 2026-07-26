@@ -13,6 +13,7 @@ import {
   type HarnessArtifactReference,
   type TrustedEvaluationRequest,
 } from "../evaluator/contracts.js";
+import { resultEnvelopeBehavioralSourceCommitmentHash } from "../evaluator/release-lineage.js";
 import { assertSafeForLocalPersistence } from "../evaluator/retention.js";
 import { VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION } from "../evaluation/validation-attempt-ledger.js";
 import { verifyEd25519Signature } from "../evidence/signatures.js";
@@ -64,6 +65,31 @@ type DiagnosticStatus =
   | "releasing"
   | "released"
   | "burned";
+
+const ADAPTIVE_STAGES = new Set<AdaptiveStage>([
+  "repair",
+  "validation",
+]);
+const LEASE_OUTCOMES = new Set<LeaseOutcome>([
+  "decided",
+  "started-abandoned",
+  "sealed-unstarted",
+]);
+const LEASE_STATUSES = new Set<LeaseStatus>([
+  "prepared",
+  "running",
+  "evaluated",
+  "evaluation-failed",
+  "disposed",
+]);
+const DIAGNOSTIC_STATUSES = new Set<DiagnosticStatus>([
+  "not-authorized",
+  "unavailable",
+  "eligible",
+  "releasing",
+  "released",
+  "burned",
+]);
 
 export interface BlindBrokerEvaluationConfiguration {
   readonly runMode: "research";
@@ -189,6 +215,7 @@ export interface DurableBlindBrokerLeaseRecord {
   readonly diagnosticMaterial: StoredDiagnosticMaterial | null;
   readonly diagnosticReference: DiagnosticBriefReference | null;
   readonly disposedOutcome: LeaseOutcome | null;
+  readonly disposedAt: string | null;
   readonly dispositionAttestationHash: string | null;
   readonly updatedAt: string;
 }
@@ -357,6 +384,7 @@ function assertConfiguration(
       attemptsPerArm: 1,
       pairOrder: "balanced-6-ab-6-ba",
       weightingPolicyHash: configuration.weightingPolicyHash,
+      frozenHypothesisHash: "3".repeat(64),
       hypothesisExclusionAttestationHash: "3".repeat(64),
     },
     executionProfile: configuration.executionProfile,
@@ -384,9 +412,109 @@ function assertExperimentMatches(
   }
 }
 
+function preparationHashFor(
+  record: DurableBlindBrokerLeaseRecord,
+): string {
+  return canonicalHash({
+    domain: "dark-factory.blind-broker.preparation.v1",
+    experiment: record.experiment,
+    stage: record.stage,
+    hypothesisHash: record.hypothesisHash,
+    candidateCommit: record.candidateCommit,
+    repairAttemptOrdinal: record.repairAttemptOrdinal,
+    repairSourceExperimentId: record.repairSourceExperimentId,
+    previousDiscoveryAttestationHash:
+      record.previousDiscoveryAttestationHash,
+    excludedEvidenceHashes: record.excludedEvidenceHashes,
+    diagnosticReleaseAuthorized: record.diagnosticReleaseAuthorized,
+    configuration: record.configuration,
+    expectedValidArms: record.expectedValidArms,
+    maximumAttempts: record.maximumAttempts,
+  });
+}
+
+function leaseSealHashFor(record: DurableBlindBrokerLeaseRecord): string {
+  return canonicalHash({
+    domain: "dark-factory.blind-broker.lease-seal.v1",
+    preparationHash: record.preparationHash,
+    leaseTokenCommitment: canonicalHash(record.leaseToken),
+    requestId: record.requestId,
+    submittedAt: record.submittedAt,
+    deadlineAt: record.deadlineAt,
+  });
+}
+
+function assertExactPlainObjectKeys(
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): asserts value is Readonly<Record<string, unknown>> {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      `${label} must be a plain object.`,
+    );
+  }
+  const actual = Object.keys(value);
+  if (
+    actual.length !== keys.length ||
+    actual.some((key) => !keys.includes(key))
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      `${label} contains non-canonical fields.`,
+    );
+  }
+}
+
 function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
+  assertExactPlainObjectKeys(
+    record,
+    [
+      "schemaVersion",
+      "preparationHash",
+      "leaseToken",
+      "leaseSealHash",
+      "requestId",
+      "experiment",
+      "stage",
+      "status",
+      "diagnosticStatus",
+      "hypothesisHash",
+      "candidateCommit",
+      "championCommit",
+      "repairAttemptOrdinal",
+      "repairSourceExperimentId",
+      "previousDiscoveryAttestationHash",
+      "excludedEvidenceHashes",
+      "diagnosticReleaseAuthorized",
+      "configuration",
+      "submittedAt",
+      "deadlineAt",
+      "expectedValidArms",
+      "maximumAttempts",
+      "requestHash",
+      "resultDispositionAttestationHash",
+      "aggregate",
+      "diagnosticMaterial",
+      "diagnosticReference",
+      "disposedOutcome",
+      "disposedAt",
+      "dispositionAttestationHash",
+      "updatedAt",
+    ],
+    "Durable blind-broker lease record",
+  );
   if (
     record.schemaVersion !== 1 ||
+    !ADAPTIVE_STAGES.has(record.stage) ||
+    !LEASE_STATUSES.has(record.status) ||
+    !DIAGNOSTIC_STATUSES.has(record.diagnosticStatus) ||
     !SHA256.test(record.preparationHash) ||
     !LEASE_TOKEN.test(record.leaseToken) ||
     !SHA256.test(record.leaseSealHash) ||
@@ -400,9 +528,18 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     record.maximumAttempts < record.expectedValidArms ||
     !Array.isArray(record.excludedEvidenceHashes) ||
     record.excludedEvidenceHashes.some((hash) => !SHA256.test(hash)) ||
+    new Set(record.excludedEvidenceHashes).size !==
+      record.excludedEvidenceHashes.length ||
+    canonicalJson(record.excludedEvidenceHashes) !==
+      canonicalJson([...record.excludedEvidenceHashes].sort()) ||
+    typeof record.diagnosticReleaseAuthorized !== "boolean" ||
     (record.requestHash !== null && !SHA256.test(record.requestHash)) ||
     (record.resultDispositionAttestationHash !== null &&
       !SHA256.test(record.resultDispositionAttestationHash)) ||
+    (record.disposedOutcome !== null &&
+      !LEASE_OUTCOMES.has(record.disposedOutcome)) ||
+    (record.disposedAt !== null &&
+      typeof record.disposedAt !== "string") ||
     (record.dispositionAttestationHash !== null &&
       !SHA256.test(record.dispositionAttestationHash))
   ) {
@@ -412,10 +549,34 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
     );
   }
   experimentId(record.experiment);
-  assertCanonicalTimestamp(record.submittedAt, "Lease submission time");
-  assertCanonicalTimestamp(record.deadlineAt, "Lease deadline");
-  assertCanonicalTimestamp(record.updatedAt, "Lease update time");
+  const submittedAt = assertCanonicalTimestamp(
+    record.submittedAt,
+    "Lease submission time",
+  );
+  const deadlineAt = assertCanonicalTimestamp(
+    record.deadlineAt,
+    "Lease deadline",
+  );
+  const updatedAt = assertCanonicalTimestamp(
+    record.updatedAt,
+    "Lease update time",
+  );
+  const disposedAt =
+    record.disposedAt === null
+      ? null
+      : assertCanonicalTimestamp(record.disposedAt, "Lease disposition time");
   assertConfiguration(record.configuration, record.experiment);
+  if (
+    deadlineAt - submittedAt !== record.configuration.requestTtlMs ||
+    updatedAt < submittedAt ||
+    preparationHashFor(record) !== record.preparationHash ||
+    leaseSealHashFor(record) !== record.leaseSealHash
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Durable blind-broker lease commitments do not reproduce.",
+    );
+  }
   if (
     record.stage === "repair" &&
     (record.expectedValidArms !== REPAIR_VALID_ARMS ||
@@ -447,6 +608,215 @@ function assertLeaseRecord(record: DurableBlindBrokerLeaseRecord): void {
       "lease-state-invalid",
       "Validation lease violates its sealed matched-pair policy.",
     );
+  }
+  const resultBearing =
+    record.status === "evaluated" ||
+    (record.status === "disposed" &&
+      record.disposedOutcome === "decided");
+  const resultFieldsComplete =
+    record.aggregate !== null &&
+    record.requestHash !== null &&
+    record.resultDispositionAttestationHash !== null;
+  const sealedUnstarted =
+    record.status === "disposed" &&
+    record.disposedOutcome === "sealed-unstarted";
+  const championRequired =
+    record.status === "running" ||
+    record.status === "evaluated" ||
+    record.status === "evaluation-failed" ||
+    (record.status === "disposed" &&
+      record.disposedOutcome === "decided");
+  if (
+    (championRequired && record.championCommit === null) ||
+    ((record.status === "prepared" || sealedUnstarted) &&
+      record.championCommit !== null)
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Lease champion binding contradicts its execution state.",
+    );
+  }
+  if (
+    (resultBearing && !resultFieldsComplete) ||
+    (!resultBearing &&
+      (record.aggregate !== null ||
+        record.resultDispositionAttestationHash !== null)) ||
+    (record.status !== "disposed") !==
+      (record.disposedOutcome === null &&
+        record.disposedAt === null &&
+        record.dispositionAttestationHash === null)
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Lease result or disposition fields contradict its execution state.",
+    );
+  }
+  if (
+    record.status === "disposed" &&
+    (disposedAt === null ||
+      record.disposedOutcome === null ||
+      record.dispositionAttestationHash === null ||
+      disposedAt < submittedAt ||
+      updatedAt < disposedAt ||
+      dispositionHash(record, record.disposedOutcome, disposedAt) !==
+        record.dispositionAttestationHash)
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Lease disposition attestation does not reproduce.",
+    );
+  }
+  if (
+    record.aggregate !== null &&
+    (typeof record.aggregate !== "object" ||
+      Array.isArray(record.aggregate) ||
+      Object.getPrototypeOf(record.aggregate) !== Object.prototype ||
+      (record.stage === "repair" &&
+        !Object.hasOwn(record.aggregate, "attemptOrdinal")) ||
+      (record.stage === "validation" &&
+        !Object.hasOwn(record.aggregate, "validPairs")))
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Lease aggregate kind contradicts its evaluation stage.",
+    );
+  }
+  const hasDiagnosticMaterial = record.diagnosticMaterial !== null;
+  const hasDiagnosticReference = record.diagnosticReference !== null;
+  if (
+    (record.stage === "repair" &&
+      (record.diagnosticStatus !== "not-authorized" ||
+        hasDiagnosticMaterial ||
+        hasDiagnosticReference)) ||
+    (!record.diagnosticReleaseAuthorized &&
+      (record.diagnosticStatus !== "not-authorized" ||
+        hasDiagnosticMaterial ||
+        hasDiagnosticReference)) ||
+    (hasDiagnosticReference !==
+      (record.diagnosticStatus === "released")) ||
+    (hasDiagnosticMaterial &&
+      !new Set<DiagnosticStatus>([
+        "eligible",
+        "releasing",
+        "released",
+        "burned",
+      ]).has(record.diagnosticStatus)) ||
+    ((record.diagnosticStatus === "eligible" ||
+      record.diagnosticStatus === "releasing" ||
+      record.diagnosticStatus === "released" ||
+      record.diagnosticStatus === "burned") &&
+      !hasDiagnosticMaterial) ||
+    ((record.diagnosticStatus === "releasing" ||
+      record.diagnosticStatus === "released" ||
+      record.diagnosticStatus === "burned") &&
+      !(
+        record.status === "disposed" &&
+        record.disposedOutcome === "decided"
+      ))
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Lease diagnostic fields contradict their one-use release state.",
+    );
+  }
+}
+
+function assertLeaseState(state: DurableBlindBrokerLeaseState): void {
+  assertExactPlainObjectKeys(
+    state,
+    ["schemaVersion", "revision", "records"],
+    "Durable blind-broker lease state",
+  );
+  if (
+    state.schemaVersion !== 1 ||
+    !Number.isSafeInteger(state.revision) ||
+    state.revision < 0
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Durable blind-broker lease state header is malformed.",
+    );
+  }
+  if (
+    state.records === null ||
+    typeof state.records !== "object" ||
+    Array.isArray(state.records) ||
+    Object.getPrototypeOf(state.records) !== Object.prototype
+  ) {
+    throw new ProductionBlindBrokerError(
+      "lease-state-invalid",
+      "Durable blind-broker lease records must be a plain object.",
+    );
+  }
+  const leaseTokens = new Set<string>();
+  const requestIds = new Set<string>();
+  for (const [key, record] of Object.entries(state.records)) {
+    assertLeaseRecord(record);
+    if (
+      key !== record.preparationHash ||
+      leaseTokens.has(record.leaseToken) ||
+      requestIds.has(record.requestId)
+    ) {
+      throw new ProductionBlindBrokerError(
+        "lease-state-invalid",
+        "Durable blind-broker lease keys are detached or duplicated.",
+      );
+    }
+    leaseTokens.add(record.leaseToken);
+    requestIds.add(record.requestId);
+  }
+}
+
+/**
+ * Complete durable-state validator for trusted storage adapters. This export
+ * intentionally exposes validation only; lease identities and hidden
+ * evaluation material remain inaccessible to untrusted callers.
+ */
+export function assertDurableBlindBrokerLeaseState(
+  value: unknown,
+): asserts value is DurableBlindBrokerLeaseState {
+  assertLeaseState(value as DurableBlindBrokerLeaseState);
+}
+
+class ValidatingAtomicBlindBrokerLeaseStore
+  implements AtomicBlindBrokerLeaseStore
+{
+  readonly #delegate: AtomicBlindBrokerLeaseStore;
+
+  public constructor(delegate: AtomicBlindBrokerLeaseStore) {
+    this.#delegate = delegate;
+  }
+
+  public transact<Result>(
+    operation: (state: DurableBlindBrokerLeaseState) => {
+      readonly next: DurableBlindBrokerLeaseState;
+      readonly result: Result;
+    },
+  ): Promise<Result> {
+    return this.#delegate.transact((state) => {
+      assertLeaseState(state);
+      const transaction = operation(state);
+      assertLeaseState(transaction.next);
+      if (
+        transaction.next !== state &&
+        transaction.next.revision !== state.revision + 1
+      ) {
+        throw new ProductionBlindBrokerError(
+          "lease-state-invalid",
+          "Durable blind-broker state revision did not advance exactly once.",
+        );
+      }
+      if (
+        transaction.next === state &&
+        transaction.next.revision !== state.revision
+      ) {
+        throw new ProductionBlindBrokerError(
+          "lease-state-invalid",
+          "A no-op blind-broker transaction changed its revision.",
+        );
+      }
+      return transaction;
+    });
   }
 }
 
@@ -592,21 +962,45 @@ function diagnosticMaterial(
   const evidence = bundle.behavioralEvidence;
   const cards = bundle.failureCards;
   const brief = bundle.diagnosticBrief;
+  const sourceResultCommitmentHash =
+    resultEnvelopeBehavioralSourceCommitmentHash(bundle.result);
   if (
     evidence === null ||
     cards === null ||
     brief === null ||
     bundle.result.releaseChecks.privacyThresholdPassed !== true ||
-    release.sourceResultEnvelopeHash !== bundle.result.contentHash ||
+    release.sourceResultEnvelopeHash !== sourceResultCommitmentHash ||
     bundle.result.derivation.behavioralAggregateHash !== release.contentHash ||
+    release.protocolHash !== bundle.result.protocolHash ||
+    release.experimentNumber !== bundle.result.experimentNumber ||
+    release.releaseOnce !== true ||
     release.aggregateArtifactHashes.behavioralEvidence !== evidence.contentHash ||
     release.aggregateArtifactHashes.failureCards !== cards.contentHash ||
     release.aggregateArtifactHashes.diagnosticBrief !== brief.contentHash ||
-    evidence.sourceEnvelopeHash !== bundle.result.contentHash ||
+    evidence.sourceEnvelopeHash !== sourceResultCommitmentHash ||
+    evidence.protocolHash !== bundle.result.protocolHash ||
+    evidence.experimentNumber !== bundle.result.experimentNumber ||
+    evidence.releaseChecksPassed !== true ||
     cards.behavioralEvidenceHash !== evidence.contentHash ||
+    cards.experimentNumber !== bundle.result.experimentNumber ||
+    cards.suppressionApplied !== true ||
     brief.aggregateEvidenceHash !== evidence.contentHash ||
     brief.failureCardsHash !== cards.contentHash ||
+    brief.experimentNumber !== bundle.result.experimentNumber ||
+    brief.sourceExperimentNumber !== bundle.result.experimentNumber ||
     brief.releaseId !== release.releaseId ||
+    release.suppressedFindingCountBand !==
+      evidence.suppressedFindingCountBand ||
+    canonicalJson(release.policyVersions) !==
+      canonicalJson(evidence.policyVersions) ||
+    canonicalJson(release.policyVersions) !==
+      canonicalJson(cards.policyVersions) ||
+    canonicalJson(release.policyVersions) !==
+      canonicalJson(brief.policyVersions) ||
+    canonicalJson(release.support) !==
+      canonicalJson(evidence.analysisWindow.support) ||
+    !release.support.complementaryCountSuppressionPassed ||
+    !release.support.differencingBudgetPassed ||
     !hasValidContentHash(evidence) ||
     !hasValidContentHash(cards) ||
     !hasValidContentHash(brief)
@@ -622,6 +1016,31 @@ function diagnosticMaterial(
     failureCards: cards,
     diagnosticBrief: brief,
   };
+}
+
+function assertDiagnosticReference(
+  reference: DiagnosticBriefReference,
+  material: StoredDiagnosticMaterial,
+): void {
+  if (
+    reference === null ||
+    typeof reference !== "object" ||
+    Array.isArray(reference) ||
+    Object.getPrototypeOf(reference) !== Object.prototype ||
+    Object.keys(reference).length !== 3 ||
+    !Object.hasOwn(reference, "hash") ||
+    !Object.hasOwn(reference, "releaseId") ||
+    !Object.hasOwn(reference, "actionable") ||
+    reference.hash !== material.diagnosticBrief.contentHash ||
+    reference.releaseId !== material.diagnosticBrief.releaseId ||
+    reference.actionable !==
+      (material.diagnosticBrief.status === "actionable-evidence")
+  ) {
+    throw new ProductionBlindBrokerError(
+      "release-invalid",
+      "Diagnostic publisher returned a detached reference.",
+    );
+  }
 }
 
 async function assertReleasedBundle(
@@ -687,6 +1106,15 @@ async function assertReleasedBundle(
     throw new ProductionBlindBrokerError(
       "release-invalid",
       "Signed evaluator release is detached from its one-use request.",
+    );
+  }
+  if (
+    request.stage !== "validation" &&
+    bundle.behavioralRelease !== null
+  ) {
+    throw new ProductionBlindBrokerError(
+      "release-invalid",
+      "Only validation may release behavioral diagnostics.",
     );
   }
   assertSafeForLocalPersistence(bundle);
@@ -772,6 +1200,7 @@ function mapValidationAggregate(
     medianAccuracyDelta: payload.weightedAccuracy.medianDelta,
     requiredPosteriorProbability: payload.requiredPosteriorProbability,
     onlineGateAuthorized: payload.onlineGateAuthorized,
+    onlineErrorBudget: payload.onlineErrorBudget,
     stratumRegressionVeto: payload.stratumRegressionVeto,
     integrityVeto: payload.integrityVeto,
     correctnessVeto: payload.correctnessVeto,
@@ -784,6 +1213,10 @@ function mapValidationAggregate(
     wallTimeMs: payload.aggregateCost.wallTimeMs,
     attestationHash: bundle.result.contentHash,
     releasedEvidenceHash: diagnostics?.diagnosticBrief.contentHash ?? null,
+    behavioralSourceCommitmentHash:
+      diagnostics === null
+        ? null
+        : resultEnvelopeBehavioralSourceCommitmentHash(bundle.result),
     attemptAccounting: {
       policyVersion: VALIDATION_ATTEMPT_LEDGER_POLICY_VERSION,
       terminalStatus: "complete",
@@ -807,11 +1240,13 @@ function mapValidationAggregate(
 
 export class ProductionBlindBroker implements BlindBroker {
   readonly #options: ProductionBlindBrokerOptions;
+  readonly #store: AtomicBlindBrokerLeaseStore;
   readonly #now: () => Date;
   readonly #leaseTokenFactory: () => string;
 
   public constructor(options: ProductionBlindBrokerOptions) {
     this.#options = options;
+    this.#store = new ValidatingAtomicBlindBrokerLeaseStore(options.store);
     this.#now = options.now ?? (() => new Date());
     this.#leaseTokenFactory =
       options.leaseTokenFactory ??
@@ -957,7 +1392,7 @@ export class ProductionBlindBroker implements BlindBroker {
       expectedValidArms: input.expectedValidArms,
       maximumAttempts: input.maximumAttempts,
     });
-    return this.#options.store.transact((state) => {
+    return this.#store.transact((state) => {
       const existing = state.records[preparationHash];
       if (existing !== undefined) {
         assertLeaseRecord(existing);
@@ -1036,6 +1471,7 @@ export class ProductionBlindBroker implements BlindBroker {
         diagnosticMaterial: null,
         diagnosticReference: null,
         disposedOutcome: null,
+        disposedAt: null,
         dispositionAttestationHash: null,
         updatedAt: submittedAt,
       };
@@ -1113,7 +1549,7 @@ export class ProductionBlindBroker implements BlindBroker {
         "Matched evaluation commits are malformed or identical.",
       );
     }
-    const claimed = await this.#options.store.transact((state) => {
+    const claimed = await this.#store.transact((state) => {
       const [key, record] = leaseByToken(state, leaseToken);
       assertExperimentMatches(record.experiment, experiment);
       if (
@@ -1123,6 +1559,15 @@ export class ProductionBlindBroker implements BlindBroker {
         throw new ProductionBlindBrokerError(
           "lease-conflict",
           "Evaluation invocation does not match its immutable lease.",
+        );
+      }
+      if (
+        record.championCommit !== null &&
+        record.championCommit !== championCommit
+      ) {
+        throw new ProductionBlindBrokerError(
+          "lease-conflict",
+          "Evaluation replay does not match its frozen champion.",
         );
       }
       if (
@@ -1156,6 +1601,7 @@ export class ProductionBlindBroker implements BlindBroker {
     if (claimed.replayed) {
       const aggregate = claimed.record.aggregate;
       if (stage === "repair" && aggregate !== null && "attemptOrdinal" in aggregate) {
+        await this.#disposeByKey(claimed.key, "decided");
         return { stage, aggregate };
       }
       if (stage === "validation" && aggregate !== null && "validPairs" in aggregate) {
@@ -1182,7 +1628,7 @@ export class ProductionBlindBroker implements BlindBroker {
       assertArtifactForCommit(champion, championCommit, "Champion");
       const request = this.#request(claimed.record, candidate, champion);
       const requestHash = hashEvaluationRequest(request);
-      await this.#options.store.transact((state) => {
+      await this.#store.transact((state) => {
         const record = state.records[claimed.key];
         if (
           record === undefined ||
@@ -1217,7 +1663,7 @@ export class ProductionBlindBroker implements BlindBroker {
         stage === "repair"
           ? mapRepairAggregate(claimed.record, bundle)
           : mapValidationAggregate(claimed.record, bundle, diagnostics);
-      await this.#options.store.transact((state) => {
+      await this.#store.transact((state) => {
         const record = state.records[claimed.key];
         if (
           record === undefined ||
@@ -1296,6 +1742,7 @@ export class ProductionBlindBroker implements BlindBroker {
                   "Repair attempt ordinal is absent.",
                 );
               })(),
+            frozenHypothesisHash: record.hypothesisHash,
           }
         : {
             kind: "fresh-matched-validation" as const,
@@ -1304,6 +1751,7 @@ export class ProductionBlindBroker implements BlindBroker {
             pairOrder: "balanced-6-ab-6-ba" as const,
             weightingPolicyHash:
               record.configuration.weightingPolicyHash,
+            frozenHypothesisHash: record.hypothesisHash,
             hypothesisExclusionAttestationHash: canonicalHash({
               domain:
                 "dark-factory.validation-hypothesis-exclusion.v1",
@@ -1337,7 +1785,7 @@ export class ProductionBlindBroker implements BlindBroker {
     key: string,
     stage: AdaptiveStage,
   ): Promise<void> {
-    await this.#options.store.transact((state) => {
+    await this.#store.transact((state) => {
       const record = state.records[key];
       if (
         record === undefined ||
@@ -1367,7 +1815,7 @@ export class ProductionBlindBroker implements BlindBroker {
   public consumeOrQuarantine(
     input: Parameters<BlindBroker["consumeOrQuarantine"]>[0],
   ): Promise<{ readonly dispositionAttestationHash: string }> {
-    return this.#options.store.transact((state) => {
+    return this.#store.transact((state) => {
       const [key, record] = leaseByToken(state, input.leaseToken);
       if (record.leaseSealHash !== input.attestationHash) {
         throw new ProductionBlindBrokerError(
@@ -1404,6 +1852,7 @@ export class ProductionBlindBroker implements BlindBroker {
         ...record,
         status: "disposed",
         disposedOutcome: input.outcome,
+        disposedAt,
         dispositionAttestationHash,
         updatedAt: disposedAt,
       };
@@ -1421,7 +1870,7 @@ export class ProductionBlindBroker implements BlindBroker {
     key: string,
     outcome: LeaseOutcome,
   ): Promise<string> {
-    return this.#options.store.transact((state) => {
+    return this.#store.transact((state) => {
       const record = state.records[key];
       if (record === undefined) {
         throw new ProductionBlindBrokerError(
@@ -1454,6 +1903,7 @@ export class ProductionBlindBroker implements BlindBroker {
             ...record,
             status: "disposed",
             disposedOutcome: outcome,
+            disposedAt,
             dispositionAttestationHash: attestation,
             updatedAt: disposedAt,
           },
@@ -1472,7 +1922,7 @@ export class ProductionBlindBroker implements BlindBroker {
         "Diagnostic release requires an explicit one-use authorization.",
       );
     }
-    const claimed = await this.#options.store.transact((state) => {
+    const claimed = await this.#store.transact((state) => {
       const found = Object.entries(state.records).find(
         ([, record]) =>
           record.stage === "validation" &&
@@ -1506,6 +1956,31 @@ export class ProductionBlindBroker implements BlindBroker {
         return { next: state, result: null };
       }
       if (
+        record.diagnosticStatus === "released" &&
+        record.diagnosticMaterial !== null &&
+        record.diagnosticReference !== null
+      ) {
+        assertDiagnosticReference(
+          record.diagnosticReference,
+          record.diagnosticMaterial,
+        );
+        return {
+          next: state,
+          result: {
+            reference: record.diagnosticReference,
+          },
+        };
+      }
+      if (
+        record.diagnosticStatus === "releasing" &&
+        record.diagnosticMaterial !== null
+      ) {
+        return {
+          next: state,
+          result: { key, record },
+        };
+      }
+      if (
         record.diagnosticStatus !== "eligible" ||
         record.diagnosticMaterial === null ||
         Date.parse(record.diagnosticMaterial.diagnosticBrief.expiresAt) <=
@@ -1530,6 +2005,7 @@ export class ProductionBlindBroker implements BlindBroker {
       };
     });
     if (claimed === null) return null;
+    if ("reference" in claimed) return claimed.reference;
 
     const material = claimed.record.diagnosticMaterial;
     if (material === null) {
@@ -1543,23 +2019,33 @@ export class ProductionBlindBroker implements BlindBroker {
         await this.#options.diagnosticPublisher.publishOnce({
           publicationId: `brief-${input.validationAttestationHash.slice(0, 48)}`,
           sourceResultEnvelopeHash:
-            input.validationAttestationHash,
+            material.behavioralRelease.sourceResultEnvelopeHash,
           ...material,
         });
-      const expectedActionable =
-        material.diagnosticBrief.status === "actionable-evidence";
-      if (
-        reference.hash !== material.diagnosticBrief.contentHash ||
-        reference.releaseId !== material.diagnosticBrief.releaseId ||
-        reference.actionable !== expectedActionable
-      ) {
-        throw new ProductionBlindBrokerError(
-          "release-invalid",
-          "Diagnostic publisher returned a detached reference.",
-        );
-      }
-      await this.#options.store.transact((state) => {
+      assertDiagnosticReference(reference, material);
+      return await this.#store.transact((state) => {
         const record = state.records[claimed.key];
+        if (
+          record?.diagnosticStatus === "released" &&
+          record.diagnosticMaterial !== null &&
+          record.diagnosticReference !== null
+        ) {
+          assertDiagnosticReference(
+            record.diagnosticReference,
+            record.diagnosticMaterial,
+          );
+          assertDiagnosticReference(reference, record.diagnosticMaterial);
+          if (canonicalJson(record.diagnosticReference) !== canonicalJson(reference)) {
+            throw new ProductionBlindBrokerError(
+              "lease-state-invalid",
+              "Concurrent diagnostic publication returned conflicting references.",
+            );
+          }
+          return {
+            next: state,
+            result: record.diagnosticReference,
+          };
+        }
         if (
           record === undefined ||
           record.diagnosticStatus !== "releasing"
@@ -1579,35 +2065,39 @@ export class ProductionBlindBroker implements BlindBroker {
               updatedAt: this.#now().toISOString(),
             },
           }),
-          result: undefined,
+          result: reference,
         };
       });
-      return reference;
     } catch (error) {
-      await this.#options.store.transact((state) => {
-        const record = state.records[claimed.key];
-        if (
-          record === undefined ||
-          record.diagnosticStatus !== "releasing"
-        ) {
-          return { next: state, result: undefined };
-        }
-        return {
-          next: nextState(state, {
-            ...state.records,
-            [claimed.key]: {
-              ...record,
-              diagnosticStatus: "burned",
-              updatedAt: this.#now().toISOString(),
-            },
-          }),
-          result: undefined,
-        };
-      });
+      if (
+        error instanceof ProductionBlindBrokerError &&
+        error.code === "release-invalid"
+      ) {
+        await this.#store.transact((state) => {
+          const record = state.records[claimed.key];
+          if (
+            record === undefined ||
+            record.diagnosticStatus !== "releasing"
+          ) {
+            return { next: state, result: undefined };
+          }
+          return {
+            next: nextState(state, {
+              ...state.records,
+              [claimed.key]: {
+                ...record,
+                diagnosticStatus: "burned",
+                updatedAt: this.#now().toISOString(),
+              },
+            }),
+            result: undefined,
+          };
+        });
+      }
       if (error instanceof ProductionBlindBrokerError) throw error;
       throw new ProductionBlindBrokerError(
         "diagnostic-unavailable",
-        "Diagnostic publication failed closed and its one-use claim was burned.",
+        "Diagnostic publication failed; its idempotent one-use claim remains recoverable.",
       );
     }
   }
@@ -1620,7 +2110,8 @@ function assertDispositionTransition(
   const allowed =
     (outcome === "decided" && record.status === "evaluated") ||
     (outcome === "started-abandoned" &&
-      (record.status === "running" ||
+      (record.status === "prepared" ||
+        record.status === "running" ||
         record.status === "evaluation-failed")) ||
     (outcome === "sealed-unstarted" && record.status === "prepared");
   if (!allowed) {

@@ -16,7 +16,8 @@ import type { TrustedEvaluatorPortBoundary } from "./raw-reader.js";
 
 export type TrustedEd25519KeyPurpose =
   | "hidden-catalog-outcome-update"
-  | "result-envelope";
+  | "result-envelope"
+  | "behavioral-release";
 
 export interface TrustedCloudEd25519PrivateKey {
   readonly boundary: "trusted-cloud-key-material";

@@ -58,6 +58,7 @@ function completeEnvironment(): NodeJS.ProcessEnv {
     DF_BUDGET_ATTEMPTS: "380",
     DF_BUDGET_PRIVACY_RELEASES: "5",
     DF_BUDGET_PROMOTION_LOOKS: "5",
+    DF_BUDGET_ONLINE_ERROR: "0.05",
   };
 }
 
@@ -92,6 +93,7 @@ describe("bootstrap environment", () => {
       budget: {
         maximumWallTimeMs: 14_400_000,
         maximumAttempts: 380,
+        maximumOnlineError: 0.05,
       },
     });
     expect(JSON.stringify(readiness)).not.toContain("secret-never-returned");
@@ -112,6 +114,14 @@ describe("bootstrap environment", () => {
     expect(readiness.invalid).toEqual(
       expect.arrayContaining(["DF_CLOUD_PROVIDER", "DF_BUDGET_USD"]),
     );
+  });
+
+  it("rejects an online error budget above the calibrated maximum", () => {
+    const readiness = inspectBootstrapEnvironment({
+      ...completeEnvironment(),
+      DF_BUDGET_ONLINE_ERROR: "0.051",
+    });
+    expect(readiness.invalid).toContain("DF_BUDGET_ONLINE_ERROR");
   });
 
   it("rejects mutable images and overlapping evaluator credential targets", () => {
