@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 
 import {
+  type MvpOuterStageFailurePhase,
   MvpPreflightDiagnosticError,
+  outerStagePhaseDiagnosticCode,
   parseMvpPreflightWorkerFailure,
 } from "./preflight-diagnostics.js";
 
@@ -344,8 +346,10 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
     ) {
       throw new MvpDaytonaRuntimeError("The controller bundle request is invalid.");
     }
+    let phase: MvpOuterStageFailurePhase = "upload";
     try {
       await active.sandbox.fs.uploadFile(bundle.localPath, BUNDLE_REMOTE_PATH);
+      phase = "digest";
       const hashResponse = await active.sandbox.process.executeCommand(
         `${quotePosix("/usr/bin/sha256sum")} ${quotePosix(BUNDLE_REMOTE_PATH)}`,
         "/",
@@ -358,14 +362,27 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       if (hashResponse.exitCode !== 0 || reportedHash !== bundle.sha256) {
         throw new Error("bundle digest mismatch");
       }
+      if (active.specification.user === "root") {
+        phase = "root-authority";
+        const rootAuthorityResponse = await active.sandbox.process.executeCommand(
+          [
+            quotePosix("/usr/bin/node"),
+            quotePosix("-e"),
+            quotePosix(
+              "process.exit(process.getuid?.() === 0 && process.getgid?.() === 0 ? 0 : 1)",
+            ),
+          ].join(" "),
+          "/",
+          { LC_ALL: "C" },
+          120,
+        );
+        if (rootAuthorityResponse.exitCode !== 0) {
+          throw new Error("sandbox root authority unavailable");
+        }
+      }
+      phase = "install-root";
       const mkdirResponse = await active.sandbox.process.executeCommand(
-        [
-          quotePosix("/usr/bin/mkdir"),
-          quotePosix("-m"),
-          quotePosix("0700"),
-          quotePosix("--"),
-          quotePosix(BUNDLE_INSTALL_ROOT),
-        ].join(" "),
+        `${quotePosix("/usr/bin/mkdir")} ${quotePosix("-p")} ${quotePosix(BUNDLE_INSTALL_ROOT)}`,
         "/",
         { LC_ALL: "C" },
         120,
@@ -373,11 +390,10 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       if (mkdirResponse.exitCode !== 0) {
         throw new Error("bundle install root creation failed");
       }
+      phase = "extraction";
       const extractResponse = await active.sandbox.process.executeCommand(
         [
           quotePosix("/usr/bin/tar"),
-          quotePosix("--no-same-owner"),
-          quotePosix("--no-same-permissions"),
           quotePosix("-xzf"),
           quotePosix(BUNDLE_REMOTE_PATH),
           quotePosix("-C"),
@@ -390,28 +406,34 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       if (extractResponse.exitCode !== 0) {
         throw new Error("bundle extraction failed");
       }
-      const ownershipResponse =
-        active.specification.user === "root"
-          ? await active.sandbox.process.executeCommand(
+      let ownershipResponse: DaytonaProcessResponseLike | undefined;
+      if (active.specification.user === "root") {
+        phase = "adapter-ownership";
+        ownershipResponse = await active.sandbox.process.executeCommand(
+          [
+            quotePosix("/usr/bin/node"),
+            quotePosix("-e"),
+            quotePosix(
               [
-                quotePosix("/usr/bin/chown"),
-                quotePosix("--no-dereference"),
-                quotePosix("0:0"),
-                quotePosix("--"),
-                quotePosix(BUNDLE_ADAPTER_PATH),
-              ].join(" "),
-              "/",
-              { LC_ALL: "C" },
-              120,
-            )
-          : undefined;
+                'const { lstatSync } = require("node:fs");',
+                `const value = lstatSync(${JSON.stringify(BUNDLE_ADAPTER_PATH)});`,
+                "process.exit(value.isFile() && !value.isSymbolicLink() && value.uid === 0 && value.gid === 0 && (value.mode & 0o022) === 0 ? 0 : 1);",
+              ].join(""),
+            ),
+          ].join(" "),
+          "/",
+          { LC_ALL: "C" },
+          120,
+        );
+      }
       if (ownershipResponse !== undefined && ownershipResponse.exitCode !== 0) {
-        throw new Error("bundle artifact ownership normalization failed");
+        throw new Error("bundle artifact ownership attestation failed");
       }
       active.stagedBundleSha256 = bundle.sha256;
       return { role: lease.role, sha256: bundle.sha256 };
-    } catch {
-      throw new MvpDaytonaRuntimeError("The controller bundle could not be staged or verified.");
+    } catch (error) {
+      if (error instanceof MvpPreflightDiagnosticError) throw error;
+      throw new MvpPreflightDiagnosticError(outerStagePhaseDiagnosticCode(phase));
     }
   }
 

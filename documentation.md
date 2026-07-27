@@ -7211,8 +7211,14 @@ preserve only that marker (or an outer create/stage/execute/cleanup category)
 and discard raw stdout, stderr, exception text, task identifiers, grader data,
 and secrets. GitHub therefore reports
 `MVP_PREFLIGHT_FAILED_CLOSED:<phase>` without turning diagnostics into a hidden
-benchmark-data channel. Immutable artifact failures are narrowed only to the
-fixed, task-free phases `bootstrap-artifacts-pins`,
+benchmark-data channel. The outer stage category is narrowed only to the
+fixed, task-free phases `outer-stage-upload`, `outer-stage-digest`,
+`outer-stage-install-root`, `outer-stage-extraction`,
+`outer-stage-root-authority`, and `outer-stage-adapter-ownership`; the generic
+`outer-stage` code remains the fallback. These codes disclose no provider
+response, command output, file value, path, owner, mode, or digest. Immutable
+artifact failures are narrowed only to the fixed, task-free phases
+`bootstrap-artifacts-pins`,
 `bootstrap-artifacts-harbor`, `bootstrap-artifacts-bun`, and
 `bootstrap-artifacts-adapter`; no artifact bytes, digest, metadata, or path
 crosses the worker boundary.

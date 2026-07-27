@@ -5,7 +5,9 @@ import {
   formatMvpPreflightCliFailure,
   formatMvpPreflightWorkerFailure,
   MVP_DISCOVERY_FAILURE_PHASES,
+  MVP_OUTER_STAGE_FAILURE_PHASES,
   MVP_PREFLIGHT_DIAGNOSTIC_CODES,
+  outerStagePhaseDiagnosticCode,
   parseMvpDiscoveryFailurePhase,
   parseMvpPreflightWorkerFailure,
 } from "../../src/mvp/preflight-diagnostics.js";
@@ -30,6 +32,25 @@ describe("MVP task-free preflight diagnostics", () => {
     expect(
       parseMvpPreflightWorkerFailure("MVP_PREFLIGHT_FAILURE:bootstrap-artifacts\n"),
     ).toBeNull();
+  });
+
+  it("exposes outer staging only through fixed operation-class phases", () => {
+    expect(
+      MVP_PREFLIGHT_DIAGNOSTIC_CODES.filter((code) => code.startsWith("outer-stage-")),
+    ).toEqual([
+      "outer-stage-upload",
+      "outer-stage-digest",
+      "outer-stage-install-root",
+      "outer-stage-extraction",
+      "outer-stage-root-authority",
+      "outer-stage-adapter-ownership",
+    ]);
+    for (const phase of MVP_OUTER_STAGE_FAILURE_PHASES) {
+      const code = outerStagePhaseDiagnosticCode(phase);
+      expect(code).toBe(`outer-stage-${phase}`);
+      expect(parseMvpPreflightWorkerFailure(formatMvpPreflightWorkerFailure(code))).toBe(code);
+    }
+    expect(outerStagePhaseDiagnosticCode("not-allowlisted" as never)).toBe("outer-stage");
   });
 
   it.each([

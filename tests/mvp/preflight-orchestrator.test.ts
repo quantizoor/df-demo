@@ -83,6 +83,7 @@ class FakeRuntime implements MvpCloudRuntime {
     private readonly output: string,
     private readonly executeError: Error | null = null,
     private readonly destroyError: Error | null = null,
+    private readonly stageError: Error | null = null,
   ) {}
 
   async create(specification: MvpRoleSandboxSpec): Promise<MvpRoleSandboxLease> {
@@ -94,6 +95,7 @@ class FakeRuntime implements MvpCloudRuntime {
     _lease: MvpRoleSandboxLease,
     bundle: MvpControllerBundle,
   ): Promise<MvpStagedBundleReceipt> {
+    if (this.stageError !== null) throw this.stageError;
     return { role: "evaluator", sha256: bundle.sha256 };
   }
 
@@ -202,6 +204,26 @@ describe("MVP protected preflight orchestration", () => {
     ).rejects.toMatchObject({
       name: "MvpPreflightDiagnosticError",
       code: "bootstrap-discovery-eligibility",
+    });
+    expect(runtime.destroyed).toBe(true);
+  });
+
+  it("preserves a safe outer-stage subphase after proving sandbox cleanup", async () => {
+    const runtime = new FakeRuntime(
+      "",
+      null,
+      null,
+      new MvpPreflightDiagnosticError("outer-stage-adapter-ownership"),
+    );
+
+    await expect(
+      launchMvpPreflight({
+        configuration: configuration("bootstrap"),
+        runtime,
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "outer-stage-adapter-ownership",
     });
     expect(runtime.destroyed).toBe(true);
   });

@@ -740,6 +740,12 @@ lifecycle metadata, not controller stdout or task-bearing evidence.
 - A failed MVP preflight emits only
   `MVP_PREFLIGHT_FAILED_CLOSED:<allowlisted-phase>`; raw provider, Harbor,
   task, grader, exception, stdout, and stderr material remains private.
+- Outer controller staging narrows failures only to the fixed, task-free
+  `outer-stage-upload`, `outer-stage-digest`, `outer-stage-install-root`,
+  `outer-stage-extraction`, `outer-stage-root-authority`, or
+  `outer-stage-adapter-ownership` phase. The generic `outer-stage` phase remains
+  the fail-closed fallback; none of these phases releases a provider response,
+  command output, file value, path, owner, mode, or digest.
 - Immutable artifact checks use only the task-free
   `bootstrap-artifacts-pins`, `bootstrap-artifacts-harbor`,
   `bootstrap-artifacts-bun`, or `bootstrap-artifacts-adapter` phase. These

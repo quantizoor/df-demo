@@ -3,6 +3,12 @@ export const MVP_PREFLIGHT_DIAGNOSTIC_CODES = [
   "outer-configuration",
   "outer-create",
   "outer-stage",
+  "outer-stage-upload",
+  "outer-stage-digest",
+  "outer-stage-install-root",
+  "outer-stage-extraction",
+  "outer-stage-root-authority",
+  "outer-stage-adapter-ownership",
   "outer-execute",
   "outer-cleanup",
   "worker-boundary",
@@ -37,6 +43,17 @@ export const MVP_PREFLIGHT_DIAGNOSTIC_CODES = [
 
 export type MvpPreflightDiagnosticCode = (typeof MVP_PREFLIGHT_DIAGNOSTIC_CODES)[number];
 
+export const MVP_OUTER_STAGE_FAILURE_PHASES = [
+  "upload",
+  "digest",
+  "install-root",
+  "extraction",
+  "root-authority",
+  "adapter-ownership",
+] as const;
+
+export type MvpOuterStageFailurePhase = (typeof MVP_OUTER_STAGE_FAILURE_PHASES)[number];
+
 export const MVP_DISCOVERY_FAILURE_PHASES = [
   "arguments",
   "runtime",
@@ -57,6 +74,7 @@ export const MVP_DISCOVERY_FAILURE_PHASES = [
 export type MvpDiscoveryFailurePhase = (typeof MVP_DISCOVERY_FAILURE_PHASES)[number];
 
 const diagnosticCodes = new Set<string>(MVP_PREFLIGHT_DIAGNOSTIC_CODES);
+const outerStageFailurePhases = new Set<string>(MVP_OUTER_STAGE_FAILURE_PHASES);
 const discoveryFailurePhases = new Set<string>(MVP_DISCOVERY_FAILURE_PHASES);
 const WORKER_FAILURE_PREFIX = "MVP_PREFLIGHT_FAILURE:";
 const CLI_FAILURE_PREFIX = "MVP_PREFLIGHT_FAILED_CLOSED:";
@@ -95,6 +113,13 @@ export function parseMvpPreflightWorkerFailure(raw: string): MvpPreflightDiagnos
 
 export function formatMvpPreflightCliFailure(code: unknown): string {
   return `${CLI_FAILURE_PREFIX}${isMvpPreflightDiagnosticCode(code) ? code : "unknown"}\n`;
+}
+
+export function outerStagePhaseDiagnosticCode(
+  phase: MvpOuterStageFailurePhase,
+): MvpPreflightDiagnosticCode {
+  if (!outerStageFailurePhases.has(phase)) return "outer-stage";
+  return `outer-stage-${phase}`;
 }
 
 export function parseMvpDiscoveryFailurePhase(raw: string): MvpDiscoveryFailurePhase | null {

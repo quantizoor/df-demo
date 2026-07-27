@@ -70,7 +70,9 @@ function attestingFactory(
     readonly attestNetworkBlockAll?: boolean;
     readonly commands?: string[];
     readonly deleteError?: Error;
+    readonly failedCommandIncludes?: string;
     readonly onDelete?: () => void;
+    readonly uploadError?: Error;
     readonly workerResponse?: {
       readonly result: string;
       readonly exitCode: number;
@@ -100,11 +102,19 @@ function attestingFactory(
             : { domainAllowList: parameters.domainAllowList }),
           volumes: parameters.volumes,
           fs: {
-            uploadFile: async () => undefined,
+            uploadFile: async () => {
+              if (options.uploadError !== undefined) throw options.uploadError;
+            },
           },
           process: {
             executeCommand: async (command) => {
               options.commands?.push(command);
+              if (
+                options.failedCommandIncludes !== undefined &&
+                command.includes(options.failedCommandIncludes)
+              ) {
+                return { result: "private provider detail", exitCode: 1 };
+              }
               if (command.includes("sha256sum")) {
                 return {
                   result: `${bundleDigest}  /tmp/df-mvp-controller.tar.gz`,
@@ -299,7 +309,7 @@ describe("MVP Daytona runtime", () => {
   it.each([
     ["evaluator", true],
     ["optimizer", false],
-  ] as const)("normalizes staged adapter ownership only for the %s", async (role, expected) => {
+  ] as const)("attests staged adapter ownership only for the %s", async (role, expected) => {
     const config = configuration();
     const commands: string[] = [];
     const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
@@ -313,11 +323,34 @@ describe("MVP Daytona runtime", () => {
       sha256: bundleDigest,
     });
 
-    expect(
-      commands.includes(
-        "'/usr/bin/chown' '--no-dereference' '0:0' '--' '/tmp/df-mvp-controller/src/terminal-bench/assets/dark_factory_pi.py'",
-      ),
-    ).toBe(expected);
+    expect(commands.some((command) => command.includes("lstatSync"))).toBe(expected);
+  });
+
+  it.each([
+    ["outer-stage-upload", { uploadError: new Error("private upload failure") }],
+    ["outer-stage-digest", { failedCommandIncludes: "sha256sum" }],
+    ["outer-stage-root-authority", { failedCommandIncludes: "process.getuid" }],
+    ["outer-stage-install-root", { failedCommandIncludes: "/usr/bin/mkdir" }],
+    ["outer-stage-extraction", { failedCommandIncludes: "/usr/bin/tar" }],
+    ["outer-stage-adapter-ownership", { failedCommandIncludes: "lstatSync" }],
+  ] as const)("classifies %s without relaying private output", async (code, options) => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory(options),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create(roleSpecification(config, "evaluator"));
+
+    const failure = runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    await expect(failure).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code,
+    });
+    await expect(failure).rejects.not.toThrow("private");
   });
 
   it.each([
