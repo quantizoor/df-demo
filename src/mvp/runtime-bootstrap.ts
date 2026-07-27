@@ -322,9 +322,7 @@ export async function bootstrapMvpEvaluatorRuntime(
   }
   const artifactsPort = input.artifacts ?? new NodeMvpRuntimeBootstrapArtifacts();
   const discoveryPort = input.discovery ?? new NodeMvpRuntimeBootstrapDiscovery();
-  const artifacts = await runBootstrapPhase("bootstrap-artifacts", () =>
-    verifyRuntimeArtifacts(artifactsPort),
-  );
+  const artifacts = await verifyRuntimeArtifacts(artifactsPort);
   const providerLimitsDigest = digest(MVP_RUNTIME_BOOTSTRAP_PROVIDER_LIMITS);
   const eligibilityPolicyDigest = mvpEvaluatorEligibilityPolicyDigest();
   const privateRoot = join(input.stateRoot, "private");
@@ -748,20 +746,32 @@ function assertPrivateBootstrapDiscovery(
 async function verifyRuntimeArtifacts(
   port: MvpRuntimeBootstrapArtifactPort,
 ): Promise<VerifiedRuntimeArtifacts> {
-  const runtimePins = await port.readJson(MVP_RUNTIME_PINS_PATH, MAXIMUM_RUNTIME_PINS_BYTES);
-  assertImmutableFile(runtimePins, false);
-  if (runtimePins.sha256 !== MVP_RUNTIME_PINS_SHA256) {
-    throw new Error("Immutable MVP runtime pins differ from the reviewed source.");
-  }
-  const pins = assertImageRuntimePins(runtimePins.value);
-  const [harbor, bun, adapter] = await Promise.all([
-    port.inspectFile(MVP_RUNTIME_HARBOR_EXECUTABLE, MAXIMUM_ARTIFACT_BYTES),
-    port.inspectFile(MVP_RUNTIME_BUN_EXECUTABLE, MAXIMUM_ARTIFACT_BYTES),
-    port.inspectFile(MVP_RUNTIME_ADAPTER_PATH, MAXIMUM_ARTIFACT_BYTES),
-  ]);
-  assertImmutableFile(harbor, true);
-  assertImmutableFile(bun, true);
-  assertImmutableFile(adapter, false);
+  const { runtimePins, pins } = await runBootstrapPhase("bootstrap-artifacts-pins", async () => {
+    const artifact = await port.readJson(MVP_RUNTIME_PINS_PATH, MAXIMUM_RUNTIME_PINS_BYTES);
+    assertImmutableFile(artifact, false);
+    if (artifact.sha256 !== MVP_RUNTIME_PINS_SHA256) {
+      throw new Error("Immutable MVP runtime pins differ from the reviewed source.");
+    }
+    return {
+      runtimePins: artifact,
+      pins: assertImageRuntimePins(artifact.value),
+    };
+  });
+  const harbor = await runBootstrapPhase("bootstrap-artifacts-harbor", async () => {
+    const artifact = await port.inspectFile(MVP_RUNTIME_HARBOR_EXECUTABLE, MAXIMUM_ARTIFACT_BYTES);
+    assertImmutableFile(artifact, true);
+    return artifact;
+  });
+  const bun = await runBootstrapPhase("bootstrap-artifacts-bun", async () => {
+    const artifact = await port.inspectFile(MVP_RUNTIME_BUN_EXECUTABLE, MAXIMUM_ARTIFACT_BYTES);
+    assertImmutableFile(artifact, true);
+    return artifact;
+  });
+  const adapter = await runBootstrapPhase("bootstrap-artifacts-adapter", async () => {
+    const artifact = await port.inspectFile(MVP_RUNTIME_ADAPTER_PATH, MAXIMUM_ARTIFACT_BYTES);
+    assertImmutableFile(artifact, false);
+    return artifact;
+  });
   return {
     pins,
     runtimePins,

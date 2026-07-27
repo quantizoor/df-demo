@@ -21,6 +21,7 @@ const SDK_DELETE_TIMEOUT_SECONDS = 60;
 const MAXIMUM_WORKER_OUTPUT_BYTES = 4 * 1024 * 1024;
 const BUNDLE_REMOTE_PATH = "/tmp/df-mvp-controller.tar.gz";
 const BUNDLE_INSTALL_ROOT = "/tmp/df-mvp-controller";
+const BUNDLE_ADAPTER_PATH = "/tmp/df-mvp-controller/src/terminal-bench/assets/dark_factory_pi.py";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 const SAFE_ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u;
 const SAFE_VOLUME_SUBPATH = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*){0,9}$/u;
@@ -358,14 +359,25 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
         throw new Error("bundle digest mismatch");
       }
       const mkdirResponse = await active.sandbox.process.executeCommand(
-        `${quotePosix("/usr/bin/mkdir")} ${quotePosix("-p")} ${quotePosix(BUNDLE_INSTALL_ROOT)}`,
+        [
+          quotePosix("/usr/bin/mkdir"),
+          quotePosix("-m"),
+          quotePosix("0700"),
+          quotePosix("--"),
+          quotePosix(BUNDLE_INSTALL_ROOT),
+        ].join(" "),
         "/",
         { LC_ALL: "C" },
         120,
       );
+      if (mkdirResponse.exitCode !== 0) {
+        throw new Error("bundle install root creation failed");
+      }
       const extractResponse = await active.sandbox.process.executeCommand(
         [
           quotePosix("/usr/bin/tar"),
+          quotePosix("--no-same-owner"),
+          quotePosix("--no-same-permissions"),
           quotePosix("-xzf"),
           quotePosix(BUNDLE_REMOTE_PATH),
           quotePosix("-C"),
@@ -375,8 +387,26 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
         { LC_ALL: "C" },
         10 * 60,
       );
-      if (mkdirResponse.exitCode !== 0 || extractResponse.exitCode !== 0) {
+      if (extractResponse.exitCode !== 0) {
         throw new Error("bundle extraction failed");
+      }
+      const ownershipResponse =
+        active.specification.user === "root"
+          ? await active.sandbox.process.executeCommand(
+              [
+                quotePosix("/usr/bin/chown"),
+                quotePosix("--no-dereference"),
+                quotePosix("0:0"),
+                quotePosix("--"),
+                quotePosix(BUNDLE_ADAPTER_PATH),
+              ].join(" "),
+              "/",
+              { LC_ALL: "C" },
+              120,
+            )
+          : undefined;
+      if (ownershipResponse !== undefined && ownershipResponse.exitCode !== 0) {
+        throw new Error("bundle artifact ownership normalization failed");
       }
       active.stagedBundleSha256 = bundle.sha256;
       return { role: lease.role, sha256: bundle.sha256 };

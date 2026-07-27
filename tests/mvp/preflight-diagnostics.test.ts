@@ -18,6 +18,20 @@ describe("MVP task-free preflight diagnostics", () => {
     }
   });
 
+  it("exposes artifact verification only through fixed artifact-class phases", () => {
+    expect(
+      MVP_PREFLIGHT_DIAGNOSTIC_CODES.filter((code) => code.startsWith("bootstrap-artifacts")),
+    ).toEqual([
+      "bootstrap-artifacts-pins",
+      "bootstrap-artifacts-harbor",
+      "bootstrap-artifacts-bun",
+      "bootstrap-artifacts-adapter",
+    ]);
+    expect(
+      parseMvpPreflightWorkerFailure("MVP_PREFLIGHT_FAILURE:bootstrap-artifacts\n"),
+    ).toBeNull();
+  });
+
   it.each([
     "",
     "MVP_PREFLIGHT_FAILURE:bootstrap-state",

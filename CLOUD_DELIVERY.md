@@ -740,6 +740,11 @@ lifecycle metadata, not controller stdout or task-bearing evidence.
 - A failed MVP preflight emits only
   `MVP_PREFLIGHT_FAILED_CLOSED:<allowlisted-phase>`; raw provider, Harbor,
   task, grader, exception, stdout, and stderr material remains private.
+- Immutable artifact checks use only the task-free
+  `bootstrap-artifacts-pins`, `bootstrap-artifacts-harbor`,
+  `bootstrap-artifacts-bun`, or `bootstrap-artifacts-adapter` phase. These
+  distinguish the reviewed artifact class without exposing its contents,
+  digest, metadata, or path.
 - The paid workflow is intentionally bounded below GitHub's hosted-job limit so
   the bootstrap can observe and confirm Daytona teardown.
 

@@ -297,6 +297,30 @@ describe("MVP Daytona runtime", () => {
   });
 
   it.each([
+    ["evaluator", true],
+    ["optimizer", false],
+  ] as const)("normalizes staged adapter ownership only for the %s", async (role, expected) => {
+    const config = configuration();
+    const commands: string[] = [];
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({ commands }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create(roleSpecification(config, role));
+
+    await runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    expect(
+      commands.includes(
+        "'/usr/bin/chown' '--no-dereference' '0:0' '--' '/tmp/df-mvp-controller/src/terminal-bench/assets/dark_factory_pi.py'",
+      ),
+    ).toBe(expected);
+  });
+
+  it.each([
     ["cpu", { cpu: 3, memoryGiB: 8, diskGiB: 10 }],
     ["memory", { cpu: 4, memoryGiB: 7, diskGiB: 10 }],
     ["disk", { cpu: 4, memoryGiB: 8, diskGiB: 11 }],

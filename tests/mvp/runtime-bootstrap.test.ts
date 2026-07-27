@@ -161,27 +161,33 @@ describe("MVP evaluator-private runtime bootstrap", () => {
     });
   });
 
-  it("rejects image artifact drift before invoking private discovery", async () => {
-    const stateRoot = await mkdtemp(join(tmpdir(), "df-mvp-bootstrap-"));
-    const discovery = new StubDiscovery(discoveryManifest());
-    const artifacts = new StubArtifacts({
-      bun: { sha256: bunSha256, mode: 0o666 },
-    });
+  it.each([
+    ["runtime pins", { pins: { mode: 0o666 } }, "bootstrap-artifacts-pins"],
+    ["Harbor executable", { harbor: { mode: 0o666 } }, "bootstrap-artifacts-harbor"],
+    ["Bun executable", { bun: { mode: 0o666 } }, "bootstrap-artifacts-bun"],
+    ["Pi adapter", { adapter: { mode: 0o666 } }, "bootstrap-artifacts-adapter"],
+  ] as const)(
+    "classifies %s drift before invoking private discovery",
+    async (_label, overrides, expectedCode) => {
+      const stateRoot = await mkdtemp(join(tmpdir(), "df-mvp-bootstrap-"));
+      const discovery = new StubDiscovery(discoveryManifest());
+      const artifacts = new StubArtifacts(overrides);
 
-    await expect(
-      bootstrapMvpEvaluatorRuntime({
-        stateRoot,
-        sourceCommit,
-        imageReference,
-        discovery,
-        artifacts,
-      }),
-    ).rejects.toMatchObject({
-      name: "MvpPreflightDiagnosticError",
-      code: "bootstrap-artifacts",
-    });
-    expect(discovery.calls).toBe(0);
-  });
+      await expect(
+        bootstrapMvpEvaluatorRuntime({
+          stateRoot,
+          sourceCommit,
+          imageReference,
+          discovery,
+          artifacts,
+        }),
+      ).rejects.toMatchObject({
+        name: "MvpPreflightDiagnosticError",
+        code: expectedCode,
+      });
+      expect(discovery.calls).toBe(0);
+    },
+  );
 
   it("classifies a pre-existing mounted bootstrap lock without exposing its contents", async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), "df-mvp-bootstrap-"));
@@ -237,10 +243,20 @@ class StubDiscovery implements MvpRuntimeBootstrapDiscoveryPort {
 
 class StubArtifacts implements MvpRuntimeBootstrapArtifactPort {
   readonly #overrides: {
+    readonly pins?: Partial<MvpRuntimeBootstrapArtifact>;
+    readonly harbor?: Partial<MvpRuntimeBootstrapArtifact>;
     readonly bun?: Partial<MvpRuntimeBootstrapArtifact>;
+    readonly adapter?: Partial<MvpRuntimeBootstrapArtifact>;
   };
 
-  public constructor(overrides: { readonly bun?: Partial<MvpRuntimeBootstrapArtifact> } = {}) {
+  public constructor(
+    overrides: {
+      readonly pins?: Partial<MvpRuntimeBootstrapArtifact>;
+      readonly harbor?: Partial<MvpRuntimeBootstrapArtifact>;
+      readonly bun?: Partial<MvpRuntimeBootstrapArtifact>;
+      readonly adapter?: Partial<MvpRuntimeBootstrapArtifact>;
+    } = {},
+  ) {
     this.#overrides = overrides;
   }
 
@@ -263,6 +279,7 @@ class StubArtifacts implements MvpRuntimeBootstrapArtifactPort {
       uid: 0,
       gid: 0,
       mode: 0o444,
+      ...this.#overrides.pins,
     };
   }
 
@@ -273,7 +290,12 @@ class StubArtifacts implements MvpRuntimeBootstrapArtifactPort {
       gid: 0,
     };
     if (path === MVP_RUNTIME_HARBOR_EXECUTABLE) {
-      return { ...common, sha256: harborSha256, mode: 0o755 };
+      return {
+        ...common,
+        sha256: harborSha256,
+        mode: 0o755,
+        ...this.#overrides.harbor,
+      };
     }
     if (path === MVP_RUNTIME_BUN_EXECUTABLE) {
       return {
@@ -284,7 +306,12 @@ class StubArtifacts implements MvpRuntimeBootstrapArtifactPort {
       };
     }
     if (path === MVP_RUNTIME_ADAPTER_PATH) {
-      return { ...common, sha256: adapterSha256, mode: 0o444 };
+      return {
+        ...common,
+        sha256: adapterSha256,
+        mode: 0o444,
+        ...this.#overrides.adapter,
+      };
     }
     throw new Error(`Unexpected artifact path: ${path}`);
   }

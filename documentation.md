@@ -7211,7 +7211,11 @@ preserve only that marker (or an outer create/stage/execute/cleanup category)
 and discard raw stdout, stderr, exception text, task identifiers, grader data,
 and secrets. GitHub therefore reports
 `MVP_PREFLIGHT_FAILED_CLOSED:<phase>` without turning diagnostics into a hidden
-benchmark-data channel.
+benchmark-data channel. Immutable artifact failures are narrowed only to the
+fixed, task-free phases `bootstrap-artifacts-pins`,
+`bootstrap-artifacts-harbor`, `bootstrap-artifacts-bun`, and
+`bootstrap-artifacts-adapter`; no artifact bytes, digest, metadata, or path
+crosses the worker boundary.
 
 ### Alternatives
 
