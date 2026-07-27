@@ -12,7 +12,8 @@ function environment(): NodeJS.ProcessEnv {
     DAYTONA_API_KEY: "present-but-never-returned",
     DAYTONA_API_URL: "https://app.daytona.io/api",
     DAYTONA_TARGET: "eu",
-    DF_MVP_DAYTONA_IMAGE: `ubuntu@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_OPTIMIZER_IMAGE: `optimizer@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_EVALUATOR_IMAGE: `evaluator@sha256:${"b".repeat(64)}`,
     DF_DAYTONA_VOLUME_ID: "df-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "mvp/state",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DF_DAYTONA_NESTED",
@@ -38,6 +39,10 @@ describe("MVP cloud configuration", () => {
     expect(readiness.configuration).toMatchObject({
       daytona: {
         harborApiSecretSource: "DF_DAYTONA_NESTED",
+        images: {
+          optimizer: `optimizer@sha256:${"a".repeat(64)}`,
+          evaluator: `evaluator@sha256:${"b".repeat(64)}`,
+        },
         outerSandboxResources: {
           optimizer: {
             cpu: 4,
@@ -104,5 +109,46 @@ describe("MVP cloud configuration", () => {
       optimizerModelFamily: "claude-opus-5",
       evaluatedModelFamily: "claude-opus-4-8",
     });
+  });
+
+  it("does not fall back to the legacy shared image variable", () => {
+    const input = environment();
+    delete input["DF_MVP_DAYTONA_OPTIMIZER_IMAGE"];
+    delete input["DF_MVP_DAYTONA_EVALUATOR_IMAGE"];
+    input["DF_MVP_DAYTONA_IMAGE"] = `legacy@sha256:${"a".repeat(64)}`;
+
+    const readiness = inspectMvpCloudEnvironment(input);
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.missing).toEqual(
+      expect.arrayContaining(["DF_MVP_DAYTONA_OPTIMIZER_IMAGE", "DF_MVP_DAYTONA_EVALUATOR_IMAGE"]),
+    );
+  });
+
+  it("rejects two role references that resolve to the same image digest", () => {
+    const readiness = inspectMvpCloudEnvironment({
+      ...environment(),
+      DF_MVP_DAYTONA_EVALUATOR_IMAGE: `evaluator@sha256:${"a".repeat(64)}`,
+    });
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.invalid).toEqual(
+      expect.arrayContaining(["DF_MVP_DAYTONA_OPTIMIZER_IMAGE", "DF_MVP_DAYTONA_EVALUATOR_IMAGE"]),
+    );
+  });
+
+  it("binds each complete role image reference into the configuration hash", () => {
+    const baseline = inspectMvpCloudEnvironment(environment()).configuration?.configurationHash;
+    const changedOptimizer = inspectMvpCloudEnvironment({
+      ...environment(),
+      DF_MVP_DAYTONA_OPTIMIZER_IMAGE: `optimizer-v2@sha256:${"a".repeat(64)}`,
+    }).configuration?.configurationHash;
+    const changedEvaluator = inspectMvpCloudEnvironment({
+      ...environment(),
+      DF_MVP_DAYTONA_EVALUATOR_IMAGE: `evaluator-v2@sha256:${"b".repeat(64)}`,
+    }).configuration?.configurationHash;
+
+    expect(baseline).toMatch(/^[a-f0-9]{64}$/u);
+    expect(new Set([baseline, changedOptimizer, changedEvaluator]).size).toBe(3);
   });
 });

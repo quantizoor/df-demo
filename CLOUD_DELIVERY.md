@@ -13,9 +13,10 @@ production delivery design below is retained for future reference. KMS/HSM
 signing, crash-perfect recovery, twelve-task/shadow programs, extra providers,
 the full production role-image publication pipeline, dashboards/PR automation,
 long-campaign statistics, the full 89-task run, and exhaustive supply-chain
-hardening are deferred and must not block this path. The minimal combined image
-preparation below is an MVP-only exception because both current outer roles
-consume the single `DF_MVP_DAYTONA_IMAGE` reference.
+hardening are deferred and must not block this path. The minimal paired
+role-image preparation below is an MVP-only exception. The optimizer and
+evaluator images share one reviewed set of pinned filesystem/tool layers but
+have separate immutable references and final user configurations.
 
 Nothing is executed on the Mac. Source is pushed to the MVP branch, free
 quality checks run on a GitHub-hosted runner, and all Claude Code, Pi, Harbor,
@@ -41,12 +42,15 @@ The launcher creates disjoint Daytona roles:
 - no task catalog, task prompt, grader, raw trace, private volume path, or Git
   credential is mounted or copied into the optimizer.
 
-The optimizer uses the image's default unprivileged user. The evaluator is
-explicitly created and provider-attested as `root` only so its trusted
-controller can create a root-owned mode-`0700` private tree, switch
-candidate/champion builds to two isolated unprivileged identities, terminate
-all remaining processes for those identities, and securely import the build
-artifacts. Pi and source-controlled build commands do not run as root.
+The optimizer image defaults to UID/GID `10001:10001`. The evaluator image
+defaults to UID/GID `0:0` with `HOME=/root` so its trusted controller can
+create a root-owned mode-`0700` private tree, switch candidate/champion builds
+to two isolated unprivileged identities, terminate all remaining processes for
+those identities, and securely import the build artifacts. The launcher must
+probe the actual process UID/GID after sandbox creation: exactly
+`10001:10001` for the optimizer and `0:0` for the evaluator. Provider-returned
+user metadata is not execution-identity proof. Pi, Claude Code, and
+source-controlled build commands do not run as root.
 
 The evaluated Pi task sandbox receives one selected task prompt transiently
 and never the grader. The sanitizer runs inside the trusted boundary and
@@ -87,16 +91,19 @@ configuration:
 - `DF_MVP_CAMPAIGN_ID` and `DF_MVP_MAX_ITERATIONS` (use `1` for the first live
   run);
 - `DAYTONA_API_URL` and an exact EU `DAYTONA_TARGET`;
-- `DF_MVP_DAYTONA_IMAGE` as an immutable
-  `registry/name@sha256:<digest>` reference. Its evaluator runtime must expose
-  the reviewed Harbor 0.20.0 and Bun executables at absolute paths; the private
-  runtime pin records both file SHA-256 values;
+- `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE` as separate immutable
+  `registry/name@sha256:<digest>` references. They share the reviewed pinned
+  filesystem/tool layers, while their final user configurations differ. The
+  evaluator runtime must expose the reviewed Harbor 0.20.0 and Bun executables
+  at absolute paths; the private runtime pin records the evaluator image
+  digest and both executable SHA-256 values;
 - both outer roles use the operator's current Daytona Tier 2 non-GPU
   per-sandbox profile of `4` vCPU, `8 GiB` memory, and `10 GiB` disk. Harbor
   child sandboxes retain their separately pinned official task resources. The
-  mandatory cloud smoke must prove the immutable image, controller bundle, and
-  one isolated Pi build tree at a time fit the outer profile; exhaustion blocks
-  before paid evaluation;
+  mandatory cloud smoke must prove both immutable role images, the controller
+  bundle, and one isolated Pi build tree at a time fit the outer profile;
+  exhaustion blocks before paid evaluation;
 - `DF_DAYTONA_VOLUME_ID` and `DF_DAYTONA_VOLUME_SUBPATH`;
 - the five Foundry values listed above;
 - `DF_PI_GITHUB_OWNER`, `DF_PI_GITHUB_REPOSITORY`, `DF_PI_BRANCH`,
@@ -153,7 +160,8 @@ observe grader material. This limits initial coverage and may bias the
 prototype pool; it is not a claim about Pi or about the official evaluation
 set.
 
-The immutable Linux x64 glibc image contract is exact. It must contain:
+The immutable Linux x64 glibc role-image contract is exact. Both images share
+the same reviewed filesystem/tool layers, which must contain:
 
 - Node 24 at `/usr/bin/node`, plus `/usr/bin/env`, `/usr/bin/git`, `/usr/bin/npm`,
   `/usr/bin/tar`, `/usr/bin/sha256sum`, `/usr/bin/mkdir`, `/usr/bin/chown`,
@@ -165,25 +173,27 @@ The immutable Linux x64 glibc image contract is exact. It must contain:
 - Harbor 0.20.0 at `/usr/local/bin/harbor` and Bun at
   `/usr/local/bin/bun`; the private runtime pin records both exact paths and
   matching SHA-256 values;
-- default unprivileged UID/GID `10001`, with writable `/workspace` and no
+- an unprivileged `10001:10001` identity, with writable `/workspace` and no
   pre-existing `/tmp/df-mvp-controller`; and
 - unused, dedicated UID/GID pairs `65532` and `65533`. They must own no
   pre-existing service and have no unrelated process, because the trusted
   evaluator kills and verifies every process for the relevant build identity
   before importing an artifact.
 
-The combined image is only for the essentials-only MVP. Its default
-`10001:10001` identity runs the optimizer; Daytona overrides the evaluator to
-`root`, which then switches only candidate/champion builds to reserved
-`65532:65532` and `65533:65533`. Binaries and their dependency trees must be
-root-owned and non-writable by all three unprivileged identities. The image
-must contain no credential or project state and must idle until Daytona invokes
-an explicit bounded command.
+The optimizer image's final configuration must set `USER 10001:10001` and
+`HOME=/home/dark-factory`. The evaluator image's final configuration must set
+`USER 0:0` and `HOME=/root`; it then switches only candidate/champion builds
+to reserved `65532:65532` and `65533:65533`. The launcher must verify those
+actual identities with no-output UID/GID probes before staging or executing a
+role worker. Binaries and their dependency trees must be root-owned and
+non-writable by all three unprivileged identities. Neither image may contain a
+credential or project state, and both must idle until Daytona invokes an
+explicit bounded command.
 
-### Cloud-only preparation of the shared MVP image
+### Cloud-only preparation of the MVP role-image pair
 
-If an independently reviewed image already satisfies the contract above, use
-its anonymously verified digest. Otherwise prepare the image only after the
+If independently reviewed role images already satisfy the contract above, use
+their anonymously verified digests. Otherwise prepare the pair only after the
 reviewed source and dependency lock have been pushed, cloud quality checks have
 passed, and the exact image-preparation commit is on `main`:
 
@@ -196,28 +206,35 @@ passed, and the exact image-preparation commit is on `main`:
    `source_commit` and confirmation `PUBLISH-MVP:<source_commit>`. All base,
    builder, tool, and package values come from reviewed
    `containers/mvp-runtime-pins.json`; there are no mutable operator-supplied
-   version inputs.
+   version inputs. The two final images must be produced from the same pinned
+   filesystem/tool layers.
 3. Download artifact `dark-factory-mvp-runtime-<source_commit>` and verify the
-   adjacent checksum for `image-output/mvp-runtime.json`. Review its
+   adjacent checksum for the archive-root `mvp-runtime.json`. Read the
+   optimizer reference from `.images.optimizer.immutableReference`, the
+   evaluator reference from `.images.evaluator.immutableReference`, and the
+   evaluator preflight digest from `.images.evaluator.digest`. Review its
    Linux/amd64 platform, source/workflow identity, Containerfile and pin
-   digests, exact tool versions/paths/hashes, default `10001:10001` identity,
-   free reserved identities, SBOM/provenance markers, offline smoke result, and
-   `ghcr.io/...@sha256:<digest>` immutable reference.
-4. In the GHCR package settings, change that exact package's visibility to
-   **public**. Do not add registry credentials to Daytona as a workaround for
-   a private package.
+   digests, exact tool versions/paths/hashes, optimizer `10001:10001` and
+   evaluator `0:0`/`HOME=/root` identities, free reserved identities,
+   SBOM/provenance markers, offline smoke results, and both
+   `ghcr.io/...@sha256:<digest>` immutable references.
+4. In the GHCR package settings, confirm the shared package containing both
+   role-specific tags/digests is **public**. Do not add registry credentials
+   to Daytona as a workaround for a private package.
 5. From a clean unauthenticated cloud context, resolve or pull the immutable
-   reference and verify that its reported manifest digest exactly matches the
-   reviewed receipt. A successful authenticated pull is not this proof.
-6. Store the full anonymously verified
-   `ghcr.io/...@sha256:<digest>` reference as the normal GitHub repository
-   variable `DF_MVP_DAYTONA_IMAGE`. It is not a secret; never store a mutable
-   tag or only the bare digest.
+   references and verify that each reported manifest digest exactly matches
+   the reviewed receipt. A successful authenticated pull is not this proof.
+6. Store the full anonymously verified optimizer reference in the normal
+   GitHub repository variable `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and the full
+   evaluator reference in `DF_MVP_DAYTONA_EVALUATOR_IMAGE`. They are not
+   secrets; never store mutable tags or only bare digests. The legacy
+   `DF_MVP_DAYTONA_IMAGE` variable is unused, and the two manifest digests must
+   differ.
 
-This workflow builds and publishes an image; it does not launch Daytona, run a
-model, fetch private Pi, execute Harbor, inspect Terminal-Bench, or authorize a
-paid iteration. Do not run Docker, install packages, or execute the image on
-the Mac.
+This workflow builds and publishes two role-bound images; it does not launch
+Daytona, run a model, fetch private Pi, execute Harbor, inspect Terminal-Bench,
+or authorize a paid iteration. Do not run Docker, install packages, or execute
+either image on the Mac.
 
 ### MVP verification order
 
@@ -226,9 +243,12 @@ the Mac.
    formatting there, then run lint, strict typecheck, Vitest/coverage, build,
    schema/privacy tests, and secret scanning. A workflow file is not proof; a
    passing commit-bound receipt is.
-3. Prepare or verify the shared public MVP image through the cloud-only
-   procedure above, then configure only the runtime references and protected
-   secrets listed above.
+3. Prepare or verify the public MVP role-image pair through the cloud-only
+   procedure above, then configure only the two immutable runtime references
+   and protected secrets listed above. The publication smoke proves both image
+   defaults. Protected preflight live-probes the evaluator; paid orchestration
+   live-probes the optimizer before any model command and fails closed without
+   making a model request if its identity is wrong.
 4. In the evaluator-private cloud boundary, create the runtime pin and hidden
    inventory: resolve and pin the exact Harbor and Terminal-Bench 2.1 inputs,
    the Harbor and Bun executable paths/digests, the Pi adapter digest, the
@@ -258,14 +278,16 @@ all items below and explicitly says `resume`:
 - make the pushed branch and its GitHub Actions results available for review;
 - place `DAYTONA_API_KEY` in the protected GitHub environment;
 - create reviewer-protected, secret-free `dark-factory-image-publish`, publish
-  the combined MVP image from `main` if no compliant image exists, make the
-  reviewed GHCR package public, anonymously verify its digest, and store its
-  full immutable reference in repository variable `DF_MVP_DAYTONA_IMAGE`;
+  the MVP role-image pair from `main` if no compliant pair exists, make the
+  shared GHCR package public, anonymously verify both digests, and store the
+  full immutable references in repository variables
+  `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE`;
 - supply the Daytona API URL, exact EU target, persistent volume/subpath, and
-  immutable public image reference, including the absolute Harbor 0.20.0 and
-  Bun executable paths that will be digest-pinned in the evaluator-private
-  runtime pin and every exact system executable/reserved identity in the image
-  contract above;
+  both immutable public image references, including the absolute Harbor 0.20.0
+  and Bun executable paths that will be digest-pinned in the evaluator-private
+  runtime pin and every exact system executable/reserved identity in the
+  role-image contract above;
 - create or identify Daytona organization Secret names for the existing
   Foundry key in both outer roles, the evaluator-only nested Daytona key, and
   the pre-encoded private-Pi HTTPS Basic credential; apply the exact host
@@ -742,10 +764,13 @@ lifecycle metadata, not controller stdout or task-bearing evidence.
   task, grader, exception, stdout, and stderr material remains private.
 - Outer controller staging narrows failures only to the fixed, task-free
   `outer-stage-upload`, `outer-stage-digest`, `outer-stage-install-root`,
-  `outer-stage-extraction`, `outer-stage-root-authority`, or
-  `outer-stage-adapter-ownership` phase. The generic `outer-stage` phase remains
-  the fail-closed fallback; none of these phases releases a provider response,
-  command output, file value, path, owner, mode, or digest.
+  `outer-stage-extraction`, `outer-stage-optimizer-authority`,
+  `outer-stage-root-authority`, or `outer-stage-adapter-ownership` phase. The
+  two authority phases mean only that the actual no-output UID/GID probe did
+  not observe `10001:10001` for the optimizer or `0:0` for the evaluator. The
+  generic `outer-stage` phase remains the fail-closed fallback; none of these
+  phases releases a provider response, command output, file value, path, owner,
+  mode, or digest.
 - Immutable artifact checks use only the task-free
   `bootstrap-artifacts-pins`, `bootstrap-artifacts-harbor`,
   `bootstrap-artifacts-bun`, or `bootstrap-artifacts-adapter` phase. These

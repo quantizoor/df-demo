@@ -2,6 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -46,10 +47,31 @@ function assertCloudRole(): void {
     process.env["CI"] !== "true" ||
     process.env["DF_CLOUD_EXECUTION"] !== "1" ||
     process.env["DF_MVP_ROLE"] !== "optimizer" ||
+    !hasUnprivilegedOptimizerIdentity() ||
     !hasDaytonaIdentity()
   ) {
     throw new Error("The optimizer worker is restricted to its Daytona role.");
   }
+}
+
+function hasUnprivilegedOptimizerIdentity(): boolean {
+  let capabilitiesClear = false;
+  try {
+    const status = readFileSync("/proc/self/status", "utf8");
+    capabilitiesClear = ["CapInh", "CapPrm", "CapEff", "CapAmb"].every((name) =>
+      new RegExp(`^${name}:\\s+0+$`, "mu").test(status),
+    );
+  } catch {
+    return false;
+  }
+  return (
+    process.getuid?.() === 10001 &&
+    process.getgid?.() === 10001 &&
+    process.geteuid?.() === 10001 &&
+    process.getegid?.() === 10001 &&
+    !(process.getgroups?.() ?? []).includes(0) &&
+    capabilitiesClear
+  );
 }
 
 function hasDaytonaIdentity(): boolean {

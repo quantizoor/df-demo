@@ -2,6 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   cp,
   lstat,
@@ -335,6 +336,15 @@ function assertOptimizerInput(value) {
 }
 
 function captureConfiguration(input) {
+  let capabilitiesClear = false;
+  try {
+    const status = readFileSync("/proc/self/status", "utf8");
+    capabilitiesClear = ["CapInh", "CapPrm", "CapEff", "CapAmb"].every((name) =>
+      new RegExp(`^${name}:\\s+0+$`, "mu").test(status),
+    );
+  } catch {
+    capabilitiesClear = false;
+  }
   const alternateCredentialPresent = [
     "DF_GITHUB_TOKEN",
     "DF_GITHUB_SSH_KEY",
@@ -366,6 +376,12 @@ function captureConfiguration(input) {
     process.env.DF_MVP_ROLE !== "optimizer" ||
     process.env.CI !== "true" ||
     !["linux"].includes(process.platform) ||
+    process.getuid?.() !== 10001 ||
+    process.getgid?.() !== 10001 ||
+    process.geteuid?.() !== 10001 ||
+    process.getegid?.() !== 10001 ||
+    (process.getgroups?.() ?? []).includes(0) ||
+    !capabilitiesClear ||
     ![process.env.DAYTONA_SANDBOX_ID, process.env.DAYTONA_WORKSPACE_ID].some(
       (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value),
     )

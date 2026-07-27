@@ -143,13 +143,17 @@ optimization loop.
   smoke must prove that the optimizer and evaluator runtime—including one
   isolated Pi build tree at a time—fits this smaller outer profile; insufficient
   space is a readiness block, not permission to alter benchmark resources.
-- Image: both MVP outer roles use one public Linux x64 glibc image pinned by
-  digest. If no reviewed compatible image exists, a reviewer-protected,
-  secret-free GitHub-hosted workflow builds the MVP-only combined image with
-  default UID/GID `10001`, evaluator root override, reserved build identities
-  `65532` and `65533`, and the exact executable paths in `CLOUD_DELIVERY.md`.
-  This narrow exception does not activate the deferred production role-image
-  pipeline.
+- Images: the MVP outer roles use two public Linux x64 glibc images pinned by
+  separate digests. Both images share the same reviewed filesystem/tool layers
+  and exact executable paths. The optimizer image defaults to
+  `10001:10001`; the evaluator image defaults to `0:0` with `HOME=/root` and
+  reserves `65532` and `65533` for isolated candidate/champion builds. The
+  launcher proves the actual process UID/GID for each role rather than
+  treating provider-returned user metadata as authority, failing closed as
+  `outer-stage-optimizer-authority` or `outer-stage-root-authority`. If no
+  reviewed compatible pair exists, a reviewer-protected, secret-free
+  GitHub-hosted workflow builds this MVP-only pair. This narrow exception does
+  not activate the deferred production role-image pipeline.
 - Secrets: the GitHub-hosted launcher receives only the Daytona bootstrap
   secret. Foundry and private-Git values are resolved by name from protected
   cloud secret stores directly into the sandbox that needs them. A plaintext
@@ -205,8 +209,9 @@ The repository currently has **source-ready but cloud-unverified** MVP cores:
 - fail-closed task eligibility requiring at least five exact direct-Daytona
   Terminal-Bench 2.1 revisions with separately isolated verifiers at every
   step;
-- a one-provider Daytona cloud launcher that creates isolated optimizer and
-  root-controller evaluator roles, disjoint volume subpaths, nested
+- a one-provider Daytona cloud launcher that creates isolated unprivileged
+  optimizer and root-default evaluator-controller roles, disjoint volume
+  subpaths, nested
   task-sandbox secrets, immutable image/EU constraints, five-trial
   concurrency, bounded commands, and verified teardown;
 - an external Pi/Harbor Foundry binding fixed to Opus 4.8 at `high`, where
@@ -232,13 +237,16 @@ The remaining essentials are deployment proof, not more local source work:
 - push the reviewed branch, generate/review the dependency lock in cloud CI,
   and pass cloud formatting, lint, typecheck, unit/contract/coverage/privacy
   tests, build, and secret scanning;
-- if no compliant image already exists, publish the combined MVP runtime image
-  from the exact reviewed `main` commit, review its receipt, make its GHCR
-  package public, anonymously verify the digest, and record the full immutable
-  reference as repository variable `DF_MVP_DAYTONA_IMAGE`;
-- provide or verify the immutable Daytona image and create the evaluator-private
-  Harbor/Bun/dataset/adapter/runtime pin plus hidden weighted inventory, with at
-  least five direct-Daytona and all-step separate-verifier-compatible tasks;
+- if no compliant role-image pair already exists, publish both MVP runtime
+  images from the exact reviewed `main` commit, review their receipt, make the
+  shared GHCR package public, anonymously verify both digests, and record the
+  full immutable references as repository variables
+  `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE`;
+- provide or verify both immutable Daytona role images and create the
+  evaluator-private Harbor/Bun/dataset/adapter/runtime pin plus hidden weighted
+  inventory, with at least five direct-Daytona and all-step
+  separate-verifier-compatible tasks;
 - pass a no-model synthetic campaign and bounded private-Git, Claude/Foundry,
   Harbor, nested-Daytona, and Pi connectivity smokes; and
 - run one budget-approved real matched iteration and, only if the fresh rule
@@ -259,8 +267,9 @@ prerequisite for the first loop:
   feedback-dark shadow pools;
 - sandbox providers other than the single Daytona EU path;
 - the full production role-image publication and lifecycle pipeline; only the
-  minimal secret-free combined-image preparation required by the single MVP
-  `DF_MVP_DAYTONA_IMAGE` input is in scope;
+  minimal secret-free preparation of the two MVP images sharing pinned layers,
+  supplied through `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE`, is in scope;
 - dashboards, pull-request automation, and automated publication;
 - long-campaign alpha spending, privacy-budget machinery, winner's-curse
   correction, and other sequential statistical programs;
@@ -278,11 +287,13 @@ The first MVP is ready to test only when all of the following are true:
 
 1. cloud CI has produced a reviewed dependency lock and a passing source
    quality receipt;
-2. the shared MVP image is public, anonymously pullable by its reviewed digest,
-   and contains the exact tool paths and `10001`/`65532`/`65533` identity
-   contract;
+2. both MVP role images are public and anonymously pullable by their reviewed
+   digests, share the exact pinned tool layers, and satisfy the optimizer
+   `10001:10001`, evaluator `0:0`/`HOME=/root`, and unused
+   `65532`/`65533` identity contract;
 3. a GitHub-hosted entrypoint can create and tear down isolated Daytona
-   sandboxes in the selected EU target;
+   sandboxes in the selected EU target and its no-output probes observe actual
+   UID/GID `10001:10001` for the optimizer and `0:0` for the evaluator;
 4. the optimizer sandbox can clone the exact champion, run Claude Code against
    the existing Opus 5 deployment, create one bounded candidate, and return no
    task-bearing data;
@@ -305,17 +316,21 @@ resume cloud verification, the operator must:
 
 - make the pushed MVP branch and its GitHub Actions results accessible for
   review;
-- if no compliant image already exists, create the reviewer-protected
+- if no compliant role-image pair already exists, create the reviewer-protected
   `dark-factory-image-publish` GitHub environment with no secrets, merge the
   exact reviewed preparation source to `main`, dispatch
-  `publish-mvp-runtime-image`, review its receipt, make the GHCR package public,
-  anonymously verify the digest, and store the full immutable reference as the
-  normal repository variable `DF_MVP_DAYTONA_IMAGE`;
+  `publish-mvp-runtime-image`, review its receipt, make the shared GHCR package
+  public, anonymously verify both digests, and store the full immutable
+  references as normal repository variables
+  `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE`;
 - store `DAYTONA_API_KEY` in the protected GitHub environment, never in chat;
 - provide the existing Daytona API URL, exact EU target, persistent volume
-  identifier/subpath, and an immutable public sandbox image reference whose
-  Linux x64 glibc runtime satisfies the exact executable and reserved-UID
-  contract in `CLOUD_DELIVERY.md`;
+  identifier/subpath, and two immutable public sandbox image references whose
+  shared Linux x64 glibc layers satisfy the exact executable and reserved-UID
+  contract in `CLOUD_DELIVERY.md`; the optimizer reference must default to
+  `10001:10001`, and the evaluator reference must default to `0:0` with
+  `HOME=/root`;
 - create or identify protected Daytona secret names for the existing Foundry
   API key in the optimizer and evaluator sandboxes, the evaluator's nested
   Daytona API key, and authenticated HTTPS access to the private Pi fork; the

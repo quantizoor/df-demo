@@ -156,6 +156,9 @@ describe("MVP optimizer protocol boundary", () => {
     expect(source).toContain("shell: false");
     expect(source).toContain("Fail-closed MVP optimizer filesystem boundary.");
     expect(source).toContain("${CLAUDE_PLUGIN_ROOT}/server/hook-guard.js");
+    expect(source).toContain('["CapInh", "CapPrm", "CapEff", "CapAmb"]');
+    expect(source).toContain("process.geteuid?.() !== 10001");
+    expect(source).toContain("(process.getgroups?.() ?? []).includes(0)");
     expect(source).not.toContain("shell: true");
     expect(source).not.toMatch(/https:\/\/[^/\n]*\$\{[^}]*auth/iu);
   });
@@ -170,6 +173,9 @@ describe("MVP optimizer protocol boundary", () => {
     expect(source).toContain("shell: false");
     expect(source).toContain("DF_MVP_OPTIMIZER_INPUT_BASE64");
     expect(source).toContain('process.platform !== "linux"');
+    expect(source).toContain('["CapInh", "CapPrm", "CapEff", "CapAmb"]');
+    expect(source).toContain("process.geteuid?.() === 10001");
+    expect(source).toContain("!(process.getgroups?.() ?? []).includes(0)");
     expect(source).not.toContain("runtime/mvp-optimizer-runtime.mjs");
   });
 

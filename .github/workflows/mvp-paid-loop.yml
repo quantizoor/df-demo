@@ -38,7 +38,8 @@ jobs:
       DF_MVP_MAX_ITERATIONS: "1"
       DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
       DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
-      DF_MVP_DAYTONA_IMAGE: ${{ vars.DF_MVP_DAYTONA_IMAGE }}
+      DF_MVP_DAYTONA_OPTIMIZER_IMAGE: ${{ vars.DF_MVP_DAYTONA_OPTIMIZER_IMAGE }}
+      DF_MVP_DAYTONA_EVALUATOR_IMAGE: ${{ vars.DF_MVP_DAYTONA_EVALUATOR_IMAGE }}
       DF_DAYTONA_VOLUME_ID: ${{ vars.DF_DAYTONA_VOLUME_ID }}
       DF_DAYTONA_VOLUME_SUBPATH: ${{ vars.DF_DAYTONA_VOLUME_SUBPATH }}
       DF_HARBOR_DAYTONA_SECRET_SOURCE: ${{ vars.DF_HARBOR_DAYTONA_SECRET_SOURCE }}
@@ -64,6 +65,9 @@ jobs:
           test "${RUNNER_ENVIRONMENT:-}" = "github-hosted"
           [[ "$DF_MVP_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$DF_MVP_CAMPAIGN_ID" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]
+          [[ "$DF_MVP_DAYTONA_OPTIMIZER_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$ ]]
+          [[ "$DF_MVP_DAYTONA_EVALUATOR_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$ ]]
+          test "${DF_MVP_DAYTONA_OPTIMIZER_IMAGE##*@}" != "${DF_MVP_DAYTONA_EVALUATOR_IMAGE##*@}"
           test "${{ inputs.confirmation }}" = "RUN_MVP:$DF_MVP_CAMPAIGN_ID"
 
       - name: Check out the exact reviewed source
@@ -174,8 +178,199 @@ jobs:
           test -s mvp-paid-loop-receipt.json
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
 
-      - name: Upload only the task-free launch or readiness receipt
+      - name: Admit only a bounded task-free launch receipt
+        id: admit
         if: always()
+        shell: bash
+        env:
+          DF_MVP_LAUNCH_EXIT_CODE: ${{ steps.launch.outputs.exit_code }}
+          DF_MVP_CONTROLLER_BUNDLE_SHA256: ${{ steps.bundle.outputs.sha256 }}
+          DAYTONA_API_KEY: receipt-admission-placeholder
+        run: |
+          set -euo pipefail
+          test -s mvp-paid-loop-receipt.json
+          test "$(wc -c < mvp-paid-loop-receipt.json)" -le 4194304
+          node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+          import { inspectMvpCloudEnvironment } from "./dist/mvp/cloud-config.js";
+
+          const receipt = JSON.parse(
+            fs.readFileSync("mvp-paid-loop-receipt.json", "utf8"),
+          );
+          const readiness = inspectMvpCloudEnvironment(process.env);
+          const expectedConfigurationHash =
+            readiness.configuration?.configurationHash ?? null;
+          const exactKeys = (value, expected) =>
+            value !== null &&
+            typeof value === "object" &&
+            !Array.isArray(value) &&
+            Object.getPrototypeOf(value) === Object.prototype &&
+            Object.keys(value).length === expected.length &&
+            Object.keys(value).every((key) => expected.includes(key));
+          const sensitivityIsFalse =
+            receipt.containsTaskIdentifiers === false &&
+            receipt.containsTaskLiterals === false &&
+            receipt.containsGraderData === false &&
+            receipt.containsRawTraces === false;
+          const digestFrom = (name) => {
+            const value = process.env[name] ?? "";
+            return value.slice(value.lastIndexOf("@") + 1);
+          };
+          const cloudBaseKeys = [
+            "schemaVersion",
+            "domain",
+            "campaignId",
+            "configurationHash",
+            "sourceCommit",
+            "workflowRunId",
+            "workflowRunAttempt",
+            "provider",
+            "regionClass",
+            "imageDigests",
+            "controllerBundleSha256",
+            "maximumIterations",
+            "protocol",
+            "outerSandboxResources",
+            "isolation",
+            "executions",
+            "startedAt",
+            "finishedAt",
+            "containsTaskIdentifiers",
+            "containsTaskLiterals",
+            "containsGraderData",
+            "containsRawTraces",
+          ];
+          const launchExitCode = process.env.DF_MVP_LAUNCH_EXIT_CODE;
+          if (launchExitCode === "0") {
+            const successKeys = [
+              ...cloudBaseKeys,
+              "status",
+              "actualIterationsCompleted",
+              "iteration",
+            ];
+            if (
+              !exactKeys(receipt, successKeys) ||
+              receipt.schemaVersion !== 3 ||
+              receipt.domain !== "dark-factory.mvp-cloud-launch.v3" ||
+              receipt.status !== "actual-iteration-completed" ||
+              receipt.actualIterationsCompleted !== 1 ||
+              receipt.campaignId !== process.env.DF_MVP_CAMPAIGN_ID ||
+              receipt.sourceCommit !== process.env.DF_MVP_SOURCE_COMMIT ||
+              receipt.workflowRunId !== process.env.GITHUB_RUN_ID ||
+              receipt.workflowRunAttempt !==
+                Number(process.env.GITHUB_RUN_ATTEMPT) ||
+              receipt.provider !== "daytona" ||
+              receipt.regionClass !== "eu" ||
+              receipt.configurationHash !== expectedConfigurationHash ||
+              !exactKeys(receipt.imageDigests, ["optimizer", "evaluator"]) ||
+              receipt.imageDigests.optimizer !==
+                digestFrom("DF_MVP_DAYTONA_OPTIMIZER_IMAGE") ||
+              receipt.imageDigests.evaluator !==
+                digestFrom("DF_MVP_DAYTONA_EVALUATOR_IMAGE") ||
+              receipt.imageDigests.optimizer ===
+                receipt.imageDigests.evaluator ||
+              receipt.controllerBundleSha256 !==
+                process.env.DF_MVP_CONTROLLER_BUNDLE_SHA256 ||
+              !sensitivityIsFalse
+            ) {
+              process.exit(1);
+            }
+          } else {
+            const launchFailure =
+              receipt.domain === "dark-factory.mvp-launch-failure.v1" &&
+              exactKeys(receipt, [
+                "schemaVersion",
+                "domain",
+                "status",
+                "actualIterationsCompleted",
+                "failureCode",
+                "containsTaskIdentifiers",
+                "containsTaskLiterals",
+                "containsGraderData",
+                "containsRawTraces",
+              ]) &&
+              receipt.schemaVersion === 1 &&
+              receipt.status === "failed-closed" &&
+              /^MVP_[A-Z0-9_]+$/.test(receipt.failureCode ?? "");
+            const configurationReadiness =
+              receipt.domain ===
+                "dark-factory.mvp-configuration-readiness.v1" &&
+              exactKeys(receipt, [
+                "schemaVersion",
+                "domain",
+                "status",
+                "actualIterationsCompleted",
+                "missingPrerequisites",
+                "invalidConfiguration",
+                "containsTaskIdentifiers",
+                "containsTaskLiterals",
+                "containsGraderData",
+                "containsRawTraces",
+              ]) &&
+              receipt.schemaVersion === 1 &&
+              receipt.status === "blocked" &&
+              Array.isArray(receipt.missingPrerequisites) &&
+              Array.isArray(receipt.invalidConfiguration);
+            const sourceReadiness =
+              receipt.domain === "dark-factory.mvp-source-readiness.v1" &&
+              exactKeys(receipt, [
+                "schemaVersion",
+                "domain",
+                "status",
+                "actualIterationsCompleted",
+                "sourceCommit",
+                "missingPrerequisites",
+                "containsTaskIdentifiers",
+                "containsTaskLiterals",
+                "containsGraderData",
+                "containsRawTraces",
+              ]) &&
+              receipt.schemaVersion === 1 &&
+              receipt.status === "blocked" &&
+              receipt.sourceCommit === process.env.DF_MVP_SOURCE_COMMIT &&
+              Array.isArray(receipt.missingPrerequisites);
+            const cloudBlocked =
+              receipt.domain === "dark-factory.mvp-cloud-launch.v3" &&
+              exactKeys(receipt, [
+                ...cloudBaseKeys,
+                "status",
+                "actualIterationsCompleted",
+                "missingPrerequisites",
+              ]) &&
+              receipt.schemaVersion === 3 &&
+              receipt.status === "blocked" &&
+              receipt.campaignId === process.env.DF_MVP_CAMPAIGN_ID &&
+              receipt.configurationHash === expectedConfigurationHash &&
+              receipt.sourceCommit === process.env.DF_MVP_SOURCE_COMMIT &&
+              exactKeys(receipt.imageDigests, ["optimizer", "evaluator"]) &&
+              receipt.imageDigests.optimizer ===
+                digestFrom("DF_MVP_DAYTONA_OPTIMIZER_IMAGE") &&
+              receipt.imageDigests.evaluator ===
+                digestFrom("DF_MVP_DAYTONA_EVALUATOR_IMAGE") &&
+              Array.isArray(receipt.missingPrerequisites);
+            if (
+              !["1", "2"].includes(launchExitCode ?? "") ||
+              receipt.actualIterationsCompleted !== 0 ||
+              !(
+                launchFailure ||
+                configurationReadiness ||
+                sourceReadiness ||
+                cloudBlocked
+              ) ||
+              !sensitivityIsFalse
+            ) {
+              process.exit(1);
+            }
+          }
+          fs.writeFileSync(
+            "mvp-paid-loop-receipt.json",
+            `${JSON.stringify(receipt)}\n`,
+            { encoding: "utf8", mode: 0o600 },
+          );
+          NODE
+
+      - name: Upload only the task-free launch or readiness receipt
+        if: ${{ always() && steps.admit.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mvp-paid-loop-${{ inputs.campaign_id }}-${{ inputs.source_commit }}
@@ -197,8 +392,18 @@ jobs:
               ),
             );
             if (
+              receipt.schemaVersion !== 3 ||
+              receipt.domain !== "dark-factory.mvp-cloud-launch.v3" ||
               receipt.status !== "actual-iteration-completed" ||
-              receipt.actualIterationsCompleted !== 1
+              receipt.actualIterationsCompleted !== 1 ||
+              receipt.imageDigests?.optimizer !==
+                process.env.DF_MVP_DAYTONA_OPTIMIZER_IMAGE.slice(
+                  process.env.DF_MVP_DAYTONA_OPTIMIZER_IMAGE.lastIndexOf("@") + 1,
+                ) ||
+              receipt.imageDigests?.evaluator !==
+                process.env.DF_MVP_DAYTONA_EVALUATOR_IMAGE.slice(
+                  process.env.DF_MVP_DAYTONA_EVALUATOR_IMAGE.lastIndexOf("@") + 1,
+                )
             ) {
               process.exit(1);
             }

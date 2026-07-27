@@ -81,7 +81,14 @@ export interface MvpDaytonaRuntimeConfiguration {
   readonly daytona: {
     readonly apiUrl: string;
     readonly target: string;
-    readonly image: string;
+    /**
+     * Paid launches bind both roles. Evaluator-only preflight intentionally
+     * omits the optimizer entry so it cannot accidentally launch that role.
+     */
+    readonly images: {
+      readonly optimizer?: string;
+      readonly evaluator: string;
+    };
     readonly volumeId: string;
     readonly apiKeyEnvironmentName: "DAYTONA_API_KEY";
     readonly outerSandboxResources: {
@@ -362,23 +369,19 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
       if (hashResponse.exitCode !== 0 || reportedHash !== bundle.sha256) {
         throw new Error("bundle digest mismatch");
       }
-      if (active.specification.user === "root") {
-        phase = "root-authority";
-        const rootAuthorityResponse = await active.sandbox.process.executeCommand(
-          [
-            quotePosix("/usr/bin/node"),
-            quotePosix("-e"),
-            quotePosix(
-              "process.exit(process.getuid?.() === 0 && process.getgid?.() === 0 ? 0 : 1)",
-            ),
-          ].join(" "),
-          "/",
-          { LC_ALL: "C" },
-          120,
-        );
-        if (rootAuthorityResponse.exitCode !== 0) {
-          throw new Error("sandbox root authority unavailable");
-        }
+      phase = active.specification.role === "optimizer" ? "optimizer-authority" : "root-authority";
+      const roleAuthorityResponse = await active.sandbox.process.executeCommand(
+        [
+          quotePosix("/usr/bin/node"),
+          quotePosix("-e"),
+          quotePosix(roleAuthorityProbe(active.specification.role)),
+        ].join(" "),
+        "/",
+        { LC_ALL: "C" },
+        120,
+      );
+      if (roleAuthorityResponse.exitCode !== 0) {
+        throw new Error("sandbox role authority unavailable");
       }
       phase = "install-root";
       const mkdirResponse = await active.sandbox.process.executeCommand(
@@ -560,6 +563,65 @@ function createParameters(specification: MvpRoleSandboxSpec): DaytonaCreateParam
   };
 }
 
+function roleAuthorityProbe(role: MvpCloudRole): string {
+  if (role === "optimizer") {
+    return [
+      'const { readFileSync } = require("node:fs");',
+      'const status = readFileSync("/proc/self/status", "utf8");',
+      'const capabilitiesClear = ["CapInh", "CapPrm", "CapEff", "CapAmb"].every(',
+      '(name) => new RegExp(`^${name}:\\\\s+0+$`, "mu").test(status));',
+      "process.exit(",
+      "process.getuid?.() === 10001 && ",
+      "process.getgid?.() === 10001 && ",
+      "process.geteuid?.() === 10001 && ",
+      "process.getegid?.() === 10001 && ",
+      "!(process.getgroups?.() ?? []).includes(0) && ",
+      "capabilitiesClear ? 0 : 1);",
+    ].join("");
+  }
+  const childProbe = [
+    "const id = Number(process.argv[1]);",
+    "process.exit(",
+    "process.getuid?.() === id && ",
+    "process.getgid?.() === id && ",
+    "process.geteuid?.() === id && ",
+    "process.getegid?.() === id ? 0 : 1);",
+  ].join("");
+  return [
+    'const fs = require("node:fs");',
+    'const { spawnSync } = require("node:child_process");',
+    "let authority = ",
+    "process.getuid?.() === 0 && ",
+    "process.getgid?.() === 0 && ",
+    "process.geteuid?.() === 0 && ",
+    "process.getegid?.() === 0;",
+    "try {",
+    "for (const id of [65532, 65533]) {",
+    'const directory = fs.mkdtempSync("/tmp/df-mvp-root-authority-");',
+    "try {",
+    "fs.chownSync(directory, id, id);",
+    "const metadata = fs.statSync(directory);",
+    "const child = spawnSync(",
+    '"/usr/bin/node", ',
+    `["-e", ${JSON.stringify(childProbe)}, String(id)], `,
+    "{ env: {",
+    'HOME: directory, LANG: "C", LC_ALL: "C", ',
+    'PATH: "/usr/local/bin:/usr/bin:/bin" }, ',
+    'gid: id, uid: id, stdio: "ignore" });',
+    "authority = authority && ",
+    "metadata.uid === id && metadata.gid === id && ",
+    "child.error === undefined && child.signal === null && child.status === 0;",
+    "} finally {",
+    "fs.rmSync(directory, { force: true, recursive: true });",
+    "}",
+    "}",
+    "} catch {",
+    "authority = false;",
+    "}",
+    "process.exit(authority ? 0 : 1);",
+  ].join("");
+}
+
 function assertSandboxSpecification(
   configuration: MvpDaytonaRuntimeConfiguration,
   specification: MvpRoleSandboxSpec,
@@ -567,6 +629,9 @@ function assertSandboxSpecification(
   const targets = new Set<string>();
   const environmentEntries = Object.entries(specification.environment);
   const expectedResources = configuration.daytona.outerSandboxResources[specification.role];
+  const expectedImage = configuration.daytona.images[specification.role];
+  const optimizerImage = configuration.daytona.images.optimizer;
+  const evaluatorImage = configuration.daytona.images.evaluator;
   if (
     !SAFE_ID.test(specification.requestId) ||
     (specification.role === "evaluator"
@@ -576,8 +641,14 @@ function assertSandboxSpecification(
     specification.configurationHash !== configuration.configurationHash ||
     specification.target !== configuration.daytona.target ||
     !/(?:^|[-_.])eu(?:$|[-_.])/iu.test(specification.target) ||
-    specification.image !== configuration.daytona.image ||
+    expectedImage === undefined ||
+    specification.image !== expectedImage ||
     !IMMUTABLE_IMAGE.test(specification.image) ||
+    !IMMUTABLE_IMAGE.test(evaluatorImage) ||
+    (optimizerImage !== undefined &&
+      (!IMMUTABLE_IMAGE.test(optimizerImage) ||
+        optimizerImage.slice(optimizerImage.lastIndexOf("@") + 1) ===
+          evaluatorImage.slice(evaluatorImage.lastIndexOf("@") + 1))) ||
     specification.volume.id !== configuration.daytona.volumeId ||
     specification.volume.mountPath !== MVP_ROLE_MOUNT_PATH ||
     !SAFE_VOLUME_SUBPATH.test(specification.volume.subpath) ||

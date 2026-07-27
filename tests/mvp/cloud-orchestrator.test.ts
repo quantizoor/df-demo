@@ -15,6 +15,7 @@ import type {
   MvpRoleWorkerCommand,
   MvpStagedBundleReceipt,
 } from "../../src/mvp/daytona-runtime.js";
+import { MvpPreflightDiagnosticError } from "../../src/mvp/preflight-diagnostics.js";
 
 const candidateRevision = "d".repeat(40);
 const championRevision = "b".repeat(40);
@@ -30,7 +31,8 @@ function configuration(): MvpCloudConfiguration {
     DAYTONA_API_KEY: "not-returned",
     DAYTONA_API_URL: "https://app.daytona.io/api",
     DAYTONA_TARGET: "eu",
-    DF_MVP_DAYTONA_IMAGE: `node@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_OPTIMIZER_IMAGE: `optimizer@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_EVALUATOR_IMAGE: `evaluator@sha256:${"9".repeat(64)}`,
     DF_DAYTONA_VOLUME_ID: "df-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "campaigns/mvp-001",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DAYTONA_NESTED",
@@ -192,9 +194,13 @@ describe("MVP cloud orchestration", () => {
     });
 
     expect(receipt).toMatchObject({
-      schemaVersion: 2,
-      domain: "dark-factory.mvp-cloud-launch.v2",
+      schemaVersion: 3,
+      domain: "dark-factory.mvp-cloud-launch.v3",
       status: "actual-iteration-completed",
+      imageDigests: {
+        optimizer: `sha256:${"a".repeat(64)}`,
+        evaluator: `sha256:${"9".repeat(64)}`,
+      },
     });
     expect(receipt.outerSandboxResources).toEqual({
       optimizer: {
@@ -226,6 +232,12 @@ describe("MVP cloud orchestration", () => {
       memoryGiB: 8,
       diskGiB: 10,
     });
+    expect(roleSpecification(configuration(), "optimizer").image).toBe(
+      `optimizer@sha256:${"a".repeat(64)}`,
+    );
+    expect(roleSpecification(configuration(), "evaluator").image).toBe(
+      `evaluator@sha256:${"9".repeat(64)}`,
+    );
     expect(runtime.specifications[0]?.volume.subpath).not.toBe(
       runtime.specifications[1]?.volume.subpath,
     );
@@ -299,5 +311,32 @@ describe("MVP cloud orchestration", () => {
       actualIterationsCompleted: 0,
       missingPrerequisites: ["MVP_EVALUATOR_RUNTIME_PIN"],
     });
+  });
+
+  it("preserves an allowlisted stage diagnostic only after successful cleanup", async () => {
+    const runtime = new FakeRuntime();
+    runtime.stage = async () => {
+      throw new MvpPreflightDiagnosticError("outer-stage-optimizer-authority");
+    };
+
+    await expect(
+      launchMvpCloudShell({
+        configuration: configuration(),
+        identity: {
+          sourceCommit: "f".repeat(40),
+          workflowRunId: "1234",
+          workflowRunAttempt: 1,
+        },
+        controllerBundle: {
+          localPath: "/cloud/df-mvp-controller.tar.gz",
+          sha256: digest,
+        },
+        runtime,
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "outer-stage-optimizer-authority",
+    });
+    expect(runtime.destroyed).toEqual(["evaluator", "optimizer"]);
   });
 });

@@ -1201,6 +1201,9 @@ function assertLinuxDaytona(): void {
   if (
     process.platform !== "linux" ||
     process.getuid?.() !== 0 ||
+    process.getgid?.() !== 0 ||
+    process.geteuid?.() !== 0 ||
+    process.getegid?.() !== 0 ||
     process.env["DF_CLOUD_EXECUTION"] !== "1" ||
     process.env["DF_MVP_ROLE"] !== "evaluator" ||
     process.env["DAYTONA_SANDBOX_ID"] === undefined

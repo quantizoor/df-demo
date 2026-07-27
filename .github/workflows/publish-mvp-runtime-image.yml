@@ -254,7 +254,8 @@ jobs:
       DF_CLOUD_EXECUTION: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       DF_REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
-      DF_IMAGE_TAG: ${{ inputs.source_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+      DF_OPTIMIZER_IMAGE_TAG: ${{ inputs.source_commit }}-${{ github.run_id }}-${{ github.run_attempt }}-optimizer
+      DF_EVALUATOR_IMAGE_TAG: ${{ inputs.source_commit }}-${{ github.run_id }}-${{ github.run_attempt }}-evaluator
     steps:
       - name: Verify cloud-hosted immutable publication request
         shell: bash
@@ -500,17 +501,18 @@ jobs:
           driver-opts: |
             image=${{ steps.pins.outputs.buildkit_image }}
 
-      - name: Build, attest, and publish the combined MVP runtime
-        id: build
+      - name: Build, attest, and publish the optimizer runtime
+        id: optimizer-build
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
           file: containers/mvp-runtime.Containerfile
+          target: mvp-runtime-optimizer
           platforms: linux/amd64
           pull: true
           no-cache: true
           push: true
-          tags: ${{ steps.image-name.outputs.reference }}:${{ env.DF_IMAGE_TAG }}
+          tags: ${{ steps.image-name.outputs.reference }}:${{ env.DF_OPTIMIZER_IMAGE_TAG }}
           build-args: |
             RUNTIME_BASE_IMAGE=${{ steps.pins.outputs.runtime_base_image }}
             SOURCE_COMMIT=${{ inputs.source_commit }}
@@ -518,7 +520,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ inputs.source_commit }}
-            io.parallaxai.dark-factory.role=mvp-runtime
+            io.parallaxai.dark-factory.role=mvp-optimizer-runtime
             io.parallaxai.dark-factory.node-version=${{ steps.pins.outputs.node_version }}
             io.parallaxai.dark-factory.claude-code-version=${{ steps.pins.outputs.claude_code_version }}
             io.parallaxai.dark-factory.bun-version=${{ steps.pins.outputs.bun_version }}
@@ -526,30 +528,73 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Smoke the exact published digest without network
+      - name: Reuse the isolated builder to publish the evaluator runtime
+        id: evaluator-build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: containers/mvp-runtime.Containerfile
+          target: mvp-runtime-evaluator
+          platforms: linux/amd64
+          pull: true
+          push: true
+          tags: ${{ steps.image-name.outputs.reference }}:${{ env.DF_EVALUATOR_IMAGE_TAG }}
+          build-args: |
+            RUNTIME_BASE_IMAGE=${{ steps.pins.outputs.runtime_base_image }}
+            SOURCE_COMMIT=${{ inputs.source_commit }}
+            DEBIAN_SNAPSHOT=${{ steps.pins.outputs.debian_snapshot }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.source_commit }}
+            io.parallaxai.dark-factory.role=mvp-evaluator-runtime
+            io.parallaxai.dark-factory.node-version=${{ steps.pins.outputs.node_version }}
+            io.parallaxai.dark-factory.claude-code-version=${{ steps.pins.outputs.claude_code_version }}
+            io.parallaxai.dark-factory.bun-version=${{ steps.pins.outputs.bun_version }}
+            io.parallaxai.dark-factory.harbor-version=${{ steps.pins.outputs.harbor_version }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Smoke the exact published digests without network
         id: smoke
         shell: bash
         env:
-          DF_IMAGE_REFERENCE: ${{ steps.image-name.outputs.reference }}
-          DF_IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
-          DF_EXPECTED_UID: ${{ steps.pins.outputs.default_uid }}
-          DF_EXPECTED_GID: ${{ steps.pins.outputs.default_gid }}
+          DF_OPTIMIZER_IMAGE_REFERENCE: ${{ steps.image-name.outputs.reference }}
+          DF_OPTIMIZER_IMAGE_DIGEST: ${{ steps.optimizer-build.outputs.digest }}
+          DF_EVALUATOR_IMAGE_REFERENCE: ${{ steps.image-name.outputs.reference }}
+          DF_EVALUATOR_IMAGE_DIGEST: ${{ steps.evaluator-build.outputs.digest }}
+          DF_EXPECTED_OPTIMIZER_UID: ${{ steps.pins.outputs.default_uid }}
+          DF_EXPECTED_OPTIMIZER_GID: ${{ steps.pins.outputs.default_gid }}
           DF_MAXIMUM_UNCOMPRESSED_BYTES: ${{ steps.pins.outputs.maximum_uncompressed_bytes }}
         run: |
           set -euo pipefail
-          [[ "$DF_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          immutable_reference="$DF_IMAGE_REFERENCE@$DF_IMAGE_DIGEST"
-          docker pull --platform linux/amd64 "$immutable_reference"
+          [[ "$DF_OPTIMIZER_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$DF_EVALUATOR_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$DF_OPTIMIZER_IMAGE_DIGEST" != "$DF_EVALUATOR_IMAGE_DIGEST"
+          optimizer_immutable_reference="$DF_OPTIMIZER_IMAGE_REFERENCE@$DF_OPTIMIZER_IMAGE_DIGEST"
+          evaluator_immutable_reference="$DF_EVALUATOR_IMAGE_REFERENCE@$DF_EVALUATOR_IMAGE_DIGEST"
+          docker pull --platform linux/amd64 "$optimizer_immutable_reference"
+          docker pull --platform linux/amd64 "$evaluator_immutable_reference"
 
-          test "$(docker image inspect --format '{{.Os}}' "$immutable_reference")" = "linux"
-          test "$(docker image inspect --format '{{.Architecture}}' "$immutable_reference")" = "amd64"
-          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$immutable_reference")" = "$DF_REQUESTED_SOURCE_COMMIT"
-          test "$(docker image inspect --format '{{index .Config.Labels "io.parallaxai.dark-factory.role"}}' "$immutable_reference")" = "mvp-runtime"
-          test "$(docker image inspect --format '{{.Config.User}}' "$immutable_reference")" = "$DF_EXPECTED_UID:$DF_EXPECTED_GID"
+          test "$(docker image inspect --format '{{.Os}}' "$optimizer_immutable_reference")" = "linux"
+          test "$(docker image inspect --format '{{.Architecture}}' "$optimizer_immutable_reference")" = "amd64"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$optimizer_immutable_reference")" = "$DF_REQUESTED_SOURCE_COMMIT"
+          test "$(docker image inspect --format '{{index .Config.Labels "io.parallaxai.dark-factory.role"}}' "$optimizer_immutable_reference")" = "mvp-optimizer-runtime"
+          test "$(docker image inspect --format '{{.Config.User}}' "$optimizer_immutable_reference")" = "$DF_EXPECTED_OPTIMIZER_UID:$DF_EXPECTED_OPTIMIZER_GID"
+          test "$(docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$optimizer_immutable_reference" | grep -Fx 'HOME=/home/dark-factory')" = "HOME=/home/dark-factory"
 
-          uncompressed_bytes="$(docker image inspect --format '{{.Size}}' "$immutable_reference")"
-          [[ "$uncompressed_bytes" =~ ^[0-9]+$ ]]
-          test "$uncompressed_bytes" -le "$DF_MAXIMUM_UNCOMPRESSED_BYTES"
+          test "$(docker image inspect --format '{{.Os}}' "$evaluator_immutable_reference")" = "linux"
+          test "$(docker image inspect --format '{{.Architecture}}' "$evaluator_immutable_reference")" = "amd64"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$evaluator_immutable_reference")" = "$DF_REQUESTED_SOURCE_COMMIT"
+          test "$(docker image inspect --format '{{index .Config.Labels "io.parallaxai.dark-factory.role"}}' "$evaluator_immutable_reference")" = "mvp-evaluator-runtime"
+          test "$(docker image inspect --format '{{.Config.User}}' "$evaluator_immutable_reference")" = "0:0"
+          test "$(docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$evaluator_immutable_reference" | grep -Fx 'HOME=/root')" = "HOME=/root"
+
+          optimizer_uncompressed_bytes="$(docker image inspect --format '{{.Size}}' "$optimizer_immutable_reference")"
+          evaluator_uncompressed_bytes="$(docker image inspect --format '{{.Size}}' "$evaluator_immutable_reference")"
+          [[ "$optimizer_uncompressed_bytes" =~ ^[0-9]+$ ]]
+          [[ "$evaluator_uncompressed_bytes" =~ ^[0-9]+$ ]]
+          test "$optimizer_uncompressed_bytes" -le "$DF_MAXIMUM_UNCOMPRESSED_BYTES"
+          test "$evaluator_uncompressed_bytes" -le "$DF_MAXIMUM_UNCOMPRESSED_BYTES"
 
           mkdir -p image-output
           cat > "$RUNNER_TEMP/mvp-runtime-smoke.mjs" <<'EOF'
@@ -569,6 +614,15 @@ jobs:
           };
           const pins = JSON.parse(
             readFileSync("/mvp-runtime-pins.json", "utf8"),
+          );
+          const processStatus = readFileSync("/proc/self/status", "utf8");
+          const capabilitiesClear = [
+            "CapInh",
+            "CapPrm",
+            "CapEff",
+            "CapAmb",
+          ].every((name) =>
+            new RegExp(`^${name}:\\s+0+$`, "mu").test(processStatus),
           );
           const run = (command, arguments_) => {
             const result = spawnSync(command, arguments_, {
@@ -603,7 +657,12 @@ jobs:
             process.platform !== "linux" ||
             process.arch !== "x64" ||
             process.getuid?.() !== pins.defaultUser.uid ||
-            process.getgid?.() !== pins.defaultUser.gid
+            process.getgid?.() !== pins.defaultUser.gid ||
+            process.geteuid?.() !== pins.defaultUser.uid ||
+            process.getegid?.() !== pins.defaultUser.gid ||
+            (process.getgroups?.() ?? []).includes(0) ||
+            !capabilitiesClear ||
+            process.env.HOME !== "/home/dark-factory"
           ) {
             fail("The runtime platform or default identity changed.");
           }
@@ -719,6 +778,7 @@ jobs:
               runtimeAbi: pins.runtimeAbi,
               glibcVersion,
               defaultUser: pins.defaultUser,
+              homeDirectory: process.env.HOME,
               reservedIdsUnused: pins.reservedIds,
               versions,
               executables,
@@ -740,7 +800,13 @@ jobs:
           const pins = JSON.parse(
             readFileSync("/mvp-runtime-pins.json", "utf8"),
           );
-          if (process.getuid?.() !== 0 || process.getgid?.() !== 0) {
+          if (
+            process.getuid?.() !== 0 ||
+            process.getgid?.() !== 0 ||
+            process.geteuid?.() !== 0 ||
+            process.getegid?.() !== 0 ||
+            process.env.HOME !== "/root"
+          ) {
             process.exit(78);
           }
           for (const id of pins.reservedIds) {
@@ -777,6 +843,25 @@ jobs:
               process.exit(78);
             }
           }
+          process.stdout.write(
+            `${JSON.stringify({
+              schemaVersion: 1,
+              domain:
+                "dark-factory.mvp-evaluator-runtime-root-smoke.v1",
+              platform: "linux/amd64",
+              architecture: "x86_64",
+              runtimeAbi: pins.runtimeAbi,
+              defaultUser: {
+                uid: process.getuid(),
+                gid: process.getgid(),
+                name: "root",
+              },
+              homeDirectory: process.env.HOME,
+              reservedIdentitySwitches: pins.reservedIds,
+              network: "none",
+              status: "passed",
+            })}\n`,
+          );
           EOF
 
           docker run --rm \
@@ -789,12 +874,11 @@ jobs:
             --mount "type=bind,src=$RUNNER_TEMP/mvp-runtime-smoke.mjs,dst=/mvp-runtime-smoke.mjs,readonly" \
             --mount "type=bind,src=$GITHUB_WORKSPACE/containers/mvp-runtime-pins.json,dst=/mvp-runtime-pins.json,readonly" \
             --entrypoint /usr/bin/node \
-            "$immutable_reference" \
-            /mvp-runtime-smoke.mjs > image-output/smoke.json
+            "$optimizer_immutable_reference" \
+            /mvp-runtime-smoke.mjs > image-output/optimizer-smoke.json
 
           docker run --rm \
             --platform linux/amd64 \
-            --user 0:0 \
             --network none \
             --read-only \
             --cap-drop ALL \
@@ -806,8 +890,8 @@ jobs:
             --mount "type=bind,src=$RUNNER_TEMP/mvp-runtime-root-probe.mjs,dst=/mvp-runtime-root-probe.mjs,readonly" \
             --mount "type=bind,src=$GITHUB_WORKSPACE/containers/mvp-runtime-pins.json,dst=/mvp-runtime-pins.json,readonly" \
             --entrypoint /usr/bin/node \
-            "$immutable_reference" \
-            /mvp-runtime-root-probe.mjs
+            "$evaluator_immutable_reference" \
+            /mvp-runtime-root-probe.mjs > image-output/evaluator-smoke.json
 
           jq -e '
             .schemaVersion == 1 and
@@ -815,61 +899,109 @@ jobs:
             .platform == "linux/amd64" and
             .architecture == "x86_64" and
             .runtimeAbi == "linux-x64-glibc" and
+            .homeDirectory == "/home/dark-factory" and
             .network == "none" and
             .status == "passed"
-          ' image-output/smoke.json >/dev/null
-          jq -cS . image-output/smoke.json \
-            > image-output/smoke.canonical.json
-          mv image-output/smoke.canonical.json image-output/smoke.json
+          ' image-output/optimizer-smoke.json >/dev/null
+          jq -e '
+            .schemaVersion == 1 and
+            .domain ==
+              "dark-factory.mvp-evaluator-runtime-root-smoke.v1" and
+            .platform == "linux/amd64" and
+            .architecture == "x86_64" and
+            .runtimeAbi == "linux-x64-glibc" and
+            .defaultUser == {
+              uid: 0,
+              gid: 0,
+              name: "root"
+            } and
+            .homeDirectory == "/root" and
+            .reservedIdentitySwitches == [65532, 65533] and
+            .network == "none" and
+            .status == "passed"
+          ' image-output/evaluator-smoke.json >/dev/null
+          jq -cS . image-output/optimizer-smoke.json \
+            > image-output/optimizer-smoke.canonical.json
+          mv image-output/optimizer-smoke.canonical.json \
+            image-output/optimizer-smoke.json
+          jq -cS . image-output/evaluator-smoke.json \
+            > image-output/evaluator-smoke.canonical.json
+          mv image-output/evaluator-smoke.canonical.json \
+            image-output/evaluator-smoke.json
 
           {
-            printf 'uncompressed_bytes=%s\n' "$uncompressed_bytes"
-            printf 'smoke_sha256=%s\n' \
-              "$(sha256sum image-output/smoke.json | cut -d' ' -f1)"
+            printf 'optimizer_uncompressed_bytes=%s\n' \
+              "$optimizer_uncompressed_bytes"
+            printf 'evaluator_uncompressed_bytes=%s\n' \
+              "$evaluator_uncompressed_bytes"
+            printf 'optimizer_smoke_sha256=%s\n' \
+              "$(sha256sum image-output/optimizer-smoke.json | cut -d' ' -f1)"
+            printf 'evaluator_smoke_sha256=%s\n' \
+              "$(sha256sum image-output/evaluator-smoke.json | cut -d' ' -f1)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Seal the task-free immutable digest receipt
         shell: bash
         env:
-          DF_IMAGE_REFERENCE: ${{ steps.image-name.outputs.reference }}
-          DF_IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          DF_OPTIMIZER_IMAGE_REFERENCE: ${{ steps.image-name.outputs.reference }}
+          DF_OPTIMIZER_IMAGE_DIGEST: ${{ steps.optimizer-build.outputs.digest }}
+          DF_EVALUATOR_IMAGE_REFERENCE: ${{ steps.image-name.outputs.reference }}
+          DF_EVALUATOR_IMAGE_DIGEST: ${{ steps.evaluator-build.outputs.digest }}
           DF_RUNTIME_BASE_IMAGE: ${{ steps.pins.outputs.runtime_base_image }}
           DF_BUILDX_VERSION: ${{ steps.pins.outputs.buildx_version }}
           DF_BUILDKIT_IMAGE: ${{ steps.pins.outputs.buildkit_image }}
           DF_PINS_SHA256: ${{ steps.pins.outputs.pins_sha256 }}
           DF_CONTAINERFILE_SHA256: ${{ steps.pins.outputs.containerfile_sha256 }}
-          DF_UNCOMPRESSED_BYTES: ${{ steps.smoke.outputs.uncompressed_bytes }}
-          DF_SMOKE_SHA256: ${{ steps.smoke.outputs.smoke_sha256 }}
+          DF_OPTIMIZER_UNCOMPRESSED_BYTES: ${{ steps.smoke.outputs.optimizer_uncompressed_bytes }}
+          DF_EVALUATOR_UNCOMPRESSED_BYTES: ${{ steps.smoke.outputs.evaluator_uncompressed_bytes }}
+          DF_OPTIMIZER_SMOKE_SHA256: ${{ steps.smoke.outputs.optimizer_smoke_sha256 }}
+          DF_EVALUATOR_SMOKE_SHA256: ${{ steps.smoke.outputs.evaluator_smoke_sha256 }}
         run: |
           set -euo pipefail
-          [[ "$DF_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$DF_OPTIMIZER_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$DF_EVALUATOR_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$DF_OPTIMIZER_IMAGE_DIGEST" != "$DF_EVALUATOR_IMAGE_DIGEST"
           [[ "$DF_PINS_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$DF_CONTAINERFILE_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$DF_SMOKE_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$DF_UNCOMPRESSED_BYTES" =~ ^[0-9]+$ ]]
+          [[ "$DF_OPTIMIZER_SMOKE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$DF_EVALUATOR_SMOKE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$DF_OPTIMIZER_UNCOMPRESSED_BYTES" =~ ^[0-9]+$ ]]
+          [[ "$DF_EVALUATOR_UNCOMPRESSED_BYTES" =~ ^[0-9]+$ ]]
 
           jq -cS -n \
             --slurpfile pins containers/mvp-runtime-pins.json \
-            --slurpfile smoke image-output/smoke.json \
+            --slurpfile optimizerSmoke image-output/optimizer-smoke.json \
+            --slurpfile evaluatorSmoke image-output/evaluator-smoke.json \
             --arg repository "$GITHUB_REPOSITORY" \
             --arg sourceCommit "$DF_REQUESTED_SOURCE_COMMIT" \
             --arg workflowRef "$GITHUB_WORKFLOW_REF" \
             --arg workflowSha "$GITHUB_WORKFLOW_SHA" \
             --arg runId "$GITHUB_RUN_ID" \
             --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
-            --arg taggedReference "$DF_IMAGE_REFERENCE:$DF_IMAGE_TAG" \
-            --arg immutableReference "$DF_IMAGE_REFERENCE@$DF_IMAGE_DIGEST" \
-            --arg digest "$DF_IMAGE_DIGEST" \
+            --arg optimizerTaggedReference \
+              "$DF_OPTIMIZER_IMAGE_REFERENCE:$DF_OPTIMIZER_IMAGE_TAG" \
+            --arg optimizerImmutableReference \
+              "$DF_OPTIMIZER_IMAGE_REFERENCE@$DF_OPTIMIZER_IMAGE_DIGEST" \
+            --arg optimizerDigest "$DF_OPTIMIZER_IMAGE_DIGEST" \
+            --arg evaluatorTaggedReference \
+              "$DF_EVALUATOR_IMAGE_REFERENCE:$DF_EVALUATOR_IMAGE_TAG" \
+            --arg evaluatorImmutableReference \
+              "$DF_EVALUATOR_IMAGE_REFERENCE@$DF_EVALUATOR_IMAGE_DIGEST" \
+            --arg evaluatorDigest "$DF_EVALUATOR_IMAGE_DIGEST" \
             --arg runtimeBaseImage "$DF_RUNTIME_BASE_IMAGE" \
             --arg buildxVersion "$DF_BUILDX_VERSION" \
             --arg buildkitImage "$DF_BUILDKIT_IMAGE" \
             --arg pinsSha256 "$DF_PINS_SHA256" \
             --arg containerfileSha256 "$DF_CONTAINERFILE_SHA256" \
-            --arg smokeSha256 "$DF_SMOKE_SHA256" \
-            --argjson uncompressedBytes "$DF_UNCOMPRESSED_BYTES" \
+            --arg optimizerSmokeSha256 "$DF_OPTIMIZER_SMOKE_SHA256" \
+            --arg evaluatorSmokeSha256 "$DF_EVALUATOR_SMOKE_SHA256" \
+            --argjson optimizerUncompressedBytes \
+              "$DF_OPTIMIZER_UNCOMPRESSED_BYTES" \
+            --argjson evaluatorUncompressedBytes \
+              "$DF_EVALUATOR_UNCOMPRESSED_BYTES" \
             '{
               schemaVersion: 1,
-              domain: "dark-factory.mvp-runtime-image-receipt.v1",
+              domain: "dark-factory.mvp-runtime-image-pair-receipt.v1",
               source: {
                 repository: $repository,
                 commit: $sourceCommit
@@ -888,31 +1020,81 @@ jobs:
                 pinsSha256: $pinsSha256,
                 containerfilePath: "containers/mvp-runtime.Containerfile",
                 containerfileSha256: $containerfileSha256,
+                containerfileTargets: {
+                  optimizer: "mvp-runtime-optimizer",
+                  evaluator: "mvp-runtime-evaluator"
+                },
                 pins: $pins[0]
               },
-              image: {
-                taggedReference: $taggedReference,
-                immutableReference: $immutableReference,
-                digest: $digest,
-                platform: "linux/amd64",
-                runtimeAbi: "linux-x64-glibc",
-                uncompressedBytes: $uncompressedBytes
+              images: {
+                optimizer: {
+                  taggedReference: $optimizerTaggedReference,
+                  immutableReference: $optimizerImmutableReference,
+                  digest: $optimizerDigest,
+                  platform: "linux/amd64",
+                  runtimeAbi: "linux-x64-glibc",
+                  defaultUser: $pins[0].defaultUser,
+                  homeDirectory: "/home/dark-factory",
+                  uncompressedBytes: $optimizerUncompressedBytes
+                },
+                evaluator: {
+                  taggedReference: $evaluatorTaggedReference,
+                  immutableReference: $evaluatorImmutableReference,
+                  digest: $evaluatorDigest,
+                  platform: "linux/amd64",
+                  runtimeAbi: "linux-x64-glibc",
+                  defaultUser: {
+                    uid: 0,
+                    gid: 0,
+                    name: "root"
+                  },
+                  homeDirectory: "/root",
+                  uncompressedBytes: $evaluatorUncompressedBytes
+                }
               },
               attestations: {
-                sbom: "oci-attestation",
-                provenance: "mode=max"
+                optimizer: {
+                  sbom: "oci-attestation",
+                  provenance: "mode=max"
+                },
+                evaluator: {
+                  sbom: "oci-attestation",
+                  provenance: "mode=max"
+                }
               },
-              smoke: ($smoke[0] + {
-                evidenceSha256: $smokeSha256
-              })
+              smoke: {
+                optimizer: ($optimizerSmoke[0] + {
+                  evidenceSha256: $optimizerSmokeSha256
+                }),
+                evaluator: ($evaluatorSmoke[0] + {
+                  evidenceSha256: $evaluatorSmokeSha256
+                })
+              }
             }' > image-output/mvp-runtime.json
 
           jq -e '
             .schemaVersion == 1 and
-            .domain == "dark-factory.mvp-runtime-image-receipt.v1" and
-            (.image.digest |
+            .domain ==
+              "dark-factory.mvp-runtime-image-pair-receipt.v1" and
+            (.images.optimizer.digest |
               test("^sha256:[a-f0-9]{64}$")) and
-            .smoke.status == "passed"
+            (.images.evaluator.digest |
+              test("^sha256:[a-f0-9]{64}$")) and
+            .images.optimizer.digest != .images.evaluator.digest and
+            .images.optimizer.defaultUser == {
+              uid: 10001,
+              gid: 10001,
+              name: "dark-factory"
+            } and
+            .images.optimizer.homeDirectory == "/home/dark-factory" and
+            .images.evaluator.defaultUser == {
+              uid: 0,
+              gid: 0,
+              name: "root"
+            } and
+            .images.evaluator.homeDirectory == "/root" and
+            .smoke.optimizer.status == "passed" and
+            .smoke.evaluator.status == "passed"
           ' image-output/mvp-runtime.json >/dev/null
           (
             cd image-output
@@ -920,14 +1102,18 @@ jobs:
           )
 
           {
-            printf '### Combined MVP runtime image\n\n'
-            printf -- '- Immutable reference: `%s@%s`\n' \
-              "$DF_IMAGE_REFERENCE" "$DF_IMAGE_DIGEST"
+            printf '### MVP optimizer and evaluator runtime images\n\n'
+            printf -- '- Optimizer immutable reference: `%s@%s`\n' \
+              "$DF_OPTIMIZER_IMAGE_REFERENCE" "$DF_OPTIMIZER_IMAGE_DIGEST"
+            printf -- '- Evaluator immutable reference: `%s@%s`\n' \
+              "$DF_EVALUATOR_IMAGE_REFERENCE" "$DF_EVALUATOR_IMAGE_DIGEST"
             printf -- '- Platform/ABI: `linux/amd64`, `linux-x64-glibc`\n'
-            printf -- '- Uncompressed image bytes: `%s`\n' \
-              "$DF_UNCOMPRESSED_BYTES"
-            printf -- '- Exact-digest offline smoke: passed\n'
-            printf -- '- SBOM and max-mode provenance: OCI attestations attached in GHCR\n'
+            printf -- '- Optimizer uncompressed image bytes: `%s`\n' \
+              "$DF_OPTIMIZER_UNCOMPRESSED_BYTES"
+            printf -- '- Evaluator uncompressed image bytes: `%s`\n' \
+              "$DF_EVALUATOR_UNCOMPRESSED_BYTES"
+            printf -- '- Exact-digest offline smokes: passed\n'
+            printf -- '- SBOM and max-mode provenance: attached to both images in GHCR\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload immutable digest receipt

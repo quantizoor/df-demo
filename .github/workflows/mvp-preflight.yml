@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       image_digest:
-        description: Exact published MVP runtime digest (sha256:...)
+        description: Exact published evaluator runtime digest (sha256:...)
         required: true
         type: string
       prior_receipt_sha256:
@@ -89,11 +89,11 @@ jobs:
       DF_MVP_SOURCE_COMMIT: ${{ inputs.source_commit }}
       DF_MVP_CAMPAIGN_ID: ${{ inputs.campaign_id }}
       DF_MVP_MAX_ITERATIONS: "0"
-      DF_MVP_EXPECTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+      DF_MVP_EXPECTED_EVALUATOR_IMAGE_DIGEST: ${{ inputs.image_digest }}
       DF_MVP_PRIOR_RECEIPT_SHA256: ${{ inputs.prior_receipt_sha256 }}
       DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
       DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
-      DF_MVP_DAYTONA_IMAGE: ${{ vars.DF_MVP_DAYTONA_IMAGE }}
+      DF_MVP_DAYTONA_EVALUATOR_IMAGE: ${{ vars.DF_MVP_DAYTONA_EVALUATOR_IMAGE }}
       DF_DAYTONA_VOLUME_ID: ${{ vars.DF_DAYTONA_VOLUME_ID }}
       DF_DAYTONA_VOLUME_SUBPATH: ${{ vars.DF_DAYTONA_VOLUME_SUBPATH }}
       DF_HARBOR_DAYTONA_SECRET_SOURCE: ${{ vars.DF_HARBOR_DAYTONA_SECRET_SOURCE }}
@@ -109,8 +109,8 @@ jobs:
           test "${DAYTONA_API_URL%/}" = "https://app.daytona.io/api"
           [[ "$DAYTONA_TARGET" =~ ^[A-Za-z0-9]([A-Za-z0-9._/@+-]{0,253}[A-Za-z0-9])?$ ]]
           [[ "$DAYTONA_TARGET" =~ (^|[-_.])eu($|[-_.]) ]]
-          [[ "$DF_MVP_DAYTONA_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$ ]]
-          test "${DF_MVP_DAYTONA_IMAGE##*@}" = "$DF_MVP_EXPECTED_IMAGE_DIGEST"
+          [[ "$DF_MVP_DAYTONA_EVALUATOR_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,446}@sha256:[a-f0-9]{64}$ ]]
+          test "${DF_MVP_DAYTONA_EVALUATOR_IMAGE##*@}" = "$DF_MVP_EXPECTED_EVALUATOR_IMAGE_DIGEST"
           test "$DF_MVP_MAX_ITERATIONS" = "0"
 
           [[ "$DF_DAYTONA_VOLUME_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._/@+-]{0,253}[A-Za-z0-9])?$ ]]
@@ -292,7 +292,8 @@ jobs:
                   sourceCommit: process.env.DF_MVP_SOURCE_COMMIT,
                   workflowRunId: process.env.GITHUB_RUN_ID,
                   workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
-                  imageReference: process.env.DF_MVP_DAYTONA_IMAGE,
+                  imageReference:
+                    process.env.DF_MVP_DAYTONA_EVALUATOR_IMAGE,
                   priorReceiptSha256:
                     process.env.DF_MVP_PRIOR_RECEIPT_SHA256 === "none"
                       ? null
@@ -344,7 +345,8 @@ jobs:
             receipt.status !== "passed" ||
             receipt.campaignId !== process.env.DF_MVP_CAMPAIGN_ID ||
             receipt.sourceCommit !== process.env.DF_MVP_SOURCE_COMMIT ||
-            receipt.imageDigest !== process.env.DF_MVP_EXPECTED_IMAGE_DIGEST ||
+            receipt.imageDigest !==
+              process.env.DF_MVP_EXPECTED_EVALUATOR_IMAGE_DIGEST ||
             receipt.configurationBindingHash !== configurationBindingHash ||
             receipt.controllerBundleSha256 !==
               process.env.DF_MVP_CONTROLLER_BUNDLE_SHA256 ||

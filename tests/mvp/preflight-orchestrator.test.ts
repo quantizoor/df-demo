@@ -14,6 +14,7 @@ import {
   launchMvpPreflight,
   type MvpPreflightConfiguration,
   type MvpPreflightStage,
+  mvpPreflightDaytonaConfiguration,
   mvpPreflightSandboxSpecification,
   preflightConfigurationBindingHash,
 } from "../../src/mvp/preflight-orchestrator.js";
@@ -173,6 +174,16 @@ describe("MVP protected preflight orchestration", () => {
     expect(specification.networkAllowDomains).toEqual([]);
     expect(specification.secretReferences).toEqual([]);
     expect(specification.environment.DF_MVP_MAX_ITERATIONS).toBe("0");
+  });
+
+  it("binds only the evaluator image into the preflight transport", () => {
+    const input = configuration("bootstrap");
+    const runtimeConfiguration = mvpPreflightDaytonaConfiguration(input);
+
+    expect(runtimeConfiguration.daytona.images).toEqual({
+      evaluator: input.imageReference,
+    });
+    expect(runtimeConfiguration.daytona.images).not.toHaveProperty("optimizer");
   });
 
   it("destroys the outer sandbox and fails closed for malformed worker evidence", async () => {

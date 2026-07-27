@@ -310,7 +310,9 @@ export function mvpPreflightDaytonaConfiguration(
     daytona: {
       apiUrl: configuration.daytona.apiUrl,
       target: configuration.daytona.target,
-      image: configuration.imageReference,
+      images: {
+        evaluator: configuration.imageReference,
+      },
       volumeId: configuration.daytona.volumeId,
       apiKeyEnvironmentName: "DAYTONA_API_KEY",
       outerSandboxResources: {

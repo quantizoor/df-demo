@@ -7,6 +7,7 @@ export const MVP_PREFLIGHT_DIAGNOSTIC_CODES = [
   "outer-stage-digest",
   "outer-stage-install-root",
   "outer-stage-extraction",
+  "outer-stage-optimizer-authority",
   "outer-stage-root-authority",
   "outer-stage-adapter-ownership",
   "outer-execute",
@@ -48,6 +49,7 @@ export const MVP_OUTER_STAGE_FAILURE_PHASES = [
   "digest",
   "install-root",
   "extraction",
+  "optimizer-authority",
   "root-authority",
   "adapter-ownership",
 ] as const;

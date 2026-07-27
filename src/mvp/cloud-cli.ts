@@ -3,6 +3,7 @@
 import { inspectMvpCloudEnvironment } from "./cloud-config.js";
 import { launchMvpCloudShell } from "./cloud-orchestrator.js";
 import { DaytonaMvpCloudRuntime } from "./daytona-runtime.js";
+import { MvpPreflightDiagnosticError } from "./preflight-diagnostics.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SHA1 = /^[a-f0-9]{40}$/u;
@@ -71,9 +72,11 @@ function requiredEnvironment(name: string): string {
 
 await main().catch((error: unknown) => {
   const message =
-    error instanceof Error && /^(?:MVP_[A-Z0-9_]+|MVP_CONFIG_NOT_READY)/u.test(error.message)
-      ? error.message
-      : "MVP_CLOUD_LAUNCH_FAILED_CLOSED";
+    error instanceof MvpPreflightDiagnosticError
+      ? `MVP_CLOUD_${error.code.toUpperCase().replaceAll("-", "_")}`
+      : error instanceof Error && /^(?:MVP_[A-Z0-9_]+|MVP_CONFIG_NOT_READY)/u.test(error.message)
+        ? error.message
+        : "MVP_CLOUD_LAUNCH_FAILED_CLOSED";
   process.stdout.write(
     `${JSON.stringify({
       schemaVersion: 1,

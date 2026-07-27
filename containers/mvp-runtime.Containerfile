@@ -1,5 +1,5 @@
 ARG RUNTIME_BASE_IMAGE=docker.io/library/python@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
-FROM --platform=linux/amd64 ${RUNTIME_BASE_IMAGE}
+FROM --platform=linux/amd64 ${RUNTIME_BASE_IMAGE} AS mvp-runtime-optimizer
 
 ARG RUNTIME_BASE_IMAGE
 ARG SOURCE_COMMIT=unknown
@@ -160,3 +160,8 @@ RUN set -eux; \
     harbor --version
 
 CMD ["/usr/local/bin/node", "-e", "setInterval(() => {}, 2147483647)"]
+
+FROM mvp-runtime-optimizer AS mvp-runtime-evaluator
+
+ENV HOME=/root
+USER 0:0

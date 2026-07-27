@@ -33,8 +33,8 @@ function preflightInvocation(): {
     if (requiredEnvironment("DF_MVP_PREFLIGHT_STAGE") !== stage) {
       throw new Error("MVP_PREFLIGHT_STAGE_MISMATCH");
     }
-    const imageReference = requiredEnvironment("DF_MVP_DAYTONA_IMAGE");
-    const expectedImageDigest = requiredEnvironment("DF_MVP_EXPECTED_IMAGE_DIGEST");
+    const imageReference = requiredEnvironment("DF_MVP_DAYTONA_EVALUATOR_IMAGE");
+    const expectedImageDigest = requiredEnvironment("DF_MVP_EXPECTED_EVALUATOR_IMAGE_DIGEST");
     if (
       !SHA256_WITH_PREFIX.test(expectedImageDigest) ||
       imageReference.slice(imageReference.lastIndexOf("@") + 1) !== expectedImageDigest

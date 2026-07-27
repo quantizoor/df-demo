@@ -42,6 +42,7 @@ describe("MVP task-free preflight diagnostics", () => {
       "outer-stage-digest",
       "outer-stage-install-root",
       "outer-stage-extraction",
+      "outer-stage-optimizer-authority",
       "outer-stage-root-authority",
       "outer-stage-adapter-ownership",
     ]);

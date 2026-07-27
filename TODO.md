@@ -63,8 +63,8 @@ labels have precise meanings:
 - [x] **SOURCE-READY / CLOUD-UNVERIFIED:** parse references to an existing
   Foundry endpoint and deployment aliases, fix optimizer family
   `claude-opus-5`, fix evaluated family `claude-opus-4-8` at `high`, require an
-  EU Daytona target and immutable image, and exclude plaintext secret values
-  from the parsed configuration.
+  EU Daytona target and separate immutable optimizer/evaluator images, and
+  exclude plaintext secret values from the parsed configuration.
 - [x] **SOURCE-READY / CLOUD-UNVERIFIED:** define a Daytona runtime edge for
   separate optimizer/evaluator roles, disjoint mounted-volume subpaths,
   role-scoped secret references, immutable EU sandbox specifications, bounded
@@ -110,10 +110,16 @@ labels have precise meanings:
   memory, and 10 GiB disk without changing the separately pinned official task
   resources.
 - [x] **SOURCE-READY / CLOUD-UNVERIFIED:** add a secret-free GitHub-hosted
-  `publish-mvp-runtime-image` path for the one combined Linux/amd64 image
-  consumed by both MVP outer roles. Pin its build inputs in source, use default
-  UID/GID `10001`, reserve `65532` and `65533`, verify the exact executable
-  paths, and emit a checksum-adjacent immutable image receipt.
+  `publish-mvp-runtime-image` path for two Linux/amd64 role images sharing the
+  same pinned filesystem/tool layers. Use optimizer default UID/GID
+  `10001:10001`, evaluator default `0:0` with `HOME=/root`, reserve `65532`
+  and `65533`, verify the exact executable paths, and emit a
+  checksum-adjacent receipt binding both immutable digests.
+- [x] **SOURCE-READY / CLOUD-UNVERIFIED:** probe actual process UID/GID after
+  Daytona creation instead of trusting provider-returned user metadata. Require
+  exactly `10001:10001` for the optimizer and `0:0` for the evaluator, with
+  release-safe `outer-stage-optimizer-authority` and
+  `outer-stage-root-authority` failures.
 
 ### C. Cloud verification
 
@@ -125,23 +131,26 @@ labels have precise meanings:
 - [ ] **CLOUD-UNVERIFIED:** after the exact preparation source reaches `main`,
   dispatch `publish-mvp-runtime-image` with the exact commit and
   `PUBLISH-MVP:<commit>` confirmation. Review
-  `dark-factory-mvp-runtime-<commit>/image-output/mvp-runtime.json` and its
-  adjacent SHA-256 before accepting the immutable reference.
-- [ ] **CLOUD-UNVERIFIED:** make the reviewed GHCR MVP runtime package public,
-  then resolve or pull its exact `ghcr.io/...@sha256:<digest>` reference from a
-  clean unauthenticated cloud context. Require the manifest digest to equal the
-  receipt and store the full reference as normal repository variable
-  `DF_MVP_DAYTONA_IMAGE`.
+  the downloaded artifact's archive-root `mvp-runtime.json` and its adjacent
+  SHA-256 before accepting `.images.optimizer.immutableReference` or
+  `.images.evaluator.immutableReference`.
+- [ ] **CLOUD-UNVERIFIED:** make the shared reviewed GHCR MVP runtime package
+  public, then resolve or pull both exact role-specific
+  `ghcr.io/...@sha256:<digest>` references from a clean unauthenticated cloud
+  context. Require both manifest digests to equal the receipt and store the
+  full references as normal repository variables
+  `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE`.
 - [ ] **CLOUD-UNVERIFIED:** run a no-model synthetic end-to-end iteration and
   verify panel continuity, cache refresh, promotion guard, strict artifacts,
   sandbox teardown, exact candidate/runtime binding, unprivileged build
   identities, and trusted artifact handoff. This is mandatory because the
   executable cloud/process adapters are explicitly outside the unit-coverage
   percentage.
-- [ ] **CLOUD-UNVERIFIED:** prove the immutable image, controller bundle, and
-  one-at-a-time isolated Pi build trees fit the 10 GiB outer-sandbox disk
-  ceiling. Fail readiness without starting paid evaluation if either role
-  exhausts disk or memory.
+- [ ] **CLOUD-UNVERIFIED:** prove both immutable role images, the controller
+  bundle, and one-at-a-time isolated Pi build trees fit the 10 GiB
+  outer-sandbox disk ceiling. Fail readiness without starting paid evaluation
+  if either role exhausts disk or memory.
 - [ ] **CLOUD-UNVERIFIED:** include each hidden task's official child-sandbox
   CPU, memory, and disk request in private eligibility attestation and reject
   tasks that exceed the current Daytona limits; never reduce official benchmark
@@ -169,22 +178,24 @@ labels have precise meanings:
 - [ ] **OPERATOR INPUT:** store `DAYTONA_API_KEY` as a protected GitHub
   environment secret in `dark-factory-mvp-paid`, with a required reviewer; do
   not paste it into chat.
-- [ ] **OPERATOR INPUT:** if no compliant shared image already exists, create
+- [ ] **OPERATOR INPUT:** if no compliant role-image pair already exists, create
   the protected GitHub environment `dark-factory-image-publish`, add a required
   reviewer, and add no secrets or variables. Approve only the cloud-hosted
-  combined-image publication described above.
+  paired-image publication described above.
 - [ ] **OPERATOR INPUT:** provide non-secret references for the Daytona API,
-  exact EU target, persistent volume/subpath, and immutable public Linux x64
-  glibc image.
+  exact EU target, persistent volume/subpath, and both immutable public Linux
+  x64 glibc role images through `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE`.
 - [ ] **OPERATOR INPUT:** create/identify protected Daytona secret names for
   the existing Foundry API key in each role, an evaluator-only nested Daytona
   key, and pre-encoded private Pi HTTPS Basic access, with the host
   restrictions in `CLOUD_DELIVERY.md`.
-- [ ] **OPERATOR INPUT:** ensure the immutable image contains the exact
+- [ ] **OPERATOR INPUT:** ensure both immutable images share the exact
   hard-coded system executables, Claude Code 2.1.217 at
-  `/usr/local/bin/claude`, Harbor 0.20.0 at `/usr/local/bin/harbor`, Bun at
-  `/usr/local/bin/bun`, default UID/GID `10001`, and reserved UID/GID `65532`
-  and `65533` with no pre-existing processes or owned services.
+  `/usr/local/bin/claude`, Harbor 0.20.0 at `/usr/local/bin/harbor`, and Bun at
+  `/usr/local/bin/bun`; require optimizer default UID/GID `10001:10001`,
+  evaluator default `0:0` with `HOME=/root`, and reserved UID/GID `65532` and
+  `65533` with no pre-existing processes or owned services.
 - [ ] **OPERATOR INPUT:** provide the existing Foundry Anthropic-compatible
   base URL and exact optimizer/evaluated deployment aliases. No Azure
   provisioning or deployment work is requested.
@@ -214,8 +225,9 @@ labels have precise meanings:
 - [ ] **DEFERRED / NOT A BLOCKER:** E2B, Modal, or any provider beyond Daytona
   EU.
 - [ ] **DEFERRED / NOT A BLOCKER:** the full production role-image publication
-  and lifecycle pipeline. The secret-free combined-image workflow required by
-  the MVP's single `DF_MVP_DAYTONA_IMAGE` input is the narrow exception.
+  and lifecycle pipeline. The secret-free paired-image workflow required by
+  `DF_MVP_DAYTONA_OPTIMIZER_IMAGE` and
+  `DF_MVP_DAYTONA_EVALUATOR_IMAGE` is the narrow exception.
 - [ ] **DEFERRED / NOT A BLOCKER:** dashboards, pull-request automation, and
   automated result publication.
 - [ ] **DEFERRED / NOT A BLOCKER:** long-campaign alpha spending,

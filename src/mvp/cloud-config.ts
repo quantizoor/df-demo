@@ -8,7 +8,10 @@ export interface MvpCloudConfiguration {
   readonly daytona: {
     readonly apiUrl: string;
     readonly target: string;
-    readonly image: string;
+    readonly images: {
+      readonly optimizer: string;
+      readonly evaluator: string;
+    };
     readonly volumeId: string;
     readonly volumeSubpath: string;
     readonly apiKeyEnvironmentName: "DAYTONA_API_KEY";
@@ -80,7 +83,8 @@ const REQUIRED = [
   "DAYTONA_API_KEY",
   "DAYTONA_API_URL",
   "DAYTONA_TARGET",
-  "DF_MVP_DAYTONA_IMAGE",
+  "DF_MVP_DAYTONA_OPTIMIZER_IMAGE",
+  "DF_MVP_DAYTONA_EVALUATOR_IMAGE",
   "DF_DAYTONA_VOLUME_ID",
   "DF_DAYTONA_VOLUME_SUBPATH",
   "DF_HARBOR_DAYTONA_SECRET_SOURCE",
@@ -181,9 +185,23 @@ export function inspectMvpCloudEnvironment(
     invalid.push("DAYTONA_TARGET");
   }
 
-  const image = present(environment, "DF_MVP_DAYTONA_IMAGE");
-  if (image !== null && !IMMUTABLE_IMAGE.test(image)) {
-    invalid.push("DF_MVP_DAYTONA_IMAGE");
+  const optimizerImage = present(environment, "DF_MVP_DAYTONA_OPTIMIZER_IMAGE");
+  const evaluatorImage = present(environment, "DF_MVP_DAYTONA_EVALUATOR_IMAGE");
+  for (const [name, image] of [
+    ["DF_MVP_DAYTONA_OPTIMIZER_IMAGE", optimizerImage],
+    ["DF_MVP_DAYTONA_EVALUATOR_IMAGE", evaluatorImage],
+  ] as const) {
+    if (image !== null && !IMMUTABLE_IMAGE.test(image)) {
+      invalid.push(name);
+    }
+  }
+  if (
+    optimizerImage !== null &&
+    evaluatorImage !== null &&
+    optimizerImage.slice(optimizerImage.lastIndexOf("@") + 1) ===
+      evaluatorImage.slice(evaluatorImage.lastIndexOf("@") + 1)
+  ) {
+    invalid.push("DF_MVP_DAYTONA_OPTIMIZER_IMAGE", "DF_MVP_DAYTONA_EVALUATOR_IMAGE");
   }
 
   const volumeId = present(environment, "DF_DAYTONA_VOLUME_ID");
@@ -284,7 +302,8 @@ export function inspectMvpCloudEnvironment(
     maximumIterations === null ||
     apiUrl === null ||
     target === null ||
-    image === null ||
+    optimizerImage === null ||
+    evaluatorImage === null ||
     volumeId === null ||
     volumeSubpath === null ||
     harborApiSecretSource === null ||
@@ -310,7 +329,10 @@ export function inspectMvpCloudEnvironment(
     daytona: {
       apiUrl: apiUrl.toString().replace(/\/$/u, ""),
       target,
-      image,
+      images: {
+        optimizer: optimizerImage,
+        evaluator: evaluatorImage,
+      },
       volumeId,
       volumeSubpath,
       apiKeyEnvironmentName: "DAYTONA_API_KEY",

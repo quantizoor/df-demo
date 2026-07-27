@@ -19,6 +19,10 @@ import {
   type MvpRoleSandboxSpec,
   type MvpRoleWorkerCommand,
 } from "./daytona-runtime.js";
+import {
+  type MvpPreflightDiagnosticCode,
+  MvpPreflightDiagnosticError,
+} from "./preflight-diagnostics.js";
 import { validateCandidateProposal, validateMvpArtifact } from "./schemas.js";
 
 const WORKER_TTL_MINUTES = 300;
@@ -79,8 +83,8 @@ export interface MvpCloudLaunchIdentity {
 }
 
 interface MvpCloudReceiptBase {
-  readonly schemaVersion: 2;
-  readonly domain: "dark-factory.mvp-cloud-launch.v2";
+  readonly schemaVersion: 3;
+  readonly domain: "dark-factory.mvp-cloud-launch.v3";
   readonly campaignId: string;
   readonly configurationHash: string;
   readonly sourceCommit: string;
@@ -88,7 +92,10 @@ interface MvpCloudReceiptBase {
   readonly workflowRunAttempt: number;
   readonly provider: "daytona";
   readonly regionClass: "eu";
-  readonly imageDigest: `sha256:${string}`;
+  readonly imageDigests: {
+    readonly optimizer: `sha256:${string}`;
+    readonly evaluator: `sha256:${string}`;
+  };
   readonly controllerBundleSha256: string;
   readonly maximumIterations: 1;
   readonly protocol: {
@@ -198,6 +205,7 @@ export async function launchMvpCloudShell(
       }
     | null = null;
   let primaryFailure = false;
+  let primaryDiagnostic: MvpPreflightDiagnosticCode | null = null;
   let cleanupFailure = false;
 
   try {
@@ -267,8 +275,11 @@ export async function launchMvpCloudShell(
               : null;
       }
     }
-  } catch {
+  } catch (error) {
     primaryFailure = true;
+    if (error instanceof MvpPreflightDiagnosticError) {
+      primaryDiagnostic = error.code;
+    }
   } finally {
     for (const lease of [...leases].reverse()) {
       try {
@@ -280,6 +291,9 @@ export async function launchMvpCloudShell(
   }
 
   if (primaryFailure || cleanupFailure || leases.length !== 2 || outcome === null) {
+    if (primaryDiagnostic !== null && !cleanupFailure) {
+      throw new MvpPreflightDiagnosticError(primaryDiagnostic);
+    }
     throw new MvpCloudOrchestrationError("The MVP cloud launch failed closed.");
   }
 
@@ -352,7 +366,7 @@ export function roleSpecification(
     campaignId: configuration.campaignId,
     configurationHash: configuration.configurationHash,
     target: configuration.daytona.target,
-    image: configuration.daytona.image,
+    image: configuration.daytona.images[role],
     // Keep both trusted outer roles within the operator's current Daytona
     // non-GPU per-sandbox ceiling. Official task resources remain
     // independently pinned and apply only to Harbor's direct children.
@@ -515,18 +529,27 @@ function receiptBase(
   startedAt: string,
   finishedAt: string,
 ): MvpCloudReceiptBase {
-  const imageDigest = configuration.daytona.image.slice(
-    configuration.daytona.image.lastIndexOf("@") + 1,
-  );
-  if (!/^sha256:[a-f0-9]{64}$/u.test(imageDigest)) {
-    throw new MvpCloudOrchestrationError("The MVP image digest is invalid.");
+  const imageDigests = {
+    optimizer: configuration.daytona.images.optimizer.slice(
+      configuration.daytona.images.optimizer.lastIndexOf("@") + 1,
+    ),
+    evaluator: configuration.daytona.images.evaluator.slice(
+      configuration.daytona.images.evaluator.lastIndexOf("@") + 1,
+    ),
+  };
+  if (
+    !/^sha256:[a-f0-9]{64}$/u.test(imageDigests.optimizer) ||
+    !/^sha256:[a-f0-9]{64}$/u.test(imageDigests.evaluator) ||
+    imageDigests.optimizer === imageDigests.evaluator
+  ) {
+    throw new MvpCloudOrchestrationError("The role-specific MVP image digests are invalid.");
   }
   if (!SHA256.test(controllerBundleSha256)) {
     throw new MvpCloudOrchestrationError("The controller bundle digest is invalid.");
   }
   return {
-    schemaVersion: 2,
-    domain: "dark-factory.mvp-cloud-launch.v2",
+    schemaVersion: 3,
+    domain: "dark-factory.mvp-cloud-launch.v3",
     campaignId: configuration.campaignId,
     configurationHash: configuration.configurationHash,
     sourceCommit: identity.sourceCommit,
@@ -534,7 +557,10 @@ function receiptBase(
     workflowRunAttempt: identity.workflowRunAttempt,
     provider: "daytona",
     regionClass: "eu",
-    imageDigest: imageDigest as `sha256:${string}`,
+    imageDigests: {
+      optimizer: imageDigests.optimizer as `sha256:${string}`,
+      evaluator: imageDigests.evaluator as `sha256:${string}`,
+    },
     controllerBundleSha256,
     maximumIterations: 1,
     protocol: structuredClone(configuration.protocol),

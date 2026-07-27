@@ -27,7 +27,8 @@ function configuration(): MvpCloudConfiguration {
     DAYTONA_API_KEY: "sdk-api-key",
     DAYTONA_API_URL: "https://app.daytona.io/api",
     DAYTONA_TARGET: "eu",
-    DF_MVP_DAYTONA_IMAGE: `node@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_OPTIMIZER_IMAGE: `optimizer@sha256:${"a".repeat(64)}`,
+    DF_MVP_DAYTONA_EVALUATOR_IMAGE: `evaluator@sha256:${"b".repeat(64)}`,
     DF_DAYTONA_VOLUME_ID: "existing-volume",
     DF_DAYTONA_VOLUME_SUBPATH: "campaigns/mvp-001",
     DF_HARBOR_DAYTONA_SECRET_SOURCE: "DAYTONA_NESTED",
@@ -57,7 +58,7 @@ function daytonaConfiguration(
     daytona: {
       apiUrl: configuration.daytona.apiUrl,
       target: configuration.daytona.target,
-      image: configuration.daytona.image,
+      images: configuration.daytona.images,
       volumeId: configuration.daytona.volumeId,
       apiKeyEnvironmentName: configuration.daytona.apiKeyEnvironmentName,
       outerSandboxResources: configuration.daytona.outerSandboxResources,
@@ -223,7 +224,7 @@ describe("MVP Daytona runtime", () => {
     await runtime.destroy(lease);
 
     expect(created[0]).toMatchObject({
-      image: config.daytona.image,
+      image: config.daytona.images.optimizer,
       resources: {
         cpu: 4,
         memory: 8,
@@ -296,6 +297,7 @@ describe("MVP Daytona runtime", () => {
     await runtime.create(roleSpecification(config, "evaluator"));
 
     expect(created[0]).toMatchObject({
+      image: config.daytona.images.evaluator,
       user: "root",
       resources: {
         cpu: 4,
@@ -304,6 +306,52 @@ describe("MVP Daytona runtime", () => {
       },
     });
     expect(roleSpecification(config, "optimizer").user).toBeUndefined();
+  });
+
+  it("rejects an optimizer launch from an evaluator-only runtime configuration", async () => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(
+      {
+        ...daytonaConfiguration(config),
+        daytona: {
+          ...daytonaConfiguration(config).daytona,
+          images: {
+            evaluator: config.daytona.images.evaluator,
+          },
+        },
+      },
+      {
+        sdkFactory: {
+          createClient: async () => {
+            throw new Error("missing optimizer image reached the provider");
+          },
+        },
+        environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+      },
+    );
+
+    await expect(runtime.create(roleSpecification(config, "optimizer"))).rejects.toThrow(
+      "The Daytona role specification is invalid.",
+    );
+  });
+
+  it("rejects a role specification bound to the other role's image", async () => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: {
+        createClient: async () => {
+          throw new Error("swapped role image reached the provider");
+        },
+      },
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+
+    await expect(
+      runtime.create({
+        ...roleSpecification(config, "evaluator"),
+        image: config.daytona.images.optimizer,
+      }),
+    ).rejects.toThrow("The Daytona role specification is invalid.");
   });
 
   it.each([
@@ -324,6 +372,26 @@ describe("MVP Daytona runtime", () => {
     });
 
     expect(commands.some((command) => command.includes("lstatSync"))).toBe(expected);
+  });
+
+  it.each([
+    ["optimizer", "CapEff"],
+    ["evaluator", "spawnSync"],
+  ] as const)("functionally probes the %s execution authority", async (role, marker) => {
+    const config = configuration();
+    const commands: string[] = [];
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({ commands }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create(roleSpecification(config, role));
+
+    await runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    expect(commands.some((command) => command.includes(marker))).toBe(true);
   });
 
   it.each([
@@ -349,6 +417,26 @@ describe("MVP Daytona runtime", () => {
     await expect(failure).rejects.toMatchObject({
       name: "MvpPreflightDiagnosticError",
       code,
+    });
+    await expect(failure).rejects.not.toThrow("private");
+  });
+
+  it("classifies an optimizer identity mismatch without relaying provider output", async () => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({ failedCommandIncludes: "=== 10001" }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create(roleSpecification(config, "optimizer"));
+
+    const failure = runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    await expect(failure).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "outer-stage-optimizer-authority",
     });
     await expect(failure).rejects.not.toThrow("private");
   });
