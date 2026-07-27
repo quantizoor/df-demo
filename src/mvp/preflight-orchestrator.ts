@@ -11,6 +11,12 @@ import {
   type MvpRoleSandboxLease,
   type MvpRoleSandboxSpec,
 } from "./daytona-runtime.js";
+import {
+  asMvpPreflightDiagnosticError,
+  type MvpPreflightDiagnosticCode,
+  MvpPreflightDiagnosticError,
+  parseMvpPreflightWorkerFailure,
+} from "./preflight-diagnostics.js";
 
 export type MvpPreflightStage = "bootstrap" | "synthetic" | "connectivity";
 
@@ -137,18 +143,25 @@ export interface LaunchMvpPreflightOptions {
 export async function launchMvpPreflight(
   options: LaunchMvpPreflightOptions,
 ): Promise<MvpPreflightReceipt> {
-  assertMvpPreflightConfiguration(options.configuration);
-  const specification = mvpPreflightSandboxSpecification(options.configuration);
+  let specification: MvpRoleSandboxSpec;
+  try {
+    assertMvpPreflightConfiguration(options.configuration);
+    specification = mvpPreflightSandboxSpecification(options.configuration);
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, "outer-configuration");
+  }
   let lease: MvpRoleSandboxLease | null = null;
   let worker: MvpPreflightWorkerSuccess | null = null;
-  let failed = false;
-  let cleanupFailed = false;
+  let failure: MvpPreflightDiagnosticError | null = null;
+  let phase: MvpPreflightDiagnosticCode = "outer-create";
   try {
     lease = await options.runtime.create(specification);
+    phase = "outer-stage";
     const staged = await options.runtime.stage(lease, options.configuration.controllerBundle);
     if (staged.sha256 !== options.configuration.controllerBundle.sha256) {
       throw new MvpPreflightError("The staged preflight controller digest changed.");
     }
+    phase = "outer-execute";
     const executed = await options.runtime.execute(lease, {
       executable: MVP_PROCESS_ENTRYPOINT,
       arguments: ["node", MVP_PREFLIGHT_WORKER_PATH, options.configuration.stage],
@@ -159,23 +172,27 @@ export async function launchMvpPreflight(
         DF_MVP_ROLE: "evaluator",
       },
     });
+    phase = "worker-output-invalid";
     worker = parseMvpPreflightWorkerSuccess(
       executed.privateWorkerOutput,
       options.configuration.stage,
     );
-  } catch {
-    failed = true;
+  } catch (error) {
+    failure = asMvpPreflightDiagnosticError(error, phase);
   } finally {
     if (lease !== null) {
       try {
         await options.runtime.destroy(lease);
       } catch {
-        cleanupFailed = true;
+        failure = new MvpPreflightDiagnosticError("outer-cleanup");
       }
     }
   }
-  if (failed || cleanupFailed || lease === null || worker === null) {
-    throw new MvpPreflightError("The protected MVP preflight failed closed.");
+  if (failure !== null) {
+    throw failure;
+  }
+  if (lease === null || worker === null) {
+    throw new MvpPreflightDiagnosticError("worker-output-invalid");
   }
 
   const imageDigest = options.configuration.imageReference.slice(
@@ -327,6 +344,10 @@ export function parseMvpPreflightWorkerSuccess(
   raw: string,
   expectedStage: MvpPreflightStage,
 ): MvpPreflightWorkerSuccess {
+  const diagnostic = parseMvpPreflightWorkerFailure(raw);
+  if (diagnostic !== null) {
+    throw new MvpPreflightDiagnosticError(diagnostic);
+  }
   if (Buffer.byteLength(raw, "utf8") > 64 * 1_024) {
     throw new MvpPreflightError("The preflight worker output is oversized.");
   }

@@ -20,6 +20,13 @@ import {
 } from "./evaluator-runtime.js";
 import { withMountedLock, writeJsonAtomic } from "./mounted-files.js";
 import { MountedHiddenTaskCatalog } from "./mounted-hidden-task-catalog.js";
+import {
+  asMvpPreflightDiagnosticError,
+  discoveryPhaseDiagnosticCode,
+  type MvpPreflightDiagnosticCode,
+  MvpPreflightDiagnosticError,
+  parseMvpDiscoveryFailurePhase,
+} from "./preflight-diagnostics.js";
 import { selectFailureWeightedTasks } from "./selection.js";
 
 export const MVP_RUNTIME_PINS_PATH = "/usr/local/share/dark-factory/mvp-runtime-pins.json" as const;
@@ -305,81 +312,107 @@ const validatePrivateDiscovery = discoveryAjv.compile(PrivateDiscoverySchema);
 export async function bootstrapMvpEvaluatorRuntime(
   input: BootstrapMvpEvaluatorRuntimeInput,
 ): Promise<MvpRuntimeBootstrapResult> {
-  assertBootstrapInput(input);
-  const usesProductionDiscovery = input.discovery === undefined;
-  if (usesProductionDiscovery) {
-    assertProductionBootstrapBoundary(input);
+  try {
+    assertBootstrapInput(input);
+    if (input.discovery === undefined) {
+      assertProductionBootstrapBoundary(input);
+    }
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, "bootstrap-input");
   }
   const artifactsPort = input.artifacts ?? new NodeMvpRuntimeBootstrapArtifacts();
   const discoveryPort = input.discovery ?? new NodeMvpRuntimeBootstrapDiscovery();
-  const artifacts = await verifyRuntimeArtifacts(artifactsPort);
+  const artifacts = await runBootstrapPhase("bootstrap-artifacts", () =>
+    verifyRuntimeArtifacts(artifactsPort),
+  );
   const providerLimitsDigest = digest(MVP_RUNTIME_BOOTSTRAP_PROVIDER_LIMITS);
   const eligibilityPolicyDigest = mvpEvaluatorEligibilityPolicyDigest();
   const privateRoot = join(input.stateRoot, "private");
 
-  return withMountedLock(privateRoot, "mvp-runtime-bootstrap", async () => {
-    const pinPath = join(input.stateRoot, MVP_EVALUATOR_RUNTIME_PIN_PATH);
-    const existing = await readOptionalPrivateJson(pinPath, MAXIMUM_DISCOVERY_BYTES);
-    if (existing !== null) {
-      return restoreCompletedBootstrap(input, existing, artifacts);
-    }
+  try {
+    return await withMountedLock(privateRoot, "mvp-runtime-bootstrap", async () => {
+      const pinPath = join(input.stateRoot, MVP_EVALUATOR_RUNTIME_PIN_PATH);
+      const existing = await runBootstrapPhase("bootstrap-state", () =>
+        readOptionalPrivateJson(pinPath, MAXIMUM_DISCOVERY_BYTES),
+      );
+      if (existing !== null) {
+        return runBootstrapPhase("bootstrap-state", () =>
+          restoreCompletedBootstrap(input, existing, artifacts),
+        );
+      }
 
-    const discoveryPath = join(input.stateRoot, PRIVATE_DISCOVERY_RELATIVE_PATH);
-    let discoveryValue = await readOptionalPrivateJson(discoveryPath, MAXIMUM_DISCOVERY_BYTES);
-    if (discoveryValue === null) {
-      await discoveryPort.discover({
-        outputPath: discoveryPath,
-        bunExecutable: MVP_RUNTIME_BUN_EXECUTABLE,
-        bunExecutableSha256: artifacts.bun.sha256,
-        providerLimits: MVP_RUNTIME_BOOTSTRAP_PROVIDER_LIMITS,
-        providerLimitsDigest,
-        eligibilityPolicyDigest,
+      const discoveryPath = join(input.stateRoot, PRIVATE_DISCOVERY_RELATIVE_PATH);
+      let discoveryValue = await runBootstrapPhase("bootstrap-state", () =>
+        readOptionalPrivateJson(discoveryPath, MAXIMUM_DISCOVERY_BYTES),
+      );
+      if (discoveryValue === null) {
+        await runBootstrapPhase("bootstrap-discovery-unknown", () =>
+          discoveryPort.discover({
+            outputPath: discoveryPath,
+            bunExecutable: MVP_RUNTIME_BUN_EXECUTABLE,
+            bunExecutableSha256: artifacts.bun.sha256,
+            providerLimits: MVP_RUNTIME_BOOTSTRAP_PROVIDER_LIMITS,
+            providerLimitsDigest,
+            eligibilityPolicyDigest,
+          }),
+        );
+        discoveryValue = await runBootstrapPhase("bootstrap-validation", () =>
+          readPrivateJson(discoveryPath, MAXIMUM_DISCOVERY_BYTES),
+        );
+      }
+      const discovery = await runBootstrapPhase("bootstrap-validation", async () =>
+        assertPrivateBootstrapDiscovery(discoveryValue, {
+          bunExecutableSha256: artifacts.bun.sha256,
+          eligibilityPolicyDigest,
+          providerLimitsDigest,
+        }),
+      );
+      const pin = await runBootstrapPhase("bootstrap-validation", async () => {
+        const value = buildRuntimePin(input, artifacts, discovery);
+        assertMvpEvaluatorRuntimePin(value);
+        return value;
       });
-      discoveryValue = await readPrivateJson(discoveryPath, MAXIMUM_DISCOVERY_BYTES);
-    }
-    const discovery = assertPrivateBootstrapDiscovery(discoveryValue, {
-      bunExecutableSha256: artifacts.bun.sha256,
-      eligibilityPolicyDigest,
-      providerLimitsDigest,
+
+      return runBootstrapPhase("bootstrap-persistence", async () => {
+        const namespace = await loadOrCreateCatalogNamespace(input.stateRoot);
+        const catalog = new MountedHiddenTaskCatalog(privateRoot, namespace);
+        await catalog.initialize({
+          datasetRevision: pin.datasetRevision,
+          definitions: pin.hiddenTaskDefinitions,
+        });
+        const profiles = await catalog.list();
+        selectFailureWeightedTasks(profiles);
+
+        const catalogArtifact = await hashRegularFile(
+          join(input.stateRoot, PRIVATE_CATALOG_RELATIVE_PATH),
+          MAXIMUM_DISCOVERY_BYTES,
+        );
+        await writeJsonExclusiveAtomic(pinPath, pin);
+        const runtimePinArtifact = await hashRegularFile(pinPath, MAXIMUM_DISCOVERY_BYTES);
+        const persisted = await readPrivateJson(pinPath, MAXIMUM_DISCOVERY_BYTES);
+        assertMvpEvaluatorRuntimePin(persisted);
+        if (canonicalJson(persisted) !== canonicalJson(pin)) {
+          throw new Error("Persisted evaluator runtime pin differs from its sealed input.");
+        }
+
+        return {
+          evidence: bootstrapEvidence(
+            pin,
+            runtimePinArtifact.sha256,
+            catalogArtifact.sha256,
+            discovery.sourceTaskCount,
+          ),
+          sandboxAccounting: {
+            created: discovery.compatibilitySandboxesCreated,
+            destroyed: discovery.compatibilitySandboxesDestroyed,
+            allDestroyed: true,
+          },
+        };
+      });
     });
-    const pin = buildRuntimePin(input, artifacts, discovery);
-    assertMvpEvaluatorRuntimePin(pin);
-
-    const namespace = await loadOrCreateCatalogNamespace(input.stateRoot);
-    const catalog = new MountedHiddenTaskCatalog(privateRoot, namespace);
-    await catalog.initialize({
-      datasetRevision: pin.datasetRevision,
-      definitions: pin.hiddenTaskDefinitions,
-    });
-    const profiles = await catalog.list();
-    selectFailureWeightedTasks(profiles);
-
-    const catalogArtifact = await hashRegularFile(
-      join(input.stateRoot, PRIVATE_CATALOG_RELATIVE_PATH),
-      MAXIMUM_DISCOVERY_BYTES,
-    );
-    await writeJsonExclusiveAtomic(pinPath, pin);
-    const runtimePinArtifact = await hashRegularFile(pinPath, MAXIMUM_DISCOVERY_BYTES);
-    const persisted = await readPrivateJson(pinPath, MAXIMUM_DISCOVERY_BYTES);
-    assertMvpEvaluatorRuntimePin(persisted);
-    if (canonicalJson(persisted) !== canonicalJson(pin)) {
-      throw new Error("Persisted evaluator runtime pin differs from its sealed input.");
-    }
-
-    return {
-      evidence: bootstrapEvidence(
-        pin,
-        runtimePinArtifact.sha256,
-        catalogArtifact.sha256,
-        discovery.sourceTaskCount,
-      ),
-      sandboxAccounting: {
-        created: discovery.compatibilitySandboxesCreated,
-        destroyed: discovery.compatibilitySandboxesDestroyed,
-        allDestroyed: true,
-      },
-    };
-  });
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, "bootstrap-lock");
+  }
 }
 
 export class NodeMvpRuntimeBootstrapArtifacts implements MvpRuntimeBootstrapArtifactPort {
@@ -402,19 +435,28 @@ export class NodeMvpRuntimeBootstrapArtifacts implements MvpRuntimeBootstrapArti
 
 export class NodeMvpRuntimeBootstrapDiscovery implements MvpRuntimeBootstrapDiscoveryPort {
   public async discover(request: MvpRuntimeBootstrapDiscoveryRequest): Promise<void> {
-    if (
-      request.outputPath !== "/workspace/df-state/private/bootstrap/discovery.json" ||
-      request.bunExecutable !== MVP_RUNTIME_BUN_EXECUTABLE ||
-      !SHA256.test(request.bunExecutableSha256) ||
-      request.providerLimitsDigest !== digest(request.providerLimits) ||
-      request.eligibilityPolicyDigest !== mvpEvaluatorEligibilityPolicyDigest()
-    ) {
-      throw new Error("Private runtime discovery request is invalid.");
+    try {
+      if (
+        request.outputPath !== "/workspace/df-state/private/bootstrap/discovery.json" ||
+        request.bunExecutable !== MVP_RUNTIME_BUN_EXECUTABLE ||
+        !SHA256.test(request.bunExecutableSha256) ||
+        request.providerLimitsDigest !== digest(request.providerLimits) ||
+        request.eligibilityPolicyDigest !== mvpEvaluatorEligibilityPolicyDigest()
+      ) {
+        throw new Error("Private runtime discovery request is invalid.");
+      }
+    } catch (error) {
+      throw asMvpPreflightDiagnosticError(error, "bootstrap-discovery-arguments");
     }
-    await mkdir(dirname(request.outputPath), { recursive: true, mode: 0o700 });
-    await mkdir("/tmp/df-mvp-bootstrap-home", { recursive: true, mode: 0o700 });
-    const environment = discoveryEnvironment();
-    await runPrivateDiscovery({
+    let environment: Readonly<Record<string, string>>;
+    try {
+      await mkdir(dirname(request.outputPath), { recursive: true, mode: 0o700 });
+      await mkdir("/tmp/df-mvp-bootstrap-home", { recursive: true, mode: 0o700 });
+      environment = discoveryEnvironment();
+    } catch (error) {
+      throw asMvpPreflightDiagnosticError(error, "bootstrap-discovery-runtime");
+    }
+    await runMvpPrivateDiscoveryProcess({
       executable: "/usr/bin/python3",
       arguments: [
         MVP_RUNTIME_DISCOVERY_SCRIPT,
@@ -965,7 +1007,7 @@ async function writeJsonExclusiveAtomic(path: string, value: unknown): Promise<v
   }
 }
 
-function runPrivateDiscovery(input: {
+export function runMvpPrivateDiscoveryProcess(input: {
   readonly executable: string;
   readonly arguments: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
@@ -979,6 +1021,8 @@ function runPrivateDiscovery(input: {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let outputBytes = 0;
+    let stdout = "";
+    let stderr = "";
     let settled = false;
     const kill = (): void => {
       if (child.pid === undefined) return;
@@ -988,32 +1032,60 @@ function runPrivateDiscovery(input: {
         child.kill("SIGKILL");
       }
     };
-    const fail = (): void => {
+    const fail = (error: unknown): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       kill();
-      reject(new Error("Evaluator-private runtime discovery failed closed."));
+      reject(asMvpPreflightDiagnosticError(error, "bootstrap-discovery-unknown"));
     };
-    const count = (chunk: Buffer): void => {
-      outputBytes += chunk.byteLength;
-      if (outputBytes > MAXIMUM_DISCOVERY_OUTPUT_BYTES) fail();
-    };
-    const timer = setTimeout(fail, DISCOVERY_TIMEOUT_MS);
-    child.stdout?.on("data", count);
-    child.stderr?.on("data", count);
-    child.once("error", fail);
+    const capture =
+      (stream: "stdout" | "stderr") =>
+      (chunk: Buffer): void => {
+        if (settled) return;
+        outputBytes += chunk.byteLength;
+        if (outputBytes > MAXIMUM_DISCOVERY_OUTPUT_BYTES) {
+          fail(new MvpPreflightDiagnosticError("bootstrap-discovery-output"));
+          return;
+        }
+        if (stream === "stdout") stdout += chunk.toString("utf8");
+        else stderr += chunk.toString("utf8");
+      };
+    const timer = setTimeout(
+      () => fail(new MvpPreflightDiagnosticError("bootstrap-discovery-unknown")),
+      DISCOVERY_TIMEOUT_MS,
+    );
+    child.stdout?.on("data", capture("stdout"));
+    child.stderr?.on("data", capture("stderr"));
+    child.once("error", () => fail(new MvpPreflightDiagnosticError("bootstrap-discovery-runtime")));
     child.once("close", (code) => {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
       if (code !== 0 || outputBytes > MAXIMUM_DISCOVERY_OUTPUT_BYTES) {
-        reject(new Error("Evaluator-private runtime discovery failed closed."));
+        const phase =
+          parseMvpDiscoveryFailurePhase(stderr) ?? parseMvpDiscoveryFailurePhase(stdout);
+        reject(
+          new MvpPreflightDiagnosticError(
+            phase === null ? "bootstrap-discovery-unknown" : discoveryPhaseDiagnosticCode(phase),
+          ),
+        );
       } else {
         resolve();
       }
     });
   });
+}
+
+async function runBootstrapPhase<Result>(
+  code: MvpPreflightDiagnosticCode,
+  operation: () => Promise<Result>,
+): Promise<Result> {
+  try {
+    return await operation();
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, code);
+  }
 }
 
 function discoveryEnvironment(): Readonly<Record<string, string>> {

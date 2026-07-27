@@ -13,6 +13,7 @@ import {
   type MvpDaytonaSdkClient,
   type MvpDaytonaSdkFactory,
 } from "../../src/mvp/daytona-runtime.js";
+import { formatMvpPreflightWorkerFailure } from "../../src/mvp/preflight-diagnostics.js";
 
 const bundleDigest = "e".repeat(64);
 
@@ -68,7 +69,12 @@ function attestingFactory(
   options: {
     readonly attestNetworkBlockAll?: boolean;
     readonly commands?: string[];
+    readonly deleteError?: Error;
     readonly onDelete?: () => void;
+    readonly workerResponse?: {
+      readonly result: string;
+      readonly exitCode: number;
+    };
   } = {},
 ): MvpDaytonaSdkFactory {
   return {
@@ -105,7 +111,10 @@ function attestingFactory(
                   exitCode: 0,
                 };
               }
-              return { result: "{}", exitCode: 0 };
+              return command.includes(MVP_PREFLIGHT_WORKER_PATH) &&
+                options.workerResponse !== undefined
+                ? options.workerResponse
+                : { result: "{}", exitCode: 0 };
             },
           },
           updateEnv: async (next) => {
@@ -114,6 +123,7 @@ function attestingFactory(
           refreshData: async () => undefined,
           delete: async () => {
             options.onDelete?.();
+            if (options.deleteError !== undefined) throw options.deleteError;
           },
         };
       },
@@ -392,6 +402,28 @@ describe("MVP Daytona runtime", () => {
     expect(deleted).toBe(true);
   });
 
+  it("reports unproven cleanup when creation attestation and compensating delete fail", async () => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({
+        attestNetworkBlockAll: false,
+        deleteError: new Error("private provider failure"),
+      }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+
+    await expect(
+      runtime.create({
+        ...roleSpecification(config, "evaluator"),
+        networkBlockAll: true,
+        networkAllowDomains: [],
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "outer-cleanup",
+    });
+  });
+
   it.each(["bootstrap", "synthetic", "connectivity"] as const)(
     "permits the exact evaluator-only %s preflight command",
     async (stage) => {
@@ -427,6 +459,79 @@ describe("MVP Daytona runtime", () => {
       );
     },
   );
+
+  it("preserves an allowlisted worker failure code without releasing private output", async () => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({
+        workerResponse: {
+          result: formatMvpPreflightWorkerFailure("bootstrap-discovery-download"),
+          exitCode: 1,
+        },
+      }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create({
+      ...roleSpecification(config, "evaluator"),
+      networkBlockAll: true,
+      networkAllowDomains: [],
+    });
+    await runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    await expect(
+      runtime.execute(lease, {
+        executable: MVP_PROCESS_ENTRYPOINT,
+        arguments: ["node", MVP_PREFLIGHT_WORKER_PATH, "bootstrap"],
+        timeoutMs: 60_000,
+        environment: {
+          CI: "true",
+          DF_CLOUD_EXECUTION: "1",
+          DF_MVP_ROLE: "evaluator",
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-discovery-download",
+    });
+  });
+
+  it("does not relay arbitrary failed-worker output", async () => {
+    const config = configuration();
+    const runtime = new DaytonaMvpCloudRuntime(daytonaConfiguration(config), {
+      sdkFactory: attestingFactory({
+        workerResponse: {
+          result: "private-task-or-secret-material",
+          exitCode: 1,
+        },
+      }),
+      environment: () => ({ DAYTONA_API_KEY: "sdk-api-key" }),
+    });
+    const lease = await runtime.create({
+      ...roleSpecification(config, "evaluator"),
+      networkBlockAll: true,
+      networkAllowDomains: [],
+    });
+    await runtime.stage(lease, {
+      localPath: "/cloud/controller.tar.gz",
+      sha256: bundleDigest,
+    });
+
+    const failure = runtime.execute(lease, {
+      executable: MVP_PROCESS_ENTRYPOINT,
+      arguments: ["node", MVP_PREFLIGHT_WORKER_PATH, "bootstrap"],
+      timeoutMs: 60_000,
+      environment: {
+        CI: "true",
+        DF_CLOUD_EXECUTION: "1",
+        DF_MVP_ROLE: "evaluator",
+      },
+    });
+    await expect(failure).rejects.toThrow("The Daytona role worker failed closed.");
+    await expect(failure).rejects.not.toThrow("private-task-or-secret-material");
+  });
 
   it.each([
     ["optimizer role", "optimizer", ["node", MVP_PREFLIGHT_WORKER_PATH, "bootstrap"]],

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import hashlib
 import importlib.metadata
 import json
@@ -21,6 +22,7 @@ import os
 import platform
 import re
 import stat
+import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -34,14 +36,47 @@ MAXIMUM_PROBE_CANDIDATES = 24
 MAXIMUM_RETAINED_CORE_TASKS = 10
 MAXIMUM_RETAINED_EASY_TASKS = 2
 PROBE_CONCURRENCY = 5
+DOWNLOAD_BATCH_SIZE = 5
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 SAFE_TASK_NAME = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+)
+DISCOVERY_FAILURE_PHASES = frozenset(
+    {
+        "arguments",
+        "runtime",
+        "registry",
+        "download",
+        "inventory",
+        "eligibility",
+        "compatibility",
+        "compatibility-create",
+        "compatibility-runtime",
+        "compatibility-mixed",
+        "compatibility-cleanup",
+        "download-cleanup",
+        "output",
+        "unknown",
+    }
 )
 
 
 class DiscoveryError(RuntimeError):
     pass
+
+
+class DiscoveryPhaseError(RuntimeError):
+    def __init__(self, phase: str):
+        if phase not in DISCOVERY_FAILURE_PHASES:
+            phase = "unknown"
+        super().__init__("Evaluator-private discovery phase failed")
+        self.phase = phase
+
+
+class FailClosedArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        del message
+        raise DiscoveryError("Discovery arguments are invalid")
 
 
 def canonical_json(value: Any) -> str:
@@ -91,13 +126,37 @@ def inventory_tree(root: Path) -> str:
         directory_path = Path(directory)
         for name in list(directory_names):
             path = directory_path / name
-            mode = path.lstat().st_mode
-            if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            item_stat = path.lstat()
+            if stat.S_ISLNK(item_stat.st_mode) or not stat.S_ISDIR(
+                item_stat.st_mode
+            ):
                 raise DiscoveryError("Dataset contains an unsupported directory entry")
+            resolved = path.resolve(strict=True)
+            try:
+                relative = resolved.relative_to(root).as_posix()
+            except ValueError as error:
+                raise DiscoveryError(
+                    "Dataset directory escaped the discovery root"
+                ) from error
+            if len(entries) >= MAXIMUM_FILE_COUNT:
+                raise DiscoveryError("Dataset inventory exceeds its bounded policy")
+            entries.append(
+                {
+                    "path": relative,
+                    "kind": "directory",
+                    "byteLength": 0,
+                    "mode": stat.S_IMODE(item_stat.st_mode),
+                    "sha256": None,
+                }
+            )
         for name in file_names:
             path = directory_path / name
             item_stat = path.lstat()
-            if stat.S_ISLNK(item_stat.st_mode) or not stat.S_ISREG(item_stat.st_mode):
+            if (
+                stat.S_ISLNK(item_stat.st_mode)
+                or not stat.S_ISREG(item_stat.st_mode)
+                or item_stat.st_nlink != 1
+            ):
                 raise DiscoveryError("Dataset contains an unsupported file entry")
             resolved = path.resolve(strict=True)
             try:
@@ -113,6 +172,7 @@ def inventory_tree(root: Path) -> str:
             entries.append(
                 {
                     "path": relative,
+                    "kind": "file",
                     "byteLength": item_stat.st_size,
                     "mode": stat.S_IMODE(item_stat.st_mode),
                     "sha256": hash_file(resolved),
@@ -200,21 +260,75 @@ def package_dataset_manifest(metadata: Any, dataset_hash: str) -> dict[str, Any]
     }
 
 
-def immutable_package_dataset_reference(dataset_hash: str) -> str:
-    if not SHA256.fullmatch(dataset_hash):
-        raise DiscoveryError("Package dataset digest is invalid")
-    return f"{DATASET_NAME}@sha256:{dataset_hash}"
+async def download_validated_package_dataset(
+    dataset_client: Any,
+    task_client: Any,
+    metadata: Any,
+    output_dir: Path,
+    item_factory: Any,
+) -> list[Any]:
+    snapshot = (
+        metadata.model_copy(deep=True)
+        if hasattr(metadata, "model_copy")
+        else copy.deepcopy(metadata)
+    )
+    task_ids = list(snapshot.task_ids)
+    package_task_membership(task_ids)
+    output_dir = output_dir.resolve()
+    if output_dir.exists():
+        raise DiscoveryError("Dataset download root already exists")
+    output_dir.mkdir(parents=True, mode=0o700)
 
+    items: list[Any] = []
+    for start in range(0, len(task_ids), DOWNLOAD_BATCH_SIZE):
+        requested = task_ids[start : start + DOWNLOAD_BATCH_SIZE]
+        batch = await task_client.download_tasks(
+            task_ids=requested,
+            overwrite=False,
+            output_dir=output_dir,
+            export=False,
+        )
+        results = list(getattr(batch, "results", []))
+        if len(results) != len(requested):
+            raise DiscoveryError("Package task download cardinality changed")
+        for task_id, result in zip(requested, results):
+            expected_hash = task_id.ref.removeprefix("sha256:")
+            if getattr(result, "content_hash", None) != expected_hash:
+                raise DiscoveryError("Package task download digest changed")
+            items.append(
+                item_factory(id=task_id, downloaded_path=Path(result.path))
+            )
 
-async def download_immutable_package_dataset(
-    client: Any, dataset_hash: str, output_dir: Path
-) -> Any:
-    return await client.download_dataset(
-        immutable_package_dataset_reference(dataset_hash),
+    assert_downloaded_task_paths(items, output_dir)
+    downloaded_files = await dataset_client.download_dataset_files(
+        snapshot,
         overwrite=False,
         output_dir=output_dir,
-        export=False,
     )
+    expected_files = {
+        file_info.path: file_info.content_hash for file_info in snapshot.files
+    }
+    if set(downloaded_files) != set(expected_files):
+        raise DiscoveryError("Package dataset file download membership changed")
+    for relative, expected_hash in expected_files.items():
+        parsed = PurePosixPath(relative)
+        expected_path = output_dir.joinpath(*parsed.parts)
+        candidate = Path(downloaded_files[relative])
+        try:
+            resolved = candidate.resolve(strict=True)
+            metadata_stat = candidate.lstat()
+        except (FileNotFoundError, RuntimeError) as error:
+            raise DiscoveryError("Downloaded dataset file is unavailable") from error
+        if (
+            not candidate.is_absolute()
+            or resolved != expected_path
+            or stat.S_ISLNK(metadata_stat.st_mode)
+            or not stat.S_ISREG(metadata_stat.st_mode)
+            or metadata_stat.st_nlink != 1
+            or hash_file(resolved) != expected_hash
+        ):
+            raise DiscoveryError("Downloaded dataset file differs from its exact package")
+    return items
 
 
 def assert_downloaded_task_paths(items: Any, root: Path) -> None:
@@ -237,6 +351,39 @@ def assert_downloaded_task_paths(items: Any, root: Path) -> None:
         ):
             raise DiscoveryError("Downloaded task path escaped its exact package location")
         seen_paths.add(resolved)
+
+
+def assert_downloaded_task_content_hashes(items: Any) -> None:
+    from harbor.publisher.packager import Packager
+
+    for item in items:
+        root = Path(item.downloaded_path).resolve(strict=True)
+        expected_hash = item.id.ref.removeprefix("sha256:")
+        actual_hash, packaged_files = Packager.compute_content_hash(root)
+        actual_files: set[Path] = set()
+        actual_directories: set[Path] = set()
+        for directory, directory_names, file_names in os.walk(
+            root, followlinks=False
+        ):
+            directory_names.sort(key=os.fsencode)
+            file_names.sort(key=os.fsencode)
+            directory_path = Path(directory).resolve(strict=True)
+            actual_directories.add(directory_path)
+            for name in file_names:
+                actual_files.add((directory_path / name).resolve(strict=True))
+        expected_files = {path.resolve(strict=True) for path in packaged_files}
+        expected_directories = {root}
+        for path in expected_files:
+            parent = path.parent
+            while parent != root:
+                expected_directories.add(parent)
+                parent = parent.parent
+        if (
+            actual_hash != expected_hash
+            or expected_files != actual_files
+            or expected_directories != actual_directories
+        ):
+            raise DiscoveryError("Downloaded task content differs from its package digest")
 
 
 def resource_profile(environment: Any) -> dict[str, int] | None:
@@ -447,7 +594,7 @@ async def probe_candidate(
     candidate: dict[str, Any],
     bun_path: Path,
     bun_sha256: str,
-) -> tuple[dict[str, Any] | None, int, int]:
+) -> tuple[dict[str, Any] | None, int, int, str | None]:
     from daytona.common.errors import DaytonaNotFoundError
     from harbor.environments.factory import EnvironmentFactory
     from harbor.models.environment_type import EnvironmentType
@@ -481,6 +628,7 @@ async def probe_candidate(
         sandbox: Any | None = None
         created = 0
         destroyed = 0
+        failure_kind: str | None = None
         try:
             await asyncio.wait_for(environment.start(force_build=False), timeout=1_200)
             sandbox = getattr(environment, "_sandbox", None)
@@ -503,16 +651,19 @@ async def probe_candidate(
             )
         except Exception as error:
             primary_error = error
+            sandbox = sandbox or getattr(environment, "_sandbox", None)
+            failure_kind = "create" if sandbox is None else "runtime"
         finally:
             sandbox = sandbox or getattr(environment, "_sandbox", None)
             if sandbox is not None:
                 created = 1
+            harbor_stop_failed = False
             try:
                 await asyncio.shield(environment.stop(delete=True))
-            except Exception as cleanup_error:
-                raise DiscoveryError(
-                    "A compatibility child sandbox could not be destroyed"
-                ) from cleanup_error
+            except Exception:
+                # Still attempt the identity-bound provider deletion below.
+                # The Harbor wrapper is not authoritative for cleanup.
+                harbor_stop_failed = True
             if sandbox is not None:
                 # Harbor 0.20.0 deliberately swallows some provider deletion
                 # failures. A second direct delete must either succeed or
@@ -525,19 +676,19 @@ async def probe_candidate(
                         break
                     except Exception as cleanup_error:
                         if attempt == 2:
-                            raise DiscoveryError(
-                                "A compatibility child sandbox deletion was not proven"
+                            raise DiscoveryPhaseError(
+                                "compatibility-cleanup"
                             ) from cleanup_error
                         await asyncio.sleep(2**attempt)
                     else:
                         destroyed = 1
                         break
+            if harbor_stop_failed and sandbox is None:
+                raise DiscoveryPhaseError("compatibility-cleanup")
             if created != destroyed:
-                raise DiscoveryError(
-                    "Compatibility child sandbox accounting did not close"
-                )
+                raise DiscoveryPhaseError("compatibility-cleanup")
         if primary_error is not None or not compatible:
-            return None, created, destroyed
+            return None, created, destroyed, failure_kind or "runtime"
         sanitized = {
             key: value for key, value in candidate.items() if not key.startswith("_")
         }
@@ -557,7 +708,7 @@ async def probe_candidate(
             ),
             "compatible": True,
         }
-        return sanitized, created, destroyed
+        return sanitized, created, destroyed, None
 
 
 async def probe_candidates(
@@ -569,19 +720,25 @@ async def probe_candidates(
 
     async def bounded(
         candidate: dict[str, Any],
-    ) -> tuple[dict[str, Any] | None, int, int]:
+    ) -> tuple[dict[str, Any] | None, int, int, str | None]:
         async with semaphore:
             return await probe_candidate(candidate, bun_path, bun_sha256)
 
     retained: list[dict[str, Any]] = []
     created = 0
     destroyed = 0
+    create_failures = 0
+    runtime_failures = 0
     for start in range(0, len(candidates), PROBE_CONCURRENCY):
         batch = candidates[start : start + PROBE_CONCURRENCY]
         results = await asyncio.gather(*(bounded(candidate) for candidate in batch))
-        for result, result_created, result_destroyed in results:
+        for result, result_created, result_destroyed, failure_kind in results:
             created += result_created
             destroyed += result_destroyed
+            if failure_kind == "create":
+                create_failures += 1
+            elif failure_kind == "runtime":
+                runtime_failures += 1
             if result is not None:
                 retained.append(result)
         core_count = sum(not item["easyCanary"] for item in retained)
@@ -601,116 +758,194 @@ async def probe_candidates(
     )[:MAXIMUM_RETAINED_EASY_TASKS]
     selected = sorted([*core, *easy], key=lambda item: item["revisionDigest"])
     if len(core) < 4 or len(easy) < 1 or len(selected) < 5:
-        raise DiscoveryError("Fewer than five compatible task revisions were proven")
+        if create_failures > 0 and runtime_failures > 0:
+            raise DiscoveryPhaseError("compatibility-mixed")
+        if create_failures > 0:
+            raise DiscoveryPhaseError("compatibility-create")
+        if runtime_failures > 0:
+            raise DiscoveryPhaseError("compatibility-runtime")
+        raise DiscoveryPhaseError("compatibility")
     if created < len(selected) or destroyed != created:
-        raise DiscoveryError("Compatibility sandbox accounting is incomplete")
+        raise DiscoveryPhaseError("compatibility-cleanup")
     return selected, created, destroyed
 
 
 async def discover(arguments: argparse.Namespace) -> dict[str, Any]:
-    from harbor.models.task.id import PackageTaskId
-    from harbor.registry.client.package import PackageDatasetClient
+    try:
+        from harbor.models.dataset_item import DownloadedDatasetItem
+        from harbor.models.task.id import PackageTaskId
+        from harbor.registry.client.package import PackageDatasetClient
+        from harbor.tasks.client import TaskClient
 
-    assert_cloud_boundary()
-    if importlib.metadata.version("harbor") != "0.20.0":
-        raise DiscoveryError("Harbor package version differs from the immutable image")
-    bun_path = Path(arguments.bun).resolve(strict=True)
-    if not bun_path.is_file() or hash_file(bun_path) != arguments.bun_sha256:
-        raise DiscoveryError("Bun executable differs from the caller pin")
-    provider_limits = json.loads(arguments.provider_limits)
-    if digest_json(provider_limits) != arguments.provider_limits_digest:
-        raise DiscoveryError("Provider limits binding changed")
+        assert_cloud_boundary()
+        if importlib.metadata.version("harbor") != "0.20.0":
+            raise DiscoveryError("Harbor package version differs from the immutable image")
+        bun_path = Path(arguments.bun).resolve(strict=True)
+        if not bun_path.is_file() or hash_file(bun_path) != arguments.bun_sha256:
+            raise DiscoveryError("Bun executable differs from the caller pin")
+        provider_limits = json.loads(arguments.provider_limits)
+        if digest_json(provider_limits) != arguments.provider_limits_digest:
+            raise DiscoveryError("Provider limits binding changed")
+    except DiscoveryPhaseError:
+        raise
+    except Exception as error:
+        raise DiscoveryPhaseError("runtime") from error
 
-    client = PackageDatasetClient()
-    metadata = await client.get_dataset_metadata(DATASET_REFERENCE)
-    dataset_hash = (metadata.dataset_version_content_hash or "").removeprefix(
-        "sha256:"
-    )
-    if (
-        metadata.name != DATASET_NAME
-        or metadata.version != f"sha256:{dataset_hash}"
-        or not SHA256.fullmatch(dataset_hash)
-        or len(metadata.task_ids) != EXPECTED_TASK_COUNT
-        or any(not isinstance(task_id, PackageTaskId) for task_id in metadata.task_ids)
-    ):
-        raise DiscoveryError("Terminal-Bench registry revision is not the expected immutable set")
-    registry_manifest = package_dataset_manifest(metadata, dataset_hash)
-    dataset_manifest_sha256 = digest_json(registry_manifest)
-    immutable_reference = immutable_package_dataset_reference(dataset_hash)
-    digest_metadata = await client.get_dataset_metadata(immutable_reference)
-    if (
-        any(not isinstance(task_id, PackageTaskId) for task_id in digest_metadata.task_ids)
-        or package_dataset_manifest(digest_metadata, dataset_hash) != registry_manifest
-    ):
-        raise DiscoveryError("Terminal-Bench registry revision is not digest-addressable")
-    dataset_revision = f"terminal-bench-2.1-r6-{dataset_hash[:12]}"
-    bootstrap_root = Path(arguments.output).parent
-    bootstrap_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # The evaluator's outer sandbox has a 10 GiB ephemeral disk. Keep the
-    # bounded registry download on the already-mounted private volume instead.
-    with tempfile.TemporaryDirectory(
-        prefix=".dataset-download-", dir=bootstrap_root
-    ) as temp:
-        dataset_root = Path(temp) / "dataset"
-        items = await download_immutable_package_dataset(
-            client,
-            dataset_hash,
-            dataset_root,
-        )
-        if len(items) != EXPECTED_TASK_COUNT:
-            raise DiscoveryError("Downloaded dataset cardinality changed")
-        if any(not isinstance(item.id, PackageTaskId) for item in items):
-            raise DiscoveryError("Downloaded dataset contains a non-package task reference")
-        if package_task_membership(item.id for item in items) != registry_manifest["tasks"]:
-            raise DiscoveryError("Downloaded dataset membership changed")
-        assert_downloaded_task_paths(items, dataset_root)
-        refreshed_metadata = await client.get_dataset_metadata(DATASET_REFERENCE)
-        if package_dataset_manifest(refreshed_metadata, dataset_hash) != registry_manifest:
-            raise DiscoveryError("Package dataset metadata changed during download")
-        dataset_content_sha256 = inventory_tree(dataset_root)
-        candidates: list[dict[str, Any]] = []
-        seen_revisions: set[str] = set()
-        seen_names: set[str] = set()
-        for item in items:
-            if not isinstance(item.id, PackageTaskId):
-                raise DiscoveryError("Dataset contains a non-package task reference")
-            revision_digest = (item.id.ref or "").removeprefix("sha256:")
-            if (
-                not SHA256.fullmatch(revision_digest)
-                or revision_digest in seen_revisions
-            ):
-                raise DiscoveryError("Dataset contains a duplicate or mutable task revision")
-            seen_revisions.add(revision_digest)
-            candidate = static_candidate(
-                item.downloaded_path,
-                revision_digest,
-                dataset_revision,
-                provider_limits,
-                arguments.provider_limits_digest,
-                arguments.eligibility_policy_digest,
+    try:
+        client = PackageDatasetClient()
+        task_client = TaskClient()
+        metadata = await client.get_dataset_metadata(DATASET_REFERENCE)
+        dataset_hash = (
+            metadata.dataset_version_content_hash or ""
+        ).removeprefix("sha256:")
+        if (
+            metadata.name != DATASET_NAME
+            or metadata.version != f"sha256:{dataset_hash}"
+            or not SHA256.fullmatch(dataset_hash)
+            or len(metadata.task_ids) != EXPECTED_TASK_COUNT
+            or any(
+                not isinstance(task_id, PackageTaskId)
+                for task_id in metadata.task_ids
             )
-            if candidate is None:
-                continue
-            if candidate["harborTaskLocator"] in seen_names:
-                raise DiscoveryError("Dataset contains duplicate task locators")
-            seen_names.add(candidate["harborTaskLocator"])
-            candidates.append(candidate)
+        ):
+            raise DiscoveryError(
+                "Terminal-Bench registry revision is not the expected immutable set"
+            )
+        registry_manifest = package_dataset_manifest(metadata, dataset_hash)
+        dataset_manifest_sha256 = digest_json(registry_manifest)
+        dataset_revision = f"terminal-bench-2.1-r6-{dataset_hash[:12]}"
+    except DiscoveryPhaseError:
+        raise
+    except Exception as error:
+        raise DiscoveryPhaseError("registry") from error
 
-        easy_candidates = sorted(
-            (item for item in candidates if item["easyCanary"]),
-            key=lambda item: item["revisionDigest"],
+    bootstrap_root = Path(arguments.output).parent
+    try:
+        bootstrap_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # The evaluator's outer sandbox has a 10 GiB ephemeral disk. Keep the
+        # bounded registry download on the already-mounted private volume.
+        temporary = tempfile.TemporaryDirectory(
+            prefix=".dataset-download-", dir=bootstrap_root
         )
-        core_candidates = sorted(
-            (item for item in candidates if not item["easyCanary"]),
-            key=lambda item: item["revisionDigest"],
-        )
-        ordered_candidates = [
-            *easy_candidates[:8],
-            *core_candidates[:16],
-        ][:MAXIMUM_PROBE_CANDIDATES]
-        definitions, created, destroyed = await probe_candidates(
-            ordered_candidates, bun_path, arguments.bun_sha256
-        )
+    except Exception as error:
+        raise DiscoveryPhaseError("download") from error
+
+    temp = temporary.name
+    try:
+        dataset_root = Path(temp) / "dataset"
+        try:
+            items = await download_validated_package_dataset(
+                client,
+                task_client,
+                metadata,
+                dataset_root,
+                DownloadedDatasetItem,
+            )
+            if len(items) != EXPECTED_TASK_COUNT:
+                raise DiscoveryError("Downloaded dataset cardinality changed")
+            if any(not isinstance(item.id, PackageTaskId) for item in items):
+                raise DiscoveryError(
+                    "Downloaded dataset contains a non-package task reference"
+                )
+            if (
+                package_task_membership(item.id for item in items)
+                != registry_manifest["tasks"]
+            ):
+                raise DiscoveryError("Downloaded dataset membership changed")
+        except DiscoveryPhaseError:
+            raise
+        except Exception as error:
+            raise DiscoveryPhaseError("download") from error
+
+        try:
+            refreshed_metadata = await client.get_dataset_metadata(DATASET_REFERENCE)
+            if (
+                any(
+                    not isinstance(task_id, PackageTaskId)
+                    for task_id in refreshed_metadata.task_ids
+                )
+                or package_dataset_manifest(refreshed_metadata, dataset_hash)
+                != registry_manifest
+            ):
+                raise DiscoveryError(
+                    "Package dataset metadata changed during download"
+                )
+        except DiscoveryPhaseError:
+            raise
+        except Exception as error:
+            raise DiscoveryPhaseError("registry") from error
+
+        try:
+            dataset_content_sha256 = inventory_tree(dataset_root)
+            assert_downloaded_task_content_hashes(items)
+        except DiscoveryPhaseError:
+            raise
+        except Exception as error:
+            raise DiscoveryPhaseError("inventory") from error
+
+        try:
+            candidates: list[dict[str, Any]] = []
+            seen_revisions: set[str] = set()
+            seen_names: set[str] = set()
+            for item in items:
+                if not isinstance(item.id, PackageTaskId):
+                    raise DiscoveryError(
+                        "Dataset contains a non-package task reference"
+                    )
+                revision_digest = (item.id.ref or "").removeprefix("sha256:")
+                if (
+                    not SHA256.fullmatch(revision_digest)
+                    or revision_digest in seen_revisions
+                ):
+                    raise DiscoveryError(
+                        "Dataset contains a duplicate or mutable task revision"
+                    )
+                seen_revisions.add(revision_digest)
+                candidate = static_candidate(
+                    item.downloaded_path,
+                    revision_digest,
+                    dataset_revision,
+                    provider_limits,
+                    arguments.provider_limits_digest,
+                    arguments.eligibility_policy_digest,
+                )
+                if candidate is None:
+                    continue
+                if candidate["harborTaskLocator"] in seen_names:
+                    raise DiscoveryError("Dataset contains duplicate task locators")
+                seen_names.add(candidate["harborTaskLocator"])
+                candidates.append(candidate)
+
+            easy_candidates = sorted(
+                (item for item in candidates if item["easyCanary"]),
+                key=lambda item: item["revisionDigest"],
+            )
+            core_candidates = sorted(
+                (item for item in candidates if not item["easyCanary"]),
+                key=lambda item: item["revisionDigest"],
+            )
+            if len(easy_candidates) < 1 or len(core_candidates) < 4:
+                raise DiscoveryError(
+                    "Static eligibility retained fewer than five compatible candidates"
+                )
+            ordered_candidates = [
+                *easy_candidates[:8],
+                *core_candidates[:16],
+            ][:MAXIMUM_PROBE_CANDIDATES]
+        except DiscoveryPhaseError:
+            raise
+        except Exception as error:
+            raise DiscoveryPhaseError("eligibility") from error
+
+        try:
+            definitions, created, destroyed = await probe_candidates(
+                ordered_candidates, bun_path, arguments.bun_sha256
+            )
+        except DiscoveryPhaseError:
+            raise
+        except Exception as error:
+            raise DiscoveryPhaseError("compatibility") from error
+
         return {
             "schemaVersion": 1,
             "domain": "dark-factory.mvp-private-bootstrap-discovery.v1",
@@ -727,10 +962,15 @@ async def discover(arguments: argparse.Namespace) -> dict[str, Any]:
             "allCompatibilitySandboxesDestroyed": created == destroyed,
             "definitions": definitions,
         }
+    finally:
+        try:
+            temporary.cleanup()
+        except Exception as error:
+            raise DiscoveryPhaseError("download-cleanup") from error
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = FailClosedArgumentParser(add_help=False)
     parser.add_argument("--output", required=True)
     parser.add_argument("--bun", required=True)
     parser.add_argument("--bun-sha256", required=True)
@@ -755,24 +995,38 @@ def parse_arguments() -> argparse.Namespace:
 
 
 async def main() -> None:
-    arguments = parse_arguments()
+    try:
+        arguments = parse_arguments()
+    except DiscoveryPhaseError:
+        raise
+    except Exception as error:
+        raise DiscoveryPhaseError("arguments") from error
     output = await discover(arguments)
-    output_path = Path(arguments.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor = os.open(
-        output_path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-        0o600,
-    )
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(canonical_json(output))
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+    try:
+        output_path = Path(arguments.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        descriptor = os.open(
+            output_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(canonical_json(output))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except DiscoveryPhaseError:
+        raise
+    except Exception as error:
+        raise DiscoveryPhaseError("output") from error
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except Exception:
-        raise SystemExit(1)
+    except DiscoveryPhaseError as error:
+        sys.stderr.write(f"MVP_DISCOVERY_FAILURE:{error.phase}\n")
+        raise SystemExit(1) from None
+    except BaseException:
+        sys.stderr.write("MVP_DISCOVERY_FAILURE:unknown\n")
+        raise SystemExit(1) from None

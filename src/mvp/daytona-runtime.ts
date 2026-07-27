@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 
+import {
+  MvpPreflightDiagnosticError,
+  parseMvpPreflightWorkerFailure,
+} from "./preflight-diagnostics.js";
+
 export type MvpCloudRole = "optimizer" | "evaluator";
 
 export const MVP_ROLE_MOUNT_PATH = "/workspace/df-state" as const;
@@ -310,13 +315,16 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
         sandboxId: sandbox.id,
       };
     } catch {
+      let cleanupFailed = false;
       if (sandbox !== undefined) {
         try {
           await sandbox.delete(SDK_DELETE_TIMEOUT_SECONDS, true);
         } catch {
-          // The primary attestation failure remains authoritative. The
-          // provider-side TTL is the final cleanup backstop.
+          cleanupFailed = true;
         }
+      }
+      if (cleanupFailed) {
+        throw new MvpPreflightDiagnosticError("outer-cleanup");
       }
       throw new MvpDaytonaRuntimeError("Daytona sandbox creation failed closed.");
     }
@@ -405,7 +413,17 @@ export class DaytonaMvpCloudRuntime implements MvpCloudRuntime {
     const finishedAt = this.#now();
     const output = response.artifacts?.stdout ?? response.result ?? "";
     const outputByteLength = Buffer.byteLength(output, "utf8");
-    if (response.exitCode !== 0 || outputByteLength > MAXIMUM_WORKER_OUTPUT_BYTES) {
+    if (response.exitCode !== 0) {
+      const diagnostic =
+        outputByteLength <= MAXIMUM_WORKER_OUTPUT_BYTES
+          ? parseMvpPreflightWorkerFailure(output)
+          : null;
+      if (diagnostic !== null) {
+        throw new MvpPreflightDiagnosticError(diagnostic);
+      }
+      throw new MvpDaytonaRuntimeError("The Daytona role worker failed closed.");
+    }
+    if (outputByteLength > MAXIMUM_WORKER_OUTPUT_BYTES) {
       throw new MvpDaytonaRuntimeError("The Daytona role worker failed closed.");
     }
     return {

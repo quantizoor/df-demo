@@ -385,11 +385,14 @@ to the Mac or optimizer.
 For the evaluator-private MVP bootstrap, the manifest hash is the canonical,
 domain-separated digest of Harbor's returned dataset name, content-addressed
 dataset reference, sorted exact package-task references, and sorted declared
-dataset-level files. The bootstrap resolves both registry revision `6` and
-the returned `sha256:` reference and requires the manifests to match before
-and after download. It separately hashes the complete downloaded file tree.
-Revision 6 currently declares no dataset-level files, so the bootstrap must
-not require or synthesize a `dataset.toml`.
+dataset-level files. Harbor's historical dataset content hash remains an
+opaque registry pin, while the canonical manifest digest independently binds
+the returned membership. The bootstrap freezes revision `6`, downloads only
+its exact task digests in batches of at most five, verifies every extracted
+task and declared dataset file against its digest, and requires the revision
+manifest to remain unchanged after download. It separately hashes the complete
+downloaded file tree. Revision 6 currently declares no dataset-level files, so
+the bootstrap must not require or synthesize a `dataset.toml`.
 
 Live catalog bootstrap therefore still requires operator-reviewed values or
 cloud capabilities for:
@@ -734,6 +737,9 @@ lifecycle metadata, not controller stdout or task-bearing evidence.
 - Pin discovery runs from reviewed `main` source without the pnpm lock or role
   images, emits only a task-free content-addressed receipt, and never uploads
   its downloaded dataset or Harbor log.
+- A failed MVP preflight emits only
+  `MVP_PREFLIGHT_FAILED_CLOSED:<allowlisted-phase>`; raw provider, Harbor,
+  task, grader, exception, stdout, and stderr material remains private.
 - The paid workflow is intentionally bounded below GitHub's hosted-job limit so
   the bootstrap can observe and confirm Daytona teardown.
 

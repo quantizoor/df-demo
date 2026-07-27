@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { access, mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -22,6 +22,7 @@ import {
   type MvpRuntimeBootstrapArtifactPort,
   type MvpRuntimeBootstrapDiscoveryPort,
   type MvpRuntimeBootstrapDiscoveryRequest,
+  runMvpPrivateDiscoveryProcess,
 } from "../../src/mvp/runtime-bootstrap.js";
 
 const sourceCommit = "a".repeat(40);
@@ -118,7 +119,10 @@ describe("MVP evaluator-private runtime bootstrap", () => {
         discovery,
         artifacts,
       }),
-    ).rejects.toThrow("differs from the requested bootstrap");
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-state",
+    });
     await expect(
       bootstrapMvpEvaluatorRuntime({
         stateRoot,
@@ -127,7 +131,10 @@ describe("MVP evaluator-private runtime bootstrap", () => {
         discovery,
         artifacts,
       }),
-    ).rejects.toThrow("differs from the requested bootstrap");
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-state",
+    });
     expect(await readFile(pinPath, "utf8")).toBe(before);
   });
 
@@ -145,7 +152,10 @@ describe("MVP evaluator-private runtime bootstrap", () => {
         discovery,
         artifacts: new StubArtifacts(),
       }),
-    ).rejects.toThrow("discovery proof is inconsistent");
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-validation",
+    });
     await expect(access(join(stateRoot, MVP_EVALUATOR_RUNTIME_PIN_PATH))).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -166,8 +176,51 @@ describe("MVP evaluator-private runtime bootstrap", () => {
         discovery,
         artifacts,
       }),
-    ).rejects.toThrow("immutable evaluator artifact");
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-artifacts",
+    });
     expect(discovery.calls).toBe(0);
+  });
+
+  it("classifies a pre-existing mounted bootstrap lock without exposing its contents", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "df-mvp-bootstrap-"));
+    await mkdir(join(stateRoot, "private", ".mvp-runtime-bootstrap.lock"), {
+      recursive: true,
+    });
+
+    await expect(
+      bootstrapMvpEvaluatorRuntime({
+        stateRoot,
+        sourceCommit,
+        imageReference,
+        discovery: new StubDiscovery(discoveryManifest()),
+        artifacts: new StubArtifacts(),
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-lock",
+    });
+  });
+
+  it("propagates only the Python phase marker across the private subprocess boundary", async () => {
+    const privateDetail = "private provider detail and task material";
+    const failure = await runMvpPrivateDiscoveryProcess({
+      executable: process.execPath,
+      arguments: [
+        "-e",
+        `process.stderr.write(${JSON.stringify(
+          `${privateDetail}\nMVP_DISCOVERY_FAILURE:download\n`,
+        )}); process.exit(1);`,
+      ],
+      environment: {},
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-discovery-download",
+    });
+    expect(String(failure)).not.toContain(privateDetail);
   });
 });
 

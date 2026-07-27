@@ -7190,11 +7190,28 @@ the optimization loop.
 
 The evaluator-private bootstrap binds Harbor revision `6` to its returned
 `sha256:` dataset reference, canonicalizes the exact package-task references
-and declared dataset-level files, and requires the same manifest through a
-digest lookup and a post-download refetch. The complete downloaded tree has a
-separate deterministic digest. Revision 6 declares no dataset-level files, so
-Harbor 0.20.0 does not download a `dataset.toml`; the bootstrap neither
-requires nor invents one.
+and declared dataset-level files, requires Harbor's two returned version-hash
+fields to agree, and freezes that validated metadata snapshot. Harbor's
+historical revision hash is treated as an opaque registry pin; the separate
+canonical manifest digest binds its exact membership. The bootstrap downloads
+only the snapshot's exact task digests through Harbor's public task client in
+batches of at most five, verifies every extracted task against its published
+package digest, validates every declared dataset file by path and hash, and
+then requires an unchanged revision-6 manifest from a post-download refetch.
+This avoids Harbor's unbounded 89-task download fan-out while keeping the
+complete downloaded tree under a separate deterministic digest. Revision 6
+declares no dataset-level files, so Harbor 0.20.0 does not download a
+`dataset.toml`; the bootstrap neither requires nor invents one.
+
+Failed protected preflights release one fixed, task-free phase code only. The
+Python discovery process maps argument, runtime, registry, download, inventory,
+static-eligibility, nested-compatibility, cleanup, and output failures to an
+allowlisted marker. The evaluator worker and trusted Daytona controller
+preserve only that marker (or an outer create/stage/execute/cleanup category)
+and discard raw stdout, stderr, exception text, task identifiers, grader data,
+and secrets. GitHub therefore reports
+`MVP_PREFLIGHT_FAILED_CLOSED:<phase>` without turning diagnostics into a hidden
+benchmark-data channel.
 
 ### Alternatives
 

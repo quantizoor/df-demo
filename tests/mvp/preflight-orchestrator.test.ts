@@ -9,6 +9,7 @@ import type {
   MvpRoleWorkerCommand,
   MvpStagedBundleReceipt,
 } from "../../src/mvp/daytona-runtime.js";
+import { MvpPreflightDiagnosticError } from "../../src/mvp/preflight-diagnostics.js";
 import {
   launchMvpPreflight,
   type MvpPreflightConfiguration,
@@ -78,7 +79,11 @@ class FakeRuntime implements MvpCloudRuntime {
   specification: MvpRoleSandboxSpec | null = null;
   destroyed = false;
 
-  constructor(private readonly output: string) {}
+  constructor(
+    private readonly output: string,
+    private readonly executeError: Error | null = null,
+    private readonly destroyError: Error | null = null,
+  ) {}
 
   async create(specification: MvpRoleSandboxSpec): Promise<MvpRoleSandboxLease> {
     this.specification = specification;
@@ -101,6 +106,7 @@ class FakeRuntime implements MvpCloudRuntime {
       "/tmp/df-mvp-controller/dist/mvp/preflight-worker.js",
       "bootstrap",
     ]);
+    if (this.executeError !== null) throw this.executeError;
     return {
       role: "evaluator",
       startedAt: "2026-07-27T00:00:00.000Z",
@@ -114,6 +120,7 @@ class FakeRuntime implements MvpCloudRuntime {
 
   async destroy(): Promise<void> {
     this.destroyed = true;
+    if (this.destroyError !== null) throw this.destroyError;
   }
 }
 
@@ -174,8 +181,47 @@ describe("MVP protected preflight orchestration", () => {
         configuration: configuration("bootstrap"),
         runtime,
       }),
-    ).rejects.toThrow("failed closed");
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "worker-output-invalid",
+    });
     expect(runtime.destroyed).toBe(true);
+  });
+
+  it("preserves a safe worker diagnostic after proving outer sandbox cleanup", async () => {
+    const runtime = new FakeRuntime(
+      "",
+      new MvpPreflightDiagnosticError("bootstrap-discovery-eligibility"),
+    );
+
+    await expect(
+      launchMvpPreflight({
+        configuration: configuration("bootstrap"),
+        runtime,
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "bootstrap-discovery-eligibility",
+    });
+    expect(runtime.destroyed).toBe(true);
+  });
+
+  it("reports outer cleanup failure in preference to an earlier worker failure", async () => {
+    const runtime = new FakeRuntime(
+      "",
+      new MvpPreflightDiagnosticError("bootstrap-discovery-download"),
+      new Error("provider cleanup details"),
+    );
+
+    await expect(
+      launchMvpPreflight({
+        configuration: configuration("bootstrap"),
+        runtime,
+      }),
+    ).rejects.toMatchObject({
+      name: "MvpPreflightDiagnosticError",
+      code: "outer-cleanup",
+    });
   });
 
   it("rejects any drift from the source-bound configuration hash", () => {

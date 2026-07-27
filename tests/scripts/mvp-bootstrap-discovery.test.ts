@@ -16,6 +16,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import types
 from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location("mvp_bootstrap_discovery", sys.argv[1])
@@ -77,6 +78,16 @@ if case == "empty-files":
         "datasetRef": manifest["datasetRef"],
         "manifestDigest": module.digest_json(manifest),
         "inventoryDigest": inventory_digest,
+    }
+elif case == "opaque-registry-hash":
+    value, _ = metadata()
+    historical_hash = "7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a"
+    value.version = f"sha256:{historical_hash}"
+    value.dataset_version_content_hash = historical_hash
+    manifest = module.package_dataset_manifest(value, historical_hash)
+    result = {
+        "datasetRef": manifest["datasetRef"],
+        "taskCount": len(manifest["tasks"]),
     }
 elif case == "mutation":
     original, original_hash = metadata()
@@ -154,6 +165,10 @@ elif case == "tree":
         second = module.inventory_tree(root_path)
         os.chmod(file_path, 0o640)
         third = module.inventory_tree(root_path)
+        empty_directory = root_path / "empty"
+        empty_directory.mkdir()
+        fourth = module.inventory_tree(root_path)
+        empty_directory.rmdir()
         link_path = root_path / "task-link"
         link_path.symlink_to(file_path)
         symlink_rejected = rejected(lambda: module.inventory_tree(root_path))
@@ -179,37 +194,159 @@ elif case == "tree":
         )
     result = {
         "contentMutationDetected": first != second,
+        "emptyDirectoryMutationDetected": third != fourth,
         "escapedPathRejected": escaped_path_rejected,
         "modeMutationDetected": second != third,
         "symlinkRejected": symlink_rejected,
     }
-elif case == "download-reference":
-    class Client:
-        def __init__(self):
-            self.reference = None
-            self.options = None
+elif case == "package-content":
+    package_module = types.ModuleType("harbor")
+    package_module.__path__ = []
+    publisher_module = types.ModuleType("harbor.publisher")
+    publisher_module.__path__ = []
+    packager_module = types.ModuleType("harbor.publisher.packager")
 
-        async def download_dataset(self, reference, **options):
-            self.reference = reference
-            self.options = options
-            return []
+    class Packager:
+        computed_hash = digest("published")
 
-    client = Client()
-    dataset_hash = digest("dataset")
+        @staticmethod
+        def compute_content_hash(root):
+            return Packager.computed_hash, [root / "task.toml"]
+
+    packager_module.Packager = Packager
+    sys.modules["harbor"] = package_module
+    sys.modules["harbor.publisher"] = publisher_module
+    sys.modules["harbor.publisher.packager"] = packager_module
+
+    with tempfile.TemporaryDirectory() as root:
+        root_path = pathlib.Path(root)
+        task_file = root_path / "task.toml"
+        task_file.write_text("synthetic = true\n", encoding="utf-8")
+        task_id = SimpleNamespace(ref=f"sha256:{Packager.computed_hash}")
+        item = SimpleNamespace(id=task_id, downloaded_path=root_path)
+        module.assert_downloaded_task_content_hashes([item])
+        empty = root_path / "unexpected-empty"
+        empty.mkdir()
+        empty_directory_rejected = rejected(
+            lambda: module.assert_downloaded_task_content_hashes([item])
+        )
+        empty.rmdir()
+        Packager.computed_hash = digest("changed")
+        content_hash_rejected = rejected(
+            lambda: module.assert_downloaded_task_content_hashes([item])
+        )
+    result = {
+        "contentHashRejected": content_hash_rejected,
+        "emptyDirectoryRejected": empty_directory_rejected,
+    }
+elif case == "validated-download":
+    class DatasetClient:
+        def __init__(self, mode="valid"):
+            self.file_calls = 0
+            self.mode = mode
+
+        async def download_dataset_files(self, metadata, **options):
+            self.file_calls += 1
+            result = {}
+            for file_info in metadata.files:
+                path = pathlib.Path(options["output_dir"]) / file_info.path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "wrong" if self.mode == "wrong-hash" else "metric",
+                    encoding="utf-8",
+                )
+                result[file_info.path] = path
+            if self.mode == "extra":
+                result["extra.py"] = pathlib.Path(options["output_dir"]) / "extra.py"
+            return result
+
+    class TaskClient:
+        def __init__(self, mode="valid"):
+            self.batches = []
+            self.mode = mode
+
+        async def download_tasks(self, task_ids, **options):
+            self.batches.append(
+                {
+                    "ids": [task.ref for task in task_ids],
+                    "overwrite": options["overwrite"],
+                    "export": options["export"],
+                }
+            )
+            results = []
+            for task in task_ids:
+                content_hash = task.ref.removeprefix("sha256:")
+                path = (
+                    pathlib.Path(options["output_dir"])
+                    / task.org
+                    / task.name
+                    / content_hash
+                )
+                path.mkdir(parents=True)
+                results.append(
+                    SimpleNamespace(
+                        path=(
+                            pathlib.Path(options["output_dir"]).parent / "escaped"
+                            if self.mode == "wrong-path" and not results
+                            else path
+                        ),
+                        content_hash=(
+                            digest("wrong-task")
+                            if self.mode == "wrong-hash" and not results
+                            else content_hash
+                        ),
+                    )
+                )
+            return SimpleNamespace(results=results)
+
+    file_info = SimpleNamespace(path="metric.py", content_hash=digest("metric"))
+    value, _ = metadata(files=[file_info])
+
+    def rejected_download(dataset_mode="valid", task_mode="valid"):
+        with tempfile.TemporaryDirectory() as root:
+            try:
+                asyncio.run(
+                    module.download_validated_package_dataset(
+                        DatasetClient(dataset_mode),
+                        TaskClient(task_mode),
+                        value,
+                        pathlib.Path(root) / "dataset",
+                        lambda **fields: SimpleNamespace(**fields),
+                    )
+                )
+            except module.DiscoveryError:
+                return True
+        return False
+
+    dataset_client = DatasetClient()
+    task_client = TaskClient()
     with tempfile.TemporaryDirectory() as root:
         output_dir = pathlib.Path(root) / "dataset"
-        asyncio.run(
-            module.download_immutable_package_dataset(
-                client,
-                dataset_hash,
+        items = asyncio.run(
+            module.download_validated_package_dataset(
+                dataset_client,
+                task_client,
+                value,
                 output_dir,
+                lambda **fields: SimpleNamespace(**fields),
             )
         )
     result = {
-        "reference": client.reference,
-        "overwrite": client.options["overwrite"],
-        "outputDir": pathlib.Path(client.options["output_dir"]).name,
-        "export": client.options["export"],
+        "batchCount": len(task_client.batches),
+        "maximumBatch": max(len(batch["ids"]) for batch in task_client.batches),
+        "allImmutable": all(
+            ref.startswith("sha256:")
+            for batch in task_client.batches
+            for ref in batch["ids"]
+        ),
+        "overwrite": all(not batch["overwrite"] for batch in task_client.batches),
+        "export": all(not batch["export"] for batch in task_client.batches),
+        "fileCalls": dataset_client.file_calls,
+        "itemCount": len(items),
+        "wrongTaskDigestRejected": rejected_download(task_mode="wrong-hash"),
+        "wrongTaskPathRejected": rejected_download(task_mode="wrong-path"),
+        "extraFileRejected": rejected_download(dataset_mode="extra"),
+        "wrongFileHashRejected": rejected_download(dataset_mode="wrong-hash"),
     }
 else:
     raise AssertionError("unknown probe")
@@ -223,6 +360,15 @@ async function probe(caseName: string): Promise<Record<string, unknown>> {
 }
 
 describe("evaluator-private MVP bootstrap discovery", () => {
+  it("emits only a fixed phase marker when argument parsing fails", async () => {
+    const failure = await execute("python3", [script]).catch(
+      (error: { readonly stdout: string; readonly stderr: string }) => error,
+    );
+
+    expect(failure.stdout).toBe("");
+    expect(failure.stderr).toBe("MVP_DISCOVERY_FAILURE:arguments\n");
+  });
+
   it("accepts Harbor package datasets with no dataset.toml or optional files", async () => {
     const result = await probe("empty-files");
 
@@ -233,6 +379,13 @@ describe("evaluator-private MVP bootstrap discovery", () => {
     expect(result.datasetRef).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(result.manifestDigest).toMatch(/^[a-f0-9]{64}$/u);
     expect(result.inventoryDigest).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it("treats Harbor's historical dataset hash as an opaque registry pin", async () => {
+    await expect(probe("opaque-registry-hash")).resolves.toEqual({
+      datasetRef: "sha256:7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a",
+      taskCount: 89,
+    });
   });
 
   it("is order-independent and binds task and optional-file membership", async () => {
@@ -256,20 +409,33 @@ describe("evaluator-private MVP bootstrap discovery", () => {
   it("binds file bytes and modes and rejects symlinks", async () => {
     await expect(probe("tree")).resolves.toEqual({
       contentMutationDetected: true,
+      emptyDirectoryMutationDetected: true,
       escapedPathRejected: true,
       modeMutationDetected: true,
       symlinkRejected: true,
     });
   });
 
-  it("downloads through the immutable digest reference", async () => {
-    const result = await probe("download-reference");
-
-    expect(result).toMatchObject({
-      export: false,
-      outputDir: "dataset",
-      overwrite: false,
+  it("rejects package content-hash drift and unexpected empty directories", async () => {
+    await expect(probe("package-content")).resolves.toEqual({
+      contentHashRejected: true,
+      emptyDirectoryRejected: true,
     });
-    expect(result.reference).toMatch(/^terminal-bench\/terminal-bench-2-1@sha256:[a-f0-9]{64}$/u);
+  });
+
+  it("downloads exact task digests in bounded batches and validates declared files", async () => {
+    await expect(probe("validated-download")).resolves.toEqual({
+      allImmutable: true,
+      batchCount: 18,
+      export: true,
+      fileCalls: 1,
+      itemCount: 89,
+      maximumBatch: 5,
+      overwrite: true,
+      extraFileRejected: true,
+      wrongFileHashRejected: true,
+      wrongTaskDigestRejected: true,
+      wrongTaskPathRejected: true,
+    });
   });
 });

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+import {
+  asMvpPreflightDiagnosticError,
+  formatMvpPreflightWorkerFailure,
+  MvpPreflightDiagnosticError,
+} from "./preflight-diagnostics.js";
 import type {
   MvpPreflightStage,
   MvpPreflightWorkerSuccess,
@@ -11,30 +16,52 @@ import { runMvpNoModelSyntheticSmoke } from "./synthetic-smoke.js";
 const STATE_ROOT = "/workspace/df-state";
 
 async function main(): Promise<void> {
-  assertCloudBoundary();
-  const stage = preflightStage(process.argv.slice(2));
-  if (requiredEnvironment("DF_MVP_PREFLIGHT_STAGE") !== stage) {
-    throw new Error("Preflight stage binding changed.");
+  try {
+    assertCloudBoundary();
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, "worker-boundary");
   }
-  if (requiredEnvironment("DF_MVP_MAX_ITERATIONS") !== "0") {
-    throw new Error("Preflight iteration count is not zero.");
+  let stage: MvpPreflightStage;
+  try {
+    stage = preflightStage(process.argv.slice(2));
+    if (requiredEnvironment("DF_MVP_PREFLIGHT_STAGE") !== stage) {
+      throw new Error("Preflight stage binding changed.");
+    }
+    if (requiredEnvironment("DF_MVP_MAX_ITERATIONS") !== "0") {
+      throw new Error("Preflight iteration count is not zero.");
+    }
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, "worker-configuration");
   }
 
   let result: Pick<MvpPreflightWorkerSuccess, "stageEvidence" | "sandboxAccounting">;
   if (stage === "bootstrap") {
-    requiredEnvironment("DAYTONA_API_KEY");
+    let sourceCommit: string;
+    let imageReference: string;
+    try {
+      requiredEnvironment("DAYTONA_API_KEY");
+      sourceCommit = requiredEnvironment("DF_MVP_SOURCE_COMMIT");
+      imageReference = requiredEnvironment("DF_MVP_IMAGE_REFERENCE");
+    } catch (error) {
+      throw asMvpPreflightDiagnosticError(error, "worker-configuration");
+    }
     const bootstrap = await bootstrapMvpEvaluatorRuntime({
       stateRoot: STATE_ROOT,
-      sourceCommit: requiredEnvironment("DF_MVP_SOURCE_COMMIT"),
-      imageReference: requiredEnvironment("DF_MVP_IMAGE_REFERENCE"),
+      sourceCommit,
+      imageReference,
     });
     result = {
       stageEvidence: bootstrap.evidence,
       sandboxAccounting: bootstrap.sandboxAccounting,
     };
   } else if (stage === "synthetic") {
-    assertSyntheticSecretBoundary();
-    const smoke = await runMvpNoModelSyntheticSmoke(`${STATE_ROOT}/private/preflight-synthetic`);
+    let smoke: Awaited<ReturnType<typeof runMvpNoModelSyntheticSmoke>>;
+    try {
+      assertSyntheticSecretBoundary();
+      smoke = await runMvpNoModelSyntheticSmoke(`${STATE_ROOT}/private/preflight-synthetic`);
+    } catch (error) {
+      throw asMvpPreflightDiagnosticError(error, "synthetic-runtime");
+    }
     const evidence: MvpSyntheticSmokeEvidence = smoke.checks;
     result = {
       stageEvidence: evidence,
@@ -47,7 +74,7 @@ async function main(): Promise<void> {
   } else {
     // The connectivity stage is deliberately introduced only with its exact,
     // capability-specific probes and strict evidence schema.
-    throw new Error("Connectivity preflight is not implemented.");
+    throw new MvpPreflightDiagnosticError("connectivity-unimplemented");
   }
 
   const output: MvpPreflightWorkerSuccess = {
@@ -113,7 +140,8 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-await main().catch(() => {
-  process.stderr.write("Dark Factory preflight worker failed closed.\n");
+await main().catch((error: unknown) => {
+  const diagnostic = asMvpPreflightDiagnosticError(error, "unknown");
+  process.stdout.write(formatMvpPreflightWorkerFailure(diagnostic.code));
   process.exitCode = 1;
 });

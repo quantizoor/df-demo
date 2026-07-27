@@ -2,6 +2,10 @@
 
 import { DaytonaMvpCloudRuntime } from "./daytona-runtime.js";
 import {
+  asMvpPreflightDiagnosticError,
+  formatMvpPreflightCliFailure,
+} from "./preflight-diagnostics.js";
+import {
   launchMvpPreflight,
   type MvpPreflightConfiguration,
   type MvpPreflightStage,
@@ -12,48 +16,63 @@ import {
 const SHA256_WITH_PREFIX = /^sha256:[a-f0-9]{64}$/u;
 
 async function main(): Promise<void> {
-  const stage = preflightStage(process.argv.slice(2));
-  if (requiredEnvironment("DF_MVP_PREFLIGHT_STAGE") !== stage) {
-    throw new Error("MVP_PREFLIGHT_STAGE_MISMATCH");
-  }
-  const imageReference = requiredEnvironment("DF_MVP_DAYTONA_IMAGE");
-  const expectedImageDigest = requiredEnvironment("DF_MVP_EXPECTED_IMAGE_DIGEST");
-  if (
-    !SHA256_WITH_PREFIX.test(expectedImageDigest) ||
-    imageReference.slice(imageReference.lastIndexOf("@") + 1) !== expectedImageDigest
-  ) {
-    throw new Error("MVP_PREFLIGHT_IMAGE_MISMATCH");
-  }
-  const priorRaw = requiredEnvironment("DF_MVP_PRIOR_RECEIPT_SHA256");
-  const base: Omit<MvpPreflightConfiguration, "configurationBindingHash"> = {
-    stage,
-    campaignId: requiredEnvironment("DF_MVP_CAMPAIGN_ID"),
-    sourceCommit: requiredEnvironment("DF_MVP_SOURCE_COMMIT"),
-    workflowRunId: requiredEnvironment("GITHUB_RUN_ID"),
-    workflowRunAttempt: positiveInteger("GITHUB_RUN_ATTEMPT"),
-    imageReference,
-    priorReceiptSha256: priorRaw === "none" ? null : priorRaw,
-    controllerBundle: {
-      localPath: requiredEnvironment("DF_MVP_CONTROLLER_BUNDLE_PATH"),
-      sha256: requiredEnvironment("DF_MVP_CONTROLLER_BUNDLE_SHA256"),
-    },
-    daytona: {
-      apiUrl: requiredEnvironment("DAYTONA_API_URL"),
-      target: requiredEnvironment("DAYTONA_TARGET"),
-      volumeId: requiredEnvironment("DF_DAYTONA_VOLUME_ID"),
-      volumeSubpath: requiredEnvironment("DF_DAYTONA_VOLUME_SUBPATH"),
-      nestedSecretSource: requiredEnvironment("DF_HARBOR_DAYTONA_SECRET_SOURCE"),
-    },
-  };
-  const configuration: MvpPreflightConfiguration = {
-    ...base,
-    configurationBindingHash: preflightConfigurationBindingHash(base),
-  };
+  const { configuration, runtime } = preflightInvocation();
   const receipt = await launchMvpPreflight({
     configuration,
-    runtime: new DaytonaMvpCloudRuntime(mvpPreflightDaytonaConfiguration(configuration)),
+    runtime,
   });
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
+}
+
+function preflightInvocation(): {
+  readonly configuration: MvpPreflightConfiguration;
+  readonly runtime: DaytonaMvpCloudRuntime;
+} {
+  try {
+    const stage = preflightStage(process.argv.slice(2));
+    if (requiredEnvironment("DF_MVP_PREFLIGHT_STAGE") !== stage) {
+      throw new Error("MVP_PREFLIGHT_STAGE_MISMATCH");
+    }
+    const imageReference = requiredEnvironment("DF_MVP_DAYTONA_IMAGE");
+    const expectedImageDigest = requiredEnvironment("DF_MVP_EXPECTED_IMAGE_DIGEST");
+    if (
+      !SHA256_WITH_PREFIX.test(expectedImageDigest) ||
+      imageReference.slice(imageReference.lastIndexOf("@") + 1) !== expectedImageDigest
+    ) {
+      throw new Error("MVP_PREFLIGHT_IMAGE_MISMATCH");
+    }
+    const priorRaw = requiredEnvironment("DF_MVP_PRIOR_RECEIPT_SHA256");
+    const base: Omit<MvpPreflightConfiguration, "configurationBindingHash"> = {
+      stage,
+      campaignId: requiredEnvironment("DF_MVP_CAMPAIGN_ID"),
+      sourceCommit: requiredEnvironment("DF_MVP_SOURCE_COMMIT"),
+      workflowRunId: requiredEnvironment("GITHUB_RUN_ID"),
+      workflowRunAttempt: positiveInteger("GITHUB_RUN_ATTEMPT"),
+      imageReference,
+      priorReceiptSha256: priorRaw === "none" ? null : priorRaw,
+      controllerBundle: {
+        localPath: requiredEnvironment("DF_MVP_CONTROLLER_BUNDLE_PATH"),
+        sha256: requiredEnvironment("DF_MVP_CONTROLLER_BUNDLE_SHA256"),
+      },
+      daytona: {
+        apiUrl: requiredEnvironment("DAYTONA_API_URL"),
+        target: requiredEnvironment("DAYTONA_TARGET"),
+        volumeId: requiredEnvironment("DF_DAYTONA_VOLUME_ID"),
+        volumeSubpath: requiredEnvironment("DF_DAYTONA_VOLUME_SUBPATH"),
+        nestedSecretSource: requiredEnvironment("DF_HARBOR_DAYTONA_SECRET_SOURCE"),
+      },
+    };
+    const configuration: MvpPreflightConfiguration = {
+      ...base,
+      configurationBindingHash: preflightConfigurationBindingHash(base),
+    };
+    return {
+      configuration,
+      runtime: new DaytonaMvpCloudRuntime(mvpPreflightDaytonaConfiguration(configuration)),
+    };
+  } catch (error) {
+    throw asMvpPreflightDiagnosticError(error, "outer-configuration");
+  }
 }
 
 function preflightStage(arguments_: readonly string[]): MvpPreflightStage {
@@ -88,7 +107,8 @@ function positiveInteger(name: string): number {
   return value;
 }
 
-await main().catch(() => {
-  process.stderr.write("MVP_PREFLIGHT_FAILED_CLOSED\n");
+await main().catch((error: unknown) => {
+  const diagnostic = asMvpPreflightDiagnosticError(error, "unknown");
+  process.stderr.write(formatMvpPreflightCliFailure(diagnostic.code));
   process.exitCode = 1;
 });
