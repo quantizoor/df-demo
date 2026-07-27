@@ -1,8 +1,11 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runMvpNoModelSyntheticSmoke } from "../../src/mvp/synthetic-smoke.js";
+import {
+  runMvpNoModelSyntheticSmoke,
+  runMvpNoModelSyntheticSmokePersistent,
+} from "../../src/mvp/synthetic-smoke.js";
 
 const roots: string[] = [];
 
@@ -54,6 +57,27 @@ describe("MVP no-model synthetic smoke", () => {
     await expect(runMvpNoModelSyntheticSmoke("relative/state")).rejects.toThrow(
       /explicit absolute path/u,
     );
+  });
+
+  it("refuses normalized aliases of the filesystem root before persistent writes", async () => {
+    const filesystemRootAlias = `${parse(tmpdir()).root}tmp${sep}..`;
+
+    await expect(runMvpNoModelSyntheticSmokePersistent(filesystemRootAlias)).rejects.toThrow(
+      /explicit absolute path/u,
+    );
+  });
+
+  it("refuses a symlinked persistent working root", async () => {
+    const root = await temporaryRoot();
+    const target = join(root, "target");
+    const linkedRoot = join(root, "linked-root");
+    await mkdir(target);
+    await symlink(target, linkedRoot);
+
+    await expect(runMvpNoModelSyntheticSmokePersistent(linkedRoot)).rejects.toThrow(
+      /real directory/u,
+    );
+    expect(await readdir(target)).toEqual([]);
   });
 });
 

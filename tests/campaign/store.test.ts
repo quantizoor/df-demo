@@ -1,6 +1,7 @@
-import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -290,6 +291,61 @@ describe("CampaignStateStore", () => {
       contentHash: initial.contentHash,
       revision: 0,
     });
+  });
+
+  it("waits for a transient recovery guard before committing an owned update", async () => {
+    const root = await temporaryRoot();
+    let signalVerifierEntered: (() => void) | undefined;
+    let releaseVerifier: (() => void) | undefined;
+    const verifierEntered = new Promise<void>((resolve) => {
+      signalVerifierEntered = () => resolve();
+    });
+    const verifierRelease = new Promise<void>((resolve) => {
+      releaseVerifier = () => resolve();
+    });
+    const store = new CampaignStateStore(root, "campaign-001", {
+      now: () => new Date(LATER),
+      lockWaitMs: 1_000,
+      lockRetryMs: 1,
+      ledgerTransitionVerifier: {
+        verify: async (transition) => {
+          if (transition.reason === "checkpoint") {
+            signalVerifierEntered?.();
+            await verifierRelease;
+          }
+        },
+      },
+      decisionAttestationVerifier: {
+        verify: async () => undefined,
+      },
+      controlAttestationVerifier: {
+        verify: async () => undefined,
+      },
+    });
+    const initial = await store.initialize(campaignSeed());
+    const pending = store.recordLedgerCheckpoint(initial.contentHash, {
+      ...ledgersFor(initial),
+      cacheStateAttestationHash: HASH_B,
+    });
+    await verifierEntered;
+    const recoveryLockPath = join(root, "campaign-001", ".recovery.lock");
+    await writeFile(
+      recoveryLockPath,
+      `${canonicalJson({
+        acquiredAt: LATER,
+        ownerToken: "e".repeat(32),
+        processId: 99_998,
+      })}\n`,
+    );
+    releaseVerifier?.();
+    const releaseTransientGuard = delay(20).then(async () => {
+      await unlink(recoveryLockPath);
+    });
+
+    await expect(pending).resolves.toMatchObject({
+      reconstruction: { cacheStateAttestationHash: HASH_B },
+    });
+    await releaseTransientGuard;
   });
 
   it("rejects a history entry that marks one experiment sealed and interrupted", () => {

@@ -96,6 +96,18 @@ export interface MvpNoModelSyntheticSmokeReceipt {
   readonly containsGraderMaterial: false;
 }
 
+export function parseMvpNoModelSyntheticSmokeReceipt(
+  value: unknown,
+): MvpNoModelSyntheticSmokeReceipt {
+  if (!validateSyntheticSmokeReceipt(value)) {
+    const details = (validateSyntheticSmokeReceipt.errors ?? [])
+      .map((error) => `${error.instancePath || "/"} ${error.message ?? "is invalid"}`)
+      .join("; ");
+    throw new Error(`MVP no-model synthetic smoke receipt is invalid: ${details}`);
+  }
+  return value as MvpNoModelSyntheticSmokeReceipt;
+}
+
 /**
  * Runs the MVP control loop entirely against deterministic, source-owned
  * fixtures. The only side effects are temporary files below the supplied
@@ -117,6 +129,24 @@ export async function runMvpNoModelSyntheticSmoke(
     } finally {
       await rm(workingRoot, { recursive: true, force: true });
     }
+  });
+}
+
+/**
+ * Runs the same deterministic smoke while retaining its campaign, experiment,
+ * cache, catalog, and state artifacts below an operator-owned run directory.
+ *
+ * Unlike {@link runMvpNoModelSyntheticSmoke}, this function deliberately does
+ * not remove the working tree after completion. Callers must therefore supply
+ * a unique absolute directory and own its retention policy.
+ */
+export async function runMvpNoModelSyntheticSmokePersistent(
+  workingRoot: string,
+): Promise<MvpNoModelSyntheticSmokeReceipt> {
+  assertMountedRoot(workingRoot);
+  return withMountedLock(workingRoot, "no-model-synthetic-smoke", async () => {
+    await mkdir(workingRoot, { recursive: true, mode: 0o700 });
+    return executeSyntheticSmoke(workingRoot);
   });
 }
 
@@ -359,12 +389,7 @@ async function executeSyntheticSmoke(
     containsPerTaskOutcomes: false,
     containsGraderMaterial: false,
   };
-  assertSmoke(
-    validateSyntheticSmokeReceipt(receipt),
-    `receipt schema validation failed: ${(validateSyntheticSmokeReceipt.errors ?? [])
-      .map((error) => `${error.instancePath || "/"} ${error.message ?? "is invalid"}`)
-      .join("; ")}`,
-  );
+  parseMvpNoModelSyntheticSmokeReceipt(receipt);
   assertNoPrivateMaterial(JSON.stringify(receipt), privateMaterial);
   assertSmoke(
     !/[a-f0-9]{64}/u.test(JSON.stringify(receipt)),

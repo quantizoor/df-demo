@@ -1,6 +1,8 @@
 # Dependencies and build output
 node_modules/
+.pnpm-store/
 dist/
+.next/
 claude-plugin/server/
 coverage/
 .turbo/
@@ -8,9 +10,9 @@ coverage/
 
 # Local-only Dark Factory state
 .df/
-experiments/
-worktrees/
-artifacts/
+/experiments/
+/worktrees/
+/artifacts/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

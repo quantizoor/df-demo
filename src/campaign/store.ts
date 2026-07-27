@@ -1991,7 +1991,7 @@ export class CampaignStateStore {
      * cannot quarantine that lock between the final ownership check and the
      * immutable state-file commit.
      */
-    const commitGuard = await this.#acquireOwnedLock(this.#recoveryLockPath);
+    const commitGuard = await this.#acquireRecoveryGuardWithRetry();
     try {
       await this.#assertLockOwnership(ownerToken);
       await atomicWriteFile(
@@ -2073,19 +2073,7 @@ export class CampaignStateStore {
   }
 
   async #releaseLock(ownerToken: string): Promise<void> {
-    const deadline = Date.now() + this.#lockWaitMs;
-    let releaseGuard: AcquiredLock;
-    while (true) {
-      try {
-        releaseGuard = await this.#acquireOwnedLock(this.#recoveryLockPath);
-        break;
-      } catch (error) {
-        if (!(error instanceof LockHeldError) || Date.now() >= deadline) {
-          throw error;
-        }
-        await delay(this.#lockRetryMs);
-      }
-    }
+    const releaseGuard = await this.#acquireRecoveryGuardWithRetry();
     try {
       /*
        * The recovery guard makes the token check and unlink one cooperative
@@ -2096,6 +2084,20 @@ export class CampaignStateStore {
     } finally {
       await releaseGuard.handle.close().catch(() => undefined);
       await this.#releaseOwnedLock(this.#recoveryLockPath, releaseGuard.record.ownerToken);
+    }
+  }
+
+  async #acquireRecoveryGuardWithRetry(): Promise<AcquiredLock> {
+    const deadline = Date.now() + this.#lockWaitMs;
+    while (true) {
+      try {
+        return await this.#acquireOwnedLock(this.#recoveryLockPath);
+      } catch (error) {
+        if (!(error instanceof LockHeldError) || Date.now() >= deadline) {
+          throw error;
+        }
+        await delay(this.#lockRetryMs);
+      }
     }
   }
 

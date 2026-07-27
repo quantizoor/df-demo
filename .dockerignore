@@ -1,6 +1,6 @@
-# Default-deny the OCI build context. Role images receive only reviewed source
-# and dependency metadata; Git history, tests, docs, local state, and secrets
-# never enter BuildKit.
+# Default-deny the OCI build context. Images receive only reviewed source,
+# dependency metadata, and build inputs; Git history, tests, docs, local state,
+# and secrets never enter BuildKit.
 **
 
 !package.json

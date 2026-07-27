@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, rename, rm } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { lstat, mkdir, open, rename, rm } from "node:fs/promises";
+import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 
 export const MVP_MAX_STATE_BYTES = 8 * 1024 * 1024;
 
 export function assertMountedRoot(root: string): void {
-  if (!isAbsolute(root) || root === "/") {
+  const normalized = resolve(root);
+  if (
+    root.length === 0 ||
+    root.includes("\0") ||
+    !isAbsolute(root) ||
+    normalized === parse(normalized).root
+  ) {
     throw new Error("Trusted MVP storage root must be an explicit absolute path");
   }
 }
@@ -66,6 +72,10 @@ export async function withMountedLock<Result>(
 ): Promise<Result> {
   assertMountedRoot(root);
   await mkdir(root, { recursive: true, mode: 0o700 });
+  const rootInformation = await lstat(root);
+  if (rootInformation.isSymbolicLink() || !rootInformation.isDirectory()) {
+    throw new Error("Trusted MVP storage root must be a real directory");
+  }
   const lockDirectory = join(root, `.${name}.lock`);
   try {
     await mkdir(lockDirectory, { mode: 0o700 });

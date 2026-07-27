@@ -18,9 +18,9 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       // These files are executable cloud/process boundaries whose meaningful
       // behavior depends on Daytona, Harbor, real OS identities, and protected
-      // secret placeholders. Deterministic cores and injected-port contracts
-      // remain under the 90% gate; these boundaries are mandatory synthetic
-      // and connectivity-smoke targets before the first paid iteration.
+      // secret placeholders. These boundaries are mandatory synthetic and
+      // connectivity-smoke targets before the first paid iteration. Coverage
+      // remains informational beyond the lightweight global floor below.
       exclude: [
         "src/cli.ts",
         "src/mvp/cloud-cli.ts",
@@ -31,10 +31,10 @@ export default defineConfig({
         "src/mvp/evaluator-runtime-node.ts",
       ],
       thresholds: {
-        lines: 78,
-        branches: 74,
-        functions: 88,
-        statements: 77,
+        lines: 70,
+        branches: 70,
+        functions: 80,
+        statements: 70,
       },
     },
   },

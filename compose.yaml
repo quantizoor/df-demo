@@ -1,0 +1,18 @@
+services:
+  dark-factory-local:
+    build:
+      context: .
+      dockerfile: containers/local.Containerfile
+    image: dark-factory-local:latest
+    init: true
+    restart: "no"
+    command:
+      - run
+      - --state-root
+      - /data
+    volumes:
+      - dark-factory-data:/data
+
+volumes:
+  dark-factory-data:
+    name: dark-factory-data

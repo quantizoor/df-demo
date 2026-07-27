@@ -5,8 +5,12 @@
       "**",
       "!dist",
       "!coverage",
+      "!apps/dashboard/.next",
+      "!apps/dashboard/next-env.d.ts",
       "!claude-plugin/server",
       "!node_modules",
+      "!.pnpm-store",
+      "!.df",
       "!experiments",
       "!worktrees",
       "!trusted-evaluator-data"

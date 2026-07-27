@@ -2,7 +2,7 @@
   "name": "dark-factory",
   "version": "0.1.0",
   "private": true,
-  "description": "A blind, cloud-only optimization control plane for terminal-agent harnesses.",
+  "description": "A deterministic local optimization control-loop demo, with a legacy cloud control plane.",
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "engines": {
@@ -11,12 +11,14 @@
   },
   "bin": {
     "df": "./dist/cli.js",
+    "df-local": "./dist/local/cli.js",
     "df-cloud-bootstrap": "./dist/cloud/control-bootstrap-cli.js",
     "df-cloud-control": "./dist/cloud/control-plane.js",
     "df-mvp-cloud": "./dist/mvp/cloud-cli.js"
   },
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./local-dashboard": "./dist/local/dashboard/index.js"
   },
   "files": [
     "dist",
@@ -26,15 +28,35 @@
   ],
   "scripts": {
     "guard:cloud": "node ./scripts/assert-cloud-execution.mjs",
-    "build": "pnpm guard:cloud && tsc -p tsconfig.build.json && pnpm build:plugin",
-    "build:plugin": "pnpm guard:cloud && node ./scripts/build-plugin.mjs",
-    "typecheck": "pnpm guard:cloud && tsc --noEmit -p tsconfig.json",
-    "lint": "pnpm guard:cloud && biome ci .",
-    "format": "pnpm guard:cloud && pnpm exec biome check --write --formatter-enabled=true --linter-enabled=false --assist-enabled=true .",
-    "test": "pnpm guard:cloud && vitest run",
-    "test:coverage": "pnpm guard:cloud && vitest run --coverage",
+    "build": "tsc -p tsconfig.build.json && pnpm build:plugin",
+    "build:plugin": "node ./scripts/build-plugin.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome ci .",
+    "format": "pnpm exec biome check --write --formatter-enabled=true --linter-enabled=false --assist-enabled=true .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "check": "pnpm lint && pnpm typecheck && pnpm test:coverage",
-    "df": "tsx ./src/cli.ts"
+    "df": "pnpm guard:cloud && tsx ./src/cli.ts",
+    "local": "tsx ./src/local/cli.ts",
+    "local:run": "pnpm local run",
+    "local:doctor": "pnpm local doctor",
+    "local:status": "pnpm local status",
+    "local:real": "pnpm local real",
+    "local:real:init": "pnpm local real init",
+    "local:real:run": "pnpm local real run",
+    "local:real:resume": "pnpm local real resume",
+    "local:real:status": "pnpm local real status",
+    "local:real:stop": "pnpm local real stop",
+    "dashboard:dev": "pnpm build && pnpm --filter @dark-factory/dashboard dev",
+    "dashboard:build": "pnpm build && pnpm --filter @dark-factory/dashboard build",
+    "dashboard:start": "pnpm dashboard:build && pnpm --filter @dark-factory/dashboard start",
+    "dashboard:typecheck": "pnpm build && pnpm --filter @dark-factory/dashboard typecheck",
+    "dashboard:test": "pnpm --filter @dark-factory/dashboard test",
+    "dashboard:check": "pnpm build && pnpm --filter @dark-factory/dashboard typecheck && pnpm --filter @dark-factory/dashboard test && pnpm --filter @dark-factory/dashboard build",
+    "docker-local": "docker compose run --build --rm dark-factory-local",
+    "docker-local:run": "pnpm docker-local",
+    "docker-local:doctor": "docker compose run --build --rm dark-factory-local doctor --state-root /data",
+    "docker-local:status": "docker compose run --build --rm dark-factory-local status --state-root /data"
   },
   "dependencies": {
     "@daytona/sdk": "0.200.1",

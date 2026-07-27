@@ -24,7 +24,7 @@ from harbor.models.trajectories import Trajectory
 
 
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
-_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
+_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9._@-]+(?:/[A-Za-z0-9._@-]+)*$")
 _TOOL = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _FOUNDRY_RESOURCE = re.compile(
     r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
@@ -202,6 +202,21 @@ def _microsoft_foundry_models_json(
     )
 
 
+def _microsoft_foundry_settings_json() -> str:
+    """Return retry settings that respect Foundry's minute-level output quota."""
+    return json.dumps(
+        {
+            "retry": {
+                "enabled": True,
+                "maxRetries": 3,
+                "baseDelayMs": 60_000,
+            }
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def _safe_member(member: tarfile.TarInfo) -> bool:
     path = PurePosixPath(member.name)
     return (
@@ -271,22 +286,32 @@ def _timestamp(value: object) -> str:
     )
 
 
-def _content_text(value: object, label: str) -> str:
+def _content_text(
+    value: object, label: str, *, allow_images: bool = False
+) -> str:
     if isinstance(value, str):
         return value
     if not isinstance(value, list):
         raise RuntimeError(f"Pi trajectory {label} is not textual")
     output: list[str] = []
     for part in value:
+        if not isinstance(part, dict):
+            raise RuntimeError(f"Pi trajectory {label} content is malformed")
+        if part.get("type") == "text" and isinstance(part.get("text"), str):
+            output.append(part["text"])
+            continue
         if (
-            not isinstance(part, dict)
-            or part.get("type") != "text"
-            or not isinstance(part.get("text"), str)
+            allow_images
+            and part.get("type") == "image"
+            and isinstance(part.get("mimeType"), str)
+            and part["mimeType"].startswith("image/")
+            and isinstance(part.get("data"), str)
         ):
-            raise RuntimeError(
-                f"Pi trajectory {label} contains unsupported multimodal content"
-            )
-        output.append(part["text"])
+            output.append("[image omitted from trajectory]")
+            continue
+        raise RuntimeError(
+            f"Pi trajectory {label} contains unsupported multimodal content"
+        )
     return "\n".join(output)
 
 
@@ -406,6 +431,8 @@ def _convert_pi_jsonl_to_atif(
                 else:
                     if saw_agent_end:
                         raise RuntimeError("Pi trajectory has multiple terminal ends")
+                    if pending_failed_assistant_messages == 1:
+                        pending_failed_assistant_messages = 0
                     saw_agent_end = True
                 continue
             if event_type in {"agent_start", "turn_start"}:
@@ -537,7 +564,14 @@ def _convert_pi_jsonl_to_atif(
                     or not isinstance(event.get("delayMs"), (int, float))
                     or event["delayMs"] < 0
                     or not isinstance(event.get("errorMessage"), str)
-                    or pending_auto_retry_attempt is not None
+                    or (
+                        pending_auto_retry_attempt is None
+                        and event["attempt"] != 1
+                    )
+                    or (
+                        pending_auto_retry_attempt is not None
+                        and event["attempt"] != pending_auto_retry_attempt + 1
+                    )
                 ):
                     raise RuntimeError("Pi auto-retry-start event is malformed")
                 pending_auto_retry_attempt = event["attempt"]
@@ -753,7 +787,9 @@ def _convert_pi_jsonl_to_atif(
                     {
                         "source_call_id": tool_call_id,
                         "content": _content_text(
-                            message.get("content"), "tool result"
+                            message.get("content"),
+                            "tool result",
+                            allow_images=True,
                         ),
                         "extra": {
                             "is_error": message.get("isError") is True,
@@ -933,15 +969,20 @@ class DarkFactoryPi(BaseInstalledAgent):
                 model,
                 self._model_family,
             )
+            settings_json = _microsoft_foundry_settings_json()
             foundry_setup = (
                 "install -d -o root -g root -m 0755 "
                 "/installed-agent/foundry-config; "
                 f"printf '%s\\n' {shlex.quote(models_json)} > "
                 "/installed-agent/foundry-config/models.json; "
+                f"printf '%s\\n' {shlex.quote(settings_json)} > "
+                "/installed-agent/foundry-config/settings.json; "
                 "chown root:root "
-                "/installed-agent/foundry-config/models.json; "
+                "/installed-agent/foundry-config/models.json "
+                "/installed-agent/foundry-config/settings.json; "
                 "chmod 0644 "
-                "/installed-agent/foundry-config/models.json; "
+                "/installed-agent/foundry-config/models.json "
+                "/installed-agent/foundry-config/settings.json; "
             )
         else:
             if (
